@@ -50,7 +50,7 @@ Sources (all sourced): quizlet.com/features/learn; medium.com/tech-quizlet (2017
 | **BKT needs cohort data:** parameters settle at about 50–100 students; mastery estimates at ≥15 responses per skill; ~4× more parameter error at n=25 than at n=500 | Badrinath, Wang & Pardos, EDM 2021 (arXiv 2105.00385); Slater & Baker (Behaviormetrika) | sourced, strong |
 | **Elo-style ratings:** accuracy close to IRT at much lower cost; **~10 answers give a reasonable skill estimate** (r≈0.8 in simulation); an extended Elo beat BKT and PFA on real data; item difficulties need about 100 students | Pelánek, Computers & Education 2016; Papoušek et al., UMUAI 2016, doi:10.1007/s11257-016-9185-7 | sourced, strong |
 | More complex prior models add little over basic Elo | Nižnan, Papoušek & Pelánek, EDM 2015 | sourced |
-| **FSRS gives a live recall probability** per card: `get_retrievability` / `forgetting_curve` in ts-fsrs; R = (1 + FACTOR·t/(9·S))^DECAY | github.com/open-spaced-repetition/ts-fsrs | sourced; **not validated as a mastery measure** |
+| **FSRS gives a live recall probability** per card: `get_retrievability` / `forgetting_curve` in ts-fsrs; R = (1 + factor·t/S)^decay, with decay = −w[20] and factor = 0.9^(1/decay) − 1 (`computeDecayFactor` and `forgetting_curve` in `packages/fsrs/src/algorithm.ts`, read 2026-09-26; FSRS-6 default decay 0.1542) | github.com/open-spaced-repetition/ts-fsrs | sourced; **not validated as a mastery measure** |
 
 ## 4. Confidence, calibration and format
 | Finding | Source | Strength |

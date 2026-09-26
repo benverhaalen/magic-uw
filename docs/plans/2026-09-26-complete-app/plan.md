@@ -24,7 +24,7 @@
 | **Codex is "included across ChatGPT plans, including Free and Go"** (limited usage) | help.openai.com 11369540 | **a free path exists via Codex** (not used: the operator requires paid providers). Third-party use is undocumented (openai/codex#36886 open, unanswered) |
 | Gemini CLI: 1,000 requests a day with a personal Google sign-in, but **"using third-party software… with Gemini CLI OAuth is a violation… suspension"**. An unpaid API key gets 250 a day, Flash only, and **Google may train on the content, with human review** | gemini-cli tos-privacy.md, quota-and-pricing.md; ai.google.dev/gemini-api/terms | Gemini free = an API key **with a clear data-use disclosure;** not recommended for classmates' data |
 | Anthropic: an unmodified binary; "may not pay for, resell, or intermediate Claude usage on their end users' behalf"; running Claude Code in a product **requires the Commercial Terms**; the naming rule | code.claude.com/docs/en/legal-and-compliance | our $5 must **not** include or resell model usage (it doesn't: it covers Jev + service). Accept the Commercial Terms. Never "Claude Code" in our name |
-| **The Jev key must never ship to clients.** Ben's gateway enrolls devices and holds the key server-side | Ben's gateway code | "a Jev key assigned on download" = **a licence → a device credential with a per-licence budget** |
+| **The Jev key must never ship to clients.** Ben's gateway enrolls devices and holds the key server-side | Ben's gateway code | "a Jev key assigned on download" = **a licence → a device credential** (no per-student Jev budget; the gateway keeps a global abuse cap) |
 | $5 nets **$4.25** at Lemon Squeezy, Polar and Paddle (all merchant of record; **Paddle asks under-$10 products to contact them**), $4.00 at Gumroad, ~$4.53 at Stripe (not merchant of record) | pricing pages | Lemon Squeezy or Polar first. The Lemon Squeezy licence API has activate/validate/deactivate |
 | Apple Developer Program $99 a year. A sandboxed Mac App Store build likely can't launch user-installed CLIs (inferred from forums). Windows: Artifact Signing builds SmartScreen reputation over time; EV no longer recommended | Apple and Microsoft docs | direct signed and notarized downloads; no stores |
 | Google Drive for desktop syncs at `~/Library/CloudStorage/…` (macOS, fixed) and `G:` by default (Windows); registry `HKCU\Software\Google\DriveFS`. OneDrive: `%OneDrive%`, `%OneDriveCommercial%`, and `HKCU\Software\Microsoft\OneDrive\Accounts\*\UserFolder` (community-sourced) | support.google.com; community sources | **Notes to Word or Drive with no OAuth:** write .docx into the detected sync folder |
@@ -36,7 +36,7 @@
 ```
 UW sign-in (Ben) ─► Canvas harvest (Ben: +modules/pages/files) ─► extraction (pages/slides, offsets)
       └─► local store (Ben: node:sqlite in worker; +v3 feature tables, passages)
-                 ├─► course compiler: code → Jev (device credential, per-licence budget) → CLI model
+                 ├─► course compiler: code → Jev (device credential; global abuse cap) → CLI model
                  ├─► Magic tools MCP server (ours, bundled, stdio)  ◄── the student's CLI, driven headlessly
                  │      coarse tools: course.outline · materials.search · artifacts.build · practice.* ·
                  │      notes.build_course_tree · deadlines · policy · judge.* (Jev)
@@ -66,7 +66,7 @@ Owners are proposals. Ben assigns ownership (docs: no ownership assignments yet)
 | 7 | **Practice:** course path from modules, lessons, XP/streak/progress, Learn mode (MC → typed), flashcards (ts-fsrs), practice exams (tiers T1–T4), checked-item pipeline, mistakes queue, tracking | the learning package + v3 tables | 0: lesson + tracking; 1: full path, FSRS, exams | us | commands: **yes** |
 | 8 | **Notes:** per-course folder tree + .docx per session type (Cornell, guided, worked-problem, lab…); Jev picks the template; the model pre-fills the outline. **Assume no cloud storage or OneDrive is set up** (operator, 16:40); the targets below are tried in order | docx (MIT); detection | 0: local tree + open; 1: sync-folder detection; 2: Drive/Graph APIs | us | no |
 | 9 | **Settings ▸ Connect:** AI client, notes target, integrations button (installs our MCP into the chosen CLI's isolated config; optional third-party servers) | #4 #5 #8 | 0 minimal; 1 full | us + UI owner | renderer: **yes** |
-| 10 | **Licence and payments:** Lemon Squeezy or Polar checkout, licence activate/validate, gateway enrollment bound to the licence, per-licence Jev budget, offline grace, refunds | Ben's gateway | 1–2 | Ben (gateway) + us | **yes** |
+| 10 | **Licence and payments:** Lemon Squeezy or Polar checkout, licence activate/validate, gateway enrollment bound to the licence, the global abuse cap, offline grace, refunds | Ben's gateway | 1–2 | Ben (gateway) + us | **yes** |
 | 11 | **Distribution:** signed and notarized builds, auto-update, website download | Ben's build | 2 | Ben | **yes** |
 | 12 | **Evaluation and CI:** harness, frozen gold, seeded errors, blind bench vs NotebookLM | learning plan T0/T7 | 0–1 | us | CI: **yes** |
 
@@ -116,13 +116,13 @@ Operator direction (16:40): *"they need to be authenticated; if they aren't, the
 
 **Candidate:** OpenRouter's `typesafe/jev-router` (listed 2026-09-25; "picks the best model and reasoning effort for each request"). Test it against a fixed model on our eval before using it by default. Claude Code with non-Anthropic providers "may be subject to compatibility limitations".
 
-**Ask Ben:** the free and local routes drop out of the default. His decisions have the local model as the built-in default alternative, and they avoid a paid-plan prerequisite. Keep local as an offline or advanced fallback?
+**Decision:** the free and local routes are out of the default product. A paid provider is required. The local model can remain an optional offline fallback in the code Ben already built, but the product doesn't depend on it.
 
 **Terms, inferred:** Anthropic lists "3P inference provider credential" among the allowed end-user credentials. Whether OpenRouter counts is unconfirmed. OpenRouter documents the Claude Code setup itself.
 
 **6. Probe before building:** does `claude auth login` work with piped stdio (no TTY)?
 - If yes: plain `child_process` + a styled panel.
-- If no: a pseudo-terminal (`node-pty`, a native module, so Ben's call), or launch the login in the OS terminal and poll status.
+- If no: a pseudo-terminal (`node-pty`, a native module; weigh its packaging cost), or launch the login in the OS terminal and poll status.
 - The probe opens a real sign-in tab, so it runs with the operator present.
 
 ## Notes targets when nothing is set up
@@ -139,7 +139,7 @@ Tried in order. The student can change the target in Settings.
 
 **Sync-back:** the app records each note's path and hash only. It never needs cloud access to find the student's own notes later.
 
-## Decisions that change Ben's accepted direction (for Ben)
+## Our decisions that differ from the recorded direction (code changes via PRs to Ben)
 1. **"Any account with ChatGPT, Claude or Gemini; no paid-plan prerequisite"** becomes "the student's own CLI":
    - Claude needs Pro or higher.
    - ChatGPT Free works via Codex, with limits and without documented third-party terms.

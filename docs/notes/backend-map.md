@@ -98,7 +98,7 @@ Propose each as **additive and optional**, with a fixture and a test; tell Ben i
 - `enqueue` silently no-ops on a stale hash; `links()` hides links whose target changed since `putLink`.
 
 ## Open with the team
-- Where feature state lives: a Store migration v3 (purge covers it) versus a feature-owned DB (purge would miss it). Ask Ben.
+- **Decided:** feature state lives in a Store migration v3, so purge covers it. A feature-owned DB would survive "Delete local data". Goes to Ben as a PR.
 - Whether `generate()` gets a task parameter (prompt + JSON schema) or a sibling function for practice items.
 - Jev budget: 20/day per device cannot carry a per-item verification pipeline; local verification or a raised cap is a product decision.
 - Extraction (PDF/PPTX → text + `parts`): no code exists; `docs/tool-evaluation.md` lists candidates (doc).

@@ -1,6 +1,6 @@
 # Plans: start here to pick up the work
 
-**Status: Proposal.** Updated 2026-09-26 against `main` at `73ff7a6`. Plans are drafts for the team; Ben decides what's adopted ([AGENTS.md](../../AGENTS.md)).
+**Status: Proposal.** Updated 2026-09-26 against `main` at `73ff7a6`. The plans carry our decisions and their evidence. Changes to Ben's packages go to him as PRs ([AGENTS.md](../../AGENTS.md)).
 
 ## Where things stand
 - **Built on `main`:**

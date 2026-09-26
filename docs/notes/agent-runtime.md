@@ -1,6 +1,6 @@
 # Agent runtime: chat and agents on the student's own AI CLI
 
-**Status: Proposal (operator direction, pending Ben).** Checked 2026-09-26 against provider docs and terms, local probes (Claude Code 2.1.283, Codex CLI 0.156.1), and the Gemini CLI repository. Labels: **sourced** · **probed** (run once locally) · **inferred**.
+**Status: Decision (ours).** It differs from recorded team decisions; see [where we differ](where-we-differ.md). Changes to shared packages go to Ben as PRs. Checked 2026-09-26 against provider docs and terms, local probes (Claude Code 2.1.283, Codex CLI 0.156.1), and the Gemini CLI repository. Labels: **sourced** · **probed** (run once locally) · **inferred**.
 
 ## The idea
 The student uses a **paid AI provider they already have**:
@@ -11,7 +11,11 @@ The student uses a **paid AI provider they already have**:
 
 The app finds the installed CLI, **reuses its existing sign-in** by running the CLI itself, gives it the app's own isolated configuration, and drives it headlessly. It never reads, stores or forwards the student's credentials. The CLI does its thinking through our own MCP server of course tools.
 
-**Visible boundary** (fixing an earlier draft that said routing is hidden): the mechanics of the CLI process are hidden, but **the recipient is not.** Before any request leaves the device, the student sees which provider receives it and the exact context selected, the same preview pattern the app already uses ([AGENTS.md](../../AGENTS.md); [implementation status](../implementation-status.md)). Every request writes an egress receipt.
+**Disclosure without friction** (our decision; it differs from the engineering principle of a blocking preview before every hosted request):
+- **Consent once per provider,** at connection: who receives requests (the student's own provider), which data categories, and a link to that provider's data settings.
+- **Every request after that is visible but not blocking:** a context chip lists the sources used, and an egress receipt goes to the AI-use log. The student can open the exact payload at any time.
+- **A blocking preview appears only when a new sensitive category would leave for the first time:** the student's own drafts or answers, messages, or anything with classmates' content. It also appears when the student turns on "always preview".
+- **Why:** a click on every message to a provider the student chose and pays for adds friction with no new information. Receipts and chips keep the boundary inspectable.
 
 ## Routes
 | Route | What the student needs | How the app runs it | Who pays for Jev |

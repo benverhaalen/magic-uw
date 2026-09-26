@@ -14,11 +14,11 @@
 - **(H) Harness demo:** by Sunday 2026-09-27 ~10:00 CT, a headless, labelled run on imported OCW material shows the grounded answer with checked quotes, an honest "couldn't find support", a 5-item quiz with truthful labels and explanations, a flagged item, and a missed item returning. A reproducible eval report backs every number.
 - **(U) In-app:** the same journey in Ben's desktop app. This needs Ben to accept seam S, which includes a renderer panel and result shape (T8), in time.
 
-**Either way,** upgrades to Ben's code are proposed only when our measurements show they're better. **Seam S is the one operator-approved exception:** it's needed for any in-app surface.
+**Either way,** where the research already settled a better design, it's decided and goes to Ben as a PR. Only the genuinely uncertain upgrades wait for a measurement.
 
 ## Constraints in force
 - **AGENTS.md is team policy.**
-  - Ask Ben before any architectural complication.
+  - Changes to Ben's packages go to him as PRs, with the rationale.
   - Commit and push only what the user authorized.
   - **Agent verification is headless,** and `main.ts` blocks file dialogs in headless mode.
   - Never present fixtures as real, and never present real data as fixtures.
@@ -191,20 +191,29 @@ T8 (outcome U only) seam S draft: renderer panel + result shape + commands + gen
   done: a reviewable diff + one-page rationale for Ben; Codex diff-review (inline via codex exec stdin) done
 ```
 
-## Track 2: evidence-gated upgrades (proposed to Ben only when adopted)
-| Gate | Proposal | Measured by | Adopt if (fixed now) | Kill if |
-|---|---|---|---|---|
-| **S** | Seam S | — | **operator exception** (needed for any UI) | Ben prefers another shape (adopt his) |
-| G1 | Passage offsets + passage-level FTS at ingest | T7 FTS-shortlist arm. Query rule: the question's content words OR-joined (not Ben's AND form) → top-10 docs → our passage BM25, vs our passages over all course docs | the shortlist drops the gold document on ≥10% of T0's answerable questions, with an exact binomial CI reported | <10% |
-| G2 | Excerpt-list `ContextManifest` | trigger, not measured | a multi-source answer must go to a hosted or Jev recipient | we stay local |
-| G3 | Per-resource validation at import | trigger, not measured | a real capture is rejected whole because of one resource (reported by Ben or a teammate) | none reported |
-| G4 | Embeddings + hybrid | **not measurable by Sunday** | later: ≥10-point recall@5 gain on ≥50 labelled Q, paired exact test p<0.05, packaging and licence acceptable | fails any |
-| G5 | Structural headers at ingest | **not measurable by Sunday** | later: ≥5-point recall@5 gain, paired test | fails |
-| G6 | Usage fields on receipts and judgments | trigger | before any speed or cost claim | no claim |
-| G7 | Feature job kinds + priority | T6/T7 cold p50 on Ben's settings | cold quiz generation p50 >10 s | ≤10 s |
-| G8 | Canvas modules, files, pages + PDF/PPTX extraction | trigger, not measured | Ben decides it's needed for real lecture material | Ben's call |
-| G9 | CI (check + test + eval smoke) | trigger | main breaks from a push, or Ben asks | Ben declines |
-| — | Windows fix for the 0o600 test | reproduced | report now | — |
+## Track 2: upgrades to Ben's code
+**Decided** (the research already settled these; each goes to Ben as a PR with its evidence):
+
+| # | Change | Why it's decided |
+|---|---|---|
+| S | Learning seam: commands, structured `generate`, v3 tables, result fields, UI panel | no learning feature can reach the app without it |
+| D1 | Passage offsets (`parts`) + passage-level FTS at ingest | page and slide citations and literal-span checks need offsets (Ben's own pipeline direction) |
+| D2 | Excerpt-list `ContextManifest` | multi-source answers are the norm for course Q&A |
+| D3 | Per-resource validation at import | one bad resource shouldn't discard a whole capture; it matches the existing partial semantics |
+| D4 | Usage fields (latency, model, tokens) on receipts and judgments | every speed and cost claim needs them |
+| D5 | Feature job kinds, kind-filtered leasing, priority (soonest assessment first) | precomputing study material is what makes it instant |
+| D6 | Canvas modules, files and pages + PDF/PPTX extraction | there are no lecture materials without it |
+| D7 | OR-query form for natural-language questions | prefix-AND over every term rarely matches a question |
+| D8 | CI: check + test + eval smoke | four people push to one repo |
+| D9 | Windows fix for the 0o600 test | reproduced |
+
+**Measure first** (the evidence is still open):
+
+| Gate | Change | Adopt if (fixed now) | Kill if |
+|---|---|---|---|
+| G4 | Embeddings + hybrid retrieval | ≥10-point recall@5 gain on ≥50 labelled questions, paired exact test p<0.05, acceptable packaging and licence | fails any |
+| G5 | Structural headers stored at ingest | ≥5-point recall@5 gain, paired test | fails |
+| G10 | `typesafe/jev-router` as the default model choice (OpenRouter route) | beats a fixed model on answer quality at equal or lower cost on our eval | doesn't |
 
 ## Time boxes (CDT)
 | Time | Work |

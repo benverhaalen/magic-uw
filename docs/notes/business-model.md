@@ -1,6 +1,6 @@
 # Business model: one-time purchase, bring your own paid AI
 
-**Status: Proposal (operator direction, pending Ben).** This conflicts with decisions recorded in [decisions](../decisions.md) (free, local-first default, no paid-plan prerequisite); see [where we differ](where-we-differ.md). Checked 2026-09-26.
+**Status: Decision (operator).** It differs from decisions recorded in [decisions](../decisions.md) (free, local-first default, no paid-plan prerequisite); see [where we differ](where-we-differ.md). Checked 2026-09-26.
 
 ## The model
 - **A one-time $5 purchase.** It covers the hosted Jev judgments and a service fee. There's no subscription and no user account; a licence key is not an account.

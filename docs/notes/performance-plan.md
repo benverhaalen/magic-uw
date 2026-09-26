@@ -51,7 +51,7 @@ For the demo: **B + C**, with A as the ask.
 | **Job queue, leases, judgment cache** | Ben's storage and core. **Only `enrich.resource` jobs run, and only when Jev is enabled.** There's no priority ordering | built by Ben; feature job kinds **need Ben** (see [where we differ](where-we-differ.md)) |
 | **Exact-input result cache** for our generations | reuse `putJudgment`, keyed by input hash + question version + model | proposed; ours |
 | **Minimal ledger:** latency, model, tokens when available, retries, cache hits, recorded by our harness and adapters | receipts carry character counts only. The vendor savings claims (FrugalGPT 98%, RouteLLM 85/45/35%) are author-run and unreplicated, so only our ledger can support a claim | proposed; ours now, contract fields later (see [where we differ](where-we-differ.md)) |
-| **Hosted prompt caching and batch APIs** | per-token developer-API features (caching reads 0.1×, or 0.05× on Opus 5.5 and 0.025× on Fable 5.1; batch 50% off, ≤24 h). **Decided policy: hosted AI is the student's own account; no infrastructure account.** Batch's 24 h window also doesn't suit the demo | **blocked by policy;** not proposed |
+| **Prompt caching** | Claude Code and Codex cache prompts on their own; on the OpenRouter route, Anthropic caching applies to the student's key (cache reads 0.1× input on Anthropic's pricing page). Keep a stable course prefix (skeleton, policy, instructions) at the front of every session so the cache hits. Batch APIs (50% off, ≤24 h) fit only overnight precompute | decided: stable-prefix sessions; batch only for overnight jobs |
 | **Background embedding, soonest exam first** | needs job kinds + priority + a dependency decision | needs Ben (see [where we differ](where-we-differ.md)) |
 
 ## 3. Quizzes and tests
@@ -128,10 +128,10 @@ Evidence comes from lab and K-12 studies, drills and other domains. We cite it t
 | 3 | Excerpt-list payload | proposed: **a shared interface; needs Ben** (see [where we differ](where-we-differ.md)); it drives the privacy preview |
 | 4 | Per-resource validation | proposed: a concrete ingestion gap; needs Ben (see [where we differ](where-we-differ.md)) |
 | 5 | utilityProcess worker | **built by Ben** |
-| 6 | CI + eval | proposed: the eval harness is ours; CI is a repo change, so ask Ben |
-| 7 | Model routing | deferred: no hosted path exists (policy) |
+| 6 | CI + eval | decided: the eval harness is ours; CI goes to Ben as a PR |
+| 7 | Model routing | decided: a routing table per task; `typesafe/jev-router` measured first (G10) |
 | 8 | Checked-item pipeline | proposed: ours |
-| 9 | Caching + batch | **blocked by policy** |
+| 9 | Caching + batch | decided: stable-prefix caching; batch only for overnight precompute |
 
 ## Review record (2026-09-26)
 **Changes made from the reviews:**
