@@ -4,7 +4,7 @@ Checked 2026-09-26. Labels: **sourced** · **inferred** · **not-found**.
 
 ## Canvas is the hub
 - **Each course's tools:** `GET /api/v1/courses/:id/external_tools` lists every LTI tool installed in a course, with name, domain and LTI version. **That's the student's toolset, enumerated with no launch** (sourced: canvas.instructure.com/doc/api/external_tools.html).
-- **Opening a tool as the student (sanctioned):** `GET /api/v1/courses/:id/external_tools/sessionless_launch?id=…` (or `assignment_id=` / `module_item_id=`) returns a **one-time launch URL**. Loaded in the student's session, it opens the tool as them (sourced: developerdocs.instructure.com external_tools; canvas-lms controller). **Every tool becomes a tab in the app.**
+- **Opening a tool as the student (sanctioned):** `GET /api/v1/courses/:id/external_tools/sessionless_launch?id=…` (or `assignment_id=` / `module_item_id=`) returns a **one-time launch URL**. Loaded in the student's session, it opens the tool as them. The method is **GET**, per both developerdocs.instructure.com (external_tools) and canvas.instructure.com/doc/api/external_tools.html, checked 2026-09-26. The GET returns the URL; loading that URL performs the LTI launch (sourced). **Every tool becomes a tab in the app.**
 - **LTI 1.3 launches are form POSTs** (OIDC plus a signed token), so a plain GET can't launch a tool. Use `sessionless_launch`, or let Canvas's own launch run in the tab (sourced).
 - **Grades flow back** to Canvas through AGS (Assignment and Grading Services), so the Canvas gradebook shows them once the tool posts them (sourced).
 

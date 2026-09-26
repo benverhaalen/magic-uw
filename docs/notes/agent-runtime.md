@@ -1,59 +1,83 @@
-# Agent runtime: chat and agents on the student's own CLI
+# Agent runtime: chat and agents on the student's own AI CLI
 
-**Status: Proposal.** The facts were checked 2026-09-26 against docs, the CLIs' `--help`, and the providers' terms pages (quotes below). Local versions: Claude Code 2.1.283 and Codex CLI 0.156.1. Gemini CLI wasn't installed; its facts come from the repo docs.
+**Status: Proposal (operator direction, pending Ben).** Checked 2026-09-26 against provider docs and terms, local probes (Claude Code 2.1.283, Codex CLI 0.156.1), and the Gemini CLI repository. Labels: **sourced** · **probed** (run once locally) · **inferred**.
 
 ## The idea
-The student picks a client: **Claude Code, Codex, Gemini CLI, or Local.** The app drives that **unmodified CLI** headlessly. The student signs in **through the CLI's own login flow**, once, and the app never sees or stores their credentials. Usage counts against the student's own plan, and the UI never shows the routing.
+The student uses a **paid AI provider they already have**:
+- Claude Code (Claude Pro or higher)
+- Codex (a paid ChatGPT plan)
+- Gemini CLI with a paid API key
+- an OpenRouter API key, with Claude Code pointed at OpenRouter
 
-## What the providers say (sourced)
-| Client | What the terms or docs say | What it means for us |
+The app finds the installed CLI, **reuses its existing sign-in** by running the CLI itself, gives it the app's own isolated configuration, and drives it headlessly. It never reads, stores or forwards the student's credentials. The CLI does its thinking through our own MCP server of course tools.
+
+**Visible boundary** (fixing an earlier draft that said routing is hidden): the mechanics of the CLI process are hidden, but **the recipient is not.** Before any request leaves the device, the student sees which provider receives it and the exact context selected, the same preview pattern the app already uses ([AGENTS.md](../../AGENTS.md); [implementation status](../implementation-status.md)). Every request writes an egress receipt.
+
+## Routes
+| Route | What the student needs | How the app runs it | Who pays for Jev |
+|---|---|---|---|
+| **Claude** | Claude Pro, Max, Team or Enterprise. "The free claude.ai plan does not include Claude Code access" (code.claude.com/docs/en/setup, sourced) | `claude -p` headless, existing login reused | the app's gateway |
+| **Codex** | a paid ChatGPT plan | `codex exec`, existing login reused | the app's gateway |
+| **Gemini** | a **paid** Gemini API key. On unpaid keys, Google may use content to improve its products, and human reviewers may read it (ai.google.dev/gemini-api/terms, sourced) | Gemini CLI with an isolated `GEMINI_CLI_HOME` and `GEMINI_API_KEY`, stored in the OS keychain | the app's gateway |
+| **OpenRouter** | the student's own OpenRouter API key, in the OS keychain | **Claude Code pointed at OpenRouter:** `ANTHROPIC_BASE_URL=https://openrouter.ai/api`, `ANTHROPIC_AUTH_TOKEN=<key>`, `ANTHROPIC_API_KEY=""`. Pin Anthropic as the top provider; OpenRouter says the setup "is only guaranteed to work with the Anthropic first-party provider" (openrouter.ai docs, sourced) | **the student's own key,** through OpenRouter's Jev route |
+
+**Candidate router:** OpenRouter lists `typesafe/jev-router` (added 2026-09-25): "picks the best model and reasoning effort for each request". Evaluate it against a fixed model before using it by default ([benchmarking](benchmarking.md)).
+
+## Detecting a client and its sign-in
+1. **Find the binary.**
+   - Check PATH plus the official install locations, because an app launched from the macOS Dock doesn't inherit the shell PATH (inferred). Claude Code's native launcher is `~/.local/bin/claude`; Homebrew, WinGet and npm installs also exist; Codex installs via script, npm or Homebrew; Gemini CLI via npm, Homebrew or MacPorts (install docs, sourced).
+   - Then run `--version`.
+2. **Read the sign-in state from the CLI itself.**
+
+| Client | Command | Result |
 |---|---|---|
-| **Claude Code** | "developers may not collect, store, or intermediate Claude.ai credentials or session tokens — **sign-in to a Claude account must complete through Anthropic's own flow**." "Each end user must authenticate with their own Anthropic API key, **Claude subscription plan credentials**, or 3P inference provider credential." Running Claude Code in a product "requires agreeing to our Commercial Terms of Service"; "the Claude Code binary must not be modified"; you "can't use the Claude Code or Anthropic names… as part of your own product… name" (code.claude.com/docs/en/legal-and-compliance) | ✅ This fits: the unmodified binary, the student's own sign-in through Anthropic's flow, the app never touching tokens. **The team accepts the Commercial Terms once.** We may say "runs Claude Code", but it can't be in our product's name. |
-| **Codex CLI** | "`codex exec` reuses saved CLI authentication by default"; sign in with ChatGPT or an API key (developers.openai.com/codex/auth, /noninteractive). **There's no documented contract for third-party apps driving it with a ChatGPT sign-in;** openai/codex#36886 asks and is unanswered | ⚠️ It works, but it isn't formally sanctioned. Disclose this, and keep a fallback. |
-| **Gemini CLI** | "Directly accessing the services powering Gemini CLI… using third-party software… (for example, using OpenClaw with Gemini CLI OAuth) is a violation… **grounds for suspension or termination of your account**." The headless guidance recommends a Gemini API key or Vertex (docs/resources/tos-privacy.md, docs/get-started/authentication.mdx) | ⚠️ Driving the unmodified binary isn't the same as reusing its OAuth "directly", but the account risk is explicit. **Default Gemini to its API key path** (it has a free tier) and say so, or leave Gemini out of the headless runtime. |
-| **Local** | no provider terms | ✅ always available; the fallback |
+| Claude | `claude auth status --json` (probed) | returns `loggedIn`, `authMethod`, `subscriptionType`. The app keeps only these three fields and discards email and organization fields |
+| Codex | `codex login status` (probed) | prints e.g. "Logged in using ChatGPT" |
+| Gemini | no status command exists (sourced) | the state is "a key is present in the keychain and a one-token test call succeeds" |
 
-## Setup: "choose your client"
-1. **Pick a client.**
-2. **The app, as plain code:**
-   - detects the CLI and its version
-   - if it's missing, shows the official install command for the OS
-   - creates an **isolated workspace**, `userData/agents/<client>/`, and writes its config: our course-data MCP server, the tool allowlist, the settings
-3. **Sign in, in the app's built-in terminal:**
-   - The CLI runs with its home set to the isolated folder, and **the student completes the provider's own sign-in once**.
-   - A new home means a new login:
-     - Claude: "a session with a different `CLAUDE_CONFIG_DIR` reads a different entry" (code.claude.com/docs/en/authentication)
-     - Codex: `CODEX_HOME` holds `auth.json` or the keyring entry, and `codex login --device-auth` exists
-     - Gemini: `GEMINI_CLI_HOME` "creates a `.gemini` folder inside the specified path"
-4. **A test call → "Connected ✓".**
-5. **Optional "fix my setup" helper:** a generated, human-readable prompt the student can paste into their own CLI session when something breaks, e.g. a PATH problem or an old version. It's a repair tool, not the main path. The main path is code, so it's the same every time.
+3. **Not installed:** a styled console panel shows the provider's **official** install command. It runs only after the student clicks Install.
+4. **Not signed in:** the same panel runs the provider's **own** login:
 
-**Never copy the global credential files into the isolated folder.** That's the "intermediate credentials" the Claude terms prohibit.
-
-**A lighter option (to check before relying on it): reuse the student's existing login and isolate the config with flags only.**
-- Claude: `--setting-sources project,local` + `--settings` + `--strict-mcp-config`.
-- Codex: `--ignore-user-config` ("auth still uses `CODEX_HOME`") + `-c` overrides.
-- This saves one sign-in, but the isolation is weaker. Whether the user's global memory file still loads in Claude is **not verified**. So the isolated home is the default.
-
-## Runtime: headless and invisible
-| Client | How the app drives it (sourced flags) |
+| Client | Login flow |
 |---|---|
-| **Claude Code** | **one long-lived process per session:** `claude -p --input-format stream-json --output-format stream-json --session-id <uuid>`, with `--settings <file>` (permissions), `--setting-sources project,local`, `--mcp-config <file> --strict-mcp-config`, `--allowedTools` / `--disallowedTools`, `--permission-prompts none` (auto-deny anything that would prompt), `--append-system-prompt <course policy + integrity rules>`, `--model`. **Not `--bare`:** it reads only API keys, never the subscription login. |
-| **Codex** | one `codex exec --json -C <workspace> -s read-only --skip-git-repo-check` per turn, continued with `codex exec resume <SESSION_ID>`; `--output-schema <file>` for typed results; MCP servers in the isolated `config.toml` (`[mcp_servers.<name>]`) |
-| **Gemini CLI** | `gemini -p "<prompt>" --output-format stream-json --approval-mode default` with `GEMINI_CLI_HOME` set to the isolated folder; MCP in its `settings.json` `mcpServers` (API-key auth by default, per the terms above) |
-| **Local** | the local model runtime through the same adapter interface |
+| Claude | `claude auth login` opens Anthropic's own sign-in page in the browser. The panel then polls `auth status`. This follows "sign-in… must complete through Anthropic's own flow" (sourced) |
+| Codex | `codex login`, or `codex login --device-auth` (a code and a URL, with no terminal needed) |
+| Gemini | the student pastes a paid API key. Google-account OAuth isn't offered: Gemini CLI's terms call third-party use of its OAuth "a violation of applicable terms" and "grounds for suspension or termination of your account" (sourced) |
 
-**One adapter interface for all four:** `start(session) · send(message) · events() · stop()`. Each adapter maps its CLI's event stream (Claude's stream-json; Codex's `--json` JSONL; Gemini's `init / message / tool_use / tool_result / result` events) to one internal event type. The UI renders those events as answer cards, citations and agent steps.
+**To verify before relying on it:** whether `claude auth login` works when spawned without a terminal (TTY). If it doesn't, use a pseudo-terminal module or open the OS terminal.
+
+## Isolation: the app's configuration, not the student's
+| Client | How | Result |
+|---|---|---|
+| **Claude** | `--setting-sources project,local --strict-mcp-config --mcp-config <our server>` plus `--settings <ours>` and `--append-system-prompt <course policy>` | **probed:** the existing login was reused, and no user CLAUDE.md, skills or MCP servers loaded. Not `--bare`, which accepts only API-key auth |
+| **Codex** | `codex exec --ignore-user-config --ignore-rules --ephemeral -s read-only` plus `-c developer_instructions="<Magic Canvas role; user AGENTS.md is out of scope>"` plus our MCP server via `-c mcp_servers.<name>...` | **probed:** `--ignore-user-config` **still loads the global `~/.codex/AGENTS.md`**, and there's no documented switch to stop it. The developer instructions override it in behaviour: in a probe the model declined to follow or quote it. The file's text still enters the context. Full isolation needs a separate `CODEX_HOME`, which needs its own sign-in; copying credential files is not allowed |
+| **Gemini** | an isolated `GEMINI_CLI_HOME` (it relocates `~/.gemini`; documented in the repo's enterprise guide and read in `packages/cli`) plus a system settings file via `GEMINI_CLI_SYSTEM_SETTINGS_PATH`, `--extensions` limited, `--approval-mode default` | sourced; not yet probed |
+
+## Headless runtime
+| Client | Invocation |
+|---|---|
+| Claude | one long-lived `claude -p --input-format stream-json --output-format stream-json` per session, with `--allowedTools`/`--disallowedTools` and `--permission-prompts none` |
+| Codex | `codex exec --json` per turn, continued with `codex exec resume <id>`; `--output-schema` for typed results |
+| Gemini | `gemini -p … --output-format stream-json` |
+
+**One adapter interface:** `start · send · events · stop`. It maps each stream to one internal event type.
 
 ## What the agent can touch
-- **Our course-data MCP server is the only way into the student's courses.** Its tools are read-only; each passes the policy engine and the integrity gate (`integrity-roles.md`, `jev-usage.md`).
-- **The allowlist:** our MCP tools, plus reading inside the isolated workspace. **No shell, no writes outside a scratch folder, no network tools** unless a feature needs them. Anything else is auto-denied (`--permission-prompts none` for Claude, `-s read-only` for Codex, approval mode `default` for Gemini).
-- **The CS toolkit's terminal** (`major-toolkits.md`) is the student's own terminal, not the agent's. Code-running agent modes, if any, run inside a sandboxed workspace and follow the course policy.
-- **Every session is logged** into the AI-use log (client, model, prompts, tools used), for the AI Usage Statement.
+- **Only our MCP server,** with coarse, read-only tools backed by code and Jev: course outline, passage search with offsets, artifact builders, practice, the notes tree, deadlines, policy. There's no shell and no network tools, and nothing writes to school systems. Every tool passes the course policy and integrity gates ([integrity roles](integrity-roles.md)).
+- **Every session is logged** to the student's AI-use log.
+
+## Terms, as they stand
+- **Anthropic (sourced):**
+  - The binary is unmodified.
+  - "Customers may not pay for, resell, or intermediate Claude usage on their end users' behalf." The app's one-time price covers Jev and the service, **never model usage.**
+  - Running Claude Code in a product requires the team to accept the Commercial Terms.
+  - "Claude Code" can't be part of the product's name.
+  - Whether OpenRouter counts as a "3P inference provider credential" isn't stated (inferred open).
+- **OpenAI (sourced):** Codex is included in ChatGPT plans. There's no documented arrangement for third-party apps (openai/codex#36886 is open and unanswered), so disclose this to students.
+- **Google (sourced):** API-key auth only; no Gemini CLI OAuth.
 
 ## Disclosures in onboarding
-- "Uses your Claude / ChatGPT / Gemini plan's usage limits. We never see your sign-in."
-- For each client, what it receives: the course excerpts and prompts our MCP tools return, and the student's messages.
-- Provider data settings: link to each provider's official controls.
-- Codex: "not formally documented for third-party apps". Gemini: "we use a Gemini API key; signing in with a Google account from third-party tools can breach Google's terms".
-- **Local always works** without any provider.
+- "Uses your own provider plan or key. We never see your sign-in."
+- The provider that receives each request, and the exact context, shown before sending.
+- Codex: "not formally documented for third-party apps."
+- Gemini: paid keys only.

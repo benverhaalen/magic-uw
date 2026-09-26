@@ -8,6 +8,10 @@ Deeper research and feature proposals behind the product docs. The status terms 
 | [performance-plan.md](performance-plan.md) | Evidence-ranked choices for retrieval and citations, speed and cost, quiz and test intelligence, and evaluation (reviewed and corrected) |
 | [benchmarking.md](benchmarking.md) | How to benchmark against NotebookLM and study tools without fooling ourselves: tasks, corpus, freezing gold, seeded errors, blind rating, statistics |
 | [local-db.md](local-db.md) | The local SQLite store as built, checked facts, and proposed additions (feature tables, passages, query form, embeddings only if measured) |
+| [backend-map.md](backend-map.md) | What the current code gives learning features: store methods, commands, IPC, extension points, and what would need Ben |
+| [business-model.md](business-model.md) | One-time $5 purchase, bring-your-own paid AI, who pays for Jev, payment and distribution options |
+| [notes-targets.md](notes-targets.md) | Where generated .docx notes go: local first, detected OneDrive or Drive sync folders, opt-in Drive or Graph APIs |
+| [open-source-candidates.md](open-source-candidates.md) | Licence-checked open-source candidates for extraction, spaced repetition, mind maps, .docx, and NotebookLM-style features |
 | [jev-insights.md](jev-insights.md) | How each planned Jev judgment is designed: questions, state, thresholds, journal, browsing loop, fit with today's gateway (no performance numbers) |
 | [ai-provider-access.md](ai-provider-access.md) | What provider terms allow for "use your own ChatGPT/Claude/Gemini account"; the supported connector and extension routes |
 | [practice-engine.md](practice-engine.md) | Practice quizzes and exams from the best available source (fidelity tiers), result review, regenerate and tweak, preparedness, adaptive flashcards, study clocks |

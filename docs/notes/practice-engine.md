@@ -66,7 +66,7 @@ For each upcoming assessment, the engine builds **full practice quizzes and prac
 - **FSRS retrievability** (`get_retrievability` in ts-fsrs) is a *separate* recall-strength signal for flashcards. It isn't treated as mastery; FSRS is unvalidated as a mastery measure.
 - **Readiness for an assessment** = mastery weighted by that assessment's coverage, measured on **unseen, exam-style items**, not on repeated cards. This avoids the fluency illusion.
 - **Shown as bands, not fake probabilities:** solid · shaky · untested · over-confident.
-  - A topic is **untested** until it has at least 5 unseen exam-style answers.
+  - **The band thresholds are unvalidated hypotheses.** Until they are measured, a topic stays **untested** below about 10 unseen exam-style answers (the Elo evidence above), and bands don't drive blueprint decisions on their own. Readiness for an assessment is deferred until coverage and response evidence are adequate and the band meaning is validated ([performance plan](performance-plan.md) §3.6).
   - **Over-confident** = confident but wrong more than the student's own base rate.
 - **The "how ready do you feel?" check is delayed** (asked at the start of the next session, not right after studying). Delayed judgments of learning are far more accurate (g=0.93).
 - **It drives everything downstream:** quiz blueprints, flashcard deck makeup, study-session content, and the order of the "Up next" dossier.
