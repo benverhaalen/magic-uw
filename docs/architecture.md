@@ -1,6 +1,6 @@
 # Technical direction
 
-Status: design, not implemented. The data layer is the first implementation priority.
+Status: architecture direction with implementation underway. Shared contracts and the runnable scaffold are committed; see [development](development.md) for the current capability boundary. Tool choices follow [engineering principles](engineering-principles.md).
 
 ## System shape
 
@@ -23,7 +23,7 @@ Jev is hosted. Any selected context sent to Jev or a hosted language model leave
 
 Direction: use a legitimate student-authorized session where supported; otherwise a dedicated sign-in browser with NetID and student-completed Duo; an approved extension bridge is another candidate. Do not decrypt personal-browser cookies or evade idle expiry. One sign-in spanning all UW systems is an untested hypothesis.
 
-Chrome's debugging restrictions make “attach to the default personal profile” an unsuitable assumption; use a dedicated profile for experiments. Embedded Electron browser compatibility with each UW flow must be tested separately. A successful Canvas login does not prove Outlook, PeopleSoft, or DARS access.
+Do not assume unattended debugging access to a personal profile. Chrome DevTools MCP's explicit, student-approved auto-connect is a candidate; it requires compatible Chrome and disabling usage/performance reporting. Use a separate profile for experiments, and keep Ben's current computer/Canvas testing headless. Embedded Electron browser compatibility with each UW flow must be tested separately. A successful Canvas login does not prove Outlook, PeopleSoft, or DARS access.
 
 Connector ladder:
 
@@ -94,3 +94,7 @@ Private scraping is local. For a clean-room context.dev-like component, use publ
 ## Unverified technical capabilities
 
 The following need evidence before we describe them as supported: sign-in across UW systems, session expiry/recovery, provider subscription access, phone relay behavior, target-platform packaging, and reliable extraction across different course structures. These unknowns do not reopen the product thesis; they identify where the technical description remains provisional.
+
+## Tool-selection policy
+
+Compare new candidates against the actual task before adopting defaults. Check current versions, maintenance, licenses (including models and dependencies), telemetry, and benchmark provenance. Keep acquisition, extraction, structured interpretation, OCR, and change detection separate so they can be evaluated and replaced independently. See [engineering principles](engineering-principles.md) for acceptance and reversal criteria. User-suggested tools are candidates to test, not automatic dependencies.

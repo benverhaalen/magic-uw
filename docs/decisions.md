@@ -18,7 +18,7 @@ A context register, not an implementation backlog. No ownership is assigned.
 | Learning policy | Course policy first; coach when vague or silent |
 | Honesty | No false reassurance or unsupported readiness, speed, or reliability claims |
 | Visual taste | Calm neutral light interface, thin borders, small readable sans serif, minimal color and filler |
-| Current collaboration | Inform teammates and resolve important points; no build guide or ownership assignments |
+| Current collaboration | Shared context is pushed; runnable skeleton is pushed and implementation is authorized. Keep teammates informed without assigning work ownership |
 
 ## Resolved product decisions — September 26
 
@@ -49,3 +49,11 @@ Sidebar by course/source/intent; default home view; relationship between day/spa
 ## Proposed refinements, not settled policy
 
 Count recovery effort when judging least effort. Keep navigation stable while adapting content. Separate conservative planning dates from established deadlines. Model confidence does not grant action permission or prove correctness. User deletion controls must remain possible with versioned capture history.
+
+## Additional accepted engineering direction
+
+- Investigate current alternatives instead of stopping at familiar defaults. Check recency, licenses, benchmark authorship, and applicability to our data.
+- Keep candidate tools separate from adopted choices. Selection requires a concrete task and an observable acceptance test.
+- Prefer a minimal in-app sign-in browser with reusable app-owned sessions where supported; Search is an interaction reference, not a mandated engine.
+- All current agent work on Ben’s computer and Canvas must be headless. Never open an interactive sign-in window during testing.
+- Full selection and evidence policy: [engineering principles](engineering-principles.md).

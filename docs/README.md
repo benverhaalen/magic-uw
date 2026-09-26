@@ -27,6 +27,7 @@ We are entering Applied AI & Automation, DoIT's Badgers Building for Badgers, an
 | [Technical direction](architecture.md) | Access, connectors, records, deadlines, Jev, models, stack proposals |
 | [Decisions and open points](decisions.md) | What is established and what still needs input |
 | [BuildFest context](buildfest.md) | Event facts, judging audiences, opening-slide notes |
+| [Engineering principles](engineering-principles.md) | How we choose tools, judge evidence, test alternatives, and preserve privacy |
 | [Research status](research.md) | Checked references and unresolved evidence |
 
 ## Status matters
