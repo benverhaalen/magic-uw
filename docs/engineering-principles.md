@@ -53,3 +53,9 @@ Do not claim every provider account can power embedded inference until its suppo
 ## Keep the shared context honest
 
 Update decisions and affected architecture notes when an assumption changes. Label direction, candidate, adopted, implemented, tested in isolation, integrated, and demonstrated in use precisely when the distinction matters. Document why a choice fits and what would cause us to revisit it. Do not turn untested options into team commitments by writing them in a stack list.
+
+## Ingestion boundaries in practice
+
+A read can have incidental server-side effects. Disclose Canvas view/must-view changes as accepted consequences of collecting content; do not describe GET-only access as having no effects. Keep explicit school-changing actions absent from the tool surface.
+
+Measure useful arrival and source coverage separately. A feed can be current while instructions are stale. Preserve old evidence during expiry, drift, malformed records, and bounds. Only a complete enumeration may establish removal. Local collection, local storage protection, and permission to share with hosted AI are separate decisions.

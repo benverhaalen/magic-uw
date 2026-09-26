@@ -15,20 +15,20 @@ pnpm install
 pnpm dev
 ```
 
-`dev` builds and opens the Electron desktop app. It starts empty with hosted AI sharing off. **Load sample course** imports synthetic data explicitly. **Import capture** accepts JSON matching `captureBatchSchema` in `packages/contracts`. **Sources** contains UW sign-in, Canvas refresh, and session removal. The sign-in browser uses the app's own local session; it does not import a personal browser profile. UW/Duo interaction belongs to the student. After a successful Canvas profile response, the sign-in window closes and the workspace starts a refresh; this embedded sign-in path still needs live validation.
+`dev` builds and opens the Electron desktop app. It starts empty with hosted AI sharing off. **Load sample course** imports synthetic data explicitly. **Import capture** accepts JSON matching `captureEnvelopeSchema` (records are validated individually) in `packages/contracts`. **Sources** contains UW sign-in, Canvas refresh, and session removal. The sign-in browser uses the app's own local session; it does not import a personal browser profile. UW/Duo interaction belongs to the student. After a successful Canvas profile response, the sign-in window closes and the workspace starts a refresh; this embedded sign-in path still needs live validation.
 
 The app stores its database in Electron's local user-data directory. Use a separate `MAGIC_USER_DATA` directory when isolating an experiment. Captured school data is private even when it is useful for debugging: keep it outside this repository. Never replace the synthetic fixtures with an unredacted export.
 
 ## Checks and headless verification
 
-| Command | Purpose |
-| --- | --- |
-| `pnpm check` | Type-check applications and shared packages |
-| `pnpm test` | Run synthetic tests for contracts, storage, connectors, privacy, model adapters, and gateway limits |
-| `pnpm build` | Type-check and build desktop code plus the informational website; does not sign or package installers |
-| `pnpm test:desktop` | Build and run a hidden Electron check with temporary data, no gateway, and no school connection |
-| `pnpm fixture` | Inspect the synthetic capture and deadline interpretation in the terminal |
-| `pnpm build && pnpm preview` | Serve the renderer with the real core and a temporary SQLite store at `http://127.0.0.1:4173` |
+| Command                      | Purpose                                                                                               |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `pnpm check`                 | Type-check applications and shared packages                                                           |
+| `pnpm test`                  | Run synthetic tests for contracts, storage, connectors, privacy, model adapters, and gateway limits   |
+| `pnpm build`                 | Type-check and build desktop code plus the informational website; does not sign or package installers |
+| `pnpm test:desktop`          | Build and run a hidden Electron check with temporary data, no gateway, and no school connection       |
+| `pnpm fixture`               | Inspect the synthetic capture and deadline interpretation in the terminal                             |
+| `pnpm build && pnpm preview` | Serve the renderer with the real core and a temporary SQLite store at `http://127.0.0.1:4173`         |
 
 The preview has no UW session, gateway, file dialog, or external-window launch. It is a local verification surface, not a web deployment. Stop it with Ctrl-C to remove its temporary data. Use a headless browser for agent-driven verification. **All agent testing on Ben's computer and Canvas stays headless**; do not open a visible browser to resolve a sign-in challenge.
 
@@ -62,20 +62,26 @@ For the whole team to share the key, deploy this gateway once and give teammates
 
 Use **Check local setup** in Data & AI, or open a course item and use **Ask locally**. The local adapter expects an existing compatible **llmfit** CLI and a local **Ollama** service with cloud features disabled. It ranks hardware-fit candidates, then requires an exact installed model and quantization match. It does not download software or weights, and no real local-model run has yet established tutoring quality. A missing dependency produces a setup message; it does not hand course text to a hosted model.
 
-ChatGPT, Claude, and Gemini are selectable data preferences and context-preview recipients. They are **not working account connections or hosted answer providers yet**. Do not enter plan credentials or claim that a subscription pays for embedded inference. The current privacy controls prepare that boundary; they do not implement provider authentication.
+ChatGPT, Claude, and Gemini are selectable data preferences and context-preview recipients. Compatible external MCP clients can read explicitly granted evidence through the local server below. The desktop has **no embedded provider account connections or hosted answer providers yet**. Do not enter plan credentials or claim that a subscription pays for embedded inference. A working stdio connection does not establish compatibility with every provider account.
 
 ## Package boundaries
 
-| Location | Responsibility |
-| --- | --- |
-| `apps/desktop` | Isolated renderer/preload, browser session, desktop capabilities, local worker |
-| `apps/gateway` | Narrow Jev endpoint, owner credential, enrollment and persistent usage limits |
-| `apps/web` | Informational page; no download link until a release exists |
-| `packages/contracts` | Shared schemas, store interface, commands, and renderer bridge |
-| `packages/domain` | Pure deadline resolution and data-sharing rules |
-| `packages/storage` | SQLite migrations, versions, search, jobs, judgments, and student state |
-| `packages/connectors` | Bounded Canvas reads through an injected local session transport |
-| `packages/core` | Commands, context preparation, background judgments, and stale-result rejection |
-| `packages/ai` | Gateway client and local model adapter |
+| Location              | Responsibility                                                                                                |
+| --------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `apps/desktop`        | Isolated renderer/preload, browser session, desktop capabilities, local worker                                |
+| `apps/gateway`        | Narrow Jev endpoint, owner credential, enrollment and persistent usage limits                                 |
+| `apps/web`            | Informational page; no download link until a release exists                                                   |
+| `packages/contracts`  | Shared schemas, store interface, commands, and renderer bridge                                                |
+| `packages/domain`     | Pure deadline resolution and data-sharing rules                                                               |
+| `packages/storage`    | SQLite migrations, versions, field observations, typed changes, search, jobs, grants, and student state       |
+| `packages/connectors` | Canvas, calendar, public-site, document, and GitLab reads through separate bounded transports                 |
+| `packages/core`       | Commands, context, exact evidence links, refresh scheduling, MCP tools, judgments, and stale-result rejection |
+| `packages/ai`         | Gateway client and local model adapter                                                                        |
 
 Change shared contracts before making incompatible changes across packages. Keep source access, extraction, interpretation, and model calls independently replaceable. Follow the [engineering principles](engineering-principles.md): choose against the actual student task, verify current licenses and benchmark provenance, and distinguish a researched candidate from a working integration.
+
+## Local ingestion and MCP
+
+Sources exposes term/inclusion choices, refresh timing, metadata/download concurrency, local feedback collection, and recent runs. Inaccessible courses stay excluded even with an inclusion override. Read [course ingestion](ingestion-upgrade.md) for capture scopes, defaults, limits, and failure semantics. Canvas reads may register views or satisfy must-view requirements; the entry screen discloses that accepted side effect. Data & AI lets the student create an MCP grant, choose courses/categories, export a local stdio configuration, and revoke it. Export replaces that connection’s credential; keep its access file on the device. Provider/client support must be verified separately.
+
+OCR is optional and local: explicit absolute `MAGIC_PDFTOPPM_PATH`, `MAGIC_TESSERACT_PATH`, and `MAGIC_TESSDATA_DIRECTORY` paths connect installed tools and language data. Without them, textless documents report `needs_ocr`. No binaries/models are downloaded or bundled by this adapter. Distributing external tools requires their own license review.

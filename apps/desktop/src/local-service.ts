@@ -97,7 +97,9 @@ export function createLocalService(
         !current ||
         current.deleted ||
         current.contentHash !== request.inputHash ||
-        JSON.stringify(store.privacy()) !== privacy
+        JSON.stringify(store.privacy()) !== privacy ||
+        JSON.stringify(core.context(resource.id, "local")) !==
+          JSON.stringify(manifest)
       )
         throw new Error(
           "The source or data settings changed. Ask again using the current evidence.",

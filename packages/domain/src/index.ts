@@ -36,6 +36,22 @@ export function maySend(
   recipient: string,
   categories: string[],
 ): { allowed: boolean; reason: string } {
+  if (
+    categories.some(
+      (category) =>
+        ![
+          "course_text",
+          "student_work",
+          "grades",
+          "comments",
+          "communications",
+        ].includes(category),
+    )
+  )
+    return {
+      allowed: false,
+      reason: "This data category has no sharing permission.",
+    };
   if (recipient === "local")
     return { allowed: true, reason: "Processed on this device." };
   if (p.mode === "local_only")
@@ -48,6 +64,12 @@ export function maySend(
     return { allowed: false, reason: "Sharing course text is disabled." };
   if (categories.includes("student_work") && !p.shareStudentWork)
     return { allowed: false, reason: "Sharing student work is disabled." };
+  if (categories.includes("grades") && !p.shareGrades)
+    return { allowed: false, reason: "Sharing grades is disabled." };
+  if (categories.includes("comments") && !p.shareComments)
+    return { allowed: false, reason: "Sharing grader comments is disabled." };
+  if (categories.includes("communications") && !p.shareCommunications)
+    return { allowed: false, reason: "Sharing communications is disabled." };
   return {
     allowed: true,
     reason: "Allowed by your current data-sharing settings.",

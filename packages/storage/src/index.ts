@@ -3,12 +3,21 @@ import { chmodSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import {
-  captureBatchSchema,
+  captureEnvelopeSchema,
+  resourceInputSchema,
+  ingestionSettingsSchema,
+  defaultIngestionSettings,
+  courseOverrideSchema,
+  mcpGrantSchema,
+  syncRunSchema,
+  type CaptureDiagnostic,
+  type ChangeType,
+  type ResourceChange,
+  type ScopeBaseline,
   defaultPrivacy,
   instant,
   privacySchema,
   type Attempt,
-  type CaptureBatch,
   type EgressReceipt,
   type IngestReport,
   type Job,
@@ -21,7 +30,7 @@ import {
   type Store,
 } from "@magic/contracts";
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 const MAX_ATTEMPTS = 3;
 type Row = Record<string, string | number | bigint | Uint8Array | null>;
 
@@ -29,8 +38,51 @@ function timestamp(value: string): string {
   return new Date(instant.parse(value)).toISOString();
 }
 
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (value && typeof value === "object")
+    return `{${Object.entries(value)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`)
+      .join(",")}}`;
+  return JSON.stringify(value);
+}
 function contentHash(value: ResourceInput): string {
-  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  return createHash("sha256").update(canonical(value)).digest("hex");
+}
+/** Omitted fields retain prior observations; explicit null and empty arrays are observations. */
+function mergeObserved(previous: unknown, incoming: unknown): unknown {
+  if (!incoming || typeof incoming !== "object" || Array.isArray(incoming))
+    return incoming;
+  const prior =
+    previous && typeof previous === "object" && !Array.isArray(previous)
+      ? (previous as Record<string, unknown>)
+      : {};
+  const result: Record<string, unknown> = { ...prior };
+  for (const [key, value] of Object.entries(incoming))
+    if (value !== undefined) result[key] = mergeObserved(prior[key], value);
+  return result;
+}
+function observedFields(value: unknown, prefix = ""): string[] {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    return prefix ? [prefix] : [];
+  return Object.entries(value)
+    .filter(([, v]) => v !== undefined)
+    .flatMap(([key, item]) =>
+      observedFields(item, prefix ? `${prefix}.${key}` : key),
+    );
+}
+function fieldValue(value: unknown, path: string): unknown {
+  return path
+    .split(".")
+    .reduce<unknown>(
+      (v, key) =>
+        v && typeof v === "object"
+          ? (v as Record<string, unknown>)[key]
+          : undefined,
+      value,
+    );
 }
 
 function assertText(value: string, name: string, max = 512): void {
@@ -148,6 +200,32 @@ export function createStore(path: string): Store {
       );
     });
 
+  if (schemaVersion < 3)
+    transaction(() => {
+      db.exec(`
+      ALTER TABLE sources ADD COLUMN details TEXT NOT NULL DEFAULT '{}';
+      CREATE TABLE field_observations (
+        resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE, field TEXT NOT NULL,
+        observed_at TEXT NOT NULL, read_id TEXT NOT NULL, version INTEGER NOT NULL,
+        PRIMARY KEY(resource_id, field, observed_at)
+      );
+      CREATE TABLE resource_changes (
+        id TEXT PRIMARY KEY, resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+        source_id TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE, read_id TEXT NOT NULL,
+        observed_at TEXT NOT NULL, type TEXT NOT NULL, old_values TEXT NOT NULL, new_values TEXT NOT NULL
+      );
+      CREATE INDEX resource_changes_time ON resource_changes(observed_at);
+      CREATE TABLE scope_baselines (
+        source_id TEXT PRIMARY KEY REFERENCES sources(id) ON DELETE CASCADE, successful_reads INTEGER NOT NULL,
+        record_count REAL NOT NULL, empty_text_ratio REAL NOT NULL, date_coverage_ratio REAL NOT NULL, observed_at TEXT NOT NULL
+      );
+      CREATE TABLE course_overrides (account_scope TEXT NOT NULL, course_id TEXT NOT NULL, included INTEGER NOT NULL, PRIMARY KEY(account_scope, course_id));
+      CREATE TABLE sync_runs (id TEXT PRIMARY KEY, started_at TEXT NOT NULL, payload TEXT NOT NULL);
+      CREATE TABLE mcp_grants (id TEXT PRIMARY KEY, payload TEXT NOT NULL);
+      PRAGMA user_version = 3;
+    `);
+    });
+
   function resourceRow(id: string): Row | undefined {
     return db
       .prepare(
@@ -169,6 +247,15 @@ export function createStore(path: string): Store {
       capturedAt: String(row.captured_at),
       deleted: Boolean(row.deleted),
       completed: Boolean(row.completed),
+      fieldLastSeen: Object.fromEntries(
+        (
+          db
+            .prepare(
+              "SELECT field, MAX(observed_at) AS observed_at FROM field_observations WHERE resource_id = ? GROUP BY field",
+            )
+            .all(String(row.id)) as Row[]
+        ).map((v) => [String(v.field), String(v.observed_at)]),
+      ),
     };
   }
 
@@ -245,21 +332,48 @@ export function createStore(path: string): Store {
       }
     },
 
-    ingest(input: CaptureBatch): IngestReport {
-      const batch = captureBatchSchema.parse(input);
+    ingest(input: unknown): IngestReport {
+      const envelope = captureEnvelopeSchema.safeParse(input);
+      if (!envelope.success) throw new Error("Invalid capture envelope.");
+      const batch = envelope.data;
       const observedAt = timestamp(batch.observedAt);
       const capturedAt = new Date().toISOString();
       const source = batch.source;
-      const complete = batch.status === "ok" && batch.complete;
+      const readId =
+        batch.readId ??
+        createHash("sha256").update(`${source.id}:${observedAt}`).digest("hex");
+      const diagnostics: CaptureDiagnostic[] = [...(batch.diagnostics ?? [])];
+      const records: { value: ResourceInput; raw: Record<string, unknown> }[] =
+        [];
       const identities = new Set<string>();
-      for (const item of batch.resources) {
-        if (item.courseId !== source.courseId)
+      let rejected = 0;
+      for (const [index, raw] of batch.resources.entries()) {
+        const parsed = resourceInputSchema.safeParse(raw);
+        if (!parsed.success) {
+          rejected++;
+          for (const issue of parsed.error.issues)
+            diagnostics.push({
+              code: issue.code,
+              path: [
+                "resources",
+                String(index),
+                ...issue.path.map(String),
+              ].slice(0, 20),
+              severity: "error",
+            });
+          continue;
+        }
+        if (parsed.data.courseId !== source.courseId)
           throw new Error("Resource course does not match its capture scope.");
-        if (identities.has(item.externalId))
+        if (identities.has(parsed.data.externalId))
           throw new Error(
             "A capture contains duplicate external resource IDs.",
           );
-        identities.add(item.externalId);
+        identities.add(parsed.data.externalId);
+        records.push({
+          value: parsed.data,
+          raw: raw as Record<string, unknown>,
+        });
       }
       return transaction(() => {
         const prior = db
@@ -271,11 +385,10 @@ export function createStore(path: string): Store {
             prior.course_id !== source.courseId ||
             prior.scope !== source.scope ||
             prior.kind !== source.kind)
-        ) {
+        )
           throw new Error(
             "A source ID cannot be reassigned to another account, course, kind, or scope.",
           );
-        }
         const report: IngestReport = {
           created: 0,
           changed: 0,
@@ -283,16 +396,93 @@ export function createStore(path: string): Store {
           deleted: 0,
           ignored: false,
         };
-        // Equal timestamps are retries, not a second opportunity to rewrite an observation.
         if (prior && observedAt <= String(prior.last_attempt_at))
           return { ...report, ignored: true };
+        let status =
+          (rejected || diagnostics.some((d) => d.severity === "error")) &&
+          batch.status === "ok"
+            ? "partial"
+            : batch.status;
+        let complete =
+          status === "ok" &&
+          batch.complete &&
+          !diagnostics.some((d) => d.severity === "error");
+        const baseline = db
+          .prepare("SELECT * FROM scope_baselines WHERE source_id = ?")
+          .get(source.id) as Row | undefined;
+        const count = records.length;
+        const emptyRatio = count
+          ? records.filter(({ value }) => !value.text.trim()).length / count
+          : 0;
+        const dateRatio = count
+          ? records.filter(({ value }) => value.deadlines.length || value.dueAt)
+              .length / count
+          : 0;
+        const drift: string[] = [];
+        if (complete && baseline && Number(baseline.record_count) >= 5) {
+          if (count < Number(baseline.record_count) * 0.3)
+            drift.push("record_count_drop");
+          if (
+            count >= 3 &&
+            emptyRatio > Number(baseline.empty_text_ratio) + 0.6
+          )
+            drift.push("key_text_loss");
+          if (
+            count >= 3 &&
+            Number(baseline.date_coverage_ratio) >= 0.6 &&
+            dateRatio < Number(baseline.date_coverage_ratio) * 0.3
+          )
+            drift.push("date_coverage_loss");
+        }
+        // A course site may contain a single page. Count baselines alone cannot detect its collapse.
+        if (
+          source.kind === "web" &&
+          (status === "ok" || status === "partial")
+        ) {
+          for (const { value } of records) {
+            const old = db
+              .prepare(
+                `SELECT v.payload FROM resources r JOIN resource_versions v ON v.resource_id=r.id AND v.version=r.version
+              WHERE r.source_id=? AND r.external_id=? AND r.deleted=0`,
+              )
+              .get(source.id, value.externalId);
+            const oldText = old
+              ? (JSON.parse(String(old.payload)) as ResourceInput).text.trim()
+              : "";
+            if (
+              oldText.length >= 100 &&
+              value.text.trim().length < oldText.length * 0.15
+            ) {
+              drift.push("key_text_loss");
+              break;
+            }
+          }
+        }
+        if (drift.length) {
+          status = "needs_attention";
+          complete = false;
+          diagnostics.push(
+            ...drift.map((code): CaptureDiagnostic => ({
+              code,
+              path: ["resources"],
+              severity: "error",
+            })),
+          );
+        }
+        if (rejected) report.rejected = rejected;
+        if (diagnostics.length) report.diagnostics = diagnostics.slice(0, 2000);
+        if (batch.readId) report.readId = readId;
+        const details = {
+          readId,
+          diagnostics: diagnostics.slice(0, 2000),
+          ...(batch.stats ? { stats: batch.stats } : {}),
+          ...(batch.progress ? { progress: batch.progress } : {}),
+        };
         db.prepare(
           `INSERT INTO sources
-          (id, label, kind, account_scope, course_id, scope, status, last_attempt_at, last_success_at, complete)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(id) DO UPDATE SET label = excluded.label, status = excluded.status,
-            last_attempt_at = excluded.last_attempt_at,
-            last_success_at = COALESCE(excluded.last_success_at, sources.last_success_at), complete = excluded.complete`,
+          (id,label,kind,account_scope,course_id,scope,status,last_attempt_at,last_success_at,complete,details)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET label=excluded.label,status=excluded.status,
+          last_attempt_at=excluded.last_attempt_at,last_success_at=COALESCE(excluded.last_success_at,sources.last_success_at),complete=excluded.complete,details=excluded.details`,
         ).run(
           source.id,
           source.label,
@@ -300,28 +490,90 @@ export function createStore(path: string): Store {
           source.accountScope,
           source.courseId,
           source.scope,
-          batch.status,
+          status,
           observedAt,
           complete ? observedAt : null,
           Number(complete),
+          JSON.stringify(details),
         );
-        db.prepare(
-          `INSERT INTO source_observations VALUES (?, ?, ?, ?, ?)`,
-        ).run(
+        db.prepare("INSERT INTO source_observations VALUES (?,?,?,?,?)").run(
           source.id,
           observedAt,
-          batch.status,
+          status,
           Number(complete),
-          batch.resources.length,
+          count,
         );
-
-        for (const item of batch.resources) {
-          const hash = contentHash(item);
+        const addChange = (
+          resourceId: string,
+          type: ChangeType,
+          oldValues: Record<string, unknown>,
+          newValues: Record<string, unknown>,
+        ) => {
+          db.prepare(
+            "INSERT INTO resource_changes VALUES (?,?,?,?,?,?,?,?)",
+          ).run(
+            randomUUID(),
+            resourceId,
+            source.id,
+            readId,
+            observedAt,
+            type,
+            JSON.stringify(oldValues),
+            JSON.stringify(newValues),
+          );
+        };
+        // Restricted course rows are catalog observations, not successful reads of their content.
+        // Only their identity and typed course metadata may advance while content stays last known.
+        const restrictedCatalog =
+          source.kind === "canvas" &&
+          source.scope === "course" &&
+          (status === "inaccessible" || status === "not_published");
+        const usable = status === "ok" || status === "partial";
+        const accepted = usable
+          ? records
+          : restrictedCatalog
+            ? records.filter(
+                ({ value }) => value.kind === "course" && value.course,
+              )
+            : [];
+        for (const entry of accepted) {
           const existing = db
             .prepare(
               "SELECT * FROM resources WHERE source_id = ? AND external_id = ?",
             )
-            .get(source.id, item.externalId) as Row | undefined;
+            .get(source.id, entry.value.externalId) as Row | undefined;
+          const previous = existing
+            ? (JSON.parse(
+                String(resourceRow(String(existing.id))!.payload),
+              ) as ResourceInput)
+            : undefined;
+          if (restrictedCatalog && previous && previous.kind !== "course")
+            continue;
+          const observation = restrictedCatalog
+            ? Object.fromEntries(
+                [
+                  "externalId",
+                  "kind",
+                  "courseId",
+                  "courseName",
+                  "title",
+                  "url",
+                  "course",
+                ]
+                  .filter((key) => entry.raw[key] !== undefined)
+                  .map((key) => [key, entry.raw[key]]),
+              )
+            : entry.raw;
+          const item = previous
+            ? resourceInputSchema.parse(mergeObserved(previous, observation))
+            : restrictedCatalog
+              ? resourceInputSchema.parse({
+                  ...observation,
+                  text: "",
+                  deadlines: [],
+                })
+              : entry.value;
+          const hash = contentHash(item);
           const id = existing ? String(existing.id) : randomUUID();
           const modified = !existing || existing.content_hash !== hash;
           const revived = Boolean(existing?.deleted);
@@ -330,8 +582,7 @@ export function createStore(path: string): Store {
             : 1;
           if (!existing) {
             db.prepare(
-              `INSERT INTO resources (id, source_id, external_id, content_hash, version, observed_at, captured_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?)`,
+              "INSERT INTO resources (id,source_id,external_id,content_hash,version,observed_at,captured_at) VALUES (?,?,?,?,?,?,?)",
             ).run(
               id,
               source.id,
@@ -344,8 +595,7 @@ export function createStore(path: string): Store {
             report.created++;
           } else {
             db.prepare(
-              `UPDATE resources SET content_hash = ?, version = ?, observed_at = ?,
-              captured_at = ?, deleted = 0 WHERE id = ?`,
+              "UPDATE resources SET content_hash=?,version=?,observed_at=?,captured_at=?,deleted=0 WHERE id=?",
             ).run(
               hash,
               version,
@@ -357,60 +607,163 @@ export function createStore(path: string): Store {
             else report.unchanged++;
           }
           if (modified)
-            db.prepare(
-              "INSERT INTO resource_versions VALUES (?, ?, ?, ?, ?)",
-            ).run(id, version, hash, JSON.stringify(item), capturedAt);
-          db.prepare("INSERT INTO observations VALUES (?, ?, ?, 0)").run(
+            db.prepare("INSERT INTO resource_versions VALUES (?,?,?,?,?)").run(
+              id,
+              version,
+              hash,
+              JSON.stringify(item),
+              capturedAt,
+            );
+          db.prepare("INSERT INTO observations VALUES (?,?,?,0)").run(
             id,
             observedAt,
             version,
           );
+          for (const field of observedFields(observation))
+            db.prepare("INSERT INTO field_observations VALUES (?,?,?,?,?)").run(
+              id,
+              field,
+              observedAt,
+              readId,
+              version,
+            );
+          if (!previous)
+            addChange(
+              id,
+              "new",
+              {},
+              { externalId: item.externalId, title: item.title },
+            );
+          if (revived)
+            addChange(id, "restored", { deleted: true }, { deleted: false });
+          if (previous && modified) {
+            addChange(
+              id,
+              "updated",
+              {
+                contentHash: existing!.content_hash,
+                updatedAt: previous.updatedAt,
+              },
+              { contentHash: hash, updatedAt: item.updatedAt },
+            );
+            const emitFields = (type: ChangeType, fields: string[]) => {
+              const changed = fields.filter(
+                (field) =>
+                  canonical(fieldValue(previous, field)) !==
+                  canonical(fieldValue(item, field)),
+              );
+              if (changed.length)
+                addChange(
+                  id,
+                  type,
+                  Object.fromEntries(
+                    changed
+                      .filter((f) => fieldValue(previous, f) !== undefined)
+                      .map((f) => [f, fieldValue(previous, f)]),
+                  ),
+                  Object.fromEntries(
+                    changed
+                      .filter((f) => fieldValue(item, f) !== undefined)
+                      .map((f) => [f, fieldValue(item, f)]),
+                  ),
+                );
+            };
+            emitFields("date_changed", [
+              "dueAt",
+              "lockAt",
+              "unlockAt",
+              "deadlines",
+            ]);
+            emitFields("requirements_changed", [
+              "text",
+              "rawHtml",
+              "rubric",
+              "submissionTypes",
+            ]);
+            const state = item.submission?.workflowState;
+            if (
+              (["submitted", "pending_review"].includes(state ?? "") &&
+                state !== previous.submission?.workflowState) ||
+              (item.submission?.submittedAt &&
+                item.submission.submittedAt !==
+                  previous.submission?.submittedAt) ||
+              (item.submitted === true && previous.submitted !== true)
+            )
+              addChange(
+                id,
+                "submitted",
+                {
+                  submitted: previous.submitted,
+                  submission: previous.submission ?? null,
+                },
+                {
+                  submitted: item.submitted,
+                  submission: item.submission ?? null,
+                },
+              );
+            if (
+              (state === "graded" &&
+                state !== previous.submission?.workflowState) ||
+              (item.submission?.score !== undefined &&
+                item.submission.score !== null &&
+                item.submission.score !== previous.submission?.score)
+            )
+              addChange(
+                id,
+                "graded",
+                { submission: previous.submission ?? null },
+                { submission: item.submission ?? null },
+              );
+          }
           if (modified || revived) {
             db.prepare("DELETE FROM resource_search WHERE resource_id = ?").run(
               id,
             );
             db.prepare(
-              "INSERT INTO resource_search(resource_id, title, course_name, body) VALUES (?, ?, ?, ?)",
+              "INSERT INTO resource_search(resource_id,title,course_name,body) VALUES (?,?,?,?)",
             ).run(id, item.title, item.courseName, item.text);
             db.prepare(
-              `UPDATE jobs SET status = 'failed', error = 'Resource changed.', lease_until = NULL, lease_token = NULL
-              WHERE resource_id = ? AND input_hash <> ? AND status IN ('pending', 'running')`,
+              `UPDATE jobs SET status='failed',error='Resource changed.',lease_until=NULL,lease_token=NULL WHERE resource_id=? AND input_hash<>? AND status IN ('pending','running')`,
             ).run(id, hash);
             db.prepare(
-              `UPDATE jobs SET status = 'pending', attempts = 0, run_after = ?, error = NULL
-              WHERE resource_id = ? AND input_hash = ? AND status = 'failed'
-                AND error IN ('Resource changed.', 'Resource deleted.', 'Resource changed or deleted.')`,
+              `UPDATE jobs SET status='pending',attempts=0,run_after=?,error=NULL WHERE resource_id=? AND input_hash=? AND status='failed' AND error IN ('Resource changed.','Resource deleted.','Resource changed or deleted.')`,
             ).run(capturedAt, id, hash);
             enqueue("enrich.resource", id, hash, capturedAt);
           }
         }
-        // Only a complete enumeration of this exact source scope proves absence.
         if (complete) {
           const present = db
             .prepare(
-              "SELECT id, external_id, version FROM resources WHERE source_id = ? AND deleted = 0",
+              "SELECT id,external_id,version FROM resources WHERE source_id=? AND deleted=0",
             )
             .all(source.id) as Row[];
           for (const row of present)
             if (!identities.has(String(row.external_id))) {
               const id = String(row.id);
               db.prepare(
-                "UPDATE resources SET deleted = 1, observed_at = ? WHERE id = ?",
+                "UPDATE resources SET deleted=1,observed_at=? WHERE id=?",
               ).run(observedAt, id);
-              db.prepare("INSERT INTO observations VALUES (?, ?, ?, 1)").run(
+              db.prepare("INSERT INTO observations VALUES (?,?,?,1)").run(
                 id,
                 observedAt,
                 row.version,
               );
+              db.prepare("DELETE FROM resource_search WHERE resource_id=?").run(
+                id,
+              );
               db.prepare(
-                "DELETE FROM resource_search WHERE resource_id = ?",
+                `UPDATE jobs SET status='failed',error='Resource deleted.',lease_until=NULL,lease_token=NULL WHERE resource_id=? AND status IN ('pending','running')`,
               ).run(id);
-              db.prepare(
-                `UPDATE jobs SET status = 'failed', error = 'Resource deleted.', lease_until = NULL, lease_token = NULL
-              WHERE resource_id = ? AND status IN ('pending', 'running')`,
-              ).run(id);
+              addChange(id, "removed", { deleted: false }, { deleted: true });
               report.deleted++;
             }
+          // Slowly adapt healthy baselines. An anomalous capture never teaches the detector its own failure.
+          db.prepare(
+            `INSERT INTO scope_baselines VALUES (?,?,?,?,?,?) ON CONFLICT(source_id) DO UPDATE SET
+            successful_reads=scope_baselines.successful_reads+1,record_count=scope_baselines.record_count*0.7+excluded.record_count*0.3,
+            empty_text_ratio=scope_baselines.empty_text_ratio*0.7+excluded.empty_text_ratio*0.3,
+            date_coverage_ratio=scope_baselines.date_coverage_ratio*0.7+excluded.date_coverage_ratio*0.3,observed_at=excluded.observed_at`,
+          ).run(source.id, 1, count, emptyRatio, dateRatio, observedAt);
         }
         return report;
       });
@@ -467,14 +820,143 @@ export function createStore(path: string): Store {
           row.last_success_at === null ? null : String(row.last_success_at),
         complete: Boolean(row.complete),
         resourceCount: Number(row.resource_count),
+        ...JSON.parse(String(row.details)),
       }));
+    },
+    ingestionSettings() {
+      const row = db
+        .prepare("SELECT value FROM preferences WHERE key='ingestion'")
+        .get();
+      return row
+        ? ingestionSettingsSchema.parse(JSON.parse(String(row.value)))
+        : ingestionSettingsSchema.parse(defaultIngestionSettings);
+    },
+    setIngestionSettings(value) {
+      const parsed = ingestionSettingsSchema.parse(value);
+      db.prepare(
+        "INSERT INTO preferences VALUES ('ingestion',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      ).run(JSON.stringify(parsed));
+    },
+    courseOverrides() {
+      return (
+        db
+          .prepare(
+            "SELECT * FROM course_overrides ORDER BY account_scope,course_id",
+          )
+          .all() as Row[]
+      ).map((r) => ({
+        accountScope: String(r.account_scope),
+        courseId: String(r.course_id),
+        included: Boolean(r.included),
+      }));
+    },
+    setCourseOverride(value) {
+      const parsed = courseOverrideSchema.parse(value);
+      if (parsed.included === null)
+        db.prepare(
+          "DELETE FROM course_overrides WHERE account_scope=? AND course_id=?",
+        ).run(parsed.accountScope, parsed.courseId);
+      else
+        db.prepare(
+          "INSERT INTO course_overrides VALUES (?,?,?) ON CONFLICT(account_scope,course_id) DO UPDATE SET included=excluded.included",
+        ).run(parsed.accountScope, parsed.courseId, Number(parsed.included));
+    },
+    changes(filter = {}) {
+      const conditions: string[] = [];
+      const params: (string | number)[] = [];
+      for (const [key, column] of [
+        ["resourceId", "c.resource_id"],
+        ["sourceId", "c.source_id"],
+        ["courseId", "s.course_id"],
+        ["accountScope", "s.account_scope"],
+      ] as const)
+        if (filter[key] !== undefined) {
+          assertText(filter[key]!, key);
+          conditions.push(`${column}=?`);
+          params.push(filter[key]!);
+        }
+      if (filter.since !== undefined) {
+        conditions.push("c.observed_at>=?");
+        params.push(timestamp(filter.since));
+      }
+      const limit = filter.limit ?? 200;
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 2000)
+        throw new Error("Invalid change limit.");
+      const rows = db
+        .prepare(
+          `SELECT c.*,s.account_scope,s.course_id,s.scope FROM resource_changes c JOIN sources s ON s.id=c.source_id ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""} ORDER BY c.observed_at DESC,c.rowid DESC LIMIT ?`,
+        )
+        .all(...params, limit) as Row[];
+      return rows.map((r): ResourceChange => ({
+        id: String(r.id),
+        resourceId: String(r.resource_id),
+        sourceId: String(r.source_id),
+        accountScope: String(r.account_scope),
+        courseId: String(r.course_id),
+        scope: String(r.scope),
+        readId: String(r.read_id),
+        observedAt: String(r.observed_at),
+        type: r.type as ChangeType,
+        oldValues: JSON.parse(String(r.old_values)),
+        newValues: JSON.parse(String(r.new_values)),
+      }));
+    },
+    scopeBaselines() {
+      return (
+        db
+          .prepare("SELECT * FROM scope_baselines ORDER BY source_id")
+          .all() as Row[]
+      ).map((r): ScopeBaseline => ({
+        sourceId: String(r.source_id),
+        successfulReads: Number(r.successful_reads),
+        recordCount: Number(r.record_count),
+        emptyTextRatio: Number(r.empty_text_ratio),
+        dateCoverageRatio: Number(r.date_coverage_ratio),
+        observedAt: String(r.observed_at),
+      }));
+    },
+    syncRuns() {
+      return (
+        db
+          .prepare(
+            "SELECT payload FROM sync_runs ORDER BY started_at DESC,id DESC LIMIT 100",
+          )
+          .all() as Row[]
+      ).map((r) => syncRunSchema.parse(JSON.parse(String(r.payload))));
+    },
+    addSyncRun(value) {
+      const parsed = syncRunSchema.parse(value);
+      if (Date.parse(parsed.finishedAt) < Date.parse(parsed.startedAt))
+        throw new Error("Sync finish precedes its start.");
+      transaction(() => {
+        db.prepare(
+          "INSERT INTO sync_runs VALUES (?,?,?) ON CONFLICT(id) DO NOTHING",
+        ).run(parsed.id, timestamp(parsed.startedAt), JSON.stringify(parsed));
+        db.prepare(
+          "DELETE FROM sync_runs WHERE id NOT IN (SELECT id FROM sync_runs ORDER BY started_at DESC,id DESC LIMIT 100)",
+        ).run();
+      });
+    },
+    mcpGrants() {
+      return (
+        db.prepare("SELECT payload FROM mcp_grants ORDER BY id").all() as Row[]
+      ).map((r) => mcpGrantSchema.parse(JSON.parse(String(r.payload))));
+    },
+    setMcpGrant(value) {
+      const parsed = mcpGrantSchema.parse(value);
+      db.prepare(
+        "INSERT INTO mcp_grants VALUES (?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload",
+      ).run(parsed.id, JSON.stringify(parsed));
     },
     privacy() {
       const row = db
         .prepare("SELECT value FROM preferences WHERE key = 'privacy'")
         .get();
       return row
-        ? privacySchema.parse(JSON.parse(String(row.value)))
+        ? {
+            ...defaultPrivacy,
+            ...privacySchema.parse(JSON.parse(String(row.value))),
+          }
         : { ...defaultPrivacy };
     },
     setPrivacy(value: PrivacyPreferences) {
@@ -819,7 +1301,7 @@ export function createStore(path: string): Store {
     },
     purge() {
       transaction(() => {
-        db.exec(`DELETE FROM receipts; DELETE FROM preferences; DELETE FROM resource_search; DELETE FROM sources;
+        db.exec(`DELETE FROM receipts; DELETE FROM preferences; DELETE FROM course_overrides; DELETE FROM sync_runs; DELETE FROM mcp_grants; DELETE FROM resource_search; DELETE FROM sources;
           INSERT INTO resource_search(resource_search) VALUES ('optimize');`);
       });
       // Delete live database content and compact SQLite files; this is not a promise to erase backups or SSD history.

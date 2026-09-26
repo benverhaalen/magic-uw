@@ -128,7 +128,7 @@ test("store restarts with evidence, completion, privacy, judgments, links, attem
     store = createStore(file);
     assert.equal(statSync(file).mode & 0o777, 0o600);
     assert.equal(store.resource(a.id)?.completed, true);
-    assert.deepEqual(store.privacy(), privacy);
+    assert.deepEqual(store.privacy(), { ...defaultPrivacy, ...privacy });
     assert.deepEqual(store.judgment(result.key), result);
     assert.equal(store.links()[0].status, "accepted");
     assert.deepEqual(store.attempts(), [attempt]);
@@ -183,7 +183,7 @@ test("observations refresh without duplicate content versions or jobs; changed c
       );
       assert.equal(
         inspect.prepare("PRAGMA user_version").get()?.user_version,
-        2,
+        3,
       );
     } finally {
       inspect.close();

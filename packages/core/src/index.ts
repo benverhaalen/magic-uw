@@ -11,6 +11,8 @@ import {
 } from "@magic/contracts";
 import { maySend, resolveDeadline } from "@magic/domain";
 import { judgmentResultSchema, type JudgmentGateway } from "@magic/ai";
+import { contentCategories, courseIncluded } from "./access";
+import { evidenceFor } from "./evidence";
 export interface CoreOptions {
   fixture: CaptureBatch;
   gateway?: JudgmentGateway;
@@ -23,6 +25,7 @@ export function createCore(store: Store, options: CoreOptions) {
     working: Promise<void> | undefined,
     closed = false;
   function snapshot(search?: string): Snapshot {
+    const evidence = evidenceFor(store);
     const judgments = store.judgments();
     const resources = store
       .resources(search)
@@ -43,7 +46,7 @@ export function createCore(store: Store, options: CoreOptions) {
             : null;
         return {
           ...r,
-          deadline: resolveDeadline(r.deadlines),
+          deadline: resolveDeadline(evidence.deadlines(r)),
           kindLabel: label,
         };
       })
@@ -67,6 +70,13 @@ export function createCore(store: Store, options: CoreOptions) {
       fixtureMode: sources.some((s) => s.kind === "fixture"),
       gatewayConfigured: !!options.gateway,
       generatedAt: now(),
+      ingestionSettings: store.ingestionSettings(),
+      courseOverrides: store.courseOverrides(),
+      changes: store.changes({ limit: 100 }),
+      syncRuns: store.syncRuns(),
+      mcpGrants: store
+        .mcpGrants()
+        .map(({ tokenHash: _secretHash, ...grant }) => grant),
     };
   }
   function context(
@@ -76,19 +86,40 @@ export function createCore(store: Store, options: CoreOptions) {
     const r = store.resource(id);
     if (!r || r.deleted) throw new Error("This item is no longer available.");
     // An explicit allowlist: no source URLs, cookies, credentials, account IDs, grades, or student drafts.
+    const supporting =
+      recipient === "jev"
+        ? []
+        : evidenceFor(store)
+            .supporting(r)
+            .filter(
+              (s) =>
+                courseIncluded(store, s) &&
+                contentCategories(s).every(
+                  (c) => maySend(store.privacy(), recipient, [c]).allowed,
+                ),
+            );
     const payload = {
       course: r.courseName.slice(0, 200),
       title: r.title.slice(0, 500),
-      text: r.text.slice(0, 12000),
+      text: [r.text, ...supporting.map((s) => `${s.title}\n${s.text}`)]
+        .join("\n\n")
+        .slice(0, 12000),
       policy: r.policy.evidence.slice(0, 4000),
     };
-    const categories = ["course_text"];
+    const categories = [
+      ...new Set([r, ...supporting].flatMap(contentCategories)),
+    ];
     const permission = maySend(store.privacy(), recipient, categories);
+    if (!courseIncluded(store, r)) {
+      permission.allowed = false;
+      permission.reason =
+        "This course is excluded. Include it in Sources before sharing its data.";
+    }
     return {
       recipient,
       purpose: "Classify assignment kind",
       categories,
-      resourceIds: [id],
+      resourceIds: [id, ...supporting.map((s) => s.id)],
       characters: JSON.stringify(payload).length,
       ...permission,
       payload,
@@ -231,6 +262,24 @@ export function createCore(store: Store, options: CoreOptions) {
       case "complete":
         store.setCompleted(command.id, command.completed);
         break;
+      case "ingestion-settings":
+        store.setIngestionSettings(command.value);
+        break;
+      case "course-override":
+        interrupt();
+        store.setCourseOverride(command.value);
+        break;
+      case "mcp-grant": {
+        // Settings edits cannot erase an existing connection credential accidentally.
+        const existing = store
+          .mcpGrants()
+          .find((g) => g.id === command.value.id);
+        store.setMcpGrant({
+          ...command.value,
+          ...(existing?.tokenHash ? { tokenHash: existing.tokenHash } : {}),
+        });
+        break;
+      }
       case "privacy":
         interrupt();
         store.setPrivacy(command.value);

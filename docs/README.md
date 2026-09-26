@@ -16,30 +16,31 @@ The technical direction starts with local course data: connectors capture source
 
 The four AI choices are ChatGPT, Claude, Gemini, and an automatically selected local model. Only UW and the chosen hosted AI should require sign-in. Desktop comes first; the website is for information/downloads/GitHub; iOS is later if time permits.
 
-Trust is part of the product: course AI policy first, no submitting/enrolling/posting to school systems, sources and freshness, reversible links, and honest uncertainty. Local storage and hosted processing must be described separately.
+Trust is part of the product: course AI policy first, no submitting/enrolling/posting or explicit completion commands to school systems, sources and freshness, reversible links, and honest uncertainty. Reading may register views or satisfy must-view requirements; this accepted effect is disclosed. Local storage and hosted processing must be described separately.
 
 We are entering Applied AI & Automation, DoIT's Badgers Building for Badgers, and The Art of the Break. Winning matters; launching during the event is a bonus.
 
 ## Reading map
 
-| Read | Contents |
-| --- | --- |
-| [Product](product.md) | Vision, student experience, learning loop, interface ideas, visual taste |
-| [Organizing concepts](product-directions.md) | Six different organizing ideas, each with a journey, risk, reference, and quick test; no winner selected |
-| [Reference-driven design](reference-driven-design.md) | Reference roles, architecture analogies, images, demo inspection, and product verification |
-| [Agent work principles](agent-work-principles.md) | Intent, discovery, expert methods, delegation, context/cost, and complete delivery |
-| [AI and privacy](ai-and-privacy.md) | Four AI options, automatic local selection, sign-in, and data disclosures |
-| [Technical direction](architecture.md) | Access, connectors, records, deadlines, Jev, models, stack proposals |
-| [Pipeline details](pipeline-details.md) | Actual endpoints and limits; proposed reconnect, scrubbing, citation checks, and link thresholds |
-| [Implementation status](implementation-status.md) | Actual capability boundaries, evidence, and the remaining product scope |
-| [Development](development.md) | Run the workspace and checks; configure the shared gateway safely |
-| [Decisions and open points](decisions.md) | What is established and what still needs input |
-| [BuildFest context](buildfest.md) | Event facts, judging audiences, opening-slide notes |
-| [Engineering principles](engineering-principles.md) | How we choose tools, judge evidence, test alternatives, and preserve privacy |
-| [Tool evaluation](tool-evaluation.md) | Current candidates, licenses, benchmark provenance, and adoption tests |
-| [Research status](research.md) | Checked references and unresolved evidence |
-| [Plans](plans/README.md) | **Start here to pick up the work:** the notebook and study-tracking spec, the complete-app plan, the first build wave |
-| [Research notes](notes/README.md) | Research and proposals: where the research differs from the current plan, benchmarking, the local database, performance, Jev, practice engine, notes, integrity roles, integrations and more |
+| Read                                                  | Contents                                                                                                 |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| [Product](product.md)                                 | Vision, student experience, learning loop, interface ideas, visual taste                                 |
+| [Organizing concepts](product-directions.md)          | Six different organizing ideas, each with a journey, risk, reference, and quick test; no winner selected |
+| [Reference-driven design](reference-driven-design.md) | Reference roles, architecture analogies, images, demo inspection, and product verification               |
+| [Agent work principles](agent-work-principles.md)     | Intent, discovery, expert methods, delegation, context/cost, and complete delivery                       |
+| [AI and privacy](ai-and-privacy.md)                   | Four AI options, automatic local selection, sign-in, and data disclosures                                |
+| [Technical direction](architecture.md)                | Access, connectors, records, deadlines, Jev, models, stack proposals                                     |
+| [Pipeline details](pipeline-details.md)               | Actual endpoints and limits; proposed reconnect, scrubbing, citation checks, and link thresholds         |
+| [Course ingestion](ingestion-upgrade.md)              | Expanded sources, refresh, local materials, privacy, and verified limits                                 |
+| [Implementation status](implementation-status.md)     | Actual capability boundaries, evidence, and the remaining product scope                                  |
+| [Development](development.md)                         | Run the workspace and checks; configure the shared gateway safely                                        |
+| [Decisions and open points](decisions.md)             | What is established and what still needs input                                                           |
+| [BuildFest context](buildfest.md)                     | Event facts, judging audiences, opening-slide notes                                                      |
+| [Engineering principles](engineering-principles.md)   | How we choose tools, judge evidence, test alternatives, and preserve privacy                             |
+| [Tool evaluation](tool-evaluation.md)                 | Current candidates, licenses, benchmark provenance, and adoption tests                                   |
+| [Research status](research.md)                        | Checked references and unresolved evidence                                                               |
+| [Plans](plans/README.md)                               | **Start here to pick up the work:** notebook and study-tracking spec, backend optimization, measurement, complete-app plan |
+| [Research notes](notes/README.md)                     | Research and decisions: where we differ from the current plan, competitive comparison, benchmarking, local DB, Jev, practice, integrity and more |
 
 ## Status matters
 

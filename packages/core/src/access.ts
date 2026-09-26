@@ -1,0 +1,61 @@
+import type { McpCategory, Resource, Store } from "@magic/contracts";
+
+/** Inclusion is checked at use time, not only when the connector first sees a course. */
+export function courseIncluded(store: Store, resource: Resource): boolean {
+  return courseInclusion(store)(resource);
+}
+export function courseInclusion(store: Store): (resource: Resource) => boolean {
+  const sources = new Map(store.sources().map((s) => [s.id, s]));
+  const overrides = new Map(
+    store
+      .courseOverrides()
+      .map((o) => [`${o.accountScope}:${o.courseId}`, o.included]),
+  );
+  const courses = new Map(
+    store
+      .resources()
+      .filter(
+        (r) =>
+          r.kind === "course" &&
+          !r.deleted &&
+          sources.get(r.sourceId)?.scope === "course",
+      )
+      .map((r) => [
+        `${sources.get(r.sourceId)?.accountScope}:${r.courseId}`,
+        r.course,
+      ]),
+  );
+  return (resource) => {
+    const source = sources.get(resource.sourceId);
+    if (!source) return false;
+    const key = `${source.accountScope}:${resource.courseId}`;
+    const course = courses.get(key);
+    if (
+      course?.accessRestricted ||
+      (course?.accessState && course.accessState !== "open")
+    )
+      return false;
+    if (
+      store.ingestionSettings().selectedTerm &&
+      course &&
+      store.ingestionSettings().selectedTerm !== course.termName &&
+      store.ingestionSettings().selectedTerm !== course.termId
+    )
+      return false;
+    if (
+      course?.selection?.reasons.some((reason) =>
+        /absent|no longer|not returned/i.test(reason),
+      )
+    )
+      return false;
+    const override = overrides.get(key);
+    if (override !== undefined && override !== null) return override;
+    return course?.selection?.included ?? true;
+  };
+}
+export function contentCategories(resource: Resource): McpCategory[] {
+  // Messages and GitLab student-authored work cannot inherit the less restrictive course-text gate.
+  if (resource.kind === "message") return ["communications"];
+  if (resource.gitlab) return ["student_work"];
+  return ["course_text"];
+}

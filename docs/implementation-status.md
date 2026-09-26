@@ -1,59 +1,64 @@
 # Implementation status
 
-Updated September 26, 2026. This page describes the current code. The broader direction remains in [Product](product.md) and [Architecture](architecture.md); this boundary does not replace it with a smaller product.
+Updated September 26, 2026. This describes the code and observed checks, not completion of the broader [product](product.md). The detailed [ingestion handoff](ingestion-upgrade.md) covers scopes, bounds, evidence, and primary references.
 
 ## What exists
 
-| Area | Implemented behavior | Current limit |
-| --- | --- | --- |
-| Desktop | Electron main process, isolated preload/renderer, local utility worker; coursework list, item evidence, Sources, and Data & AI | Development build; no signed Mac or Windows installer |
-| Entry state | Empty workspace, cloud sharing off, explicit synthetic fixture or local JSON import | Sample data is not a connected account |
-| UW access | App-owned persistent browser partition; student-completed NetID/Duo; Canvas refresh uses that session | Embedded UW sign-in still needs live validation for this implementation; no claim of SSO across all UW services |
-| Canvas connector | Bounded GETs for account scope, active courses, assignment/submission fields, and syllabus text; pagination, login detection, partial/error states | No attachments, linked-site crawling, email, PeopleSoft, DARS, ICS fallback, or browser-agent recipe engine |
-| Local storage | SQLite migrations, versioned resource payloads and observations, FTS search, deletion markers, source health, completion state, job leases/retries, judgment cache | Resource-level evidence, not the full planned per-field provenance model |
-| Deadline evidence | Scoped due claims, separate lock/event kinds, explicit-change precedence, visible conflicts, earlier date for planning only | No prose extraction, quote-offset validator, title-date parser, missing-year inference, or full authority/freshness hierarchy |
-| Jev | One fixed assignment-kind judgment through the shared gateway; bounded candidates, validated distributions, cache and background jobs | Provisional display threshold; no measured accuracy, calibration, or general tagging/linking/routing engine |
-| Privacy | Hosted AI off by default; category/service gates; prepared-context preview; metadata receipts; dated provider settings guidance; revocation cancels work and rejects late responses; local data deletion | Turning off sharing cannot recall data already sent; deletion does not erase provider records or OS backups; provider settings are changed in the provider's app |
-| Links and practice state | Stored typed links with user decisions and source-version guards; stored practice attempts | No automatic link producer, tutoring assessment loop, skill map, or readiness estimate |
-| Local AI | Desktop setup check and per-item local question form; llmfit hardware recommendations; exact installed Ollama model/quantization checks; cloud-disabled checks; bounded local tutoring request | Requires installed tools and weights; no managed installation or real local-model run yet; automatic fit ranking does not establish best learning quality |
-| ChatGPT, Claude, Gemini | Provider preference and context-preview recipient | No provider sign-in, subscription-backed inference, MCP connection, or hosted answers |
-| Website | Informational HTML page and GitHub link | No installer download is advertised; no iOS app or relay |
+| Area                        | Implemented behavior                                                                                                                                                                      | Current limit                                                                                                                      |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Desktop                     | Isolated Electron renderer, preload, native session broker, utility worker, local SQLite; Today, evidence, Sources, Data & AI                                                             | Development build; no signed Mac or Windows installer                                                                              |
+| UW access                   | App-owned sign-in window; student completes NetID/Duo; strict Canvas GET boundary; separate GitLab session                                                                                | No personal browser-cookie import. Embedded sign-in, SSO between services, and session lifetimes need live validation              |
+| Canvas                      | Account activity first; academic-course selection; assignments/submissions, details/syllabus, modules/items, pages and bodies, files/folders, groups, quizzes, discussions, announcements | Bounds can produce partial coverage. Page reads may register views or satisfy must-view requirements; accepted and disclosed       |
+| Refresh                     | Open-app background scheduler, quiet hours, jitter, activity-summary shortcut, expiry backoff, independent feeds, suspend/resume                                                          | No waking sleeping devices or keeping sessions alive. Actual UW timing/rate costs remain unmeasured                                |
+| Materials                   | Folder-scoped public crawling, redirects/robots/DNS checks, embedded JSON, local document downloads and extraction, exact supporting links                                                | No JavaScript rendering fallback; unknown file hosts remain partial; fuzzy association is not implemented                          |
+| Documents                   | PDF text/page anchors; local Office/HTML/text extraction; unchanged-file reuse; bounded local OCR adapter                                                                                 | OCR needs explicitly configured local tools and trained data; not bundled or demonstrated on a real scan                           |
+| Calendar and GitLab         | Encrypted feed capabilities; independent event/date evidence; linked UW GitLab project and work evidence                                                                                  | Recurrence expansion, manual repository selection, and real UW feed/GitLab validation remain open; commits do not prove submission |
+| Storage                     | Versioned captures, field observations, FTS, source baselines/drift signals, typed changes, deletion markers, durable jobs and judgments                                                  | Heuristic drift detection has not been tuned on representative real course loads                                                   |
+| MCP                         | Six local stdio tools; per-client course/category grants, credential export, live revocation/privacy checks, receipts                                                                     | Requires a compatible local MCP client. This does not establish support for every ChatGPT/Claude/Gemini account or subscription    |
+| Jev                         | Shared server-side key; bounded assignment-kind judgment, gateway limits, caching and background jobs                                                                                     | No measured accuracy, latency, cost, or broader semantic tagging/linking engine; gateway deployment still separate                 |
+| Local AI                    | Installed Ollama/llmfit checks, automatic fit ranking, bounded local tutoring, exact context preview                                                                                      | No managed model installation or real inference demonstration; hardware fit is not measured teaching quality                       |
+| Learning and other surfaces | Stored attempts and typed links; informational website with GitHub link                                                                                                                   | No readiness model, full tailoring loop, iOS relay, or advertised installer                                                        |
 
-Ben reports having tested the described Canvas pipeline. That is useful project context, but it is distinct from live validation of this newly implemented connector and embedded browser. Our headless check with an authorized existing session reached Canvas, received an authentication failure, and emitted `needs_sign_in` without importing false empty course data or making cloud calls. Successful live ingestion is still unvalidated for this implementation.
+## Data and access promises
 
-## Data behavior that teammates should preserve
+Hosted sharing is off by default, including Jev. Grader feedback is collected locally by default; grades and comments require separate sharing permission. MCP also requires an explicit recipient, courses, and categories. GitLab content is conservatively classified as student work. Messages require communications permission. Rechecks apply on every MCP read.
 
-Local storage and local inference are separate promises. By default, course data stays in local storage and no context goes to Jev or a hosted LLM. Refreshing Canvas still contacts UW. If Jev is enabled, the current allowlist prepares course name, item title, instruction text, and policy evidence. The gateway operator and TypeSafe can process that selected text. Cookies, credentials, source URLs, account IDs, grades, and drafts are not fields in that request. Source text itself can still contain personal information; allowlisting fields is not anonymization.
+The current Jev payload remains course name, title, bounded instruction text, and policy evidence for one assignment. It excludes structured credentials, account identifiers, grades, comments, and drafts. Local tutoring and selected-provider previews can include directly linked supporting material. Field allowlists and capability-URL removal do not anonymize free text; the planned identity scrubber is still missing. Relevant instructor/author names should survive that future scrubber, while unnecessary student identifiers should not.
 
-Previewing context does not send it. Receipts record recipient, purpose, categories, character count, and status without copying the payload. A `sent` receipt represents a send attempt, not proof the recipient processed it. Changing data settings blocks future requests and prevents obsolete results from updating the workspace.
+The coursework database and downloaded files are local and permission restricted, but not app encrypted. Source capabilities use OS-backed encryption. MCP connection credentials live in private local files; the database stores their hashes. Exported configuration is meant to remain local.
 
-The SQLite coursework store is not encrypted by the app. File permissions restrict access on supported systems; device/OS security and backups remain separate. The gateway device credential uses OS-backed encryption.
+Deleting local data removes coursework/history, cached documents, feed secrets, app-owned UW sessions, and MCP access files. Clearing only the UW session retains coursework. Neither action removes UW records, provider-retained data, or OS backups. Reading may cause access logs, viewed status, or must-view completion on the source system. The app provides no submit, post, enroll, or explicit completion command to UW.
 
-Deleting local data removes saved coursework, history, judgments, links, and student activity. UW browser-session removal is a separate **Clear UW session** action. Neither action changes records held by UW. A read request may still have server-side effects such as access logging; “no submit/enroll/post capability” is the precise current promise.
+## Evidence and context
 
-## How evidence is represented today
+Only a complete successful scope can establish removal. Malformed records are isolated; restricted, unpublished, stale, empty, partial, and unavailable states remain distinct. Excluded courses remain visible with reasons and cannot enter enrichment or MCP output. An inaccessible course cannot be reopened by a local inclusion override.
 
-The current `CaptureBatch` scopes a source to an account, course, and endpoint. Each resource keeps its source identifier, content hash, version, observation time, and captured payload. Only a successful complete capture establishes that a previously present item disappeared. Failed or partial reads preserve earlier records. A successful capture is a historical observation, not a guarantee that the source has remained current.
+Exact URLs within one account/course connect supporting material; exact calendar assignment IDs connect independent date claims. Source changes invalidate stale links. User rejection persists. Fuzzy matching and general assignment-to-module inference remain future work: an empty assignment with no explicit relation is not silently linked to arbitrary course content.
 
-Dates arrive as normalized, scoped claims. The resolver never treats a lock time as a due time. Conflicting due claims remain visible; the earliest plausible time is labeled for planning. The future evidence contract adds source locations, authored times, per-field observations, exact prose quote validation, and explicit resolution-rule versions. Those are requirements, not fields silently supplied by the current implementation.
+The deadline resolver separates due, lock, and event claims, preserves conflicts, and labels conservative planning dates. Prose extraction, literal-span validation, title-date inference, and the full authority hierarchy are not implemented. MCP answers are source passages with citations; they make no language-model call or claim to solve the question.
 
-The context compiler currently selects bounded fields from one resource for assignment-kind classification. Local tutoring likewise receives a bounded excerpt from the selected item, its policy, and the student's question, with an exact excerpt preview. This is not yet a task-wide retrieval system with course coverage, conflicting evidence selection, or a general context budget optimizer.
+## Verification
 
-## Verification scope
+The upgrade passed **119 automated tests** and the TypeScript/desktop build on September 26. Tests use synthetic transports and temporary databases, with no paid model calls. They include:
 
-The current implementation passed `pnpm test` (64 tests) and `pnpm build` on September 26, 2026. These tests use synthetic captures, fake transport responses, and temporary databases. They target material failure cases: wrong scope, partial capture deletion, stale judgment writes, privacy revocation, malformed upstream output, gateway spend limits, and local-runtime cloud fallback. They do not make paid Jev calls.
+- Synthetic university: five academic courses, five noncourse sites, a restricted course, 205 paginated assignments, linked instructions, changed/graded/removed/restored items, rate limits, and mid-sync expiry.
+- Real ingestion coordinator → SQLite → core context: course exclusion, exact support links, independent conflicting calendar dates, stale-data preservation, continued feeds after expiry, and no capabilities in snapshots or SQLite/WAL.
+- Actual generated PDF/Office extraction, bounded downloads, redirect/SSRF/robots checks, cache reuse, and capability removal in captured HTML/JSON/GitLab material. OCR selection uses a fake adapter, not a real scan.
+- MCP service and SDK stdio integration: category/course/privacy gates, invalid tokens, revocation, removed events, late-document passages, source coverage, and restrictive access-file permissions.
+- Hidden Electron: renderer → preload → utility worker → SQLite, private MCP configuration export, and local-data purge. Headless browser checks cover empty entry, synthetic import, refresh settings, local feedback versus cloud defaults, and creating/revoking an MCP connection.
 
-The hidden Electron smoke check passed through renderer → preload → utility worker → SQLite with a synthetic capture and no visible window. The headless browser check exercised empty entry, explicit sample import, source/deadline evidence, blocked hosted context, local completion, privacy persistence after reload, and local-data deletion using the same core/store with temporary data. An injected connection failure retained coursework and surfaced a sign-in warning on Today. Browser page errors were empty. These runs used synthetic records, not a working school session or a real model.
+Scope/request timing and remaining-rate headers are recorded. `firstValueMs` measures arrival of the first assignment/event during a run. `nextWeekInstructionsMs`, when present, measures when all captured assignments due within seven days have text or exact supporting text; it is not proof of complete course coverage. Neither establishes live speed. Missing timings are not zero.
 
-Live Jev accuracy/latency/billing, real local-model inference, broad non-CS course coverage, Windows operation, signed distribution, and production gateway abuse resistance remain unestablished.
+An earlier authorized private pull verified the previous thin connector against live Canvas and persisted its results; no private content is committed. That adapter is retired under the newer no-personal-cookie-access requirement. The expanded app-owned path has not yet been demonstrated on a live UW account. No teacher-controlled course is available to isolate view-tracking effects; that incidental effect is accepted rather than used as a blocker.
 
-## General rules for the next additions
+Windows behavior, signed distribution, production gateway deployment, provider-account compatibility, non-CS coverage, real OCR, and live model quality/cost remain unverified.
 
-- Optimize the student's effort across setup, daily use, failure, and recovery. An instant screen that hides incomplete data is not success.
-- Keep exact IDs, dates, counts, permissions, and budgets in code. Judgments suggest meaning; they cannot authorize an action.
-- Preserve unknown, empty, stale, partial, and inaccessible as different states. Retain usable local evidence through failures.
-- Keep first paint independent of a model. Cache accepted judgments, and reject responses for old data or revoked permissions.
-- Select dependencies using the current task, license, maintenance, data destinations, and benchmark provenance. An untested new tool remains a candidate.
-- Add a source or model behind a narrow interface and test the failure that matters before broadening claims. Keep private captures outside git.
+## Preserve these principles
 
-The full [engineering principles](engineering-principles.md) explain the reasons and evidence expected behind these decisions.
+- Reduce setup and recovery effort while keeping coverage/freshness visible.
+- Keep exact facts, permissions, budgets, and change detection in code.
+- Render saved evidence immediately; never wait on a model for ingestion or first paint.
+- Treat source content as evidence, never authorization to execute an action.
+- Record what the check actually established; synthetic success cannot become a live claim.
+
+See [engineering principles](engineering-principles.md) for the wider selection and reference method.

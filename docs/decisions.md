@@ -4,23 +4,23 @@ A context register, not an implementation backlog. No ownership is assigned.
 
 ## Established direction
 
-| Point | Current understanding |
-| --- | --- |
-| Thesis | Learning tailored to student, class, and professor, with school-management overhead removed |
-| Audience | UW–Madison students broadly, not only CS students |
-| Priorities | Win BuildFest and selected awards; optional event launch; earn word of mouth |
-| Entries | Applied AI & Automation, DoIT Badgers Building for Badgers, Art of the Break |
-| Experience | Least user effort, familiar apps, no repeated context uploading, more than chat |
-| Working method | Reference-driven design across research, architecture, interface, implementation, and verification; inspect and test the transferred mechanism |
-| Current technical focus | Data access, local records, provenance, linking, and freshness |
-| Computation | Code for exact facts; Jev for typed judgments; language models for prose and deeper reasoning |
-| Jev billing | One Magic Canvas–owned key; we pay. Students need no Jev account or key. Keep the credential server-side behind our proxy |
-| Identity scrubbing | Before hosted processing, remove student identities and unnecessary personal identifiers; retain relevant instructor/author names. Policy accepted; scrubber not implemented |
-| School actions | Read only: no submitting, enrolling, or posting |
-| Learning policy | Course policy first; coach when vague or silent |
-| Honesty | No false reassurance or unsupported readiness, speed, or reliability claims |
-| Visual taste | Calm neutral light interface, thin borders, small readable sans serif, minimal color and filler |
-| Current collaboration | Shared context is pushed; runnable skeleton is pushed and implementation is authorized. Keep teammates informed without assigning work ownership |
+| Point                   | Current understanding                                                                                                                                                        |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Thesis                  | Learning tailored to student, class, and professor, with school-management overhead removed                                                                                  |
+| Audience                | UW–Madison students broadly, not only CS students                                                                                                                            |
+| Priorities              | Win BuildFest and selected awards; optional event launch; earn word of mouth                                                                                                 |
+| Entries                 | Applied AI & Automation, DoIT Badgers Building for Badgers, Art of the Break                                                                                                 |
+| Experience              | Least user effort, familiar apps, no repeated context uploading, more than chat                                                                                              |
+| Working method          | Reference-driven design across research, architecture, interface, implementation, and verification; inspect and test the transferred mechanism                               |
+| Current technical focus | Data access, local records, provenance, linking, and freshness                                                                                                               |
+| Computation             | Code for exact facts; Jev for typed judgments; language models for prose and deeper reasoning                                                                                |
+| Jev billing             | One Magic Canvas–owned key; we pay. Students need no Jev account or key. Keep the credential server-side behind our proxy                                                    |
+| Identity scrubbing      | Before hosted processing, remove student identities and unnecessary personal identifiers; retain relevant instructor/author names. Policy accepted; scrubber not implemented |
+| School actions          | Read only: no submitting, enrolling, or posting                                                                                                                              |
+| Learning policy         | Course policy first; coach when vague or silent                                                                                                                              |
+| Honesty                 | No false reassurance or unsupported readiness, speed, or reliability claims                                                                                                  |
+| Visual taste            | Calm neutral light interface, thin borders, small readable sans serif, minimal color and filler                                                                              |
+| Current collaboration   | Shared context is pushed; runnable skeleton is pushed and implementation is authorized. Keep teammates informed without assigning work ownership                             |
 
 ## Resolved product decisions — September 26
 
@@ -65,3 +65,11 @@ Count recovery effort when judging least effort. Keep navigation stable while ad
 - Full selection and evidence policy: [engineering principles](engineering-principles.md).
 - Apply [reference-driven design](reference-driven-design.md), including architecture by analogy, reference-led images, honest demo reconstruction, and verification of actual transferred behavior. Include relevant reference roles and checks in delegated briefs.
 - Ask Ben about consequential ambiguity, clutter, complication, or unnecessary token/tool spend; keep ordinary coordination and context loading proportionate. Do not silently resolve conflicts with earlier direction.
+
+## Accepted ingestion decisions — September 26
+
+- Collect grader comments locally by default. Sharing them with hosted AI requires a separate category opt-in and, for MCP, a client grant.
+- Accept and disclose incidental Canvas viewing/must-view effects caused by reads. This does not authorize explicit completion, submission, posting, or enrollment actions. Read accessible page bodies, prioritizing linked requirements; a teacher-controlled side-effect test is unavailable and is not a release gate for this behavior.
+- Use app-owned UW sessions. Never reuse the retired personal Firefox-cookie adapter. Approved browser bridges remain candidates, not implemented integrations.
+- Preserve source-specific freshness during expiry; calendar feeds carry independent access and coverage. Excluded/restricted courses cannot enter AI context.
+- Local MCP connections use explicit course/category grants and live revocation checks. Compatibility with each provider account is an evidence question, not a promise implied by implementing MCP.
