@@ -51,6 +51,8 @@ Underneath both sits the **knowledge model**. It records what the student has sh
 
 The knowledge model, the grounding checks and the study modes are provider-neutral. Only the generation step depends on the route (§9).
 
+**Addendum:** [Practice and insights](practice-and-insights.md) (PI-1–PI-29) extends the study modes and the knowledge model. It adds a Duolingo-like loop, the full set of Quizlet-like modes, insights anchored to course passages, and an offline evaluation on public datasets.
+
 ### Goals
 | # | Goal | Observable outcome |
 |---|---|---|

@@ -615,3 +615,268 @@ B12 Storage additions the learning extension relies on
 4. **Phase 1 breadth:** N14, N15, N16, N19, N21, B05, B07, N23.
 
 **Cut order for the demo if time runs short:** trim N22's report breadth → cut the not-found step from N28 → cut the flag step. The knowledge model (N07) and the grounding checks (N01, N03, N06) are never cut.
+
+---
+
+## Part C: practice and insights
+
+These tasks implement [practice-and-insights.md](practice-and-insights.md) (PI-1–PI-29). They're all **after the demo** and use the same format, base gate and one-writer rule as Parts A and B.
+- P01–P16 and P18–P21 are new files in our packages and `evals/offline/`.
+- P17 adds new files to Ben's renderer, so it goes to him as a PR, like Part B.
+- Lines that must land in a file another task owns (`main.ts`, `App.tsx`) are carried in that task's branch, as B12 does for storage.
+
+```
+P01 Practice store interface and in-memory implementation
+  seat: implementer   model: sonnet
+  owns: [packages/learning/src/practice/store.ts, packages/learning/src/practice/memory-store.ts, tests/practice-store.test.ts]
+  dependsOn: [N11]
+  check: { argv: ["pnpm","exec","tsx","--test","tests/practice-store.test.ts"], expectExit: 0 }
+  accepts:
+    - stars, option tags, views, digests and the notification log (addendum §6), in memory, with the same keys and cascade rules
+    - ¬ reset() empties every collection; a view on a deleted resource is dropped with it
+    - ¬ a star on an unknown target is rejected
+  done: the practice data layer for tests and the harness
+
+P02 Practice SQL component through the storage extension hook
+  seat: implementer   model: sonnet
+  owns: [packages/learning/src/practice/sql-store.ts, packages/learning/src/practice/migrations.ts, tests/practice-sql-store.test.ts]
+  dependsOn: [P01, N24, B02]
+  check: { argv: ["pnpm","exec","tsx","--test","tests/practice-sql-store.test.ts"], expectExit: 0 }
+  accepts:
+    - registers the `learning-practice` component with its own version in schema_components; passes the P01 test cases against SQLite
+    - its purge step deletes learning_digests and learning_notifications
+    - ¬ after Store.purge(), the KM-13 purge-completeness test still passes with these tables present
+  done: persistent practice data
+
+P03 Course path and checkpoints
+  seat: implementer   model: sonnet
+  owns: [packages/learning/src/practice/checkpoints.ts, tests/practice-checkpoints.test.ts]
+  dependsOn: [N16, N13, N10, P01]
+  check: { argv: ["pnpm","exec","tsx","--test","tests/practice-checkpoints.test.ts"], expectExit: 0 }
+  accepts:
+    - a checkpoint per upcoming assessment, 3 days before it by default, with ≤10 interleaved items from coverage pools; missed concepts are rescheduled 1–2 days later (PI-1, PI-2)
+    - when modules aren't captured, the path is ordered by schedule and says so
+    - ¬ no unit, lesson or checkpoint is ever locked
+    - ¬ checkpoint results contain counts only, never a pass/fail mark, a score out of 100 or "ready" (product strings only)
+  done: PI-1, PI-2
+
+P04 Daily goal, streak with freezes and rest days, XP, no lockouts
+  seat: implementer   model: sonnet
+  owns: [packages/learning/src/practice/habit.ts, tests/practice-habit.test.ts]
+  dependsOn: [N00, P01]
+  check: { argv: ["pnpm","exec","tsx","--test","tests/practice-habit.test.ts"], expectExit: 0 }
+  accepts:
+    - pure functions over activity days and settings: goal met (active minutes or items); streak; freezes (hold ≤2, earn 1 per 7 streak days, used automatically); rest days; XP from the fixed table (PI-3, PI-4, PI-6)
+    - separate switches for the streak, XP, the goal and notifications; with all four off, no engagement value is produced (PI-28)
+    - ¬ there is no hearts, lives or energy state; 50 wrong answers in a row leave study unblocked (PI-5)
+    - ¬ there is no speed bonus in XP; freezes have no purchase path
+  done: PI-3–PI-6, PI-28
+
+P05 Quick sessions sized to the day
+  seat: implementer   model: sonnet
+  owns: [packages/learning/src/practice/quick.ts, tests/practice-quick.test.ts]
+  dependsOn: [N10]
+  check: { argv: ["pnpm","exec","tsx","--test","tests/practice-quick.test.ts"], expectExit: 0 }
+  accepts:
+    - 3-, 5- and 10-minute plans from the minutes-per-item values: ≤1 confident miss, due cards, one Learn family on the top-priority concept (PI-7)
+    - suggests a size from student-set study windows today
+    - ¬ a plan never exceeds its size by more than one item; with no provider, it uses existing pools only
+  done: PI-7
+
+P06 Notification planner (local, opt-in)
+  seat: implementer   model: sonnet
+  owns: [packages/learning/src/practice/notify.ts, tests/practice-notify.test.ts]
+  dependsOn: [P04, P03, P16]
+  check: { argv: ["pnpm","exec","tsx","--test","tests/practice-notify.test.ts"], expectExit: 0 }
+  accepts:
+    - plans at most one notification a day (goal reminder or checkpoint notice), at the student's chosen time, respecting quiet hours; off by default (PI-8)
+    - delivery through Electron's Notification in the main process is a few lines carried in B04's branch; this task supplies only the planner and the copy
+    - ¬ nothing is planned after the goal is met that day, when notifications are off, or for a streak that's switched off
+    - ¬ the copy passes the P16 lint
+  done: PI-8
+
+P07 Flashcard quality of life and Learn options
+  seat: implementer   model: sonnet
+  owns: [packages/learning/src/practice/cards-ui-logic.ts, tests/practice-cards.test.ts]
+  dependsOn: [N14, N09]
+  check: { argv: ["pnpm","exec","tsx","--test","tests/practice-cards.test.ts"], expectExit: 0 }
+  accepts:
+    - shuffle within the due set, front/back swap, and "type the answer" with a suggested rating the student confirms (PI-9)
+    - Learn round sizes of 5, 7 or 10; the "multiple choice only" setting carries its label (PI-10)
+    - ¬ swapping sides never creates a second FSRS card; a suggested rating is never saved without the student's own rating
+    - ¬ in "multiple choice only", a concept still can't reach Solid on recognition alone (the KM rule is untouched)
+  done: PI-9, PI-10
+
+P08 Write mode with a contest button
+  seat: implementer   model: sonnet
+  owns: [packages/learning/src/practice/write.ts, tests/practice-write.test.ts]
+  dependsOn: [N08, N11]
+  check: { argv: ["pnpm","exec","tsx","--test","tests/practice-write.test.ts"], expectExit: 0 }
+  accepts:
+    - typed recall for every item family, graded by key ideas, with found and missing ideas listed (PI-11)
+    - contest stores a grade dispute and removes the attempt from the knowledge model; withdrawing it restores the attempt
+    - ¬ a contest never makes an attempt count as correct; a contested attempt is excluded, never flipped
+  done: PI-11
+
+P09 Test mode: timer and exam conditions
+  seat: implementer   model: sonnet
+  owns: [packages/learning/src/practice/test-mode.ts, tests/practice-test-mode.test.ts]
+  dependsOn: [N15]
+  check: { argv: ["pnpm","exec","tsx","--test","tests/practice-test-mode.test.ts"], expectExit: 0 }
+  accepts:
+    - an optional timer (student-set, or a stated exam length from T1/T2); exam conditions hide hints and defer feedback; without them the test can be paused (PI-12)
+    - ¬ when the timer ends, answers are saved; it auto-submits only under exam conditions
+    - ¬ results carry observed counts by concept only, never a predicted score
+  done: PI-12
+
+P10 Match game
+  seat: implementer   model: sonnet
+  owns: [packages/learning/src/practice/match.ts, tests/practice-match.test.ts]
+  dependsOn: [P01]
+  check: { argv: ["pnpm","exec","tsx","--test","tests/practice-match.test.ts"], expectExit: 0 }
+  accepts:
+    - builds a board of term and definition pairs from the student's cards (honouring the filter), tracks time and a personal best, and carries the low-evidence label (PI-13)
+    - ¬ Match writes no attempts: it doesn't move θ or n_c and doesn't appear in concept states; only session time is recorded
+    - ¬ there's no comparison with other students
+  done: PI-13
+
+P11 Stars, filters, card editing and the student's own cards
+  seat: implementer   model: sonnet
+  owns: [packages/learning/src/practice/stars.ts, packages/learning/src/practice/own-cards.ts, tests/practice-own-cards.test.ts]
+  dependsOn: [P01, N01, N05, N06]
+  check: { argv: ["pnpm","exec","tsx","--test","tests/practice-own-cards.test.ts"], expectExit: 0 }
+  accepts:
+    - star and unstar items, cards and concepts; the all, starred, missed and Iffy filters for every mode (PI-14)
+    - an edit creates a new item version with origin student, re-runs the checks and keeps evidence on its version (PI-15)
+    - a card made from a notebook selection stores its anchor; a blank card has none; both can be tagged to 1–3 concepts (PI-16)
+    - ¬ starring never changes the knowledge model; an empty filter says so and never falls back silently
+    - ¬ an edited card loses "Quote found in source" once its quote no longer validates; a source change marks an own card "source changed" and never deletes it
+  done: PI-14–PI-16
+
+P12 Error patterns and option tags
+  seat: implementer-deep   model: opus
+  owns: [packages/learning/src/insights/errors.ts, packages/learning/src/insights/option-tags.ts, tests/insights-errors.test.ts]
+  dependsOn: [P01, P13, N05, N06, N12]
+  check: { argv: ["pnpm","exec","tsx","--test","tests/insights-errors.test.ts"], expectExit: 0 }
+  accepts:
+    - tags distractors to concepts in code, by matching option text against concept labels and glossary terms; unmatched options stay untagged (addendum §6)
+    - lists distractors chosen ≥2 times, each with its "tempting" line and the anchor of the passage that settles it; lists confusable pairs (A answered as B, ≥2 times) with both anchors, and a compare session that interleaves them (PI-20)
+    - ¬ disputed or contested attempts are excluded; untagged options never form a pair
+  done: PI-20
+
+P13 Anchored insights, the coverage map and what changed
+  seat: implementer-deep   model: opus
+  owns: [packages/learning/src/insights/anchors.ts, packages/learning/src/insights/coverage-map.ts, packages/learning/src/insights/changes.ts, tests/insights-coverage.test.ts]
+  dependsOn: [P01, N01, N07, N13]
+  check: { argv: ["pnpm","exec","tsx","--test","tests/insights-coverage.test.ts"], expectExit: 0 }
+  accepts:
+    - anchors.ts defines the Anchor and Insight types (addendum §6) once, until the B01 follow-up moves them into contracts
+    - every Insight carries ≥1 anchor validated by the N01 check; "study this next" returns the anchor plus a quick-session request (PI-17)
+    - the coverage map marks each covered material practiced, studied (≥30 active seconds in learning_views) or untouched, with counts and the coverage tier; uncaptured material is listed as "not captured" (PI-18)
+    - concept states grouped by assessment, with KM-6 fields only (PI-19)
+    - what changed: state transitions with their rule and evidence, and Canvas materials new or changed since last week (PI-24)
+    - ¬ an insight whose anchor fails validation isn't returned; a superseded version is reported as "passage changed", never fuzzy-matched
+    - ¬ no output field or product string carries a readiness figure, a percentage or a predicted score
+  done: PI-17–PI-19, PI-24
+
+P14 Calibration, time on task and session history
+  seat: implementer   model: sonnet
+  owns: [packages/learning/src/insights/calibration.ts, packages/learning/src/insights/history.ts, tests/insights-calibration.test.ts]
+  dependsOn: [P01, N07, N11]
+  check: { argv: ["pnpm","exec","tsx","--test","tests/insights-calibration.test.ts"], expectExit: 0 }
+  accepts:
+    - counts per confidence level, and overconfident topics (Fairly sure or Sure wrong ≥4 times, above the student's own rate at those levels), linked to their R4 reasons (PI-21)
+    - active time is the sum of recorded response times, review times and learning_views seconds, with gaps over 2 minutes excluded; the session list comes with anchors (PI-22)
+    - ¬ nothing is shown with fewer than 10 rated answers; everything is counts, never a calibration score or percentage
+    - ¬ time never feeds the knowledge model
+  done: PI-21, PI-22
+
+P15 The weekly digest, local by default
+  seat: implementer   model: sonnet
+  owns: [packages/learning/src/insights/digest.ts, tests/insights-digest.test.ts]
+  dependsOn: [P13, P14, P01]
+  check: { argv: ["pnpm","exec","tsx","--test","tests/insights-digest.test.ts"], expectExit: 0 }
+  accepts:
+    - template-built from local data on the chosen day: what changed, the top 3 "study this next" items with anchors, coverage counts, a calibration note when there's enough data, and active time (PI-23)
+    - exports to a local .docx through the NB-15 path
+    - ¬ building the digest makes zero runtime or network calls (a spy test); "Send to my AI" requires the learning_state category and its blocking first-send preview (PI-25)
+  done: PI-23, PI-25
+
+P16 Copy lint for the anti-dark-pattern rules
+  seat: executor   model: sonnet
+  owns: [scripts/copy-lint.ts, tests/copy-lint.test.ts]
+  dependsOn: []
+  check: { argv: ["pnpm","exec","tsx","scripts/copy-lint.ts","packages/learning/src"], expectExit: 0 }
+  accepts:
+    - scans the product's own string literals and label templates for fake urgency ("only … left", "hurry", invented countdowns), guilt and shame copy, loss-framed streak copy, learning claims attached to XP or streaks, readiness or pass-probability wording, and league or leaderboard surfaces (PI-26, PI-27, PI-29, IP-9)
+    - ¬ a fixture containing each banned pattern makes the lint exit non-zero; quoted course text in fixtures is exempt when it's marked as a quote
+  done: PI-26, PI-27, PI-29
+
+P17 Renderer: Practice and Insights surfaces (a PR to Ben's app)
+  seat: design-engineer   model: opus
+  owns: [apps/desktop/src/renderer/Practice.tsx, apps/desktop/src/renderer/Insights.tsx, scripts/practice-journey.ts]
+  dependsOn: [B08, P03, P04, P11, P13]
+  check: { argv: ["pnpm","exec","tsx","scripts/practice-journey.ts"], expectExit: 0 }
+  accepts:
+    - a headless journey on labelled synthetic data: the path with a checkpoint → a quick session → Write with a contest → Match (showing its label) → insights with "study this next" opening the anchored passage → engagement switched off
+    - the lines that route to these views land in B08's branch (B08 owns App.tsx)
+    - ¬ with every engagement switch off, no streak, XP or goal element renders
+    - ¬ the renderer's own strings pass the P16 lint
+  done: the in-app surfaces for the addendum
+
+P18 Offline evaluation: dataset licence gate and metrics
+  seat: implementer   model: sonnet
+  owns: [evals/offline/datasets.ts, evals/offline/datasets.json, evals/offline/metrics.ts, tests/offline-metrics.test.ts]
+  dependsOn: [N22]
+  check: { argv: ["pnpm","exec","tsx","--test","tests/offline-metrics.test.ts"], expectExit: 0 }
+  accepts:
+    - datasets.json records, for each dataset, its source URL, code licence, data terms (as read from the dataset's own page or card), the date checked, and allowed: true|false|unknown
+    - datasets.ts downloads only allowed datasets, into the git-ignored .data/offline/, and verifies checksums
+    - metrics.ts computes AUC, log loss, and 10 equal-width reliability bins (count, mean predicted, observed) plus the expected calibration error; tests use hand-computed synthetic cases
+    - ¬ a dataset with allowed unknown or false is refused with its reason; nothing is ever written under evals/ except code and datasets.json
+  done: shared plumbing for E1–E3 (addendum §7)
+
+P19 E1 and E1b: next-answer prediction and band separation against pyKT
+  seat: implementer-deep   model: opus
+  owns: [evals/offline/kt-elo.ts, evals/offline/pykt-export.py, evals/offline/kt-report.ts]
+  dependsOn: [P18, N07]
+  check: { argv: ["pnpm","exec","tsx","evals/offline/kt-elo.ts","--self-test"], expectExit: 0 }
+  accepts:
+    - pykt-export.py writes pyKT's preprocessed ASSISTments 2009 and EdNet splits to CSV (run by the operator in a Python environment with pyKT installed; pyKT baselines are trained with pyKT's own scripts)
+    - kt-elo.ts replays our estimator as specified (fixed item prior 0, ω weights) and the diagnostic variant (item difficulty learned on the training fold), plus running-accuracy and constant baselines, on the same splits
+    - kt-report.ts reports AUC, log loss and reliability bins for each model and dataset, with counts of students and interactions; E1b reports next-answer accuracy for each band, and marks R2, R4, R5 and R6 "untested on this data"
+    - --self-test runs the whole path on a synthetic sequence and checks the metrics against known values
+    - ¬ the configuration (km-0.1) is frozen before the test fold is read; any constant change after that fails the run
+    - ¬ the report makes no statement about UW students or learning; a result where ours loses is printed like any other
+  done: E1, E1b (addendum §7)
+
+P20 E2: decay on the Duolingo half-life regression data
+  seat: implementer   model: sonnet
+  owns: [evals/offline/hlr-decay.ts]
+  dependsOn: [P18, N14]
+  check: { argv: ["pnpm","exec","tsx","evals/offline/hlr-decay.ts","--self-test"], expectExit: 0 }
+  accepts:
+    - compares FSRS-6 retrievability (ts-fsrs 5.4.2 defaults), half-life regression as published, and our concept-track proxy at predicting recall, with the rating mapping stated (all correct → Good, otherwise → Again)
+    - reports AUC, log loss, reliability bins, and the observed recall rate for items with predicted R below 0.80 (the R5 threshold)
+    - ¬ it refuses to run until datasets.json marks the data allowed
+  done: E2 (addendum §7)
+
+P21 E3: srs-benchmark, gated on its licence
+  seat: executor   model: sonnet
+  owns: [evals/offline/srs-bench.ts, evals/offline/srs-bench-licence.json]
+  dependsOn: [P18, N14]
+  check: { argv: ["pnpm","exec","tsx","evals/offline/srs-bench.ts","--check-licence"], expectExit: 0 }
+  accepts:
+    - --check-licence reads the Hugging Face dataset card and records its licence in srs-bench-licence.json (in P18's format; datasets.json stays P18's file), exiting 0 whether the licence is permissive, restrictive or absent
+    - only when the licence permits it: runs ts-fsrs defaults on a sample and reports reliability bins of R
+    - ¬ with no licence stated, it downloads nothing, and the report says "not used: licence unknown; see the benchmark's published results"
+  done: E3, or a recorded reason for not running it
+```
+
+**Order after the demo:**
+1. P16 (the copy lint), then P01.
+2. Then P04, P05, P07, P08 and P10, in parallel.
+3. Then P03 → P06; P09 (after N15); P11 → P13 → P12 → P14 → P15.
+4. P02 once B02 and N24 land; P17 once B08 lands.
+
+**The offline evaluation runs in parallel:** P18 → P19 as soon as N07 and N22 exist; P20 and P21 after N14.
