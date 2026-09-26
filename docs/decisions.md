@@ -80,3 +80,13 @@ Count recovery effort when judging least effort. Keep navigation stable while ad
 See [Home design direction](home-design-direction.md) for the canonical current brief. Ben rejected fixed headline-per-task briefing units and vague labels. The briefing must surface specific, source-grounded implications, preparation needs, and useful updates, without requiring every sentence to have a button. Avoid redundant filler between Home regions. Filled time tags, prominent Upcoming deadlines, a readable top-task/bottom-calendar Today rail, and stronger blue accents are current direction. Color customization in Settings is accepted for later. Exact rendered treatment and the proposed allocation of today’s tasks versus future work remain under review. No production implementation is claimed.
 
 The briefing also supports student-confirmed completion of specific actionable issues, with undo, persistent issue identity, source-version awareness, and explicit separation between self-report and source verification. Informational updates do not require checkboxes. This is accepted product direction; the local interaction does not update external course systems.
+
+
+## 2026-09-26 — Cumulative UI direction and shared context
+
+All UI work should synthesize the product goal, general guiding principles, shared docs, and relevant course corrections across the conversation. Check upstream changes regularly during substantial work and before pushing documentation; preserve teammates’ uncommitted changes. New prompts steer the existing objective rather than resetting the design. Record the reason and scope of corrections and verify their effect in the rendered journey. The full workflow is in [Home design direction](home-design-direction.md#cumulative-intent-and-ongoing-ui-review).
+
+
+## 2026-09-26 — Named briefing references and continued alignment
+
+Named objects within briefing prose should be visibly clickable and lead to context useful for the student's actual task. The current proposed routing distinguishes inspecting an object from explicit work launch; preserve one-click Upcoming behavior and avoid empty intermediary pages. See [clickable references](home-design-direction.md#clickable-references-and-useful-destinations) for the identity, evidence, keyboard, provenance, and return-position rules. Continue actual Opus 5.5 discussion and rendered audits for consequential UI work, retain cumulative corrections and relevant earlier-chat context, and ask when interpretations materially differ. Exact visual treatments remain under review.

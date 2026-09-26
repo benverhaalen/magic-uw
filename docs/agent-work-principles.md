@@ -47,3 +47,8 @@ Compare total effort per accepted result: driver, workers, tools, retries, revie
 Trace important requirements through the selection rule, code path, tool result, or artifact that produced the answer. Check default state, normal journey, corrections, and consequential failures. Close material gaps before claiming completion. Separate research, implementation, isolated testing, integration, and demonstrated use; report observed costs separately from estimates.
 
 Preserve useful context in existing project notes. Use a private scratch area for operational details and never commit secrets or private captures. Update affected decisions rather than expanding global configuration. When feedback contradicts passing checks, revise the diagnosis and evaluator before repeatedly patching the same output.
+
+
+### UI continuity across prompts
+
+For UI work, combine the product objective, these principles, current project docs, and cumulative relevant feedback. Fetch and inspect upstream changes before substantial revisions and before sharing updates; integrate compatible changes safely without disturbing teammates’ local work. Preserve the reason and scope of corrections, distinguish decisions from suggestions, and verify that the actual rendered journey reflects them. [Home and visual direction](home-design-direction.md#cumulative-intent-and-ongoing-ui-review) carries the current UI contract and review loop. This is a per-work-session practice, not a promise of unattended monitoring.

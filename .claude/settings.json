@@ -1,0 +1,37 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"try{const c=require('node:child_process'),p=require('node:path');const r=c.execFileSync('git',['rev-parse','--show-toplevel'],{encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim();c.execFileSync(process.execPath,[p.join(r,'.agents','team-sync.mjs'),'hook'],{stdio:'inherit'});}catch{}\"",
+            "timeout": 12
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"try{const c=require('node:child_process'),p=require('node:path');const r=c.execFileSync('git',['rev-parse','--show-toplevel'],{encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim();c.execFileSync(process.execPath,[p.join(r,'.agents','team-sync.mjs'),'hook'],{stdio:'inherit'});}catch{}\"",
+            "timeout": 12
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"try{const c=require('node:child_process'),p=require('node:path');const r=c.execFileSync('git',['rev-parse','--show-toplevel'],{encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim();c.execFileSync(process.execPath,[p.join(r,'.agents','team-sync.mjs'),'hook'],{stdio:'inherit'});}catch{}\"",
+            "timeout": 12
+          }
+        ]
+      }
+    ]
+  }
+}

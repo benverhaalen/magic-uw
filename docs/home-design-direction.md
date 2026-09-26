@@ -34,6 +34,23 @@ Each region has a distinct job: Briefing explains implications/preparation/chang
 
 Keep source-shaped links right aligned near the claim. Labels describe the action, such as “Review assigned readings,” rather than merely naming Canvas. Every AI reference should expose its supporting source; provenance inspection and refresh information must remain available without overwhelming the main prose.
 
+### Clickable references and useful destinations
+
+Ben wants named items in briefing prose, such as an assignment or a specific lecture, to be immediately identifiable as clickable. A link should resolve to the actual source object; do not make an uncertain title match look verified. Link the first useful mention, not every repeated course code. Preserve readable prose and avoid adding a sentence just to exhibit a link.
+
+Current treatment under review: blue underlined inline links, real hrefs, keyboard activation, and a visible focus ring. Underline supplies a non-color cue. Do not style static time tags like links. The exact treatment is a local mock, not an approved universal token system.
+
+Routing rule proposed from the product goal and expert review:
+
+- **Named object: inspect.** Open useful context in the existing pane: relevant requirements, due/source time, source freshness, supporting material, and direct original-source links. Keep the source object identity through refresh. Return to the prior Home position and preserve confirmations.
+- **Verified original with no useful cached detail:** go directly to the original with an external-link affordance; avoid an empty intermediary screen.
+- **Explicit action: do.** “Review assigned readings” opens the assigned materials; an explicit work-launch action opens the prepared work set. Preserve the previously requested one-click Upcoming launch, rather than requiring a new chooser. The local mock only demonstrates routes/resource links, not real multi-app launch.
+- **Uncertain match:** retain the uncertainty and resolve it before presenting an apparently authoritative destination.
+
+A noun should not unexpectedly launch several applications. Conversely, do not force someone who explicitly chose to start work through a detail screen. Upcoming's destination icons and whole-row action must make its launch intent clear; do not nest a competing title link inside a clickable row.
+
+The local Persona example exposes the actual instruction: one completed team template, a shared grade, and Word upload or a publicly shared Google Doc URL. It does not merely repeat the deadline in Today. Showing this requirement does not authorize the app to change sharing or submit coursework. The detail route preserves the original Canvas page and assigned template.
+
 ### Student confirmation and briefing memory
 
 The student can check off a specific actionable issue in the briefing, such as having handled an exam conflict. Keep this a small contextual control, not a checkbox on every informational sentence. A suggested label is “I’ve handled this.” Provide an immediate undo/reopen path. Retain the issue’s source links and a concise handled state rather than losing its context.
@@ -82,8 +99,25 @@ Inspected September 26, 2026. Official product pages and their actual product im
 
 Actual Claude CLI **Opus 5.5** participated in an independent critique and follow-up debate. Useful challenges included preserving briefing focus, including consequential submission details, and explaining each source action. The driver rejected comparing raw points across courses, mandatory row expansion, and nested card frames. Rendered screenshot review was completed with the actual model. It preferred time anchors, but Ben subsequently rejected always splitting the briefing into fixed units; that correction takes precedence. The layered alternative also incorrectly placed an unrelated project beneath a team-template heading, illustrating why visual grouping must preserve meaning. Treat on-paper Canvas metadata as a listed submission type, not proof that a student must print or physically hand in something. Do not infer that differing lecture/project topics mean the lecture is irrelevant. New flexible-briefing work is under review; no student usability result is claimed.
 
+## Cumulative intent and ongoing UI review
+
+Ben explicitly asked that every UI revision combine the project goal, the general guiding principles, current shared documentation, and the full sequence of relevant course corrections. The latest prompt steers the work; it does not erase earlier compatible decisions. Infer the intended outcome from that combined context rather than applying isolated requests as a series of cosmetic patches.
+
+Before substantial UI work or resuming a design thread, fetch remote changes and inspect the affected documentation, implementation status, and local work. Pull compatible upstream changes when safe; preserve teammates’ uncommitted changes and resolve consequential conflicts before building on a stale assumption. Check again before publishing shared documentation. Keep these checks proportionate to material revisions, not every small edit.
+
+Use [Product brief](product.md), [Agent work principles](agent-work-principles.md), and [Reference-driven design](reference-driven-design.md) together with this page. Preserve a correction’s reason, scope, and what would make us revisit it. Explicit newer decisions supersede older conflicting proposals; examples and tentative ideas do not silently become universal requirements. Raise genuine conflicts rather than choosing whichever document was read last.
+
+For each material revision, connect the changed treatment to the student journey and inspect the actual default screen and relevant interaction. For Home, success means the student can see a useful course-specific implication, understand its evidence, take the next step, and correct or confirm the state with little effort. A visually polished screen or expert agreement alone does not establish that result. Use relevant previous chats when needed to recover intent or the reason for a correction; keep historical proposals distinguishable from current decisions and avoid unrelated private context. Continue bounded discussion with actual Opus 5.5 on consequential UI/UX choices and rendered audits, verifying model identity and integrating critiques with independent judgment. Expert preference never overrides Ben’s direction or substitutes for user evidence. Ask focused questions when uncertainty would materially change the experience, using a concrete artifact or tradeoff where possible; make routine choices autonomously from the shared intent. Record what is accepted, proposed, rendered, tested locally, and integrated; update affected docs and push shareable decisions so teammates can follow the direction.
+
 ## Delivery and team synchronization
 
 Ben asked for continuing updates and pushes so teammates can follow direction. Update this canonical page and the affected decision/status entries after material corrections and completed review rounds. Separate accepted direction, proposals, rendered prototypes, and integrated capability. Commit only documentation authorized for sharing; keep raw captures, credentials, coursework, private research, and licensed font assets out of Git.
 
 Current work is a separate local visual prototype with navigation and mock interactions. It does not demonstrate live multi-app launching, generated audio, live briefing refresh, or a connected AI chat. The production capability inventory remains [Implementation status](implementation-status.md).
+
+
+### Latest local audit — September 26
+
+The adaptive Home mock was rendered at a 1440 × 900 laptop viewport with the supplied Cooper Light BT and Geist. It contains flexible source-grounded prose, inline object links, actionable reading/exam routes, contextual handled/undo controls, clearer upcoming deadlines, and a fixed Today rail while the main content scrolls. Browser checks demonstrated assignment link and keyboard navigation, direct route refresh, reading links, handled-state persistence after reload and undo, and Home scroll restoration after returning from an assignment. The calendar stayed fixed while Home scrolled; no horizontal overflow was observed.
+
+Actual Opus 5.5 reviewed the routing alternatives and a rendered screenshot. The driver retained blue plus underline for recognizable clickability; Opus agreed after inspecting the image. Its useful challenges led to contextual detail rather than surprise app launching, source-aware fallback, consistent course color, a neutral cross-course date tag, clearer separation around confirmation controls, and correction of an overlapping calendar time label. This is local prototype evidence, not a student usability test or an integrated app capability. Final visual approval remains with Ben.

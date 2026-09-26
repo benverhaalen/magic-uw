@@ -30,3 +30,7 @@ The outcome is learning tailored to the student, class, and professor with less 
 ## Delivery
 
 Use checks proportionate to the changed artifact. Update the affected product, architecture, status, and research notes when their claims change. Keep one canonical explanation and link to it. For docs-only work, check claims, links, diffs, and staged file scope; do not build features or run unrelated suites. Commit/push only what the user authorized.
+
+## Active team handoffs
+
+Keep building the current task while staying current with relevant team changes. Read [.agents/coordination.md](.agents/coordination.md) once when starting/resuming substantial work or activating this update; it routes to private, bounded handoffs. Trusted project hooks check metadata at work boundaries, throttled to five minutes. If hooks are inactive, use its manual check at roughly that cadence and before shared-interface changes/integration. Read only relevant packets, apply or hand off useful changes, and ask the affected humans directly about conflicting opinions. Preserve original quotes and provenance; do not export private conversations or load the whole history. No waiting loops, automatic merges, or mandatory helper launches.
