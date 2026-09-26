@@ -5,6 +5,7 @@
   "type": "module",
   "exports": "./src/index.ts",
   "dependencies": {
-    "@magic/contracts": "workspace:*"
+    "@magic/contracts": "workspace:*",
+    "zod": "4.6.5"
   }
 }

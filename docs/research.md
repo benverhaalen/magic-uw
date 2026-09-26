@@ -33,3 +33,7 @@ The broader supplied reference list has not been fully investigated. Remaining g
 The supplied [UW Google page](https://kb.wisc.edu/googleapps/149230) returned HTTP 403; the [PNAS study](https://www.pnas.org/doi/10.1073/pnas.2422633122) returned a challenge page. Learning claims need the study's actual scope before generalization.
 
 These gaps remain visible without preventing teammates from understanding the intended product. They are not a reason to replace this context-sharing task with a build plan.
+
+## New acquisition and extraction candidates
+
+The live September 26 [tool evaluation](tool-evaluation.md) records browser engines, extractors, OCR models, crawling, and change detection, including corrections to MinerU/changedetection links and benchmark provenance. These are evaluated candidates, not automatic dependencies. The general decision policy is in [engineering principles](engineering-principles.md).

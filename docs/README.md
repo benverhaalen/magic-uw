@@ -25,9 +25,12 @@ We are entering Applied AI & Automation, DoIT's Badgers Building for Badgers, an
 | [Product](product.md) | Vision, student experience, learning loop, interface ideas, visual taste |
 | [AI and privacy](ai-and-privacy.md) | Four AI options, automatic local selection, sign-in, and data disclosures |
 | [Technical direction](architecture.md) | Access, connectors, records, deadlines, Jev, models, stack proposals |
+| [Implementation status](implementation-status.md) | Actual capability boundaries, evidence, and the remaining product scope |
+| [Development](development.md) | Run the workspace and checks; configure the shared gateway safely |
 | [Decisions and open points](decisions.md) | What is established and what still needs input |
 | [BuildFest context](buildfest.md) | Event facts, judging audiences, opening-slide notes |
 | [Engineering principles](engineering-principles.md) | How we choose tools, judge evidence, test alternatives, and preserve privacy |
+| [Tool evaluation](tool-evaluation.md) | Current candidates, licenses, benchmark provenance, and adoption tests |
 | [Research status](research.md) | Checked references and unresolved evidence |
 
 ## Status matters
@@ -35,6 +38,9 @@ We are entering Applied AI & Automation, DoIT's Badgers Building for Badgers, an
 - **Direction:** Ben's stated intent or constraint.
 - **Proposal:** a possible approach, not an accepted team decision.
 - **Verified:** checked against a cited source; not a claim our software implements it.
+- **Implemented:** present in code; its validation scope is stated separately.
+- **Tested in isolation:** exercised with controlled inputs, without establishing live service compatibility.
+- **Integrated:** connected through the application; live and cross-platform results still need their own evidence.
 - **Open:** a product decision or technical fact still unresolved.
 
 A detailed idea is not automatically a commitment. These notes preserve the broader vision without implying every capability exists. They summarize the discussion rather than reproduce it word for word.

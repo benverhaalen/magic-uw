@@ -1,6 +1,6 @@
 # Technical direction
 
-Status: architecture direction with implementation underway. Shared contracts and the runnable scaffold are committed; see [development](development.md) for the current capability boundary. Tool choices follow [engineering principles](engineering-principles.md).
+Status: architecture direction with a working implementation foundation. Electron, a local SQLite worker, a bounded Canvas connector, privacy gates, and a narrow Jev gateway are implemented. See [implementation status](implementation-status.md) for capability and validation boundaries, and [development](development.md) to run them. The broader mechanisms below remain direction unless identified as implemented. Tool choices follow [engineering principles](engineering-principles.md).
 
 ## System shape
 
@@ -36,9 +36,9 @@ Agents can discover a recipe; deterministic code should run and validate it. Kee
 
 ICS plus a syllabus is a possible fallback with limited coverage, not an equivalent full integration. Outlook and degree audit should not become demo dependencies before access is demonstrated.
 
-## Proposed shared record contract
+## Record contract: current and intended
 
-Agree on actual types before separate implementations. These are conceptual requirements, not an established package API.
+`packages/contracts/src/index.ts` is the implemented API shared by the app, core, store, and connectors. It includes scoped capture batches, versioned resources, source health, deadline claims, privacy preferences, links, jobs, judgments, practice attempts, and data receipts. The table below is the fuller intended evidence model. Per-field source locations/observations, authored timestamps, extraction references, and resolution-rule versions are not all present in the current API; consult [implementation status](implementation-status.md) before relying on them.
 
 | Record | Required meaning |
 | --- | --- |
@@ -64,6 +64,8 @@ Proposed precedence: verified item-specific change → declared authoritative so
 
 Code performs timezone handling, year inference with explicit assumptions, and arithmetic. If conflict remains, show both claims. The earlier plausible date may be a conservative planning date; it is not established truth. Never merge records across courses because both are called P1.
 
+Current resolver: accepts normalized claims, excludes lock/event claims and unconfirmed scopes, prioritizes supplied explicit-change claims, and otherwise preserves disagreements. The richer extraction and precedence rules above still need implementation. The Canvas connector supplies structured due/lock fields; it does not infer dates from prose.
+
 ## Jev and language models
 
 Code constructs bounded candidates, Jev judges, code validates and applies policy, and a language model writes where needed. Cache by content hash, question version, and model version. Superseded responses cannot update current state.
@@ -81,13 +83,15 @@ Context compiler: select evidence for the task within an explicit budget, includ
 
 The supported product choices are ChatGPT, Claude, Gemini, and local AI. The intended sign-ins are UW and the chosen hosted provider only; local AI needs only UW. API-key pasting or separate service accounts do not satisfy the intended default experience. Provider-specific MCP, authorized adapters, and other connection methods remain under investigation: account sign-in does not by itself establish subscription-backed access. See [AI and privacy requirements](ai-and-privacy.md).
 
-## Stack proposal
+## Stack and remaining candidates
 
-TypeScript monorepo; Electron + React desktop; SQLite with full-text search. Desktop is first. The website is informational with downloads and GitHub links; iOS is later if time permits. Potential packages: domain types, store, connectors, judgment adapter, context/learning engines, model adapters, and UI. These package boundaries are proposals.
+Implemented foundation: TypeScript monorepo; Electron + React desktop; Node 24 SQLite with full-text search. Shared packages separate contracts, domain rules, storage, connectors, application core, and AI adapters. The desktop main process brokers browser and OS capabilities; an isolated utility process owns the local store and background work. Desktop is first. The current website is informational with a GitHub link; downloads appear only when working release artifacts exist. iOS is later if time permits.
 
 Expo, Next.js/Vercel, and a relay/sync service are candidates, not commitments. Phone relay must describe offline/asleep behavior and encryption boundaries. Magic Canvas uses one team-owned Jev key and pays for usage. Students need no Jev account or key. Keep that credential server-side behind our proxy, with authenticated access, request limits, and minimal logging.
 
 Evaluate Playwright, browser-use/Stagehand, Crawlee, document parsers, and native OCR by actual need. License review includes exact versions, transitive dependencies, model weights, and bundled binaries. No dependency or production license audit has been completed. Working-Memory-Jev is ideas-only per project direction.
+
+The local AI adapter uses llmfit recommendations and a compatible installed Ollama model with cloud disabled. Managed installation/downloads and model-quality evaluation remain open. The gateway implements only assignment-kind classification; the wider Jev applications described above are not hidden behind that endpoint. ChatGPT, Claude, and Gemini settings currently express a data preference and preview boundary, not an authenticated model connection.
 
 Private scraping is local. For a clean-room context.dev-like component, use public behavioral documentation, not implementation code. Required behavior includes partial results, login detection, safe redirect handling, output-specific status, and change baselines.
 

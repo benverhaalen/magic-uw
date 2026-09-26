@@ -1,0 +1,16 @@
+{
+  "name": "@magic/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/main.cjs",
+  "dependencies": {
+    "@magic/contracts": "workspace:*",
+    "@magic/core": "workspace:*",
+    "@magic/storage": "workspace:*",
+    "@magic/connectors": "workspace:*",
+    "@magic/ai": "workspace:*",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  }
+}

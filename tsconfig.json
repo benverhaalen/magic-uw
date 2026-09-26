@@ -9,34 +9,18 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "jsx": "react-jsx",
-    "types": [
-      "node"
-    ],
-    "lib": [
-      "ES2023",
-      "DOM"
-    ],
+    "types": ["node"],
+    "lib": ["ES2023", "DOM"],
     "baseUrl": ".",
     "paths": {
-      "@magic/contracts": [
-        "packages/contracts/src/index.ts"
-      ],
-      "@magic/domain": [
-        "packages/domain/src/index.ts"
-      ],
-      "@magic/core": [
-        "packages/core/src/index.ts"
-      ],
-      "@magic/storage": [
-        "packages/storage/src/index.ts"
-      ],
-      "@magic/connectors": [
-        "packages/connectors/src/index.ts"
-      ],
-      "@magic/ai": [
-        "packages/ai/src/index.ts"
-      ]
-    }
+      "@magic/contracts": ["packages/contracts/src/index.ts"],
+      "@magic/domain": ["packages/domain/src/index.ts"],
+      "@magic/core": ["packages/core/src/index.ts"],
+      "@magic/storage": ["packages/storage/src/index.ts"],
+      "@magic/connectors": ["packages/connectors/src/index.ts"],
+      "@magic/ai": ["packages/ai/src/index.ts"]
+    },
+    "allowImportingTsExtensions": true
   },
   "include": [
     "packages/**/*.ts",
@@ -45,8 +29,5 @@
     "scripts/**/*.ts",
     "tests/**/*.ts"
   ],
-  "exclude": [
-    "node_modules",
-    "**/dist/**"
-  ]
+  "exclude": ["node_modules", "**/dist/**"]
 }
