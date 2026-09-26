@@ -1,0 +1,52 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "jsx": "react-jsx",
+    "types": [
+      "node"
+    ],
+    "lib": [
+      "ES2023",
+      "DOM"
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@magic/contracts": [
+        "packages/contracts/src/index.ts"
+      ],
+      "@magic/domain": [
+        "packages/domain/src/index.ts"
+      ],
+      "@magic/core": [
+        "packages/core/src/index.ts"
+      ],
+      "@magic/storage": [
+        "packages/storage/src/index.ts"
+      ],
+      "@magic/connectors": [
+        "packages/connectors/src/index.ts"
+      ],
+      "@magic/ai": [
+        "packages/ai/src/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "packages/**/*.ts",
+    "apps/**/*.ts",
+    "apps/**/*.tsx",
+    "scripts/**/*.ts",
+    "tests/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "**/dist/**"
+  ]
+}

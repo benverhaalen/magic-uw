@@ -1,0 +1,12 @@
+{
+  "name": "@magic/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@magic/contracts": "workspace:*",
+    "@magic/domain": "workspace:*",
+    "@magic/connectors": "workspace:*"
+  }
+}

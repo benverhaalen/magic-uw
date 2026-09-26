@@ -12,7 +12,7 @@ Built for UW–Madison's Badger BuildFest 2026 by a team of four. Entering **App
 
 Read the [shared context](docs/README.md). It separates the product direction, proposed implementation, verified event requirements, and unanswered questions.
 
-**Current state:** project documentation and research. This README does not claim an implemented app, working integration, or measured result. Product code and setup instructions will be added when implementation begins.
+**Current state:** runnable TypeScript workspace with shared contracts, privacy and deadline rules, synthetic fixtures, and checks. The desktop, local store, and gateway are being built on this foundation. See [development setup](docs/development.md).
 
 | Document | What it answers |
 | --- | --- |
