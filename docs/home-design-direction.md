@@ -14,7 +14,7 @@ A representative demo should show a non-obvious requirement recovered from its s
 
 - One collapsible left navigation sidebar: Home, Courses with expandable individual courses. Course overview uses one card per course.
 - Home content order: **Briefing → Upcoming → Study & Learn**. The briefing is the focal point. Home may scroll vertically.
-- Explicit exception to the earlier no-right-column rule: a quiet right-hand **Today** calendar. Due items and their times sit above an hourly lecture/event timeline. It is not a second navigation sidebar.
+- Explicit exception to the earlier no-right-column rule: a quiet right-hand **Today** calendar. Today’s tasks and their times anchor at the top right; a readable hourly lecture/event timeline anchors at the bottom right while the main Home content scrolls. It is not a second navigation sidebar.
 - Compact native Mac/Codex-like window. Traffic controls, history arrows, sidebar toggle, and context-aware new-chat control live at the top. Current page name is centered.
 - Magic Canvas wordmark has no logo yet; its ellipsis shares the brand row. Bottom-left profile shows avatar and name when expanded, avatar alone when collapsed, with an account popover.
 - Clicking Upcoming should open the relevant Canvas page, readings, notes, and needed apps/windows together. Assignment-specific destination icons may communicate this. Do not add a mandatory intermediate chooser or expansion.
@@ -22,9 +22,23 @@ A representative demo should show a non-obvious requirement recovered from its s
 
 ## Briefing content contract
 
-Natural language, not “Today's agenda,” a marketing greeting, or a reformatted to-do list. Choose useful information from available schedules, assignment instructions, linked materials, announcements, and explicitly connected communications. Explain dependencies, meaningful changes, team/submission conditions, and preparation requirements. A source being absent or unreadable cannot imply the student has nothing else to do.
+Natural language, not “Today's agenda,” a marketing greeting, or a reformatted to-do list. Choose useful information from available schedules, assignment instructions, linked materials, announcements, and explicitly connected communications. Explain dependencies, meaningful changes, consequential requirements, conflicts, and preparation needs. Facts must earn their space: merely reciting assignment metadata or inventing a headline does not create useful synthesis. A source being absent or unreadable cannot imply the student has nothing else to do.
+
+The briefing is flexible prose, not a mandatory series of cards, headings, time groups, or action buttons. Short blurbs are not a fixed requirement. Some days contain many updates; some useful information needs no action. Group related information naturally and let information importance determine emphasis and length. A headline, when used, must name the actual course, requirement, or consequence. Rejected examples include “One template for the whole team” and “Check the essay’s submission format”: they withhold the specific information a student needs. Do not hide critical conditions behind Details toggles.
+
+The lead should demonstrate connected evidence, for example an upcoming lecture plus its specific assigned readings plus the reason to prepare, with an immediate route to those materials. Another useful case is a verified conflict across course schedules. A generic greeting, schedule paraphrase, or manufactured insight is not sufficient for the hackathon entry screen. Never turn an optional reading into a required reading or imply reading is unfinished without evidence.
+
+Use selective bolding and **filled-background time/date tags** for scanning. Keep emphasis consistent rather than combining many competing highlight styles. Deadlines in Upcoming must be plainly visible, not tiny or low contrast. Calendar hour labels, event names, start/end times, and locations must be readable at a laptop viewport.
+
+Each region has a distinct job: Briefing explains implications/preparation/changes; Today locates today’s tasks and events in time; Upcoming makes graded work ready to launch; Study & Learn starts specific learning activities. Avoid repeating the same fact/action merely to fill every region. A current proposal shows today’s due items once in Today and future graded work in Upcoming, with chronological labels and complete access via View all. This specific allocation remains under visual review.
 
 Keep source-shaped links right aligned near the claim. Labels describe the action, such as “Review assigned readings,” rather than merely naming Canvas. Every AI reference should expose its supporting source; provenance inspection and refresh information must remain available without overwhelming the main prose.
+
+### Student confirmation and briefing memory
+
+The student can check off a specific actionable issue in the briefing, such as having handled an exam conflict. Keep this a small contextual control, not a checkbox on every informational sentence. A suggested label is “I’ve handled this.” Provide an immediate undo/reopen path. Retain the issue’s source links and a concise handled state rather than losing its context.
+
+A student confirmation is an explicit **self-report**, separate from source-verified completion. Remember it across briefing regeneration using the underlying issue identity and relevant source version, so paraphrasing the briefing does not recreate the task. Suppress repeated prompts for that handled issue. Reopen only when material new evidence changes the situation, with a clear explanation; do not silently uncheck it on every refresh. Marking a conflict handled does not change a university schedule, submit a form, or prove an alternate exam arrangement was approved. A confirmed reading can be recorded as reported read; it still does not prove understanding.
 
 Do not infer reading completion from a view. Homework, projects, grades, or submissions are weak evidence of understanding. Direct study interactions supply the most useful learning evidence, with assistance and uncertainty retained. No invented mastery, readiness score, or completion claim. Points from different courses are not comparable course weights. Preserve source timezone and distinguish due dates, events, lock dates, and conflicting claims.
 
@@ -37,7 +51,8 @@ Study & Learn contains concrete activities already chosen for the student: a par
 ## Settled visual constraints
 
 - Warm ivory main pane, bold ember/red sidebar and a thin wrapping frame; gradients welcome. Compact borders and comfortable interior spacing.
-- Color should feel deliberate and distinctive. More vibrant cards are the current exploration. No predominantly green direction, primary blue, or primary purple; blue/purple may be minor gradient notes.
+- Color should feel deliberate and distinctive. More vibrant cards are the current exploration. No predominantly green direction. The earlier restriction to only minor blue notes is superseded: stronger blue accents are welcome alongside the warm shell. Purple remains restrained. Color must preserve text contrast and carry a consistent meaning.
+- Background/shell color should eventually be customizable in Settings; this is an accepted future design direction, not an urgent implementation task. Preserve contrast and semantic distinction under customization.
 - Exact supplied **Cooper Light BT** in private mocks for selective headings and action titles; **Geist** for prose, navigation, metadata, and controls. Readability and cohesion take precedence over negative tracking. Normal tracking is the current baseline. Forrest and approximate substitute serifs are superseded.
 - No landing-page-sized titles, excessive icons, nested panels, or visual previews. Preserve the agreed structure while transferring design language from references.
 - Screenshots look like a MacBook app screenshot. No “concept preview” language inside them. Artifact notes separately disclose scenario and capability limits.
@@ -45,7 +60,7 @@ Study & Learn contains concrete activities already chosen for the student: a par
 
 ## Current visual comparison — proposals
 
-Three locally rendered alternatives preserve the same shell, briefing, Today rail, and section order:
+Three card treatments were locally rendered with the same shell and section order. These remain historical comparisons; the latest correction requires clearer deadlines and a flexible, information-bearing briefing:
 
 1. **Course color:** full-width compact colored launch rows. Stable color connects an item to its source-action chips and calendar marks. Risk: lower cards overpower prose. Test whether the briefing remains the first useful read and course identity is understood without relying solely on color.
 2. **Action zone:** quiet title area with a more saturated destination/launch zone. The color points toward the action rather than indicating urgency. Risk: the zone looks like a separate required button. Test whole-card discoverability and one-click destination expectations.
@@ -65,7 +80,7 @@ Inspected September 26, 2026. Official product pages and their actual product im
 | User's Apple Calendar day screenshot — timing structure | Hour lines, timed event blocks, current-time line. | Quiet Today rail with deadlines above events. Reject if its visual weight exceeds the briefing or incomplete data implies a free day. |
 | User's refined warm/red references — palette/material preference | Concentrated warm color and restrained typography. | Compare stronger card color within the existing structure. Do not import marketing heroes, page layouts, or unrelated features. |
 
-Actual Claude CLI **Opus 5.5** participated in an independent critique and follow-up debate. Useful challenges included preserving briefing focus, including consequential submission details, and explaining each source action. The driver rejected comparing raw points across courses, mandatory row expansion, and nested card frames. Further screenshot review and Ben's preference are still required.
+Actual Claude CLI **Opus 5.5** participated in an independent critique and follow-up debate. Useful challenges included preserving briefing focus, including consequential submission details, and explaining each source action. The driver rejected comparing raw points across courses, mandatory row expansion, and nested card frames. Rendered screenshot review was completed with the actual model. It preferred time anchors, but Ben subsequently rejected always splitting the briefing into fixed units; that correction takes precedence. The layered alternative also incorrectly placed an unrelated project beneath a team-template heading, illustrating why visual grouping must preserve meaning. Treat on-paper Canvas metadata as a listed submission type, not proof that a student must print or physically hand in something. Do not infer that differing lecture/project topics mean the lecture is irrelevant. New flexible-briefing work is under review; no student usability result is claimed.
 
 ## Delivery and team synchronization
 

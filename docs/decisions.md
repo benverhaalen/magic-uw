@@ -73,3 +73,10 @@ Count recovery effort when judging least effort. Keep navigation stable while ad
 - Use app-owned UW sessions. Never reuse the retired personal Firefox-cookie adapter. Approved browser bridges remain candidates, not implemented integrations.
 - Preserve source-specific freshness during expiry; calendar feeds carry independent access and coverage. Excluded/restricted courses cannot enter AI context.
 - Local MCP connections use explicit course/category grants and live revocation checks. Compatibility with each provider account is an evidence question, not a promise implied by implementing MCP.
+
+
+## 2026-09-26 — Home briefing corrections and readable timing
+
+See [Home design direction](home-design-direction.md) for the canonical current brief. Ben rejected fixed headline-per-task briefing units and vague labels. The briefing must surface specific, source-grounded implications, preparation needs, and useful updates, without requiring every sentence to have a button. Avoid redundant filler between Home regions. Filled time tags, prominent Upcoming deadlines, a readable top-task/bottom-calendar Today rail, and stronger blue accents are current direction. Color customization in Settings is accepted for later. Exact rendered treatment and the proposed allocation of today’s tasks versus future work remain under review. No production implementation is claimed.
+
+The briefing also supports student-confirmed completion of specific actionable issues, with undo, persistent issue identity, source-version awareness, and explicit separation between self-report and source verification. Informational updates do not require checkboxes. This is accepted product direction; the local interaction does not update external course systems.
