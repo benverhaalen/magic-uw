@@ -121,3 +121,38 @@ Current work is a separate local visual prototype with navigation and mock inter
 The adaptive Home mock was rendered at a 1440 × 900 laptop viewport with the supplied Cooper Light BT and Geist. It contains flexible source-grounded prose, inline object links, actionable reading/exam routes, contextual handled/undo controls, clearer upcoming deadlines, and a fixed Today rail while the main content scrolls. Browser checks demonstrated assignment link and keyboard navigation, direct route refresh, reading links, handled-state persistence after reload and undo, and Home scroll restoration after returning from an assignment. The calendar stayed fixed while Home scrolled; no horizontal overflow was observed.
 
 Actual Opus 5.5 reviewed the routing alternatives and a rendered screenshot. The driver retained blue plus underline for recognizable clickability; Opus agreed after inspecting the image. Its useful challenges led to contextual detail rather than surprise app launching, source-aware fallback, consistent course color, a neutral cross-course date tag, clearer separation around confirmation controls, and correction of an overlapping calendar time label. This is local prototype evidence, not a student usability test or an integrated app capability. Final visual approval remains with Ben.
+
+## September 26 — action placement, link treatment, and cohesion review
+
+Source: Ben, Magic Canvas design conversation. Recorded September 26, 2026; original message timestamps/IDs unavailable. The following are exact excerpts; the implementation choices below are agent interpretations and review proposals, not blanket approval.
+
+> maybe rather than having the review assigned readings thing on a separate line, have a button on the right side and wrap the text around early. but if a thing has no action, there is no need to have a button or an early wrap.
+
+> then if there is a review button or something and a checkbox, you can split the button in half vertically.
+
+> less of a gap between the sections of it while not making it too much of a blurb of text.
+
+> also is there a more desirable cool ui way to highlight things like "CS639's Next Lecture" while ensuring intuitive ui still sees it as a clickable link
+
+> also for any icons - think canvas or my uw or anything - you can pull these from the sites themselves too.
+
+> i think colored buttons would be cool for the review assigned readings or something making certain actions really clear
+
+> also make sure those link things keep the ui look we have been going for and everything seems consistent. also the buttons for reviewing should have a more cohesive design with the rest of the product
+
+### What these corrections change
+
+- Try right-side action controls beside the associated prose. Reserve that space only when an action exists; informational content retains full width. This supersedes the mock's dedicated action row underneath every actionable paragraph. It does not require every briefing item to have a button or become a card.
+- Interpret the vertical split as a shared compact control with review above and an independent student-confirmation checkbox below. Keep distinct hit targets and a visible divider. Clicking review must not check completion; checking must not navigate. This interpretation is awaiting Ben's visual feedback.
+- Tighten paragraph spacing while preserving scan boundaries through selective links, filled date tags, and aligned controls. Do not compress the whole briefing into one paragraph or shrink typography simply to fit more content.
+- Color should make genuine actions apparent while matching the established material, corner radius, type, and spacing. The latest local proposal uses soft blue gradients and dark text, echoing the existing card family; the earlier saturated solid-blue buttons were revised for cohesion. This is not a new universal button palette or a course/urgency meaning.
+- Entity links remain navigation; action buttons initiate the named activity. Compared a lightly highlighted underlined link against a bounded inline chip. The driver favors the inline treatment because it preserves sentence rhythm and distinguishes links from filled time tags; the chip remains a review alternative. Neither treatment has final human approval. Preserve real hrefs, visible keyboard focus, and useful destinations regardless of visual choice.
+- Prefer recognizable first-party service assets where available, with recorded source and fit at small sizes. This permission does not require an icon beside every noun. Canvas's official favicon was retrieved from https://canvas.wisc.edu/favicon.ico and used in the local mock. MyUW's favicon was retrieved from https://my.wisc.edu/favicon.ico but is not placed on Home. Do not mistake a university sign-in page's icon for the connected service's icon. Asset availability does not establish redistribution rights for unrelated uses.
+
+### Review and evidence
+
+Local artifacts: `magic-canvas-briefing-inline.html` and `magic-canvas-briefing-pills.html` in Ben's design workspace outputs; screenshots have matching names. These are private review artifacts, not repository assets or integrated production screens. Existing typography, navigation, course content, Upcoming, Study & Learn, and Today structure were preserved.
+
+Actual Claude CLI Opus 5.5 reviewed both first-pass screenshots (model identity verified in local receipt). It preferred inline links, flagged date/link ambiguity and overemphasis, and cautioned about confusing review with completion. Subsequent user cohesion feedback drove the softer action treatment; date tags became consistently neutral and filled, excessive lead bolding and inline chevrons were removed in the preferred alternative. The driver retained the user's shared split-control idea and broad handled wording rather than adopting the reviewer's narrower claim that an exam time was confirmed. These are judgments from screenshots, not evidence of student usability.
+
+Browser verification passed for both alternatives: action beside text; full-width informational paragraph; named-link keyboard activation; readings and exam navigation; separate checkbox behavior; handled state after reload and Undo; assignment route; sidebar collapse; supplied fonts loaded; official Canvas image loaded; no page errors; no horizontal page overflow at 1440, 1280, 1100, and 900-pixel widths. Final screenshots were inspected after initial animation settled. Real multi-app launching, live briefing regeneration, and external completion remain unimplemented in this mock.
