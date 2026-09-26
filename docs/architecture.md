@@ -21,6 +21,8 @@ Jev is hosted. Any selected context sent to Jev or a hosted language model leave
 
 ## Access and fetching
 
+Concrete current endpoints, paging, concurrency, throttling limitations, session tests, and proposed reconnect behavior are preserved in [pipeline details](pipeline-details.md). It also distinguishes announcements from activity coverage, Graph metadata paging, intended identity scrubbing, exact citation validation, and a testable link-threshold method. Read those boundaries before treating this architecture direction as implemented behavior.
+
 Direction: use a legitimate student-authorized session where supported; otherwise a dedicated sign-in browser with NetID and student-completed Duo; an approved extension bridge is another candidate. Do not decrypt personal-browser cookies or evade idle expiry. One sign-in spanning all UW systems is an untested hypothesis.
 
 Do not assume unattended debugging access to a personal profile. Chrome DevTools MCP's explicit, student-approved auto-connect is a candidate; it requires compatible Chrome and disabling usage/performance reporting. Use a separate profile for experiments, and keep Ben's current computer/Canvas testing headless. Embedded Electron browser compatibility with each UW flow must be tested separately. A successful Canvas login does not prove Outlook, PeopleSoft, or DARS access.
@@ -70,6 +72,8 @@ Current resolver: accepts normalized claims, excludes lock/event claims and unco
 
 Code constructs bounded candidates, Jev judges, code validates and applies policy, and a language model writes where needed. Cache by content hash, question version, and model version. Superseded responses cannot update current state.
 
+Auto-link/confirm/no-link cut points are not established. Follow the [link evaluation procedure](pipeline-details.md#link-thresholds-a-testable-starting-method), including scoped candidates, review burden, held-out course families, correction bias, and sample limits. Do not repurpose the assignment-kind display threshold for entity matching.
+
 - Choice for mutually exclusive candidates; include no match. For consequential matches, separately test whether any valid match exists.
 - Multiple Nouls when several candidates can be true. Score for ordered judgments, not direct mastery probabilities.
 - Tune task-specific thresholds on held-out examples. Do not multiply correlated outputs or interpret concentration as accuracy.
@@ -89,13 +93,15 @@ Implemented foundation: TypeScript monorepo; Electron + React desktop; Node 24 S
 
 Expo, Next.js/Vercel, and a relay/sync service are candidates, not commitments. Phone relay must describe offline/asleep behavior and encryption boundaries. Magic Canvas uses one team-owned Jev key and pays for usage. Students need no Jev account or key. Keep that credential server-side behind our proxy, with authenticated access, request limits, and minimal logging.
 
-Evaluate Playwright, browser-use/Stagehand, Crawlee, document parsers, and native OCR by actual need. License review includes exact versions, transitive dependencies, model weights, and bundled binaries. No dependency or production license audit has been completed. Working-Memory-Jev is ideas-only per project direction.
+Evaluate Playwright, browser-use/Stagehand, Crawlee, document parsers, and native OCR by actual need. License review includes exact versions, transitive dependencies, model weights, and bundled binaries. A limited JavaScript dependency check is recorded in [tool evaluation](tool-evaluation.md); a complete distribution/license audit remains unfinished. Working-Memory-Jev is ideas-only per project direction.
 
 The local AI adapter uses llmfit recommendations and a compatible installed Ollama model with cloud disabled. Managed installation/downloads and model-quality evaluation remain open. The gateway implements only assignment-kind classification; the wider Jev applications described above are not hidden behind that endpoint. ChatGPT, Claude, and Gemini settings currently express a data preference and preview boundary, not an authenticated model connection.
 
 Private scraping is local. For a clean-room context.dev-like component, use public behavioral documentation, not implementation code. Required behavior includes partial results, login detection, safe redirect handling, output-specific status, and change baselines.
 
 ## Unverified technical capabilities
+
+Architecture choices also follow [reference-driven design](reference-driven-design.md): inspect VS Code, Notion, Drive, Arc, Codex, and Claude for specific boundaries or interactions, then test the smallest useful adaptation. Their success does not justify importing a plugin platform or general page builder without a student need. Conditional long-term scenarios test replaceability of sources/models without expanding the current build automatically.
 
 The following need evidence before we describe them as supported: sign-in across UW systems, session expiry/recovery, provider subscription access, phone relay behavior, target-platform packaging, and reliable extraction across different course structures. These unknowns do not reopen the product thesis; they identify where the technical description remains provisional.
 

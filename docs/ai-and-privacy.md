@@ -34,6 +34,8 @@ The default is `local_only`, with Jev, hosted-provider selection, course-text sh
 
 The Jev compiler excludes source URLs, cookies, account identifiers, grades, and drafts as fields. Selected text can still contain private information. The student-work permission does not enable a student-work upload feature today.
 
+The decided policy is to remove student identities and unnecessary personal identifiers from outgoing free text while retaining instructor/author names when they help interpret course material. There is no implemented name scrubber yet. Never equate today's allowlist with anonymization or imply that this docs update changes transmitted data. The redaction policy and proposed local citation-mapping boundary are in [pipeline details](pipeline-details.md#name-scrubbing-and-exact-citations).
+
 The gateway handles text in memory without persisting bodies. Its database stores device IDs, bearer-token hashes, enrollment IPs, timestamps, and usage counters. Logs contain request metadata, not bodies, authorization headers, or keys. Hosting logs and a deletion schedule need to be set before deployment; current operational records remain until the operator removes them. See [gateway operations](../apps/gateway/README.md).
 
 Local receipts record destination, purpose, category, resource IDs, character count, time, and status without duplicating text. A `sent` receipt means an attempted request, not confirmed delivery. Purging app data and clearing UW browser sessions are separate controls; neither promises erasure from backups.

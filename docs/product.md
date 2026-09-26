@@ -31,6 +31,7 @@ The event audience will likely skew technical. The product story should still ma
 8. Use familiar interactions. Show an artifact when interaction helps more than reading.
 9. Never invent a readiness percentage, calibrated confidence, latency, or reliability result.
 10. A rehearsed or seeded demonstration is fine when labeled. Never silently substitute fixtures for failed live data.
+11. Build and verify through [reference-driven design](reference-driven-design.md). Borrow inspected mechanisms intentionally, including from products outside education. Keep the whole student journey and actual content in the evaluation; a polished image is a hypothesis, not a completed product.
 
 ## AI choice, sign-in, and data transparency — decided
 
@@ -45,6 +46,8 @@ Local storage is the default. Hosted Jev is separately disclosed and paid for by
 ## Surfaces and interaction ideas — not settled
 
 **Desktop first:** the full workspace for Mac and Windows. **Website:** product information, working downloads, and GitHub links. **iOS later:** a focused companion if time permits.
+
+The [six organizing concepts](product-directions.md) compare time, task spaces, courses, outcomes, connected evidence, and the student's current activity as different foundations. They are open alternatives for Ben to react to; the existing Today screen does not settle the choice. The view ideas below remain available within that discussion, rather than constituting an agreed combined layout.
 
 Potential home views:
 
@@ -81,6 +84,8 @@ Scheduling ideas include prep anchored to real classes, review after lectures, p
 Calm, familiar, neutral and light. Thin borders, compact spacing, small readable sans serif text, little color, and one clear focus. Course color, if used, is a tiny accent. No serif fonts, colored dots beside class names, filler greetings, or motivational copy. Use actual student content in evaluation; use clearly synthetic content in public fixtures.
 
 The Codex desktop app is an interaction/visual reference, not a specification to clone. Compare concrete screens before settling the layout.
+
+For concept images, use inspected reference folders as inputs, repair bad downloads, prompt minimally around the task and essential constraints, and iterate with Ben's feedback. For implementation, inspect hierarchy, navigation, density, feedback, failure recovery, accessibility, and responsiveness in the rendered journey. Raise clutter and complexity instead of accumulating every reference pattern. The [reference guide](reference-driven-design.md) records the exact method and what each reference contributes.
 
 ## Claims and competitive posture
 

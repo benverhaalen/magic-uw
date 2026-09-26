@@ -11,9 +11,11 @@ A context register, not an implementation backlog. No ownership is assigned.
 | Priorities | Win BuildFest and selected awards; optional event launch; earn word of mouth |
 | Entries | Applied AI & Automation, DoIT Badgers Building for Badgers, Art of the Break |
 | Experience | Least user effort, familiar apps, no repeated context uploading, more than chat |
+| Working method | Reference-driven design across research, architecture, interface, implementation, and verification; inspect and test the transferred mechanism |
 | Current technical focus | Data access, local records, provenance, linking, and freshness |
 | Computation | Code for exact facts; Jev for typed judgments; language models for prose and deeper reasoning |
 | Jev billing | One Magic Canvas–owned key; we pay. Students need no Jev account or key. Keep the credential server-side behind our proxy |
+| Identity scrubbing | Before hosted processing, remove student identities and unnecessary personal identifiers; retain relevant instructor/author names. Policy accepted; scrubber not implemented |
 | School actions | Read only: no submitting, enrolling, or posting |
 | Learning policy | Course policy first; coach when vague or silent |
 | Honesty | No false reassurance or unsupported readiness, speed, or reliability claims |
@@ -34,6 +36,10 @@ These are accepted directions. Account compatibility, hardware suitability, and 
 ## Product choices that can remain open
 
 Sidebar by course/source/intent; default home view; relationship between day/spaces/calendar; artifact placement; floating pill and voice activation; visible source detail; degree audit's role; how personalization follows behavior versus explicit preference. Do not force these decisions merely to make the document look finished.
+
+The [six organizing concepts](product-directions.md) remain distinct alternatives: the day, task workspace, course, outcome, connected library, and current-activity companion. Ben has not selected or combined them. The existing implementation does not grant one priority.
+
+No link threshold has been approved; the numerical sweep in [pipeline details](pipeline-details.md#link-thresholds-a-testable-starting-method) is an experiment proposal only.
 
 ## Technical assumptions requiring evidence
 
@@ -57,3 +63,5 @@ Count recovery effort when judging least effort. Keep navigation stable while ad
 - Prefer a minimal in-app sign-in browser with reusable app-owned sessions where supported; Search is an interaction reference, not a mandated engine.
 - All current agent work on Ben’s computer and Canvas must be headless. Never open an interactive sign-in window during testing.
 - Full selection and evidence policy: [engineering principles](engineering-principles.md).
+- Apply [reference-driven design](reference-driven-design.md), including architecture by analogy, reference-led images, honest demo reconstruction, and verification of actual transferred behavior. Include relevant reference roles and checks in delegated briefs.
+- Ask Ben about consequential ambiguity, clutter, complication, or unnecessary token/tool spend; keep ordinary coordination and context loading proportionate. Do not silently resolve conflicts with earlier direction.

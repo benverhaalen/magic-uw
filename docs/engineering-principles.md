@@ -2,6 +2,12 @@
 
 Accepted project guidance, updated September 26, 2026. These apply to future decisions as well as today's candidates. For the current implementation, see [development](development.md).
 
+## Reference-driven work
+
+Use the [reference-driven design method](reference-driven-design.md) for architecture, interactions, visuals, implementation, and review. Establish the normal student journey, inspect a reference for its assigned job, identify the transferable mechanism and assumptions, and trace it into the actual output. Test that transfer and its failure conditions. Separate observed behavior, the author's stated reasoning, and our hypothesis; an impressive rationale is not measured evidence.
+
+The [agent work principles](agent-work-principles.md) cover mechanism-first discovery, expert procedures, candidate generation, independent critique, context and total cost, and sustained delivery. Ask Ben about consequential ambiguity, added clutter or complexity, and disproportionate token/tool spend. Keep one canonical explanation and compact handoffs rather than repeating the full research in each context. The repo [AGENTS.md](../AGENTS.md) makes these expectations discoverable to new agents.
+
 ## Choose for the job, then verify the choice
 
 Start with the student outcome and the failure that would undermine it. A connector must preserve the right assignment and deadline with the least sign-in and recovery effort. A fast page load is useful only if the required content survives. Familiarity, novelty, a popular repository, and a leaderboard rank are inputs—not selection rules.

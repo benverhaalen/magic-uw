@@ -2,6 +2,14 @@
 
 Use **Node 24** (see `.nvmrc`) and **pnpm 10.29.2**. SQLite uses Node's built-in `node:sqlite`; an older Node version is not supported.
 
+## Working method
+
+Read [AGENTS.md](../AGENTS.md), the relevant [agent work principles](agent-work-principles.md), and [reference-driven design](reference-driven-design.md). Before substantial UI or behavior changes, establish the normal student journey and success check, inspect the relevant reference mechanism, and verify its transfer in the running product. The [tool matrix](tool-evaluation.md) preserves the newer acquisition/extraction candidates; none should be installed merely because it appears there. [Pipeline details](pipeline-details.md) retain actual endpoints, limits, and unresolved behaviors.
+
+Keep a short reference/evidence note with a consequential change: what was inspected, what property was adopted, what changed in the artifact, and how it was checked. Use the existing docs rather than a duplicate report when sufficient. Flag unclear intent, added clutter/complexity, and disproportionate model or tool cost with Ben. Do not implement or merge the six organizing concepts before his reaction.
+
+## Run
+
 ```sh
 pnpm install
 pnpm dev
@@ -31,7 +39,7 @@ Tests with fake HTTP responses establish behavior for those cases. They do not e
 Only the gateway operator supplies the upstream key. Ben can put it in the ignored server file without sending it in chat:
 
 ```sh
-cp apps/gateway/.env.example apps/gateway/.env
+test -f apps/gateway/.env || cp apps/gateway/.env.example apps/gateway/.env
 ```
 
 Edit `apps/gateway/.env` locally and set `TYPESAFE_API_KEY`. Keep the initial request caps conservative, then start the gateway:

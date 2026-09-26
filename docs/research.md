@@ -37,3 +37,9 @@ These gaps remain visible without preventing teammates from understanding the in
 ## New acquisition and extraction candidates
 
 The live September 26 [tool evaluation](tool-evaluation.md) records browser engines, extractors, OCR models, crawling, and change detection, including corrections to MinerU/changedetection links and benchmark provenance. These are evaluated candidates, not automatic dependencies. The general decision policy is in [engineering principles](engineering-principles.md).
+
+## Reference-driven design and retained technical details
+
+The [reference register](reference-driven-design.md#reference-register-and-concrete-transfers) records inspected official product documentation, proposed transfers, and the remaining live-interaction gaps. VS Code execution boundaries, Notion views, Drive resource organization, Arc Spaces, Canvas navigation, and Claude quick entry have specific jobs. The supplied Jev videos and several app/artifact interactions remain unverified; this update does not claim they were reproduced. [Six organizing concepts](product-directions.md) are design hypotheses awaiting Ben's reaction.
+
+[Pipeline details](pipeline-details.md) compare actual connector/session/context code with current Canvas pagination, throttling, announcements/activity, and Microsoft Graph documentation. They preserve proposed scrubbing/citation behavior and a link-threshold experiment informed by the original Fellegi–Sunter record-linkage paper. No UW coverage, redaction accuracy, link precision, new local model result, or paid Jev result was measured in this documentation update.

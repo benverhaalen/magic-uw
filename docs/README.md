@@ -10,6 +10,8 @@ This section gets everyone informed about what Magic Canvas is and where the thi
 
 Least user effort is the central taste principle. Fit existing apps and study habits. Feel calm and capable, with interaction beyond a chatbot.
 
+Reference-driven design is our working method: assign each reference a job, inspect its actual mechanism, transfer the useful part, and verify the resulting student journey. We use architecture analogies beyond education and current tools beyond familiar defaults. Ben should see consequential ambiguity, clutter, complexity, or excessive token/tool cost before we commit to it. See [agent work principles](agent-work-principles.md) and the repo's [agent instructions](../AGENTS.md).
+
 The technical direction starts with local course data: connectors capture sources, code handles exact facts, Jev makes typed judgments, and a language model writes and reasons with relevant context. **Magic Canvas owns one Jev key and pays for usage. Students do not supply a Jev key.**
 
 The four AI choices are ChatGPT, Claude, Gemini, and an automatically selected local model. Only UW and the chosen hosted AI should require sign-in. Desktop comes first; the website is for information/downloads/GitHub; iOS is later if time permits.
@@ -23,8 +25,12 @@ We are entering Applied AI & Automation, DoIT's Badgers Building for Badgers, an
 | Read | Contents |
 | --- | --- |
 | [Product](product.md) | Vision, student experience, learning loop, interface ideas, visual taste |
+| [Organizing concepts](product-directions.md) | Six different organizing ideas, each with a journey, risk, reference, and quick test; no winner selected |
+| [Reference-driven design](reference-driven-design.md) | Reference roles, architecture analogies, images, demo inspection, and product verification |
+| [Agent work principles](agent-work-principles.md) | Intent, discovery, expert methods, delegation, context/cost, and complete delivery |
 | [AI and privacy](ai-and-privacy.md) | Four AI options, automatic local selection, sign-in, and data disclosures |
 | [Technical direction](architecture.md) | Access, connectors, records, deadlines, Jev, models, stack proposals |
+| [Pipeline details](pipeline-details.md) | Actual endpoints and limits; proposed reconnect, scrubbing, citation checks, and link thresholds |
 | [Implementation status](implementation-status.md) | Actual capability boundaries, evidence, and the remaining product scope |
 | [Development](development.md) | Run the workspace and checks; configure the shared gateway safely |
 | [Decisions and open points](decisions.md) | What is established and what still needs input |
