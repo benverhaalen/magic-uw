@@ -22,3 +22,8 @@ export function validateCapture(input: unknown): CaptureBatch {
 }
 
 export { canvasConnector } from "./canvas";
+export * from "./network";
+export * from "./external";
+export * from "./documents";
+export * from "./calendar";
+export * from "./gitlab";

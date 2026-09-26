@@ -1,6 +1,6 @@
 # Technical direction
 
-Status: architecture direction with a working implementation foundation. Electron, a local SQLite worker, a bounded Canvas connector, privacy gates, and a narrow Jev gateway are implemented. See [implementation status](implementation-status.md) for capability and validation boundaries, and [development](development.md) to run them. The broader mechanisms below remain direction unless identified as implemented. Tool choices follow [engineering principles](engineering-principles.md).
+Status: architecture direction with a working implementation foundation. Electron, a local SQLite worker, expanded Canvas/material connectors, background refresh, local MCP grants, privacy gates, and a narrow Jev gateway are implemented. See [implementation status](implementation-status.md) for capability and validation boundaries, and [development](development.md) to run them. The broader mechanisms below remain direction unless identified as implemented. Tool choices follow [engineering principles](engineering-principles.md).
 
 ## System shape
 
@@ -40,19 +40,19 @@ ICS plus a syllabus is a possible fallback with limited coverage, not an equival
 
 ## Record contract: current and intended
 
-`packages/contracts/src/index.ts` is the implemented API shared by the app, core, store, and connectors. It includes scoped capture batches, versioned resources, source health, deadline claims, privacy preferences, links, jobs, judgments, practice attempts, and data receipts. The table below is the fuller intended evidence model. Per-field source locations/observations, authored timestamps, extraction references, and resolution-rule versions are not all present in the current API; consult [implementation status](implementation-status.md) before relying on them.
+`packages/contracts/src/index.ts` is the implemented API shared by the app, core, store, and connectors. It includes scoped capture batches, typed course/material/submission evidence, versioned resources, field observations, source health, deadline claims, change events, refresh settings, privacy preferences, MCP grants, links, jobs, judgments, practice attempts, and data receipts. The table below is the fuller intended evidence model. Per-field observation times and document page/slide references are implemented; literal source spans for every fact, authored timestamps for every claim, and resolution-rule versions remain incomplete; consult [implementation status](implementation-status.md) before relying on them.
 
-| Record | Required meaning |
-| --- | --- |
-| Capture | Source and source ID, course/section/term scope, observed time, source update time if known, content hash, version, extraction status, local evidence reference |
-| Object | Stable internal ID; assignment, material, class session, message, event, or course; fields tied to captures |
-| Field evidence | Value, source location/quote, last observed time, unknown/absent distinction |
-| Deadline claim | Due/lock/event kind, raw text, normalized value and zone, authored time if known, observed time, scope |
-| Resolution | Selected interpretation, competing claims, rule/version, unresolved conflict, separate planning date |
-| Link | Typed source/target, evidence and reason, method/model/question version, judgment distribution, user override/rejection |
-| Judgment | Object content hash, question version, pinned model version, result, generation/version guard |
-| Source health | Last attempt, last success, coverage, fresh/stale/blocked/partial/error status and recovery action |
-| Student state | Personal completion, verified submission evidence, opened resources, preferences, attempts and assistance |
+| Record         | Required meaning                                                                                                                                                |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Capture        | Source and source ID, course/section/term scope, observed time, source update time if known, content hash, version, extraction status, local evidence reference |
+| Object         | Stable internal ID; assignment, material, class session, message, event, or course; fields tied to captures                                                     |
+| Field evidence | Value, source location/quote, last observed time, unknown/absent distinction                                                                                    |
+| Deadline claim | Due/lock/event kind, raw text, normalized value and zone, authored time if known, observed time, scope                                                          |
+| Resolution     | Selected interpretation, competing claims, rule/version, unresolved conflict, separate planning date                                                            |
+| Link           | Typed source/target, evidence and reason, method/model/question version, judgment distribution, user override/rejection                                         |
+| Judgment       | Object content hash, question version, pinned model version, result, generation/version guard                                                                   |
+| Source health  | Last attempt, last success, coverage, fresh/stale/blocked/partial/error status and recovery action                                                              |
+| Student state  | Personal completion, verified submission evidence, opened resources, preferences, attempts and assistance                                                       |
 
 Captures are versioned and normally append-only; deletions become markers. User-requested data deletion and retention controls must still be able to remove private data. A changed capture invalidates dependent judgments and summaries. Do not make an LLM brief the only place a factual field exists.
 
@@ -85,7 +85,7 @@ Auto-link/confirm/no-link cut points are not established. Follow the [link evalu
 
 Context compiler: select evidence for the task within an explicit budget, include policy and source health, preserve conflicting claims, and expose source references. Metadata relevance filtering should not discard a potentially important page solely because its title is vague.
 
-The supported product choices are ChatGPT, Claude, Gemini, and local AI. The intended sign-ins are UW and the chosen hosted provider only; local AI needs only UW. API-key pasting or separate service accounts do not satisfy the intended default experience. Provider-specific MCP, authorized adapters, and other connection methods remain under investigation: account sign-in does not by itself establish subscription-backed access. See [AI and privacy requirements](ai-and-privacy.md).
+The supported product choices are ChatGPT, Claude, Gemini, and local AI. The intended sign-ins are UW and the chosen hosted provider only; local AI needs only UW. API-key pasting or separate service accounts do not satisfy the intended default experience. A local stdio MCP server now exposes permission-checked evidence; provider-specific client support, authorized inference adapters, and other connection methods remain under investigation: account sign-in does not by itself establish subscription-backed access. See [AI and privacy requirements](ai-and-privacy.md).
 
 ## Stack and remaining candidates
 
@@ -95,7 +95,7 @@ Expo, Next.js/Vercel, and a relay/sync service are candidates, not commitments. 
 
 Evaluate Playwright, browser-use/Stagehand, Crawlee, document parsers, and native OCR by actual need. License review includes exact versions, transitive dependencies, model weights, and bundled binaries. A limited JavaScript dependency check is recorded in [tool evaluation](tool-evaluation.md); a complete distribution/license audit remains unfinished. Working-Memory-Jev is ideas-only per project direction.
 
-The local AI adapter uses llmfit recommendations and a compatible installed Ollama model with cloud disabled. Managed installation/downloads and model-quality evaluation remain open. The gateway implements only assignment-kind classification; the wider Jev applications described above are not hidden behind that endpoint. ChatGPT, Claude, and Gemini settings currently express a data preference and preview boundary, not an authenticated model connection.
+The local AI adapter uses llmfit recommendations and a compatible installed Ollama model with cloud disabled. Managed installation/downloads and model-quality evaluation remain open. The gateway implements only assignment-kind classification; the wider Jev applications described above are not hidden behind that endpoint. ChatGPT, Claude, and Gemini settings control previews and MCP sharing eligibility, not an embedded authenticated model connection.
 
 Private scraping is local. For a clean-room context.dev-like component, use public behavioral documentation, not implementation code. Required behavior includes partial results, login detection, safe redirect handling, output-specific status, and change baselines.
 
@@ -108,3 +108,7 @@ The following need evidence before we describe them as supported: sign-in across
 ## Tool-selection policy
 
 Compare new candidates against the actual task before adopting defaults. Check current versions, maintenance, licenses (including models and dependencies), telemetry, and benchmark provenance. Keep acquisition, extraction, structured interpretation, OCR, and change detection separate so they can be evaluated and replaced independently. See [engineering principles](engineering-principles.md) for acceptance and reversal criteria. User-suggested tools are candidates to test, not automatic dependencies.
+
+## Implemented ingestion boundary
+
+The [course-ingestion handoff](ingestion-upgrade.md) describes the current coordinator, expanded Canvas scopes, independent calendar feeds, public crawling, local document extraction, GitLab evidence, field observations/change events, and local MCP grants. These run in the existing worker/store architecture, with app-owned authentication confined to the native broker. Comments default to local collection with separate hosted sharing. Canvas viewing/must-view effects from reads are accepted and disclosed; explicit completion and other school-changing actions remain absent. Wider features above retain their stated proposal status.

@@ -7,6 +7,7 @@ await build({
     "apps/desktop/src/main.ts",
     "apps/desktop/src/preload.ts",
     "apps/desktop/src/worker.ts",
+    "apps/desktop/src/mcp-server.ts",
   ],
   outdir: "apps/desktop/dist",
   outExtension: { ".js": ".cjs" },
@@ -14,7 +15,7 @@ await build({
   platform: "node",
   target: "node24",
   format: "cjs",
-  external: ["electron"],
+  external: ["electron", "pdfjs-dist/*"],
   sourcemap: false,
   logLevel: "warning",
 });

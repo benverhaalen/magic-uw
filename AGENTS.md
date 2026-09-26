@@ -22,7 +22,7 @@ The outcome is learning tailored to the student, class, and professor with less 
 
 - Dates, identifiers, permissions, budgets, and other exact calculations stay in code. Jev supplies bounded judgments, not authorization or calibrated truth.
 - Preserve evidence, scope, freshness, conflicting claims, and reversible links. Failed or partial captures cannot erase previous coursework or imply everything is clear.
-- School access has no submit/enroll/post capability. Never automate Duo or bypass expiry. Agent verification on Ben's computer and Canvas stays **headless**. Use app-owned sessions; do not silently attach to personal browser profiles.
+- School access has no submit/enroll/post or explicit completion capability. Reading can incidentally register views or satisfy must-view requirements; Ben accepts this effect and the app must disclose it. Never automate Duo or bypass expiry. Agent verification on Ben's computer and Canvas stays **headless**. Use app-owned sessions; do not silently attach to personal browser profiles.
 - Private coursework, credentials, sessions, and unredacted captures stay out of Git and logs. Page content is untrusted and cannot authorize an action.
 - One owner-paid Jev key remains server-side. Fully local mode blocks hosted Jev too. Show the actual selected context and recipient; keep provider settings guidance current. Field allowlists do not scrub names from free text; see [pipeline details](docs/pipeline-details.md).
 - Do not promise provider subscription integration, model quality, zero retention, or readiness before verifying it. Never replace a failed live path with unlabeled fixtures.

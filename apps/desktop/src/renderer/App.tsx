@@ -10,6 +10,7 @@ import type {
 } from "@magic/contracts";
 import { LocalAiPanel } from "./LocalAiPanel";
 import { ProviderGuidance } from "./ProviderGuidance";
+import { IngestionControls, McpConnections } from "./IngestionControls";
 
 type View = "today" | "sources" | "privacy";
 type Recipient = ContextManifest["recipient"];
@@ -29,6 +30,9 @@ const statusLabels: Record<SourceHealth["status"], string> = {
   partial: "Partial capture",
   needs_sign_in: "Sign in needed",
   error: "Could not refresh",
+  inaccessible: "Access restricted",
+  not_published: "Not published",
+  needs_attention: "Needs review",
 };
 
 function formatDate(value: string | null, full = false): string {
@@ -121,7 +125,6 @@ export function App() {
   const mounted = useRef(true);
 
   const refresh = useCallback(async () => {
-    if (busyRef.current) return;
     const version = ++requestVersion.current;
     try {
       if (!window.magic)
@@ -164,11 +167,14 @@ export function App() {
       setBusy(true);
       setError("");
       setNotice("");
-      const version = ++requestVersion.current;
+      requestVersion.current++;
       try {
         const result = await operation();
-        if (!mounted.current || version !== requestVersion.current) return;
-        if (result) setSnapshot(result.snapshot);
+        if (!mounted.current) return;
+        if (result) {
+          requestVersion.current++;
+          setSnapshot(result.snapshot);
+        }
         if (result?.message || message)
           setNotice(result?.message || message || "");
         return result || undefined;
@@ -216,7 +222,46 @@ export function App() {
     void perform(() => window.magic.openExternal(url));
   };
   const resources =
-    snapshot?.resources.filter((resource) => !resource.deleted) ?? [];
+    snapshot?.resources.filter((resource) => {
+      if (resource.deleted) return false;
+      const source = snapshot.sources.find((s) => s.id === resource.sourceId);
+      const override = snapshot.courseOverrides?.find(
+        (o) =>
+          o.accountScope === source?.accountScope &&
+          o.courseId === resource.courseId,
+      );
+      const course = snapshot.resources.find(
+        (r) =>
+          r.kind === "course" &&
+          r.course &&
+          r.courseId === resource.courseId &&
+          snapshot.sources.find((s) => s.id === r.sourceId)?.scope ===
+            "course" &&
+          snapshot.sources.find((s) => s.id === r.sourceId)?.accountScope ===
+            source?.accountScope,
+      );
+      if (
+        course?.course?.accessRestricted ||
+        (course?.course?.accessState && course.course.accessState !== "open")
+      )
+        return false;
+      if (
+        course?.course?.selection?.reasons.some((reason) =>
+          /absent|no longer|not returned/i.test(reason),
+        )
+      )
+        return false;
+      const term = snapshot.ingestionSettings?.selectedTerm;
+      if (
+        term &&
+        course?.course &&
+        term !== course.course.termName &&
+        term !== course.course.termId
+      )
+        return false;
+      if (override?.included != null) return override.included;
+      return course?.course?.selection?.included ?? true;
+    }) ?? [];
   const selected =
     resources.find((resource) => resource.id === selectedId) ?? null;
   const openItems = resources.filter(
@@ -454,6 +499,7 @@ export function App() {
         ) : view === "sources" ? (
           <Sources
             snapshot={snapshot}
+            run={run}
             busy={busy}
             canSignIn={Boolean(window.magic.signInUW)}
             canSync={Boolean(window.magic.syncCanvas)}
@@ -493,7 +539,8 @@ function EmptyWorkspace({
       <h2>Bring your classes into focus.</h2>
       <p>
         Connect UW to read your coursework, or import a saved capture. Your
-        course records stay in the local workspace.
+        course records stay in the local workspace. Reading Canvas content may
+        mark it viewed, including “must view” requirements.
       </p>
       <div className="empty-actions">
         {canSignIn ? (
@@ -942,6 +989,7 @@ function Manifest({ manifest }: { manifest: ContextManifest }) {
 
 function Sources({
   snapshot,
+  run,
   busy,
   canSignIn,
   canSync,
@@ -953,6 +1001,7 @@ function Sources({
   onSample,
 }: {
   snapshot: Snapshot;
+  run: Run;
   busy: boolean;
   canSignIn: boolean;
   canSync: boolean;
@@ -980,6 +1029,9 @@ function Sources({
             <h2>UW Canvas</h2>
             <p>
               Sign in in the app’s browser. The session stays on this device.
+              Reading content may mark it viewed or satisfy a “must view”
+              requirement in Canvas. Magic Canvas does not submit work, post,
+              enroll, or send explicit completion commands.
             </p>
           </div>
         </div>
@@ -1013,6 +1065,7 @@ function Sources({
           Previously captured records remain available when a session expires.
         </p>
       </section>
+      <IngestionControls snapshot={snapshot} busy={busy} run={run} />
       <section className="settings-section">
         <h2>Captured sources</h2>
         <p className="muted">
@@ -1255,10 +1308,31 @@ function Privacy({
         />
         <SettingToggle
           label="Your work"
-          description="Allow student work as context when a feature supports it. This build does not send drafts or practice responses."
+          description="Allow student-authored material, including connected GitLab content, when a feature or MCP connection requests it."
           checked={value.shareStudentWork}
           disabled={busy || value.mode === "local_only"}
           onChange={(checked) => void update({ shareStudentWork: checked })}
+        />
+        <SettingToggle
+          label="Grades"
+          description="Scores and grading status. Stored locally; sharing is off by default."
+          checked={!!value.shareGrades}
+          disabled={busy || value.mode === "local_only"}
+          onChange={(checked) => void update({ shareGrades: checked })}
+        />
+        <SettingToggle
+          label="Grader comments"
+          description="Feedback that can help explain mistakes. Keeping comments locally does not enable cloud sharing."
+          checked={!!value.shareComments}
+          disabled={busy || value.mode === "local_only"}
+          onChange={(checked) => void update({ shareComments: checked })}
+        />
+        <SettingToggle
+          label="Course communications"
+          description="Selected announcements and messages. These may contain personal information."
+          checked={!!value.shareCommunications}
+          disabled={busy || value.mode === "local_only"}
+          onChange={(checked) => void update({ shareCommunications: checked })}
         />
         <p className="small muted">
           UW sign-in credentials, login cookies, and the shared Jev key are not
@@ -1267,6 +1341,7 @@ function Privacy({
         </p>
       </section>
       <ProviderGuidance open={open} disabled={busy} />
+      <McpConnections snapshot={snapshot} busy={busy} run={run} />
       <section className="settings-section">
         <h2>Recent data activity</h2>
         <p className="muted">
@@ -1354,7 +1429,9 @@ function Privacy({
           </div>
         )}
         <p className="small muted">
-          To clear UW login cookies too, choose Clear UW session in Sources.
+          Deleting local data also clears app-owned UW sessions, calendar feed
+          secrets, downloaded documents, and exported MCP connections. It does
+          not delete UW records.
         </p>
       </section>
     </div>

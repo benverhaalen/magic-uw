@@ -6,7 +6,10 @@
   "exports": "./src/index.ts",
   "dependencies": {
     "@magic/contracts": "workspace:*",
+    "fflate": "0.8.3",
     "htmlparser2": "12.0.0",
+    "node-ical": "0.27.2",
+    "pdfjs-dist": "6.3.289",
     "zod": "4.6.5"
   }
 }

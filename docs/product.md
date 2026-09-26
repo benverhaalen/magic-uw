@@ -23,7 +23,7 @@ The event audience will likely skew technical. The product story should still ma
 
 1. Minimize total user effort, including correction and recovery. Avoid unnecessary setup or confirmation. Learning itself can require productive effort.
 2. Respect the course's AI policy before helping. Cite the policy when it limits a request and offer an allowed next step. If vague or silent, coach.
-3. Read school systems; do not submit, enroll, or post. Access can still have incidental effects such as view tracking, which must be investigated.
+3. Read school systems; do not submit, enroll, post, or send explicit completion commands. Reading may register views or satisfy must-view requirements. This incidental effect is accepted and must be disclosed; the exact affected endpoints remain unverified.
 4. Keep the authoritative store and sessions on the student's device. Hosted inference is a separate data disclosure, not local-only processing.
 5. Render cached facts immediately. Slow generation enhances a usable screen; it does not gate first paint.
 6. Give consequential facts a source and freshness. Keep automatic links explainable and reversible.

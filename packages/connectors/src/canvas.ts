@@ -1,487 +1,1131 @@
-import { createHash } from "node:crypto";
-import { Parser } from "htmlparser2";
 import { z } from "zod";
 import {
   captureBatchSchema,
-  instant,
   resourceInputSchema,
   type CaptureBatch,
+  type CaptureDiagnostic,
   type Connector,
+  type Resource,
   type ResourceInput,
 } from "@magic/contracts";
-
-export interface CanvasConnectorOptions {
-  /** Use an app-owned browser session's fetch. Never copy cookies into headers. */
-  fetch: (url: string, init?: RequestInit) => Promise<Response>;
-  origin?: string;
+import {
+  CanvasHttp,
+  CanvasFailure,
+  canvasNextPage,
+  type CanvasHttpOptions,
+} from "./canvas-http";
+import { canvasContent } from "./canvas-content";
+import {
+  courseSelection,
+  type CanvasSelectionOptions,
+} from "./canvas-selection";
+import {
+  canvasId,
+  courseSchema,
+  canvasSubmissionSchema,
+  submissionEvidence,
+  assignmentSchema,
+  moduleSchema,
+  itemSchema,
+  pageSchema,
+  fileSchema,
+  folderSchema,
+  groupSchema,
+  quizSchema,
+  discussionSchema,
+  activitySchema,
+  todoSchema,
+  summarySchema,
+  hashCanvas,
+  courseName,
+  courseResource,
+  assignmentResource,
+  moduleResource,
+  itemResource,
+  pageResource,
+  fileResource,
+  folderResource,
+  groupResource,
+  quizResource,
+  discussionResource,
+  activityResource,
+  type CanvasCourse,
+} from "./canvas-models";
+export { courseSelection, parseAcademicTerm } from "./canvas-selection";
+export type { CanvasCourseOverride } from "./canvas-selection";
+export type { CanvasRate } from "./canvas-http";
+export interface CanvasProgress {
+  accountScope: string;
+  courseId: string;
+  scope: string;
+  status: CaptureBatch["status"];
+  complete: boolean;
+  records: number;
+  durationMs: number;
+}
+export interface CanvasConnectorOptions
+  extends CanvasHttpOptions, CanvasSelectionOptions {
   now?: () => Date;
+  collectComments?: boolean;
+  scopeTimeoutMs?: number;
+  knownResources?: Resource[];
+  onProgress?: (progress: CanvasProgress) => void;
+  /** Only the encrypted vault receives this transient capability. Never persist it with coursework. */
+  onCalendarFeed?: (feed: {
+    accountScope: string;
+    courseId: string;
+    url: string;
+  }) => void | Promise<void>;
+  /** Earliest announcement window; defaults to all available historical announcements. */
+  announcementsStartDate?: string;
 }
-
-const canvasId = z
-  .union([
-    z.number().int().positive().safe(),
-    z.string().regex(/^[1-9]\d{0,29}$/),
-  ])
-  .transform(String);
-const profileSchema = z.object({ id: canvasId });
-const courseSchema = z.object({
-  id: canvasId,
-  name: z.string().min(1).max(200),
-  syllabus_body: z.string().max(1_000_000).nullable().optional(),
-});
-const submissionSchema = z.object({
-  assignment_id: canvasId.optional(),
-  workflow_state: z
-    .enum(["submitted", "unsubmitted", "graded", "pending_review"])
-    .optional(),
-  submitted_at: instant.nullable().optional(),
-});
-const assignmentSchema = z.object({
-  id: canvasId,
-  course_id: canvasId,
-  name: z.string().min(1).max(500),
-  description: z.string().max(1_000_000).nullable(),
-  due_at: instant.nullable(),
-  lock_at: instant.nullable(),
-  points_possible: z.number().finite().nonnegative().nullable(),
-  submission: submissionSchema.nullable().optional(),
-});
-type Course = z.infer<typeof courseSchema>;
-type Assignment = z.infer<typeof assignmentSchema>;
-type FailureStatus = "error" | "partial" | "needs_sign_in";
-class CaptureFailure extends Error {
-  constructor(readonly status: FailureStatus) {
-    super("Canvas capture did not complete");
-  }
-}
-const MAX_PAGES = 20;
-const MAX_RECORDS = 2000;
-const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
-
-/** Parsing never creates a DOM, loads resources, or executes source markup. */
-function plainText(html: string): string {
-  const pieces: string[] = [];
-  let suppressed = 0;
-  const hidden = new Set([
-    "script",
-    "style",
-    "template",
-    "noscript",
-    "iframe",
-    "object",
-    "svg",
-  ]);
-  const blocks = new Set([
-    "p",
-    "div",
-    "li",
-    "ul",
-    "ol",
-    "h1",
-    "h2",
-    "h3",
-    "h4",
-    "h5",
-    "h6",
-    "br",
-    "tr",
-    "section",
-    "article",
-    "blockquote",
-    "pre",
-    "table",
-  ]);
-  const parser = new Parser(
-    {
-      onopentag(name) {
-        if (hidden.has(name)) suppressed++;
-        if (!suppressed && blocks.has(name)) pieces.push("\n");
-      },
-      ontext(value) {
-        if (!suppressed) pieces.push(value);
-      },
-      onclosetag(name) {
-        if (hidden.has(name)) suppressed = Math.max(0, suppressed - 1);
-        if (!suppressed && blocks.has(name)) pieces.push("\n");
-      },
-    },
-    { decodeEntities: true },
-  );
-  parser.end(html);
-  // Keep whitespace inside code examples; it can change their meaning.
-  const text = pieces
-    .join("")
-    .replace(/\u00a0/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-  // Truncation would silently change the evidence. Oversized documents stay partial.
-  if (text.length > 200_000) throw new CaptureFailure("partial");
-  return text;
-}
-function hash(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
-}
-function checkedOrigin(input: string): string {
-  const url = new URL(input);
-  if (
-    url.protocol !== "https:" ||
-    url.username ||
-    url.password ||
-    url.pathname !== "/" ||
-    url.search ||
-    url.hash
-  )
-    throw new Error("Canvas requires an HTTPS origin");
-  return url.origin;
-}
-function checkedApiUrl(
-  input: string,
-  origin: string,
-  expectedPath?: string,
-): string {
-  const url = new URL(input, origin);
-  if (
-    url.origin !== origin ||
-    url.username ||
-    url.password ||
-    url.hash ||
-    !url.pathname.startsWith("/api/v1/") ||
-    (expectedPath && url.pathname !== expectedPath)
-  )
-    throw new CaptureFailure("partial");
-  // The session is the only authentication mechanism; a Link must not introduce one.
-  if (
-    [...url.searchParams.keys()].some((key) =>
-      /token|authorization|cookie|password/i.test(key),
-    )
-  )
-    throw new CaptureFailure("partial");
-  return url.toString();
-}
-function nextPage(
-  link: string | null,
-  current: string,
-  origin: string,
-): string | null {
-  if (!link) return null;
-  let next: string | null = null;
-  // Canvas uses RFC 5988 Link headers. Commas inside URLs stay within <...>.
-  const entries = link.split(/,(?=\s*<)/);
-  for (const entry of entries) {
-    const match = entry.match(/^\s*<([^>]+)>\s*((?:;\s*[^;]+)*)\s*$/);
-    if (!match) throw new CaptureFailure("partial");
-    const rel = match[2]!.match(/(?:^|;)\s*rel\s*=\s*(?:"([^"]+)"|([^;\s]+))/i);
-    if ((rel?.[1] ?? rel?.[2] ?? "").split(/\s+/).includes("next")) {
-      if (next) throw new CaptureFailure("partial");
-      next = checkedApiUrl(
-        new URL(match[1]!, current).toString(),
-        origin,
-        new URL(current).pathname,
-      );
-    }
-  }
-  return next;
-}
-async function limitedText(
-  response: Response,
-  signal: AbortSignal,
-): Promise<string> {
-  const advertised = response.headers.get("content-length");
-  if (advertised && Number(advertised) > MAX_RESPONSE_BYTES)
-    throw new CaptureFailure("partial");
-  if (!response.body) throw new CaptureFailure("partial");
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let bytes = 0,
-    body = "";
-  try {
-    while (true) {
-      signal.throwIfAborted();
-      const chunk = await reader.read();
-      if (chunk.done) break;
-      bytes += chunk.value.byteLength;
-      if (bytes > MAX_RESPONSE_BYTES) throw new CaptureFailure("partial");
-      body += decoder.decode(chunk.value, { stream: true });
-    }
-    return body + decoder.decode();
-  } finally {
-    await reader.cancel().catch(() => {});
-    reader.releaseLock();
-  }
-}
-function failureStatus(error: unknown, hasRecords = false): FailureStatus {
-  if (error instanceof CaptureFailure && error.status === "needs_sign_in")
-    return "needs_sign_in";
-  if (
-    error instanceof z.ZodError ||
-    (error instanceof CaptureFailure && error.status === "partial")
-  )
-    return "partial";
+function failure(error: unknown, hasRecords = false): CaptureBatch["status"] {
+  if (error instanceof CanvasFailure) return error.status;
+  if (error instanceof z.ZodError) return "partial";
   return hasRecords ? "partial" : "error";
 }
-function submissionState(assignment: Assignment): boolean | null {
-  const submission = assignment.submission;
-  if (!submission) return null;
-  if (submission.assignment_id && submission.assignment_id !== assignment.id)
-    throw new CaptureFailure("partial");
-  if (submission.submitted_at) return true;
-  if (
-    submission.workflow_state === "submitted" ||
-    submission.workflow_state === "pending_review"
-  )
-    return true;
-  if (submission.workflow_state === "unsubmitted") return false;
-  // A grade can be entered for an offline task or missing work; it alone proves no submission.
-  return null;
+const MAX_PAGES = 20,
+  MAX_RECORDS = 2000;
+function diagnostic(error: unknown): CaptureDiagnostic[] {
+  if (error instanceof z.ZodError)
+    return error.issues.map((issue) => ({
+      code: "invalid_field",
+      path: issue.path.map((v) =>
+        typeof v === "number" ? String(v) : String(v).slice(0, 100),
+      ),
+      severity: "error" as const,
+    }));
+  return [
+    {
+      code: error instanceof CanvasFailure ? error.code : "request_failed",
+      path: [],
+      severity: "error",
+    },
+  ];
 }
-function assignmentResource(
-  assignment: Assignment,
-  course: Course,
-  origin: string,
-): ResourceInput {
-  if (assignment.course_id !== course.id) throw new CaptureFailure("partial");
-  const deadlines: ResourceInput["deadlines"] = [];
-  for (const [field, kind] of [
-    ["due_at", "due"],
-    ["lock_at", "lock"],
-  ] as const) {
-    const value = assignment[field];
-    if (value)
-      deadlines.push({
-        value,
-        kind,
-        quote: `${field}: ${value}`,
-        authority: "structured",
-        scopeConfirmed: true,
-      });
-  }
-  return resourceInputSchema.parse({
-    externalId: assignment.id,
-    kind: "assignment",
-    courseId: course.id,
-    courseName: course.name,
-    title: assignment.name,
-    url: `${origin}/courses/${course.id}/assignments/${assignment.id}`,
-    text: plainText(assignment.description ?? ""),
-    deadlines,
-    points: assignment.points_possible,
-    submitted: submissionState(assignment),
-    policy: { mode: "unknown", evidence: "" },
-  });
-}
-
-/** Read-only Canvas API capture. Complete means this endpoint scope finished, never all coursework. */
-export function canvasConnector(options: CanvasConnectorOptions): Connector {
-  const origin = checkedOrigin(options.origin ?? "https://canvas.wisc.edu");
-  const originHash = hash(origin).slice(0, 24);
-  const now = options.now ?? (() => new Date());
-  const statusSource: CaptureBatch["source"] = {
-    id: `canvas:${originHash}:status`,
-    label: "Canvas connection",
-    kind: "canvas",
-    accountScope: `connection:${originHash}`,
-    courseId: "connection",
-    scope: "connection",
-  };
-  async function request(
-    url: string,
-    signal?: AbortSignal,
-  ): Promise<{ data: unknown; link: string | null }> {
-    signal?.throwIfAborted();
-    const requestSignal = AbortSignal.any([
-      AbortSignal.timeout(15_000),
-      ...(signal ? [signal] : []),
-    ]);
-    const response = await options.fetch(checkedApiUrl(url, origin), {
-      method: "GET",
-      credentials: "include",
-      redirect: "manual",
-      headers: { Accept: "application/json" },
-      signal: requestSignal,
-    });
-    if (
-      response.status === 401 ||
-      response.status === 403 ||
-      (response.status >= 300 && response.status < 400) ||
-      response.type === "opaqueredirect" ||
-      response.redirected
-    )
-      throw new CaptureFailure("needs_sign_in");
-    if (!response.ok) throw new CaptureFailure("error");
-    // Detect a transport that ignored redirect:manual without trusting its response body.
-    if (response.url && new URL(response.url).origin !== origin)
-      throw new CaptureFailure("needs_sign_in");
-    const type = response.headers.get("content-type") ?? "";
-    if (/text\/html|application\/xhtml\+xml/i.test(type))
-      throw new CaptureFailure("needs_sign_in");
-    if (!/application\/(?:[a-z0-9.-]+\+)?json(?:\s*;|$)/i.test(type))
-      throw new CaptureFailure("partial");
-    const body = await limitedText(response, requestSignal);
-    if (/^\s*</.test(body)) throw new CaptureFailure("needs_sign_in");
-    let data: unknown;
-    try {
-      data = JSON.parse(body);
-    } catch {
-      throw new CaptureFailure("partial");
-    }
-    return { data, link: response.headers.get("link") };
-  }
-  async function collect<T>(
-    initial: string,
-    schema: z.ZodType<T>,
-    signal: AbortSignal | undefined,
-    accept?: (items: T[]) => void,
-  ): Promise<{
-    items: T[];
-    status: CaptureBatch["status"];
-    complete: boolean;
-  }> {
-    const items: T[] = [];
-    const seen = new Set<string>();
-    let url: string | null = initial;
-    try {
-      for (let page = 0; url && page < MAX_PAGES; page++) {
-        if (seen.has(url)) throw new CaptureFailure("partial");
-        seen.add(url);
-        const response = await request(url, signal);
-        const parsed = z.array(schema).max(MAX_RECORDS).parse(response.data);
-        if (items.length + parsed.length > MAX_RECORDS)
-          throw new CaptureFailure("partial");
-        accept?.(parsed);
-        items.push(...parsed);
-        url = nextPage(response.link, url, origin);
+async function pool<T>(
+  items: T[],
+  concurrency: number,
+  operation: (item: T) => Promise<void>,
+) {
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+      for (;;) {
+        const index = next++;
+        if (index >= items.length) return;
+        await operation(items[index]!);
       }
-      if (url) throw new CaptureFailure("partial");
-      return { items, status: "ok", complete: true };
-    } catch (error) {
-      signal?.throwIfAborted();
-      return {
-        items,
-        status: failureStatus(error, items.length > 0),
-        complete: false,
-      };
+    }),
+  );
+}
+/** The scheduler's probe reads only the documented activity summary, with the same session boundary. */
+export async function fetchCanvasActivitySummary(
+  options: CanvasHttpOptions,
+  signal?: AbortSignal,
+): Promise<{
+  status: CaptureBatch["status"];
+  hash?: string;
+  stats: {
+    requests: number;
+    rateLimitRemaining?: number;
+    requestCost?: number;
+  };
+}> {
+  const http = new CanvasHttp(options);
+  const items: z.infer<typeof summarySchema>[] = [];
+  let url: string | null =
+    `${http.origin}/api/v1/users/self/activity_stream/summary?per_page=100&only_active_courses=true`;
+  const initial = url,
+    seen = new Set<string>();
+  try {
+    for (let page = 0; url && page < MAX_PAGES; page++) {
+      if (seen.has(url)) throw new CanvasFailure("partial", "pagination_cycle");
+      seen.add(url);
+      const response = await http.request(url, signal);
+      items.push(
+        ...z.array(summarySchema).max(MAX_RECORDS).parse(response.data),
+      );
+      if (items.length > MAX_RECORDS)
+        throw new CanvasFailure("partial", "record_limit");
+      url = canvasNextPage(response.link, url, initial, http.origin);
     }
+    if (url) throw new CanvasFailure("partial", "page_limit");
+    return {
+      status: "ok",
+      hash: hashCanvas(
+        JSON.stringify(items.sort((a, b) => a.type.localeCompare(b.type))),
+      ),
+      stats: {
+        requests: http.rate.requests,
+        rateLimitRemaining: http.rate.remaining,
+        requestCost: http.rate.cost,
+      },
+    };
+  } catch (error) {
+    signal?.throwIfAborted();
+    return {
+      status: failure(error),
+      stats: {
+        requests: http.rate.requests,
+        rateLimitRemaining: http.rate.remaining,
+        requestCost: http.rate.cost,
+      },
+    };
   }
+}
+/** Each scope is independent. Streamed pages remain partial until that entire scope has finished. */
+export function canvasConnector(options: CanvasConnectorOptions): Connector {
+  const now = options.now ?? (() => new Date());
   return {
     id: "canvas",
     async *pull(signal) {
       signal?.throwIfAborted();
-      const batch = (
-        source: CaptureBatch["source"],
+      const stop = new AbortController(),
+        combined = AbortSignal.any([stop.signal, ...(signal ? [signal] : [])]);
+      const http = new CanvasHttp(options),
+        origin = http.origin,
+        connectionHash = hashCanvas(origin).slice(0, 24);
+      let accountScope = `connection:${connectionHash}`;
+      let fatal: unknown,
+        done = false,
+        wake: (() => void) | undefined;
+      const queue: CaptureBatch[] = [];
+      const observationTimes = new Map<string, number>();
+      const selection = () => ({
+        accountScope,
+        courseOverrides: options.courseOverrides,
+        selectedTerm: options.selectedTerm,
+        currentTime: now(),
+      });
+      function source(
+        courseId: string,
+        name: string,
+        scope: string,
+      ): CaptureBatch["source"] {
+        return {
+          id:
+            scope === "connection"
+              ? `canvas:${connectionHash}:status`
+              : `canvas:${accountScope}:${courseId}:${scope}`,
+          label: `${name.slice(0, 145)} · ${scope}`.slice(0, 200),
+          kind: "canvas",
+          accountScope:
+            scope === "connection"
+              ? `connection:${connectionHash}`
+              : accountScope,
+          courseId,
+          scope,
+        };
+      }
+      function emit(
+        courseId: string,
+        name: string,
+        scope: string,
+        resources: ResourceInput[],
         status: CaptureBatch["status"],
         complete: boolean,
-        resources: ResourceInput[] = [],
-      ): CaptureBatch =>
-        captureBatchSchema.parse({
-          source,
-          observedAt: now().toISOString(),
+        diagnostics: CaptureDiagnostic[] = [],
+        started = performance.now(),
+        pages = 0,
+        requests = 0,
+      ) {
+        const durationMs = Math.max(0, performance.now() - started);
+        const batchSource = source(courseId, name, scope);
+        const observedMs = Math.max(
+          now().getTime(),
+          (observationTimes.get(batchSource.id) ?? -Infinity) + 1,
+        );
+        observationTimes.set(batchSource.id, observedMs);
+        const value = captureBatchSchema.parse({
+          source: batchSource,
+          observedAt: new Date(observedMs).toISOString(),
+          resources: [...resources],
           status,
           complete,
-          resources,
+          diagnostics: diagnostics.slice(0, 2000),
+          stats: {
+            durationMs,
+            pages,
+            records: resources.length,
+            requests,
+            rateLimitRemaining: http.rate.remaining,
+            requestCost: http.rate.cost,
+          },
+          progress: {
+            phase: complete
+              ? "complete"
+              : status === "partial"
+                ? "reading"
+                : status,
+            completed: resources.length,
+          },
         });
-      let accountScope: string;
-      try {
-        const { data } = await request(
-          `${origin}/api/v1/users/self/profile`,
-          signal,
-        );
-        const { id } = profileSchema.parse(data);
-        accountScope = hash(`${origin}\n${id}`);
-      } catch (error) {
-        signal?.throwIfAborted();
-        yield batch(statusSource, failureStatus(error), false);
-        return;
-      }
-      const courseIds = new Set<string>();
-      const courses = await collect(
-        `${origin}/api/v1/courses?enrollment_state=active&per_page=100&include[]=syllabus_body`,
-        courseSchema,
-        signal,
-        (items) => {
-          const ids = new Set<string>();
-          for (const course of items) {
-            if (ids.has(course.id) || courseIds.has(course.id))
-              throw new CaptureFailure("partial");
-            ids.add(course.id);
-          }
-          for (const id of ids) courseIds.add(id);
-        },
-      );
-      yield batch(statusSource, courses.status, courses.complete);
-      if (courses.status === "needs_sign_in") return;
-      for (const course of courses.items) {
-        signal?.throwIfAborted();
-        const source = (
-          scope: "assignments" | "syllabus",
-        ): CaptureBatch["source"] => ({
-          id: `canvas:${accountScope}:${course.id}:${scope}`,
-          label: `${course.name.slice(0, 175)} · ${scope}`,
-          kind: "canvas",
+        queue.push(value);
+        wake?.();
+        wake = undefined;
+        options.onProgress?.({
           accountScope,
-          courseId: course.id,
+          courseId,
           scope,
+          status,
+          complete,
+          records: resources.length,
+          durationMs,
         });
+      }
+      async function collect<T>(
+        course: CanvasCourse,
+        scope: string,
+        url: string,
+        schema: z.ZodType<T>,
+        map?: (item: T) => ResourceInput | null,
+        single = false,
+      ): Promise<{
+        items: T[];
+        resources: ResourceInput[];
+        complete: boolean;
+        status: CaptureBatch["status"];
+      }> {
+        const scopeSignal = AbortSignal.any([
+          combined,
+          AbortSignal.timeout(options.scopeTimeoutMs ?? 120_000),
+        ]);
+        const items: T[] = [],
+          resources: ResourceInput[] = [],
+          diagnostics: CaptureDiagnostic[] = [];
+        const seenUrls = new Set<string>(),
+          seenIds = new Set<string>(),
+          started = performance.now(),
+          initial = url,
+          requestStats = { requests: 0 };
+        let next: string | null = url,
+          pages = 0,
+          status: CaptureBatch["status"] = "ok",
+          invalid = false;
         try {
-          if (course.syllabus_body === undefined) {
-            yield batch(source("syllabus"), "partial", false);
-          } else {
-            const text = plainText(course.syllabus_body ?? "");
-            const resources: ResourceInput[] = text
+          while (next && pages < MAX_PAGES) {
+            if (seenUrls.has(next))
+              throw new CanvasFailure("partial", "pagination_cycle");
+            seenUrls.add(next);
+            const response = await http.request(
+              next,
+              scopeSignal,
+              requestStats,
+            );
+            pages++;
+            if (!single && !Array.isArray(response.data))
+              throw new CanvasFailure("partial", "expected_array");
+            const records: unknown[] = single
+              ? [response.data]
+              : (response.data as unknown[]);
+            if (
+              records.length > MAX_RECORDS ||
+              items.length + records.length > MAX_RECORDS
+            )
+              throw new CanvasFailure("partial", "record_limit");
+            for (let index = 0; index < records.length; index++) {
+              try {
+                const item = schema.parse(records[index]);
+                const row = map?.(item);
+                const record = item as Record<string, unknown>;
+                const nestedAssignment = record.assignment as
+                    Record<string, unknown> | undefined,
+                  nestedQuiz = record.quiz as
+                    Record<string, unknown> | undefined;
+                const identity =
+                  row?.externalId ??
+                  String(
+                    record.id ??
+                      record.page_id ??
+                      record.assignment_id ??
+                      nestedAssignment?.id ??
+                      nestedQuiz?.id ??
+                      record.type ??
+                      index,
+                  );
+                if (seenIds.has(identity))
+                  throw new CanvasFailure("partial", "duplicate_identity");
+                seenIds.add(identity);
+                items.push(item);
+                if (row) resources.push(row);
+                if (
+                  schema instanceof z.ZodObject &&
+                  records[index] &&
+                  typeof records[index] === "object"
+                ) {
+                  const fields = Object.keys(
+                      records[index] as Record<string, unknown>,
+                    ),
+                    expected = Object.keys(schema.shape);
+                  const unexpected = fields.filter(
+                    (field) => !expected.includes(field),
+                  ).length;
+                  if (unexpected > 32 && unexpected / fields.length > 0.85) {
+                    invalid = true;
+                    diagnostics.push({
+                      code: "many_unexpected_fields",
+                      path: [String(index)],
+                      severity: "warning",
+                    });
+                  }
+                }
+                const open = item as Record<string, unknown>,
+                  submission = open.submission as
+                    Record<string, unknown> | null | undefined;
+                if (
+                  submission?.workflow_state &&
+                  ![
+                    "submitted",
+                    "unsubmitted",
+                    "graded",
+                    "pending_review",
+                  ].includes(String(submission.workflow_state))
+                )
+                  diagnostics.push({
+                    code: "unknown_submission_state",
+                    path: ["submission", "workflow_state"],
+                    severity: "warning",
+                  });
+                if (
+                  open.workflow_state &&
+                  ![
+                    "available",
+                    "unpublished",
+                    "completed",
+                    "deleted",
+                    "published",
+                    "unpublished",
+                    "active",
+                    "unlocked",
+                    "locked",
+                    "started",
+                  ].includes(String(open.workflow_state))
+                )
+                  diagnostics.push({
+                    code: "unknown_workflow_state",
+                    path: ["workflow_state"],
+                    severity: "warning",
+                  });
+              } catch (error) {
+                invalid = true;
+                diagnostics.push(
+                  ...diagnostic(error).map((d) => ({
+                    ...d,
+                    path: [String((pages - 1) * 100 + index), ...d.path],
+                  })),
+                );
+              }
+            }
+            next = single
+              ? null
+              : canvasNextPage(response.link, next, initial, origin);
+            if (next)
+              emit(
+                course.id,
+                courseName(course),
+                scope,
+                resources,
+                "partial",
+                false,
+                diagnostics,
+                started,
+                pages,
+                requestStats.requests,
+              );
+          }
+          if (next) throw new CanvasFailure("partial", "page_limit");
+          if (invalid) status = "partial";
+        } catch (error) {
+          combined.throwIfAborted();
+          status = scopeSignal.aborted
+            ? "partial"
+            : failure(error, resources.length > 0);
+          diagnostics.push(
+            ...(scopeSignal.aborted
+              ? [
+                  {
+                    code: "scope_time_limit",
+                    path: [],
+                    severity: "error" as const,
+                  },
+                ]
+              : diagnostic(error)),
+          );
+        }
+        const complete = status === "ok";
+        emit(
+          course.id,
+          courseName(course),
+          scope,
+          resources,
+          status,
+          complete,
+          diagnostics,
+          started,
+          pages,
+          requestStats.requests,
+        );
+        return { items, resources, complete, status };
+      }
+      function syllabus(course: CanvasCourse) {
+        if (course.syllabus_body === undefined) {
+          emit(
+            course.id,
+            courseName(course),
+            "syllabus",
+            [],
+            "partial",
+            false,
+            [{ code: "missing_field", path: ["syllabus_body"] }],
+          );
+          return;
+        }
+        try {
+          const content = canvasContent(
+            course.syllabus_body ?? "",
+            `${origin}/courses/${course.id}/assignments/syllabus`,
+          );
+          const resources =
+            content.text || content.links.length
               ? [
                   resourceInputSchema.parse({
                     externalId: "syllabus",
                     kind: "material",
                     courseId: course.id,
-                    courseName: course.name,
+                    courseName: courseName(course),
                     title: "Syllabus",
                     url: `${origin}/courses/${course.id}/assignments/syllabus`,
-                    text,
-                    deadlines: [],
-                    points: null,
-                    submitted: null,
-                    policy: { mode: "unknown", evidence: "" },
+                    ...content,
                   }),
                 ]
               : [];
-            yield batch(source("syllabus"), "ok", true, resources);
-          }
+          emit(
+            course.id,
+            courseName(course),
+            "syllabus",
+            resources,
+            "ok",
+            true,
+          );
         } catch (error) {
-          signal?.throwIfAborted();
-          yield batch(source("syllabus"), failureStatus(error), false);
+          emit(
+            course.id,
+            courseName(course),
+            "syllabus",
+            [],
+            failure(error),
+            false,
+            diagnostic(error),
+          );
         }
-        const resources: ResourceInput[] = [];
-        const assignmentIds = new Set<string>();
-        const assignments = await collect(
-          `${origin}/api/v1/courses/${course.id}/assignments?per_page=100&include[]=submission`,
-          assignmentSchema,
-          signal,
-          (items) => {
-            const pageResources = items.map((item) =>
-              assignmentResource(item, course, origin),
-            );
-            const ids = new Set<string>();
-            for (const item of pageResources) {
-              if (
-                ids.has(item.externalId) ||
-                assignmentIds.has(item.externalId)
-              )
-                throw new CaptureFailure("partial");
-              ids.add(item.externalId);
-            }
-            for (const id of ids) assignmentIds.add(id);
-            resources.push(...pageResources);
-          },
-        );
-        yield batch(
-          source("assignments"),
-          assignments.status,
-          assignments.complete,
-          resources,
-        );
-        if (assignments.status === "needs_sign_in") {
-          yield batch(statusSource, "needs_sign_in", false);
+      }
+      async function calendar(course: CanvasCourse) {
+        const candidate = course.calendar?.ics;
+        if (!candidate) {
+          emit(
+            course.id,
+            courseName(course),
+            "calendar-discovery",
+            [],
+            "inaccessible",
+            false,
+            [
+              {
+                code: "calendar_feed_unavailable",
+                path: ["calendar", "ics"],
+                severity: "warning",
+              },
+            ],
+          );
           return;
         }
+        if (!options.onCalendarFeed) {
+          emit(
+            course.id,
+            courseName(course),
+            "calendar-discovery",
+            [],
+            "partial",
+            false,
+            [
+              {
+                code: "calendar_secret_store_unconfigured",
+                path: [],
+                severity: "warning",
+              },
+            ],
+          );
+          return;
+        }
+        let valid = false;
+        try {
+          const url = new URL(candidate);
+          valid =
+            url.origin === origin &&
+            !url.username &&
+            !url.password &&
+            !url.search &&
+            !url.hash &&
+            /^\/feeds\/calendars\/[A-Za-z0-9_-]+\.ics$/.test(url.pathname);
+        } catch {}
+        if (!valid) {
+          emit(
+            course.id,
+            courseName(course),
+            "calendar-discovery",
+            [],
+            "partial",
+            false,
+            [
+              {
+                code: "invalid_calendar_capability",
+                path: ["calendar", "ics"],
+              },
+            ],
+          );
+          return;
+        }
+        try {
+          await options.onCalendarFeed({
+            accountScope,
+            courseId: course.id,
+            url: candidate,
+          });
+          emit(
+            course.id,
+            courseName(course),
+            "calendar-discovery",
+            [],
+            "ok",
+            true,
+          );
+        } catch {
+          emit(
+            course.id,
+            courseName(course),
+            "calendar-discovery",
+            [],
+            "error",
+            false,
+            [{ code: "calendar_secret_storage_failed", path: [] }],
+          );
+        }
+      }
+      async function work() {
+        let profile: { id: string };
+        try {
+          profile = z
+            .object({ id: canvasId })
+            .parse(
+              (
+                await http.request(
+                  `${origin}/api/v1/users/self/profile`,
+                  combined,
+                )
+              ).data,
+            );
+        } catch (error) {
+          combined.throwIfAborted();
+          emit(
+            "connection",
+            "Canvas connection",
+            "connection",
+            [],
+            failure(error),
+            false,
+            diagnostic(error),
+          );
+          return;
+        }
+        accountScope = hashCanvas(`${origin}\n${profile.id}`);
+        const account: CanvasCourse = { id: "account", name: "Canvas account" };
+        const accountJobs = [
+          { scope: "todo", schema: todoSchema, path: "todo" },
+          {
+            scope: "upcoming-events",
+            schema: activitySchema,
+            path: "upcoming_events",
+          },
+          {
+            scope: "activity",
+            schema: activitySchema,
+            path: "activity_stream",
+          },
+          {
+            scope: "activity-summary",
+            schema: summarySchema,
+            path: "activity_stream/summary",
+          },
+        ];
+        const accountReads = accountJobs.map((job) => ({
+          job,
+          promise: collect(
+            account,
+            job.scope,
+            `${origin}/api/v1/users/self/${job.path}?per_page=100${job.path.startsWith("activity_stream") ? "&only_active_courses=true" : ""}`,
+            job.schema as z.ZodType<Record<string, unknown>>,
+            job.scope === "activity-summary"
+              ? (item) =>
+                  resourceInputSchema.parse({
+                    externalId: String(item.type),
+                    kind: "material",
+                    courseId: "account",
+                    courseName: "Canvas account",
+                    title: `Activity summary: ${String(item.type)}`,
+                    url: `${origin}/`,
+                    text: JSON.stringify(item),
+                  })
+              : undefined,
+          ),
+        }));
+        const accountSettled = Promise.allSettled(
+          accountReads.map((read) => read.promise),
+        );
+        const catalog = await collect(
+          account,
+          "courses",
+          `${origin}/api/v1/courses?enrollment_state=active&per_page=100&include[]=syllabus_body&include[]=term&include[]=teachers&include[]=total_scores&include[]=concluded`,
+          courseSchema,
+        );
+        emit(
+          "connection",
+          "Canvas connection",
+          "connection",
+          [],
+          catalog.status,
+          catalog.complete,
+        );
+        for (const course of catalog.items) {
+          const restricted =
+            course.access_restricted_by_date ||
+            course.workflow_state === "unpublished";
+          emit(
+            course.id,
+            courseName(course),
+            "course",
+            [courseResource(course, origin, selection())],
+            restricted
+              ? course.workflow_state === "unpublished"
+                ? "not_published"
+                : "inaccessible"
+              : "ok",
+            !restricted,
+          );
+        }
+        // Absence is evidence only after the complete catalog succeeds. Keep the last
+        // coursework while removing the stale automatic inclusion decision.
+        if (catalog.complete) {
+          const listed = new Set(catalog.items.map((course) => course.id));
+          for (const known of options.knownResources ?? []) {
+            if (
+              known.kind !== "course" ||
+              known.deleted ||
+              listed.has(known.courseId) ||
+              known.sourceId !==
+                source(known.courseId, known.courseName, "course").id
+            )
+              continue;
+            const retained = resourceInputSchema.parse(
+              Object.fromEntries(
+                Object.entries(known).filter(
+                  ([key]) => key in resourceInputSchema.shape,
+                ),
+              ),
+            );
+            retained.course = {
+              ...retained.course,
+              selection: {
+                score: retained.course?.selection?.score ?? 0,
+                included: false,
+                reasons: ["No longer returned in the active enrollment list"],
+                override: retained.course?.selection?.override,
+              },
+            };
+            emit(
+              known.courseId,
+              known.courseName,
+              "course",
+              [retained],
+              "inaccessible",
+              false,
+              [
+                {
+                  code: "absent_from_active_course_catalog",
+                  path: [],
+                  severity: "warning",
+                },
+              ],
+            );
+          }
+        }
+        if (http.needsSignIn) {
+          await accountSettled;
+          return;
+        }
+        const courses = catalog.items.filter(
+            (course) => courseSelection(course, selection()).included,
+          ),
+          byId = new Map(courses.map((c) => [c.id, c]));
+        await pool(accountReads, http.concurrency, async ({ job, promise }) => {
+          const rows = await promise;
+          if (job.scope === "activity-summary") return;
+          for (const course of courses) {
+            const resources: ResourceInput[] = [],
+              diagnostics: CaptureDiagnostic[] = [];
+            for (const row of rows.items) {
+              const assignment = row.assignment as
+                z.infer<typeof assignmentSchema> | undefined;
+              const id = String(
+                row.course_id ??
+                  assignment?.course_id ??
+                  String(row.context_code ?? "").replace(/^course_/, ""),
+              );
+              if (id !== course.id || !byId.has(id)) continue;
+              try {
+                const resource = assignment
+                  ? assignmentResource(
+                      assignment,
+                      course,
+                      origin,
+                      options.collectComments !== false,
+                    )
+                  : row.quiz
+                    ? quizResource(
+                        row.quiz as z.infer<typeof quizSchema>,
+                        course,
+                        origin,
+                      )
+                    : activityResource(
+                        row as z.infer<typeof activitySchema>,
+                        course,
+                        origin,
+                      );
+                if (
+                  !resources.some((r) => r.externalId === resource.externalId)
+                )
+                  resources.push(resource);
+              } catch (error) {
+                diagnostics.push(...diagnostic(error));
+              }
+            }
+            emit(
+              course.id,
+              courseName(course),
+              `account-${job.scope}`,
+              resources,
+              diagnostics.length ? "partial" : rows.status,
+              rows.complete && !diagnostics.length,
+              diagnostics,
+            );
+          }
+        });
+        const references = new Map<string, Map<string, boolean>>();
+        function gather(course: CanvasCourse, resources: ResourceInput[]) {
+          let refs = references.get(course.id);
+          if (!refs) references.set(course.id, (refs = new Map()));
+          for (const row of resources) {
+            const soon = row.deadlines.some(
+              (d) =>
+                d.kind === "due" &&
+                Date.parse(d.value) <= now().getTime() + 14 * 86400_000,
+            );
+            for (const link of row.links ?? []) {
+              const url = new URL(typeof link === "string" ? link : link.url);
+              const match = url.pathname.match(
+                new RegExp(`^/courses/${course.id}/pages/([^/]+)$`),
+              );
+              if (url.origin === origin && match) {
+                const slug = decodeURIComponent(match[1]!);
+                if (/^[a-zA-Z0-9_%.-]{1,256}$/.test(slug))
+                  refs.set(slug, (refs.get(slug) ?? false) || soon);
+              }
+            }
+          }
+        }
+        // First useful account captures are already yielded. Run course essentials before body reads.
+        await pool(courses, http.concurrency, async (course) => {
+          if (http.needsSignIn) return;
+          syllabus(course);
+          const assignments = await collect(
+            course,
+            "assignments",
+            `${origin}/api/v1/courses/${course.id}/assignments?per_page=100&include[]=submission&order_by=due_at`,
+            assignmentSchema,
+            (item) =>
+              assignmentResource(
+                item,
+                course,
+                origin,
+                options.collectComments !== false,
+              ),
+          );
+          gather(course, assignments.resources);
+          if (http.needsSignIn) return;
+          const modules = await collect(
+            course,
+            "modules",
+            `${origin}/api/v1/courses/${course.id}/modules?per_page=100`,
+            moduleSchema,
+            (item) => moduleResource(item, course, origin),
+          );
+          for (const module of modules.items) {
+            if (http.needsSignIn) return;
+            const items = await collect(
+              course,
+              `module-items:${module.id}`,
+              `${origin}/api/v1/courses/${course.id}/modules/${module.id}/items?per_page=100&include[]=content_details`,
+              itemSchema,
+              (item) => {
+                if (item.module_id && item.module_id !== module.id)
+                  throw new CanvasFailure("partial", "module_id_mismatch");
+                return itemResource(item, course, origin);
+              },
+            );
+            gather(course, items.resources);
+          }
+          if (http.needsSignIn) return;
+          const end = now().toISOString(),
+            start = options.announcementsStartDate ?? "1970-01-01";
+          await collect(
+            course,
+            "announcements",
+            `${origin}/api/v1/announcements?per_page=100&context_codes[]=course_${course.id}&start_date=${encodeURIComponent(start)}&end_date=${encodeURIComponent(end)}`,
+            discussionSchema,
+            (item) => discussionResource(item, course, origin),
+          );
+        });
+        if (!http.needsSignIn)
+          await pool(courses, http.concurrency, async (course) => {
+            const pageList = await collect(
+              course,
+              "pages",
+              `${origin}/api/v1/courses/${course.id}/pages?per_page=100`,
+              pageSchema,
+              (item) => {
+                const resource = pageResource(
+                  { ...item, body: undefined },
+                  course,
+                  origin,
+                );
+                delete resource.rawHtml;
+                return resource;
+              },
+            );
+            const refs =
+              references.get(course.id) ?? new Map<string, boolean>();
+            // Reading may register a view in Canvas. This accepted side effect is disclosed in Sources.
+            const bodyJobs = [
+              ...new Set([
+                ...refs.keys(),
+                ...pageList.items.map((page) => page.url),
+              ]),
+            ].sort(
+              (a, b) =>
+                Number(refs.get(b) ?? false) - Number(refs.get(a) ?? false) ||
+                Number(refs.has(b)) - Number(refs.has(a)),
+            );
+            for (const slug of bodyJobs) {
+              if (http.needsSignIn) return;
+              const metadata = pageList.items.find((page) => page.url === slug);
+              const scope = `page:${metadata?.page_id ?? hashCanvas(slug).slice(0, 24)}`;
+              const known = options.knownResources?.find(
+                (row) =>
+                  row.sourceId ===
+                    source(course.id, courseName(course), scope).id &&
+                  row.externalId === metadata?.page_id &&
+                  !row.deleted &&
+                  row.updatedAt &&
+                  row.updatedAt === metadata.updated_at &&
+                  row.rawHtml !== undefined &&
+                  row.contentHash,
+              );
+              if (known) {
+                emit(
+                  course.id,
+                  courseName(course),
+                  scope,
+                  [
+                    resourceInputSchema.parse(
+                      Object.fromEntries(
+                        Object.entries(known).filter(
+                          ([key]) => key in resourceInputSchema.shape,
+                        ),
+                      ),
+                    ),
+                  ],
+                  "ok",
+                  true,
+                  [
+                    {
+                      code: "unchanged_page_reused",
+                      path: ["updated_at"],
+                      severity: "warning",
+                    },
+                  ],
+                );
+                continue;
+              }
+              await collect(
+                course,
+                scope,
+                `${origin}/api/v1/courses/${course.id}/pages/${encodeURIComponent(slug)}`,
+                pageSchema,
+                (item) => {
+                  if (
+                    item.url !== slug ||
+                    (metadata && item.page_id !== metadata.page_id)
+                  )
+                    throw new CanvasFailure(
+                      "partial",
+                      "page_identity_mismatch",
+                    );
+                  if (item.body === undefined)
+                    throw new CanvasFailure("partial", "missing_page_body");
+                  return pageResource(item, course, origin);
+                },
+                true,
+              );
+            }
+          });
+        const backgroundJobs: Array<() => Promise<unknown>> = [];
+        for (const course of courses) {
+          const prefix = `${origin}/api/v1/courses/${course.id}`;
+          backgroundJobs.push(async () => {
+            const details = await collect(
+              course,
+              "details",
+              `${prefix}?include[]=term&include[]=syllabus_body`,
+              courseSchema,
+              (item) => {
+                if (item.id !== course.id)
+                  throw new CanvasFailure("partial", "course_id_mismatch");
+                return null;
+              },
+              true,
+            );
+            if (details.items[0]) {
+              const detailed = { ...course, ...details.items[0] };
+              emit(
+                course.id,
+                courseName(detailed),
+                "course",
+                [courseResource(detailed, origin, selection())],
+                details.status,
+                details.complete,
+              );
+              syllabus(detailed);
+              await calendar(details.items[0]);
+            }
+          });
+          if (options.collectComments !== false)
+            backgroundJobs.push(() =>
+              collect(
+                course,
+                "submissions",
+                `${prefix}/students/submissions?per_page=100&include[]=submission_comments`,
+                canvasSubmissionSchema,
+                (item) => {
+                  if (item.user_id && item.user_id !== profile.id)
+                    throw new CanvasFailure(
+                      "partial",
+                      "submission_user_mismatch",
+                    );
+                  return resourceInputSchema.parse({
+                    externalId: item.assignment_id,
+                    kind: "material",
+                    courseId: course.id,
+                    courseName: courseName(course),
+                    title: `Submission feedback ${item.assignment_id}`,
+                    url: `${origin}/courses/${course.id}/assignments/${item.assignment_id}`,
+                    text: "",
+                    submission: submissionEvidence(item, origin),
+                  });
+                },
+              ),
+            );
+          backgroundJobs.push(() =>
+            collect(
+              course,
+              "files",
+              `${prefix}/files?per_page=100`,
+              fileSchema,
+              (item) => fileResource(item, course, origin),
+            ),
+          );
+          backgroundJobs.push(() =>
+            collect(
+              course,
+              "folders",
+              `${prefix}/folders?per_page=100`,
+              folderSchema,
+              (item) => folderResource(item, course, origin),
+            ),
+          );
+          backgroundJobs.push(() =>
+            collect(
+              course,
+              "assignment-groups",
+              `${prefix}/assignment_groups?per_page=100`,
+              groupSchema,
+              (item) => groupResource(item, course, origin),
+            ),
+          );
+          backgroundJobs.push(() =>
+            collect(
+              course,
+              "quizzes",
+              `${prefix}/quizzes?per_page=100`,
+              quizSchema,
+              (item) => quizResource(item, course, origin),
+            ),
+          );
+          backgroundJobs.push(() =>
+            collect(
+              course,
+              "discussions",
+              `${prefix}/discussion_topics?per_page=100`,
+              discussionSchema,
+              (item) => discussionResource(item, course, origin),
+            ),
+          );
+        }
+        await pool(backgroundJobs, http.concurrency, async (job) => {
+          if (!http.needsSignIn) await job();
+        });
+        if (http.needsSignIn)
+          emit(
+            "connection",
+            "Canvas connection",
+            "connection",
+            [],
+            "needs_sign_in",
+            false,
+          );
+      }
+      const running = work()
+        .catch((error) => {
+          fatal = error;
+        })
+        .finally(() => {
+          done = true;
+          wake?.();
+          wake = undefined;
+        });
+      try {
+        while (!done || queue.length) {
+          if (queue.length) {
+            yield queue.shift()!;
+            continue;
+          }
+          await new Promise<void>((resolve) => {
+            wake = resolve;
+          });
+        }
+        if (fatal) throw fatal;
+      } finally {
+        stop.abort();
+        await running;
       }
     },
   };

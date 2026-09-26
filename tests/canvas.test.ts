@@ -11,6 +11,10 @@ const fixedNow = () => new Date("2026-09-26T15:00:00.000Z");
 const course = {
   id: 42,
   name: "Synthetic Course",
+  course_code: "HISTORY 201",
+  workflow_state: "available",
+  term: { id: 1, name: "Fall 2026" },
+  enrollments: [{ type: "student", enrollment_state: "active" }],
   syllabus_body: "<h1>Course</h1><p>Discuss your reasoning.</p>",
 };
 const assignment = (id = 7, extra: Record<string, unknown> = {}) => ({
@@ -46,7 +50,8 @@ function transport(
       return courseReply ? courseReply(url) : json([course]);
     if (url.pathname === "/api/v1/courses/42/assignments")
       return assignmentReply(url);
-    throw new Error("Unexpected request");
+    if (url.pathname === "/api/v1/courses/42") return json(course);
+    return json([]);
   };
   return { fetch, calls };
 }
@@ -55,18 +60,21 @@ async function pull(
   signal?: AbortSignal,
 ) {
   const batches: CaptureBatch[] = [];
-  for await (const batch of canvasConnector({ fetch, now: fixedNow }).pull(
-    signal,
-  )) {
+  for await (const batch of canvasConnector({
+    fetch,
+    now: fixedNow,
+    sleep: async () => {},
+    random: () => 0,
+  }).pull(signal)) {
     captureBatchSchema.parse(batch);
     batches.push(batch);
   }
   return batches;
 }
 const assignments = (batches: CaptureBatch[]) =>
-  batches.find((batch) => batch.source.scope === "assignments")!;
+  batches.filter((batch) => batch.source.scope === "assignments").at(-1)!;
 
-test("Canvas maps current-user due and lock separately, uses submission evidence, and stores no profile or HTML", async () => {
+test("Canvas maps current-user due and lock separately, uses submission evidence, and preserves markup without storing profile data", async () => {
   const mock = transport(() =>
     json([
       assignment(7, {
@@ -120,10 +128,17 @@ test("Canvas maps current-user due and lock separately, uses submission evidence
     assert.deepEqual(call.init.headers, { Accept: "application/json" });
   }
   assert.equal(
-    mock.calls[1]!.url.searchParams.get("enrollment_state"),
+    mock.calls
+      .find((call) => call.url.pathname === "/api/v1/courses")!
+      .url.searchParams.get("enrollment_state"),
     "active",
   );
-  assert.equal(mock.calls[2]!.url.searchParams.get("include[]"), "submission");
+  assert.equal(
+    mock.calls
+      .find((call) => call.url.pathname.endsWith("/assignments"))!
+      .url.searchParams.get("include[]"),
+    "submission",
+  );
 });
 
 test("Canvas only marks assignments complete after all same-scope pages finish", async () => {
@@ -137,7 +152,11 @@ test("Canvas only marks assignments complete after all same-scope pages finish",
   const batch = assignments(await pull(mock.fetch));
   assert.equal(batch.complete, true);
   assert.equal(batch.resources.length, 2);
-  assert.equal(mock.calls.length, 4);
+  assert.equal(
+    mock.calls.filter((call) => call.url.pathname.endsWith("/assignments"))
+      .length,
+    2,
+  );
 });
 
 test("Canvas preserves a successful page when pagination drifts across origins or course scopes", async () => {
@@ -154,7 +173,11 @@ test("Canvas preserves a successful page when pagination drifts across origins o
     assert.equal(batch.complete, false);
     assert.equal(batch.status, "partial");
     assert.equal(batch.resources.length, 1);
-    assert.equal(mock.calls.length, 3);
+    assert.equal(
+      mock.calls.filter((call) => call.url.pathname.endsWith("/assignments"))
+        .length,
+      1,
+    );
   }
 });
 
@@ -245,7 +268,11 @@ test("Canvas bounds pagination and duplicate identities cannot overwrite an earl
   assert.equal(boundedBatch.resources.length, 20);
   assert.equal(boundedBatch.complete, false);
   assert.equal(boundedBatch.status, "partial");
-  assert.equal(bounded.calls.length, 22);
+  assert.equal(
+    bounded.calls.filter((call) => call.url.pathname.endsWith("/assignments"))
+      .length,
+    20,
+  );
   const duplicate = transport((url) =>
     json(
       [assignment()],
@@ -322,15 +349,17 @@ test("Canvas uses validated courses after a later course-list failure without cl
     () => json([assignment()]),
     (url) =>
       url.searchParams.has("page")
-        ? json([{ id: 100, name: null }])
+        ? json([{ id: "invalid", name: null }])
         : json([course], {
             link: `<${origin}/api/v1/courses?page=2>; rel="next"`,
           }),
   );
   const batches = await pull(mock.fetch);
-  assert.equal(batches[0]!.source.scope, "connection");
-  assert.equal(batches[0]!.status, "partial");
-  assert.equal(batches[0]!.complete, false);
+  const connection = batches.find(
+    (batch) => batch.source.scope === "connection",
+  )!;
+  assert.equal(connection.status, "partial");
+  assert.equal(connection.complete, false);
   assert.equal(assignments(batches).complete, true);
   assert.equal(assignments(batches).source.courseId, "42");
 });
