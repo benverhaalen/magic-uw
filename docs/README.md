@@ -24,8 +24,9 @@ We are entering Applied AI & Automation, DoIT's Badgers Building for Badgers, an
 
 | Read                                                  | Contents                                                                                                 |
 | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| [Home and visual direction](home-design-direction.md) | Current flagship Home, settled layout/type, visual alternatives, reference transfers |
 | [Product](product.md)                                 | Vision, student experience, learning loop, interface ideas, visual taste                                 |
-| [Organizing concepts](product-directions.md)          | Six different organizing ideas, each with a journey, risk, reference, and quick test; no winner selected |
+| [Organizing concepts](product-directions.md)          | Earlier organizing alternatives; current Home decisions supersede their unresolved entry/navigation status |
 | [Reference-driven design](reference-driven-design.md) | Reference roles, architecture analogies, images, demo inspection, and product verification               |
 | [Agent work principles](agent-work-principles.md)     | Intent, discovery, expert methods, delegation, context/cost, and complete delivery                       |
 | [AI and privacy](ai-and-privacy.md)                   | Four AI options, automatic local selection, sign-in, and data disclosures                                |

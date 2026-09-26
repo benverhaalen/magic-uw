@@ -62,3 +62,7 @@ Windows behavior, signed distribution, production gateway deployment, provider-a
 - Record what the check actually established; synthetic success cannot become a live claim.
 
 See [engineering principles](engineering-principles.md) for the wider selection and reference method.
+
+## Current visual exploration
+
+The [Home direction](home-design-direction.md) records Ben's settled interface requirements and current card alternatives. Separate local HTML mocks demonstrate visual hierarchy, typography, navigation and selected mock routes. They have not been integrated into the Electron renderer; live launch bundles, audio generation, briefing refresh, and context-aware model chat remain unproven by this visual work. Private screenshots and course captures are not committed.

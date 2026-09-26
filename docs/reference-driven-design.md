@@ -1,6 +1,6 @@
 # Reference-driven design
 
-Accepted working method, September 26, 2026. Based on Ben's supplied `rdd.md` and agent work principles. This governs building and verification, not just concept images. It does not settle the interface. [Organizing concepts](product-directions.md) remain open for Ben's reaction.
+Accepted working method, September 26, 2026. Based on Ben's supplied `rdd.md` and agent work principles. This governs building and verification, not just concept images. Current interface decisions and the latest professional-reference transfers live in [Home and visual direction](home-design-direction.md). Earlier organizing concepts remain exploration history.
 
 ## The method
 

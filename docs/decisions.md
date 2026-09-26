@@ -19,7 +19,7 @@ A context register, not an implementation backlog. No ownership is assigned.
 | School actions          | Read only: no submitting, enrolling, or posting                                                                                                                              |
 | Learning policy         | Course policy first; coach when vague or silent                                                                                                                              |
 | Honesty                 | No false reassurance or unsupported readiness, speed, or reliability claims                                                                                                  |
-| Visual taste            | Calm neutral light interface, thin borders, small readable sans serif, minimal color and filler                                                                              |
+| Visual taste            | Warm ivory/ember-red compact shell; selective Cooper Light BT and readable Geist; vibrant flat cards under comparison                                                                              |
 | Current collaboration   | Shared context is pushed; runnable skeleton is pushed and implementation is authorized. Keep teammates informed without assigning work ownership                             |
 
 ## Resolved product decisions — September 26
@@ -35,9 +35,9 @@ These are accepted directions. Account compatibility, hardware suitability, and 
 
 ## Product choices that can remain open
 
-Sidebar by course/source/intent; default home view; relationship between day/spaces/calendar; artifact placement; floating pill and voice activation; visible source detail; degree audit's role; how personalization follows behavior versus explicit preference. Do not force these decisions merely to make the document look finished.
+Home and navigation are now settled at the structural level: briefing-first Home with Upcoming, Study & Learn, quiet Today rail, and a collapsible Home/Courses sidebar. See [Home and visual direction](home-design-direction.md) for the full current contract and the new flagship demo objective. Earlier organizing concepts are retained as exploration history.
 
-The [six organizing concepts](product-directions.md) remain distinct alternatives: the day, task workspace, course, outcome, connected library, and current-activity companion. Ben has not selected or combined them. The existing implementation does not grant one priority.
+Still open: exact card color/interaction treatment, detailed course and work surfaces, floating pill/voice activation, provenance detail presentation, degree audit's role, and personalization from observed behavior versus explicit preference. The local visual prototype does not establish integrated capability.
 
 No link threshold has been approved; the numerical sweep in [pipeline details](pipeline-details.md#link-thresholds-a-testable-starting-method) is an experiment proposal only.
 

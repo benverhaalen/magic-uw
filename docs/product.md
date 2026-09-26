@@ -43,19 +43,13 @@ Explain what each hosted service receives and can use: selected course excerpts,
 
 Local storage is the default. Hosted Jev is separately disclosed and paid for by Magic Canvas. A local language model with hosted Jev is not a fully local processing mode; a fully local mode must replace or disable hosted judgments too. See [AI and privacy requirements](ai-and-privacy.md).
 
-## Surfaces and interaction ideas — not settled
+## Surfaces and interaction direction
 
 **Desktop first:** the full workspace for Mac and Windows. **Website:** product information, working downloads, and GitHub links. **iOS later:** a focused companion if time permits.
 
-The [six organizing concepts](product-directions.md) compare time, task spaces, courses, outcomes, connected evidence, and the student's current activity as different foundations. They are open alternatives for Ben to react to; the existing Today screen does not settle the choice. The view ideas below remain available within that discussion, rather than constituting an agreed combined layout.
+The current [Home and visual direction](home-design-direction.md) is the canonical surface decision: briefing-first Home, compact graded Upcoming, tailored Study & Learn, a quiet right Today calendar, and one collapsible left Home/Courses sidebar. Home is the hackathon flagship. It must connect evidence to a useful next action and the right working context. The earlier [organizing concepts](product-directions.md) remain background exploration, not six still-unresolved Home choices.
 
-Potential home views:
-
-- **Day:** a calm feed around today, with one useful action per item. Before class: prep. After class: review. Before an exam: practice. After grading: review feedback. Changed dates can show the previous value. Past work remains visible if incomplete.
-- **Spaces:** resumable working sets for assignments, projects, clubs, applications, or personal study. Open the relevant browser pages, local files, editor, and terminal. Learn preferences from actual behavior, with visible correction.
-- **Calendar:** fixed events and deadlines with an understandable workload indication. Estimated effort is a band, not a fabricated exact duration.
-
-A persistent small text/voice control may work across views. Sidebar organization, artifact placement, default view, and floating pill placement are open. A recommendation is to keep navigation stable while adapting content and suggested actions; test whether dynamic rearrangement makes things harder to find.
+Spaces and familiar external apps support the assignment/work journey. Voice and the floating control remain open interaction ideas; a separate calendar page is not implied by Home's Today rail.
 
 **Assignment detail:** cached title, course, submission location, points, date claims/resolution, source age, supporting materials, and an actionable brief. Later: evidence-backed progress, rubric feedback, relevant policy, and meaningful changes. A personal checkbox and verified submission are different states.
 
@@ -81,9 +75,7 @@ Scheduling ideas include prep anchored to real classes, review after lectures, p
 
 ## Visual direction
 
-Calm, familiar, neutral and light. Thin borders, compact spacing, small readable sans serif text, little color, and one clear focus. Course color, if used, is a tiny accent. No serif fonts, colored dots beside class names, filler greetings, or motivational copy. Use actual student content in evaluation; use clearly synthetic content in public fixtures.
-
-The Codex desktop app is an interaction/visual reference, not a specification to clone. Compare concrete screens before settling the layout.
+Current direction: warm ivory content, an ember/red gradient sidebar with a thin wrapping frame, compact native Mac/Codex-like controls, and deliberately colored action cards. Exact supplied Cooper Light BT is used selectively in private mocks, with readable Geist prose and controls at normal tracking. Vibrant card mechanisms are under comparison. This supersedes the earlier little-color/no-serif preference. The [canonical visual direction](home-design-direction.md) records the constraints and open choices.
 
 For concept images, use inspected reference folders as inputs, repair bad downloads, prompt minimally around the task and essential constraints, and iterate with Ben's feedback. For implementation, inspect hierarchy, navigation, density, feedback, failure recovery, accessibility, and responsiveness in the rendered journey. Raise clutter and complexity instead of accumulating every reference pattern. The [reference guide](reference-driven-design.md) records the exact method and what each reference contributes.
 
