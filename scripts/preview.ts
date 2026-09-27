@@ -3,7 +3,7 @@ import { readFile, mkdtemp, rm } from "node:fs/promises";
 import { resolve, extname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomBytes } from "node:crypto";
-import { createCore } from "@magic/core";
+import { createCore, launchWorkSet } from "@magic/core";
 import { createStore } from "@magic/storage";
 import { captureBatchSchema } from "@magic/contracts";
 import fixture from "../fixtures/course.json";
@@ -46,7 +46,26 @@ const server = createServer(async (req, res) => {
           return;
         }
       }
-      const result = await core.execute(JSON.parse(body));
+      const parsed = JSON.parse(body);
+      if (parsed?.type === "start-work") {
+        // Verification surface: rebuild the real set, open nothing.
+        const { workSet } = await core.execute({ type: "work-set", id: parsed.id });
+        if (Array.isArray(parsed.only))
+          workSet!.items = workSet!.items.filter((i) => parsed.only.includes(i.resourceId));
+        const receipt = await launchWorkSet(workSet!, {
+          dryRun: true,
+          openExternal: async () => {},
+          openPath: async () => "",
+          realpath: async (p) => p,
+          materialize: async (p, extension) => p + extension,
+          documentsRoot: join(directory, "documents"),
+          separator: "/",
+          now: () => new Date(),
+        });
+        res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(receipt));
+        return;
+      }
+      const result = await core.execute(parsed);
       res
         .writeHead(200, { "Content-Type": "application/json" })
         .end(JSON.stringify(result));
@@ -57,7 +76,7 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (path === "/bridge.js") {
-      const script = `window.magic={execute:async(command)=>{const r=await fetch('/command',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer ${token}'},body:JSON.stringify(command)});const data=await r.json();if(!r.ok)throw new Error(data.error);return data;},openExternal:async()=>{throw new Error('External windows are disabled in this headless verification surface.');},importFile:async()=>{throw new Error('Use the desktop app to import a local capture.');},localStatus:async()=>({status:'setup_needed',reason:'Local runtime checks are disabled in this browser verification surface. Use the desktop app.',cloudDisabled:false,selectedModel:null,recommenderAvailable:false,basis:'No runtime was contacted.'}),localAsk:async()=>{throw new Error('Local inference is disabled in this browser verification surface. Use the desktop app.');},cancelLocal:async()=>{}};`;
+      const script = `window.magic={execute:async(command)=>{const r=await fetch('/command',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer ${token}'},body:JSON.stringify(command)});const data=await r.json();if(!r.ok)throw new Error(data.error);return data;},openExternal:async()=>{throw new Error('External windows are disabled in this headless verification surface.');},startWork:async(id,only)=>{const r=await fetch('/command',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer ${token}'},body:JSON.stringify({type:'start-work',id,only})});const data=await r.json();if(!r.ok)throw new Error(data.error);return data;},importFile:async()=>{throw new Error('Use the desktop app to import a local capture.');},localStatus:async()=>({status:'setup_needed',reason:'Local runtime checks are disabled in this browser verification surface. Use the desktop app.',cloudDisabled:false,selectedModel:null,recommenderAvailable:false,basis:'No runtime was contacted.'}),localAsk:async()=>{throw new Error('Local inference is disabled in this browser verification surface. Use the desktop app.');},cancelLocal:async()=>{}};`;
       res.writeHead(200, { "Content-Type": "text/javascript" }).end(script);
       return;
     }
@@ -95,9 +114,10 @@ const server = createServer(async (req, res) => {
       );
   }
 });
-server.listen(4173, "127.0.0.1", () =>
+const port = Number(process.env.MAGIC_PREVIEW_PORT ?? 4173);
+server.listen(port, "127.0.0.1", () =>
   console.log(
-    "Local verification: http://127.0.0.1:4173 (temporary data; no cloud or school connections)",
+    `Local verification: http://127.0.0.1:${port} (temporary data; no cloud or school connections)`,
   ),
 );
 for (const signal of ["SIGINT", "SIGTERM"] as const)

@@ -10,6 +10,7 @@ import type {
 } from "@magic/contracts";
 import { MyUw, PlanningAlerts } from "./MyUw";
 import { LocalAiPanel } from "./LocalAiPanel";
+import { StartWork } from "./StartWork";
 import { ProviderGuidance } from "./ProviderGuidance";
 import { IngestionControls, McpConnections } from "./IngestionControls";
 
@@ -793,6 +794,14 @@ function ResourceDetail({
           {statusLabels[source.status]}. This item may have changed since its
           last successful capture.
         </div>
+      ) : null}
+      {resource.kind === "assignment" ? (
+        <StartWork
+          resource={resource}
+          refreshKey={`${resource.contentHash}:${snapshot.links
+            .map((link) => `${link.id}:${link.status}`)
+            .join(",")}`}
+        />
       ) : null}
       <button
         className="button source-button"

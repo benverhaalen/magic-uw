@@ -10,8 +10,8 @@ import {
   powerMonitor,
   type IpcMainInvokeEvent,
 } from "electron";
-import { readFile, writeFile, mkdir, stat, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile, writeFile, mkdir, stat, rm, realpath } from "node:fs/promises";
+import { join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { gatewayClient } from "@magic/ai";
@@ -22,6 +22,7 @@ import {
 import { syncUwPlanning } from "../../../packages/connectors/src/uw-planning-sync";
 import { readBounded } from "../../../packages/connectors/src/network";
 import { createSecretVault } from "./secrets";
+import { launchWorkSet, materializeCopy } from "../../../packages/core/src/work-set";
 import {
   commandSchema,
   captureBatchSchema,
@@ -556,6 +557,41 @@ app
         throw new Error("External windows are disabled in headless mode.");
       await shell.openExternal(safeExternal(url));
     });
+    // The renderer supplies only an assignment ID. The set is rebuilt from the
+    // local store and every target is re-validated inside launchWorkSet.
+    ipcMain.handle("magic:start-work", async (event, id, only) => {
+      validateSender(event);
+      if (typeof id !== "string" || id.length > 1000)
+        throw new Error("Invalid item.");
+      if (
+        only !== undefined &&
+        (!Array.isArray(only) ||
+          only.length > 20 ||
+          !only.every((v) => typeof v === "string"))
+      )
+        throw new Error("Invalid retry selection.");
+      const { workSet } = await execute({ type: "work-set", id });
+      if (!workSet) throw new Error("This item has nothing to open.");
+      // A retry narrows the freshly rebuilt set; it can never add a target.
+      if (only)
+        workSet.items = workSet.items.filter((item) =>
+          only.includes(item.resourceId),
+        );
+      const documentsRoot = await realpath(join(data, "documents")).catch(
+        () => join(data, "documents"),
+      );
+      return launchWorkSet(workSet, {
+        dryRun: headless,
+        openExternal: (url, activate) => shell.openExternal(url, { activate }),
+        openPath: (path) => shell.openPath(path),
+        realpath: (path) => realpath(path),
+        materialize: (path, extension) =>
+          materializeCopy(documentsRoot, path, extension),
+        documentsRoot,
+        separator: sep,
+        now: () => new Date(),
+      });
+    });
     ipcMain.handle("magic:import", async (event) => {
       validateSender(event);
       if (headless)
@@ -854,6 +890,21 @@ app
           !imported.snapshot.fixtureMode
         )
           throw new Error("Fixture import failed");
+        const essay = imported.snapshot.resources.find(
+          (r: { kind: string }) => r.kind === "assignment",
+        );
+        const started = await window.webContents.executeJavaScript(
+          `window.magic.startWork(${JSON.stringify(essay.id)})`,
+        );
+        if (
+          started.mode !== "dry_run" ||
+          started.opened.length !== 2 ||
+          started.failed.length ||
+          (await window.webContents
+            .executeJavaScript("window.magic.startWork('missing-item')")
+            .then(() => true, () => false))
+        )
+          throw new Error("Start work did not rebuild the linked work set");
         const planningStamp = new Date().toISOString();
         const planningScope = { kind: "terms", key: "synthetic-smoke" };
         const planningFixture = {
@@ -903,7 +954,7 @@ app
         )
           throw new Error("Local purge left data or access credentials");
         console.log(
-          "PASS hidden desktop: renderer → preload → worker → SQLite; synthetic planning import, MCP export and local purge",
+          "PASS hidden desktop: renderer → preload → worker → SQLite; Start work dry run, synthetic planning import, MCP export and local purge",
         );
       } catch (error) {
         console.error(

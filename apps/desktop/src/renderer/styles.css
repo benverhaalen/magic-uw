@@ -1194,3 +1194,45 @@ select {
 }
 
 .uw-nav-mark { width: 18px; height: 24px; object-fit: contain; flex: 0 0 18px; }
+.start-work {
+  margin-bottom: 18px;
+}
+.work-destinations {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.work-destinations li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.work-title {
+  overflow-wrap: anywhere;
+}
+.work-held {
+  margin: 6px 0 10px;
+}
+.work-held ul {
+  padding-left: 16px;
+  margin: 6px 0 0;
+}
+.start-work-button {
+  width: 100%;
+  margin: 4px 0 6px;
+}
+.work-receipt:empty {
+  display: none;
+}
+.work-receipt ul {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0;
+}

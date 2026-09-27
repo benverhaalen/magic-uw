@@ -22,7 +22,9 @@ import {
 import { maySend, resolveDeadline } from "@magic/domain";
 import { judgmentResultSchema, type JudgmentGateway } from "@magic/ai";
 import { contentCategories, courseIncluded } from "./access";
-import { evidenceFor } from "./evidence";
+import { evidenceFor, linkExactEvidence } from "./evidence";
+import { buildWorkSet } from "./work-set";
+export { buildWorkSet, launchWorkSet, materializeCopy, safeWebLink, MAX_WORK_ITEMS, type WorkLaunchHost } from "./work-set";
 import { pullGuideForSubject } from "../../connectors/src/planning-public";
 import {
   createPublicClient,
@@ -476,6 +478,8 @@ export function createCore(store: Store, options: CoreOptions) {
         return { snapshot: snapshot(command.search) };
       case "import": {
         store.ingest(command.batch);
+        // Same exact-link pass as live ingestion, so imported captures keep their evidence links.
+        linkExactEvidence(store);
         wake();
         message = "Capture imported locally.";
         break;
@@ -594,6 +598,8 @@ export function createCore(store: Store, options: CoreOptions) {
         }
         break;
       }
+      case "work-set":
+        return { snapshot: snapshot(), workSet: buildWorkSet(store, command.id) };
       case "planning-compare":
         return {
           snapshot: snapshot(),
@@ -615,6 +621,7 @@ export function createCore(store: Store, options: CoreOptions) {
             "Use a separate workspace for sample data. Your real sources are already connected.",
           );
         store.ingest({ ...options.fixture, observedAt: now() });
+        linkExactEvidence(store);
         wake();
         message = "Loaded a synthetic sample course.";
         break;

@@ -3,6 +3,7 @@ import type { AppBridge } from "@magic/contracts";
 const bridge: AppBridge = {
   execute: (command) => ipcRenderer.invoke("magic:execute", command),
   openExternal: (url) => ipcRenderer.invoke("magic:open", url),
+  startWork: (id, only) => ipcRenderer.invoke("magic:start-work", id, only),
   importFile: () => ipcRenderer.invoke("magic:import"),
   signInUW: (service) => ipcRenderer.invoke("magic:signin", service),
   syncCanvas: () => ipcRenderer.invoke("magic:sync"),
