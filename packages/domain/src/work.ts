@@ -1,3 +1,4 @@
+import { resolveDeadline } from "./index";
 import type { RailResource, EffortBand } from "./today-rail";
 import { effortBand, localTime } from "./today-rail";
 
@@ -76,15 +77,29 @@ export function projectWork(
   for (const r of resources) {
     if (r.kind !== "assignment" || r.deleted) continue;
     const src = byId.get(r.sourceId ?? "");
-    const key = r.externalId
-      ? `${scopeOf(r) === "quizzes" ? "Q" : "A"}:${src?.accountScope ?? ""}:${r.courseId}:${r.externalId}`
+    // Unknown provenance cannot establish cross-source identity. The renderer's
+    // canonical schedule family may also carry a personal date; never regroup it.
+    const knownScope = scopeOf(r);
+    const key = !("scheduleDeadline" in r) && r.externalId && r.courseId && src?.accountScope && knownScope in AUTHORITY
+      ? JSON.stringify([knownScope === "quizzes" ? "Q" : "A", src.accountScope, r.courseId, r.externalId])
       : `id:${r.id}`;
     groups.set(key, [...(groups.get(key) ?? []), r]);
   }
   for (const copies of groups.values()) {
     if (copies.some(isDone)) continue;
     copies.sort((a, b) => (AUTHORITY[scopeOf(a)] ?? 9) - (AUTHORITY[scopeOf(b)] ?? 9));
-    const r = copies.find((c) => c.deadline.planningAt) ?? copies[0]!;
+    let r = copies.find((c) => c.deadline.planningAt) ?? copies[0]!;
+    if (copies.length > 1) {
+      const claims = [...new Map(copies.flatMap(c => c.deadline.claims).map(c => [JSON.stringify(c), c])).values()];
+      const resolved = resolveDeadline(claims);
+      const dates = [...new Set(copies.map(c => c.deadline.planningAt).filter((d): d is string => !!d))].sort();
+      const conflict = resolved.conflict || copies.some(c => c.deadline.conflict) || dates.length > 1;
+      r = { ...r, deadline: { ...resolved, conflict,
+        dueAt: conflict ? null : resolved.dueAt,
+        planningAt: conflict ? dates[0] ?? resolved.planningAt : resolved.planningAt ?? r.deadline.planningAt,
+        unresolved: copies.flatMap(c => c.deadline.unresolved ?? []),
+      } };
+    }
     if (!r.deadline.planningAt) continue;
     const dueAt = r.deadline.planningAt;
     const dueMs = Date.parse(dueAt);

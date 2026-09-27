@@ -172,6 +172,8 @@ export interface AppNotification {
   courseName?: string;
   resourceId?: string;
   sourceId?: string;
+  /** With sourceId, identifies the course so an item without an openable resource can route there. */
+  courseId?: string;
   observedAt: string;
   changeIds: string[];
   read: boolean;

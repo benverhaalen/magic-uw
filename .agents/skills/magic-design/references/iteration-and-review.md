@@ -1,6 +1,6 @@
 # Scoped iteration, independent review and handoffs
 
-Use for substantial visual/interaction work. A tiny edit needs a small check, not this entire process. Foundation-only tasks stop before implementation.
+Use for substantial visual/interaction work. A tiny edit needs a small check, not this entire process. Foundation-only tasks stop before production implementation. They may include authorized isolated image-to-code specimens that test the design system. When establishing the system, follow [calibration before product build](image-to-code.md).
 
 ## One useful loop
 
@@ -50,4 +50,37 @@ If another worker changes the baseline, re-evaluate only affected contracts/stat
 
 Example: Ben says time text should match surrounding prose. Update its recipe and token binding; inspect an actual wrapped briefing line at normal and enlarged text; give the next critic that quote and screenshot. Merely appending “consistent type” to memory is insufficient.
 
+For current correction gates, inspect the [governing accepted rules](../../../../DESIGN.md#accepted-corrections-that-govern-current-consumers) and [copy/label constraints](../../../../docs/design/content-design.md#current-copy-and-label-constraints). Audit source → projection → UI, compare actual Home color/density with the original anchor, and exercise empty/partial/stale schedules. Scan authored UI copy and inspect raw-source display separately. Keep noncompliant consumers pending; preserve existing typography, geometry, focus and evidence gates.
+
 Maintain lightweight evidence records: requirement ID → affected component/path → relevant state → actual screenshot/test/observation → result/limit. Leave only unresolved or high-value regression cases active. Remove stale instructions rather than stacking contradictory amendments. Keep raw chats, X captures, private coursework and local research outside commits.
+
+## Reference-driven specialist checkpoints
+
+Ben explicitly requests periodic handoffs to Opus to refine the system through reference-driven design. Use meaningful boundaries (new family, supported correction, first transfer), not a timer or a review per edit. Give the reviewer one named gap, relevant exact user excerpts, Home/component images, the applicable source adapter and its pinned primary mechanism, and actual implementation/state evidence. Ask which rule should change, what output it changes, and how to test/reverse it. Read the source sufficiently to verify the recommendation rather than promote the reviewer's authority. Keep user taste and product intent controlling. Record actual model identity; browser or framework behavior still requires direct verification. This produces bounded rule improvements, not ever-growing expert commentary.
+
+### Source fidelity and live specialist tests
+
+At a meaningful source-driven audit checkpoint, give a critic the actual applicable upstream text (pinned copy or exact section), not only our paraphrase. Record which sources were read and which advice was excluded or adapted. A skill's popularity or author's reputation is a reason to inspect its mechanism, not authority to override Ben's accepted language. Select a coherent source family per reviewer; a separate reviewer is useful for a deep interaction uncertainty, not automatically per skill.
+
+Separate code/image critique from browser testing. Use fresh scoped test workers for visual consistency, state recovery and adversarial content when those are independent uncertainties. Give each the normal entry, synthetic evidence, constraints, test boundary and its own browser session; keep repo edits with the integrator. Require actual model receipts when Ben asks for Opus, fresh runtime evidence and explicit untested limits. A process exit or `success` wrapper with no useful output is a failed review. Narrow a failed handoff and retry the affected boundary; never count it as corroboration.
+
+For text/interaction robustness, challenge long names and unbroken tokens, increased text size, many items, interrupted actions, stale responses and hidden-tab feedback. These are proposed test inputs, not product copy. Fix the actual failure, then check an affected sibling. Retain useful failure cases; avoid shipping the entire research corpus into every agent context.
+
+## Route recurring corrections into category audits
+
+A named defect is an example of a family to inspect. Scope each audit as **family × actual consumer pages × meaningful states × expected property**. Record the normal entry/default state, source revision, built asset identity and runtime revision separately. Audit less-visited and minimally reviewed pages for visual quality as well as component compliance.
+
+| Family | Expected property and representative boundaries |
+| --- | --- |
+| Identity and semantic visual roles | Exact bundled fonts, shared object colors and readable metadata survive page, overlay, narrow and zoom variants. |
+| Synthesis and concise labels | Source → projection → visible label retains identity, topic, stage and material uncertainty; similar labels remain distinguishable. |
+| Action targets and feedback | Whole-card, noun-link, evidence, disclosure, icon and small-command hit areas match their meaning, with coherent hover, press and keyboard focus. |
+| Transitions and reversible disclosure | Pending, success, failure, cancellation, handled/Undo, show/hide and Back preserve useful focus, drafts and scroll; rapid reversal and reduced motion work. |
+| Content extremes and source identity | Empty, one, many, duplicate, archived, stale, conflicting-date and timezone-boundary data remain truthful and reachable. |
+| Interruptions and recovery | Global session notices and local action errors use their correct locations, retain geometry and offer a working next step. |
+| Whole-page composition and visual appeal | Hierarchy, rhythm, proportion, density, color balance and page endings feel deliberate in actual rendered pages. Sparse prior feedback is a reason to inspect, not evidence of approval or failure. Use concrete image alternatives and a human checkpoint for consequential unresolved direction. |
+| Integration and runtime delivery | A leaf result is distinct from consumer binding, published source and demonstrated runtime. Fresh builds load all assets; normal entry, reload and recovery work with the intended data and process lifecycle. |
+
+Capture actual renders **and transitions**; a fixture or source audit establishes only its tested boundary. Fix the producer or shared rule and check affected siblings. Do not infer approval from silence. Keep private quotations, raw logs and coursework out of repository evidence.
+
+For sustained Electron review, avoid rebuilding files underneath the runtime of record: prepare and verify a candidate build, preserve the user's current state, and promote through a controlled reload or restart appropriate to changed main/preload contracts. Keep durable private error capture across the launcher lifetime. A build pass does not resolve a reported runtime failure; retain exact observed errors, distinguish app failures from harness/load failures, and reproduce through the normal entry point. Serialize expensive copied-data runtimes when concurrent audits distort startup or interaction behavior.

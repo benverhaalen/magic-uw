@@ -1,0 +1,24 @@
+/* EvidenceInfo: inline circled-i with a 28px hit area that does not change line height, and a compact
+ * top-layer note. The panel sits in the caller's DOM (for example inside an h2), so it resets
+ * inherited type instead of taking the heading's face or size.
+ */
+.magic-info { display: inline; }
+.magic-info-trigger {
+  display: inline-grid; place-items: center; width: 28px; height: 28px; margin: -7px -4px; padding: 0;
+  border: 0; border-radius: 999px; background: transparent; color: inherit; vertical-align: middle; cursor: pointer;
+}
+.magic-info-glyph { width: var(--magic-glyph-trailing); height: var(--magic-glyph-trailing); fill: none; stroke: currentColor; stroke-width: var(--magic-icon-stroke-seed); stroke-linecap: round; stroke-linejoin: round; }
+.magic-info-trigger[aria-expanded=true] { background: var(--magic-fill-pressed-overlay); }
+.magic-info-trigger:focus-visible { outline: 2px solid var(--magic-focus); outline-offset: 1px; }
+@media (hover: hover) { .magic-info-trigger:hover { background: var(--magic-fill-pressed-overlay); } }
+
+.magic-info-panel {
+  position: fixed; inset: auto; margin: 0; box-sizing: border-box; max-height: calc(100dvh - 24px); overflow: auto;
+  padding: 10px 12px; border: 1px solid var(--magic-line-quiet); border-radius: var(--magic-radius-control);
+  background: var(--magic-surface-raised); box-shadow: var(--magic-shadow-popover); color: var(--magic-ink);
+  font: var(--magic-font-interface-weight) var(--magic-type-compact-control)/1.5 var(--magic-font-interface); font-style: normal;
+  letter-spacing: var(--magic-tracking); text-align: start; text-transform: none; white-space: normal; overflow-wrap: anywhere;
+}
+.magic-info-panel:popover-open { display: block; }
+.magic-info-panel a { color: var(--magic-ink-link); text-decoration: underline; text-underline-offset: 3px; }
+.magic-info-panel a:focus-visible { outline: 2px solid var(--magic-focus); outline-offset: 2px; border-radius: 2px; }

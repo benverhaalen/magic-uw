@@ -15,7 +15,7 @@ Follow-up:
 | ID | Finding | Status |
 | --- | --- | --- |
 | [FDB-001](#fdb-001-assignment-grade-share-lacks-account-and-capture-coverage-boundaries) | Assignment grade share lacks account and capture-coverage boundaries | Backend fix `0f7ac36`, tested in isolation; frontend adoption pending |
-| [FDB-002](#fdb-002-sign-in-bridge-discards-the-cancelled-outcome) | Sign-in bridge discards the cancelled outcome | Backend outcome built and tested in isolation (`feat/client-health`); App.tsx consumer open |
+| [FDB-002](#fdb-002-sign-in-bridge-discards-the-cancelled-outcome) | Sign-in bridge discards the cancelled outcome | Typed backend outcome and App consumer integrated; live authentication remains separately verified |
 | [FDB-003](#fdb-003-generation-pack-scope-cannot-select-the-requesting-account) | Generation pack scope cannot select the requesting account | Code-inspected; generation not run |
 | [FDB-004](#fdb-004-student-record-freshness-uses-a-term-length-horizon) | Student-record freshness uses a term-length horizon | Code-inspected; live hold changes not reproduced |
 
@@ -79,7 +79,7 @@ Private coursework, account identifiers, captures, logs, credentials, and sessio
 
 **Resolution proof:** cover confirmed, cancelled, and failed outcomes through the IPC contract and frontend consumer, including a cancellation that triggers no success claim or automatic follow-up sync. Verify the shell still offers recovery when access remains unresolved.
 
-**Resolution (backend, built and tested in isolation; not merged):** commit `68624af` on `feat/client-health`. `magic:signin` now resolves with `SignInOutcome` (`packages/contracts/src/sign-in.ts`): `{ status: "confirmed" | "cancelled" | "failed", service, reason? }`, and `AppBridge.signInUW` returns `Promise<SignInOutcome>`. The call shape is unchanged, and an unknown service or a refused consent still rejects as before. Only `confirmed` means the service answered with the student's profile; `failed` carries a plain reason (the headless message, or a generic one; other error text never crosses). For consumers, `signInAndSync` in `apps/desktop/src/renderer/sign-in.ts` reads Canvas only after `confirmed` and returns `{ outcome, synced }`. `signInMessage` gives the words for each outcome. Tests: `tests/sign-in-outcome.test.ts` (confirmed, cancelled and failed through `handleSignInRequest`, the function `magic:signin` calls; a cancellation claims no success and starts no sync). The onboarding's UW step uses it. **Still open for the frontend owner:** `startSignIn` in `apps/desktop/src/renderer/App.tsx` still syncs unconditionally; switching it to `signInAndSync` closes the consumer side.
+**Resolution (backend integrated through main `4cadd8d`; App consumer corrected in the combined frontend checkpoint):** commit `68624af` on `feat/client-health`. `magic:signin` now resolves with `SignInOutcome` (`packages/contracts/src/sign-in.ts`): `{ status: "confirmed" | "cancelled" | "failed", service, reason? }`, and `AppBridge.signInUW` returns `Promise<SignInOutcome>`. The call shape is unchanged, and an unknown service or a refused consent still rejects as before. Only `confirmed` means the service answered with the student's profile; `failed` carries a plain reason (the headless message, or a generic one; other error text never crosses). For consumers, `signInAndSync` in `apps/desktop/src/renderer/sign-in.ts` reads Canvas only after `confirmed` and returns `{ outcome, synced }`. `signInMessage` gives the words for each outcome. Tests: `tests/sign-in-outcome.test.ts` (confirmed, cancelled and failed through `handleSignInRequest`, the function `magic:signin` calls; a cancellation claims no success and starts no sync). The onboarding's UW step uses it. The App consumer now syncs only when the typed outcome is `confirmed`. Native external authentication remains separately verified; the contract tests do not establish a live successful sign-in.
 
 ## FDB-003: Generation pack scope cannot select the requesting account
 
@@ -108,3 +108,57 @@ Private coursework, account identifiers, captures, logs, credentials, and sessio
 **Frontend handling:** My UW uses a conservative seven-day confirmation cue for saved holds/windows and retains a refresh action. This is a temporary renderer policy, not evidence that the source changed. Mirrored horizons can drift when the backend policy changes.
 
 **Proposed backend owner:** Nate/Nathaniel, pending acceptance. **Next action:** distinguish student-record freshness where needed and expose a renderer-safe freshness result or shared policy. **Resolution proof:** synthetic boundary tests for holds/appointments versus public catalog data, cadence before a known enrollment window, and a UI check that stale saved facts remain visible with a clear confirmation action.
+
+
+## FDB-005: Work preparation repeats expensive full snapshots on the worker queue
+
+**Status:** observed through the real desktop entry point and IPC in a hidden copied-workspace run at the September 27 combined frontend checkpoint. Private instrumentation measured command receipt, snapshot creation and work-set construction. No source records or identifiers are included here.
+
+**Student impact:** eager previews on Home and remounts can delay a detail's prepared actions or unrelated snapshot reads beyond the existing 30-second request limit. A timeout does not mean the queued computation was cancelled.
+
+**Code and observed mechanism:** `packages/core/src/commands.ts` handles `work-set` by creating a complete snapshot and then building its set. The desktop worker serializes synchronous work. One measured navigation sequence queued eleven work-set requests and three snapshots; individual work-set snapshot phases took roughly 1.5–2.9 seconds and total preparation roughly 2.2–4.3 seconds. The protected original runtime also had a busy worker, so these numbers do not establish unloaded performance or explain the user's earlier uncaptured JavaScript error.
+
+**Frontend handling:** `prepared-work/prepare-cache.ts` coalesces identical previews, serializes distinct bridge requests, evicts rejected promises and supports explicit retry. Keys include the assignment plus source/account, resource version, links, consent and configuration evidence. Background check timestamps alone no longer invalidate all previews. Launch still rebuilds and authorizes its reviewed preview in main. The same real navigation after this repair completed a snapshot in 12.0 seconds and the directly requested six-destination work set in 16.7 seconds without a renderer exception; this is improved completion, not acceptable backend latency proven in every state.
+
+**Proposed backend owner:** Nate/Nathaniel, pending acceptance. Consider a lean preparation response or reusable evidence revision, preserving account/policy/preview-hash checks, and cancellation/priority semantics for obsolete reads. Do not increase the timeout to hide the queue. Resolution needs bounded cold/warm startup and navigation measurements under realistic workspace size, plus invalidation and rejection tests.
+
+## FDB-006: Notes fill lacks the generation pipeline's outgoing-data and late-consent protections
+
+**Status:** independently reproduced with synthetic identity/email, the real Notes service/store/model runner and a fake backend; no network or student content used. `packages/notes/src/fill.ts` passes raw selected content to the backend and can persist suggestions after consent is revoked during the call.
+
+**Frontend boundary:** the pending Study output candidate keeps Notes generation unavailable. Display filtering or a disabled control does not repair the backend service. Existing LearningPanel generation also needs the requesting-account preflight described in FDB-003.
+
+**Proposed backend owner:** Nate/Nathaniel, pending acceptance. Reuse the canonical outgoing-content scrubber, before-call authorization and post-call validation against current consent/account/policy state. Acceptance must show synthetic identity handling, revocation during an in-flight call, no stale persistence and accurate receipts before enabling Notes generation.
+
+### FDB-005 follow-up: original-profile persistence and background read pressure
+
+The controlled September 27 promotion of published `df0ab25` to the original workspace preserved its database and state and captured no renderer exception. It still recorded two 30-second `magic:execute` timeouts; Chat reached its conversation but remained Starting. A later private page check restored exact material focus and scroll, which does not resolve the original-profile latency. Do not describe the earlier unknown JavaScript error as diagnosed or fixed.
+
+A separate renderer cause of sustained read pressure was identified: the two-second interval queued a follow-up while a slow snapshot was running, then drained that follow-up immediately at completion. The frontend now waits two seconds **after** a background read finishes, pauses hidden windows, and skips busy polls without queuing another read. Explicit refreshes and snapshot-less mutation refreshes retain their coalescing behavior. Focused scheduler/gate tests and typecheck pass; current original-profile performance after this change remains unverified. Full snapshot construction and queued command cancellation/priority remain backend work.
+
+## FDB-007: A prerequisite reference is promoted to the current assignment's due claim
+
+**Status:** reproduced through current domain extraction and core evidence resolution, using a synthetic equivalent and a private captured-target control. No backend fix or source mutation was performed.
+
+**Cause and impact:** the due-word matcher accepts “submitted/submission”; core `proseDeadlines` confirms a single own-description due mention without establishing which obligation it describes. A sentence saying that an earlier design submission must already be complete, with a date pointer to that earlier assignment, becomes a confirmed due date for the current assignment. This creates a false conflict and advances the conservative planning date. A control containing a genuine current-project due sentence remains conflicting.
+
+**Qualified captured evidence:** the target's structured due and day-precision title agree. Its separately captured availability-close date is a lock claim and is excluded from the due resolver. Removing only the suspect prerequisite sentence span from a private diagnostic rerun eliminates this target's fresh core conflict while preserving structured due, lock and title. This does not establish that all conflicting assignments are false, that previously saved projections were refreshed, or that every related copy has identical evidence.
+
+**Requested producer repair:** retain prerequisite/reference dates as inspectable evidence without confirming them as the current obligation. Test prerequisite pointers, genuine disagreements, current obligations in the same paragraph, multiple steps and explicit announced changes; preserve the exact raw span and account/course boundary. Regenerate evidence versions when eligible claims change so stale personal choices reopen. Do not hardcode dates or suppress description conflicts in the frontend.
+
+**Related persistence boundary:** canonical renderer families may include a trusted UID-only calendar contributor absent from backend option fingerprints. Keep personal choice saving unavailable when contributor coverage differs until backend and renderer use the same scoped, current relation evidence. Proposed backend owner: Nate/Nathaniel, pending acceptance.
+
+### FDB-005 follow-up: snapshot admission read amplification
+
+The original-profile `2fb19e1` worker remained CPU-active while multiple requests exceeded 30 seconds. A bounded native sample placed 1,966 of 2,198 main-thread samples inside SQLite `StatementSync.All` and row allocation; the sample alone does not identify the requesting command. Source and a closed database copy identify an introduced amplification: course-work admission, its inclusion helper, and meeting projection each loaded all resources again. With 2,182 live resources, each full resource load also issued 2,182 per-resource field-observation queries. The added three passes therefore cause about 6,546 extra synchronous reads and repeat roughly 66 MB of current payload decoding per snapshot.
+
+The integrated correction passes the snapshot's already loaded resources through admission, meetings, query projection and evidence. It removes five repeated full loads in total, retaining fresh source/override/settings access and no cross-snapshot cache. On the same closed copy with a fixed clock, the complete snapshot JSON hash was identical: six resource reads became one, with a single comparison taking 4.60 seconds before and 1.89 seconds after. This is bounded producer evidence, not a latency guarantee. A regression verifies one read per snapshot and immediate course-exclusion/reinclusion effects; full typecheck/build passes. Existing full-snapshot, search and preparation cost remains. Original-profile Chat answer completion remains unverified. Private sampling and copied-data instrumentation stay outside the repository.
+
+Chat now propagates preview transport, authorization and cancellation errors into its existing failed/retry state. Only an explicit unsupported router/schema result enables the legacy query fallback; infrastructure failures no longer enqueue a second slow search. Focused synthetic bridges verify one query and no execution for each failure class.
+
+
+### September 27 visible checkpoint follow-ups
+
+The actual original workspace on `f5a2df5` still displays 14 Sunday obligations: five assignment records, six module quiz records and three feed-only deadlines. Similar titles do not establish exact identity. The authorized app-owned quiz read returned 401 and stopped; refresh requires a valid session. Provider quiz/assignment relation retention remains a prospective repair, not a demonstrated saved-count correction. Do not cap the count to the student's reported six.
+
+Lecture 7's captured Participation category must remain distinct from its actual delivery/submission instructions. A Canvas group label cannot establish Canvas submission when source instructions require GitLab. The next task-workspace adapter must use evidenced instructions/destinations and preserve the raw category in provenance; no installed-app readiness or restored work state is implied by a destination link.

@@ -1,4 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { schedulePlanning, scheduleRailResources } from './schedule-projection';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from "react";
+import { createOperationScope } from "../../../../packages/ui/src/operation-scope";
+import { MOTION_EASE, MOTION_MS } from "../../../../packages/ui/src/motion/tokens";
+import { requirePlanSave } from "./today-plan-save";
 import type {
   Command,
   DayPlanEntry,
@@ -7,6 +11,7 @@ import type {
 } from "@magic/contracts";
 import {
   buildTodayRail,
+  localTime,
   changeNotes,
   layoutLanes,
   planEntry,
@@ -24,6 +29,23 @@ const RESPONSE_LABEL = {
   pending: "Not answered",
   organizer: "You're organizing",
 } as const;
+const HOME_ALL_DAY_ALL = 3;
+
+/** Saved capture coverage is not a promise that no unobserved event exists. */
+export function calendarCoverageNeedsCheck(sources: SourceHealth[], now: string): boolean {
+  const calendars = sources.filter(source => source.kind === "calendar" || source.scope === "calendar");
+  return !calendars.length || calendars.some(source => source.status !== "ok" || !source.complete ||
+    !source.lastSuccessAt || !Number.isFinite(Date.parse(source.lastSuccessAt)) ||
+    Date.parse(now) - Date.parse(source.lastSuccessAt) > 24 * 60 * 60 * 1000);
+}
+export function emptyScheduleMessage(sources: SourceHealth[], hasAllDay: boolean, now: string): string {
+  const calendars = sources.filter(source => source.kind === "calendar" || source.scope === "calendar");
+  if (!calendars.length) return "No calendar source checked yet.";
+  if (calendars.some(source => source.status !== "ok" || !source.complete || !source.lastSuccessAt))
+    return "No timed events found. Calendar coverage is incomplete.";
+  if (calendarCoverageNeedsCheck(sources, now)) return "No timed events in the saved calendar. It may be out of date.";
+  return hasAllDay ? "No timed events in today’s saved schedule." : "No events today in the saved calendar.";
+}
 
 function clock(min: number) {
   const h = Math.floor(min / 60) % 24,
@@ -47,15 +69,26 @@ function duration(min: number) {
   return h ? `${h} h${m ? ` ${m} m` : ""}` : `${m} m`;
 }
 
-export function TodayRail({
+function TodayRailContent({
   resources,
   sources,
   plan = [],
   changes = [],
   onSelect,
   onPlan,
+  compactEmpty = false,
+  now: suppliedNow,
+  homeDueItems, homeDueCount = 3, onHomeDueCountChange,
+  courseLabel,
+  onInspectSources,
   onJoin,
 }: {
+  compactEmpty?: boolean;
+  now?: string;
+  homeDueItems?: ResourceView[];
+  homeDueCount?: number; onHomeDueCountChange?: (count: number) => void;
+  courseLabel?: (resource: ResourceView) => string;
+  onInspectSources?: () => void;
   resources: ResourceView[];
   sources: SourceHealth[];
   plan?: DayPlanEntry[];
@@ -64,10 +97,10 @@ export function TodayRail({
   /** Opens a meeting's https join link in the browser. Without it, no Join button is shown. */
   onJoin?: (url: string) => void;
   onSelect: (id: string) => void;
-  /** Saves a day-plan decision locally; resolves after the snapshot refreshes. */
+  /** Returns a non-null save receipt after the snapshot refreshes; rejects on failure. */
   onPlan: (command: Command) => Promise<unknown>;
 }) {
-  const [now, setNow] = useState(() => new Date().toISOString());
+  const [clockNow, setNow] = useState(() => new Date().toISOString());
   useEffect(() => {
     const timer = window.setInterval(
       () => setNow(new Date().toISOString()),
@@ -75,18 +108,59 @@ export function TodayRail({
     );
     return () => window.clearInterval(timer);
   }, []);
+  const now = suppliedNow ?? clockNow;
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const rail = useMemo(
-    // Sources let copies of one Canvas assignment (assignments, to-do, upcoming, activity) collapse to one row.
-    () => buildTodayRail(resources, now, timeZone, plan, sources),
-    [resources, now, timeZone, plan, sources],
+    // These rows already carry canonical identity, conflict evidence and personal choices.
+    () => buildTodayRail(scheduleRailResources(resources), now, timeZone, plan),
+    [resources, now, timeZone, plan],
   );
+  const due = homeDueItems ? homeDueItems.map(r => { const date=schedulePlanning(r,timeZone)!; return {id:r.id,title:r.title,courseName:r.courseName,dueMin:date.minute,conflict:date.conflict,personal:date.personal,needsReview:date.needsReview}; }) : rail.due.map(d=>({...d,personal:false,needsReview:false}));
   const notes = useMemo(() => changeNotes(changes, now, timeZone), [changes, now, timeZone]);
+  // Home keeps crowded days scannable without hiding a lone item behind a control.
+  const dueShown = homeDueItems ? Math.min(Math.max(3, homeDueCount), due.length) : due.length;
+  const dueRemaining = due.length - dueShown;
+  const dueNext = Math.min(3, dueRemaining);
+  const allDayShown = homeDueItems && rail.allDay.length > HOME_ALL_DAY_ALL ? HOME_ALL_DAY_ALL - 1 : rail.allDay.length;
+  const dueRow = (d: (typeof due)[number]) => (
+    <li key={d.id}>
+      <button
+        className="rail-row"
+        data-focus-key={`today-${d.id}`}
+        title={`${d.title} · ${d.courseName}${d.needsReview ? " · saved date evidence changed; review your planning date" : d.conflict ? " · dates disagree, planning for the earlier one" : ""}${notes.get(d.id) ? ` · ${notes.get(d.id)!.join(" · ")}` : ""}`}
+        onClick={() => onSelect(d.id)}
+      >
+        <span className="rail-time">{d.needsReview ? "Review date" : d.conflict ? "Check date" : d.dueMin === null ? "Time not provided" : clock(d.dueMin)}</span>
+        <span className="rail-row-main">
+          <span className="rail-row-title">{d.title}</span>{d.personal && <span className="rail-course">Your planning date</span>}
+          {homeDueItems && courseLabel && <span className="rail-course">{courseLabel(homeDueItems.find(r=>r.id===d.id)!)}</span>}
+          {(notes.get(d.id) ?? []).map((n) => (
+            <span key={n} className="rail-change">{n}</span>
+          ))}
+        </span>
+        {d.conflict || d.needsReview ? (
+          <span className="rail-flag" aria-label={d.needsReview ? "Review date" : "Dates disagree"}>
+            !
+          </span>
+        ) : null}
+      </button>
+    </li>
+  );
+  const allDayEntry = (e: (typeof rail.allDay)[number]) => homeDueItems ? (
+    <button key={e.id} className="rail-allday rail-allday--home" data-focus-key={`allday-${e.id}`} title={e.title} aria-label={`${e.title}, all day. Open details`} onClick={() => onSelect(e.id)}>
+      <span>All day</span>{e.title}
+    </button>
+  ) : (
+    <div key={e.id} className="rail-allday" title={e.title}>
+      {e.title}
+    </div>
+  );
   // Normal content is commitments and accepted blocks; suggestions appear on request.
   const [showSuggestions, setShowSuggestions] = useState(false);
   const visible = rail.suggestions.filter(
     (s) => s.state !== "suggested" || showSuggestions,
   );
+  const isCompactEmpty = compactEmpty && rail.events.length === 0 && visible.length === 0;
   const pendingCount = rail.suggestions.filter((s) => s.state === "suggested").length;
   const [focusId, setFocusId] = useState<string | null>(null);
   const focused =
@@ -94,29 +168,149 @@ export function TodayRail({
     visible.find((s) => s.state === "planned") ??
     visible.find((s) => s.state === "suggested");
 
-  // Day-plan actions. Each one saves through core; the rail re-derives from the saved plan.
+  // Recovery comes from saved entries, so it survives leaving Home and returning.
+  // Keep dates seen during this visit reachable across midnight too.
+  const recoveryDates = useRef(new Set([rail.date]));
+  recoveryDates.current.add(rail.date);
+  const undoEntries = plan.filter(p => p.status === "skipped" && recoveryDates.current.has(p.date));
+  const railRoot = useRef<HTMLElement>(null);
+  const dueList = useRef<HTMLUListElement>(null);
+  const dueReveal = useRef<{ height: number; shown: number; next: number; ids: string[]; scroll: number; focus: string } | null>(null);
+  const dueAnimation = useRef<{ animation: Animation; overflow: string; ids: string[] } | null>(null);
+  const captureDueReveal = (next: number, focus: string) => {
+    const pane = railRoot.current?.closest<HTMLElement>('.desktop-workspace');
+    dueReveal.current = {
+      height: dueList.current?.getBoundingClientRect().height ?? 0,
+      shown: dueShown, next, ids: due.slice(0, dueShown).map(item => item.id),
+      scroll: pane?.scrollTop ?? 0, focus,
+    };
+    onHomeDueCountChange?.(next);
+  };
+  const operationScope = useRef(createOperationScope());
+  const pendingRef = useRef(false);
+  const [pending, setPending] = useState("");
+  const [actionError, setActionError] = useState("");
+  const focusAfterSave = useRef<{ key: string; origin: Element | null } | null>(null);
+  useEffect(() => () => {
+    operationScope.current.invalidate();
+    pendingRef.current = false;
+    focusAfterSave.current = null;
+    dueAnimation.current?.animation.cancel();
+  }, []);
+  useLayoutEffect(() => {
+    const pending = dueReveal.current;
+    if (!pending) {
+      const running = dueAnimation.current;
+      if (running && (running.ids.length !== dueShown || running.ids.some((id, index) => due[index]?.id !== id))) {
+        running.animation.cancel();
+        if (dueList.current) dueList.current.style.overflow = running.overflow;
+        dueAnimation.current = null;
+      }
+      return;
+    }
+    dueReveal.current = null;
+    const list = dueList.current;
+    if (!list) return;
+    const previous = dueAnimation.current;
+    previous?.animation.cancel();
+    if (previous) list.style.overflow = previous.overflow;
+    dueAnimation.current = null;
+    const pane = railRoot.current?.closest<HTMLElement>('.desktop-workspace');
+    if (pane) pane.scrollTop = pending.scroll;
+    const focus = railRoot.current?.querySelector<HTMLElement>(`[data-focus-key="${pending.focus}"]`);
+    (focus ?? railRoot.current)?.focus({ preventScroll: true });
+    // Animate only a deliberate reveal/collapse with the same retained items. A source refresh
+    // must show its new truth immediately rather than replaying removed coursework.
+    const ids = due.slice(0, dueShown).map(item => item.id);
+    const stable = dueShown === pending.next && (dueShown > pending.shown
+      ? pending.ids.every((id, index) => ids[index] === id)
+      : ids.every((id, index) => pending.ids[index] === id));
+    if (!stable || window.matchMedia('(prefers-reduced-motion: reduce)').matches || !list.animate) {
+      focus?.scrollIntoView({ block: 'nearest' });
+      return;
+    }
+    const height = list.getBoundingClientRect().height;
+    if (Math.abs(height - pending.height) < 1) {
+      focus?.scrollIntoView({ block: 'nearest' });
+      return;
+    }
+    const overflow = list.style.overflow;
+    list.style.overflow = 'clip';
+    const animation = list.animate([{ height: `${pending.height}px` }, { height: `${height}px` }],
+      { duration: MOTION_MS.disclosure, easing: MOTION_EASE.out });
+    dueAnimation.current = { animation, overflow, ids };
+    if (dueShown > pending.shown) {
+      for (const node of Array.from(list.children).slice(pending.shown))
+        (node as HTMLElement).animate([{ opacity: 0.45 }, { opacity: 1 }],
+          { duration: MOTION_MS.disclosure, easing: MOTION_EASE.out });
+    }
+    focus?.scrollIntoView({ block: 'nearest' });
+    void animation.finished.then(() => {
+      if (dueAnimation.current?.animation !== animation) return;
+      list.style.overflow = overflow;
+      dueAnimation.current = null;
+      focus?.scrollIntoView({ block: 'nearest' });
+    }, () => {});
+  });
+  useLayoutEffect(() => {
+    const target = focusAfterSave.current;
+    if (!target) return;
+    focusAfterSave.current = null;
+    // Only move focus if this action still owns it, or removed its focused origin.
+    if (document.activeElement !== target.origin &&
+        !(document.activeElement === document.body && !target.origin?.isConnected)) return;
+    const next = Array.from(railRoot.current?.querySelectorAll<HTMLElement>("[data-plan-focus]") ?? [])
+      .find(node => node.dataset.planFocus === target.key);
+    (next ?? railRoot.current)?.focus({ preventScroll: true });
+  });
+  const savePlan = async (command: Command, label: string, onSaved?: () => void) => {
+    if (pendingRef.current) return false;
+    pendingRef.current = true;
+    const ticket = operationScope.current.start();
+    setPending(label);
+    setActionError("");
+    try {
+      await requirePlanSave(onPlan, command);
+      if (!ticket.isCurrent()) return false;
+      onSaved?.();
+      return true;
+    } catch {
+      if (ticket.isCurrent()) setActionError(`${label} could not finish. Try again.`);
+      return false;
+    } finally {
+      if (ticket.isCurrent()) {
+        pendingRef.current = false;
+        setPending("");
+      }
+    }
+  };
   const saved = (s: RailSuggestion) =>
     plan.find((p) => p.key === s.id && p.date === rail.date);
   const accept = (s: RailSuggestion) =>
-    onPlan({ type: "day-plan", entry: planEntry(s, rail.date, "accepted") });
+    savePlan({ type: "day-plan", entry: planEntry(s, rail.date, "accepted") }, "Saving to your plan");
   const remove = (s: RailSuggestion) =>
-    onPlan({ type: "day-plan-remove", key: s.id, date: rail.date });
+    savePlan({ type: "day-plan-remove", key: s.id, date: rail.date }, "Removing from your plan");
   const markDone = (s: RailSuggestion, done: boolean) => {
     const entry = saved(s) ?? planEntry(s, rail.date, "accepted");
-    return onPlan({
+    return savePlan({
       type: "day-plan",
       entry: { ...entry, doneAt: done ? new Date().toISOString() : null },
+    }, "Saving your progress");
+  };
+  const skip = (s: RailSuggestion) => {
+    const entry = planEntry(s, rail.date, "skipped");
+    const origin = document.activeElement;
+    return savePlan({ type: "day-plan", entry }, "Skipping this suggestion", () => {
+      focusAfterSave.current = { key: `undo:${entry.date}:${entry.key}`, origin };
     });
   };
-  const [undo, setUndo] = useState<RailSuggestion | null>(null);
-  useEffect(() => {
-    if (!undo) return;
-    const timer = window.setTimeout(() => setUndo(null), 6000);
-    return () => window.clearTimeout(timer);
-  }, [undo]);
-  const skip = async (s: RailSuggestion) => {
-    await onPlan({ type: "day-plan", entry: planEntry(s, rail.date, "skipped") });
-    setUndo(s);
+  const undoSkip = (entry: DayPlanEntry) => {
+    const origin = document.activeElement;
+    return savePlan({ type: "day-plan-remove", key: entry.key, date: entry.date }, "Restoring this suggestion", () => {
+      setShowSuggestions(true);
+      setFocusId(entry.key);
+      focusAfterSave.current = { key: `suggestion:${entry.key}`, origin };
+    });
   };
 
   const [editing, setEditing] = useState<RailSuggestion | null>(null);
@@ -132,7 +326,7 @@ export function TodayRail({
   const saveEdit = async () => {
     if (!editing || !check.ok) return;
     const base = saved(editing) ?? planEntry(editing, rail.date, "accepted");
-    await onPlan({
+    await savePlan({
       type: "day-plan",
       entry: {
         ...base,
@@ -145,8 +339,7 @@ export function TodayRail({
           endMin: fromHhmm(form.end),
         },
       },
-    });
-    setEditing(null);
+    }, "Saving your changes", () => setEditing(null));
   };
 
   function tools(s: RailSuggestion) {
@@ -155,10 +348,12 @@ export function TodayRail({
         key={label}
         className={`rail-tool ${tone}`}
         title={label}
+        aria-disabled={!!pending}
+        data-plan-focus={label === "Accept" ? `suggestion:${s.id}` : undefined}
         aria-label={`${label}: ${s.title}`}
         onClick={(event) => {
           event.stopPropagation();
-          void fn();
+          if (!pendingRef.current) void fn();
         }}
       >
         {icon}
@@ -234,42 +429,33 @@ export function TodayRail({
   };
 
   return (
-    <aside className="today-rail" aria-label="Today's schedule">
+    <aside ref={railRoot} tabIndex={-1} className={`today-rail${isCompactEmpty ? " is-compact-empty" : ""}`} aria-label="Today's schedule">
       <div className="rail-heading">
         <span>Due today</span>
-        <span>{rail.due.length || ""}</span>
+        <span>{due.length || ""}</span>
       </div>
-      <ul className="rail-due">
-        {rail.due.length ? (
-          rail.due.map((d) => (
-            <li key={d.id}>
-              <button
-                className="rail-row"
-                title={`${d.title} · ${d.courseName}${d.conflict ? " · dates disagree, planning for the earlier one" : ""}${notes.get(d.id) ? ` · ${notes.get(d.id)!.join(" · ")}` : ""}`}
-                onClick={() => onSelect(d.id)}
-              >
-                <span className="rail-time">{clock(d.dueMin)}</span>
-                <span className="rail-row-main">
-                  <span className="rail-row-title">{d.title}</span>
-                  {(notes.get(d.id) ?? []).map((n) => (
-                    <span key={n} className="rail-change">{n}</span>
-                  ))}
-                </span>
-                {d.conflict ? (
-                  <span className="rail-flag" aria-label="Dates disagree">
-                    !
-                  </span>
-                ) : null}
-              </button>
-            </li>
-          ))
+      <ul ref={dueList} className={`rail-due${homeDueItems ? " rail-due--home" : ""}`}>
+        {due.length ? (
+          due.slice(0, dueShown).map(dueRow)
         ) : (
           <li className="rail-empty-line">{dueEmpty}</li>
         )}
       </ul>
+      {homeDueItems && dueRemaining > 0 ? (
+        <button type="button" className="home-show-next magic-fb-pill" data-focus-key="today-next" aria-label={`Show next ${dueNext} due today; ${dueShown} of ${due.length} shown`} onClick={() => {
+          const next=dueShown+dueNext;
+          captureDueReveal(next, next===due.length ? 'today-less' : 'today-next');
+        }}>Show next {dueNext}</button>
+      ) : null}
+      {homeDueItems && dueShown > 3 ? (
+        <button type="button" className="home-show-next magic-fb-pill" data-focus-key="today-less" aria-label={`Show less due today; ${dueShown} of ${due.length} shown`} onClick={() => {
+          captureDueReveal(3, 'today-next');
+        }}>Show less</button>
+      ) : null}
 
       {editing ? (
         <form
+          aria-busy={!!pending}
           className="rail-edit"
           aria-label={`Edit ${editing.title}`}
           onSubmit={(event) => {
@@ -285,6 +471,7 @@ export function TodayRail({
             <input
               value={form.title}
               maxLength={200}
+              readOnly={!!pending}
               autoFocus
               onChange={(e) => setForm({ ...form, title: e.target.value })}
             />
@@ -294,6 +481,7 @@ export function TodayRail({
               Start
               <input
                 type="time"
+                readOnly={!!pending}
                 step={300}
                 value={form.start}
                 onChange={(e) => setForm({ ...form, start: e.target.value })}
@@ -303,6 +491,7 @@ export function TodayRail({
               End
               <input
                 type="time"
+                readOnly={!!pending}
                 step={300}
                 value={form.end}
                 onChange={(e) => setForm({ ...form, end: e.target.value })}
@@ -321,10 +510,10 @@ export function TodayRail({
             ) : null}
           </p>
           <div className="rail-edit-actions">
-            <button className="button primary" type="submit" disabled={!check.ok}>
+            <button className="button primary" type="submit" disabled={!check.ok} aria-disabled={!!pending}>
               Save to plan
             </button>
-            <button className="button" type="button" onClick={() => setEditing(null)}>
+            <button className="button" type="button" aria-disabled={!!pending} onClick={() => { if (!pendingRef.current) setEditing(null); }}>
               Cancel
             </button>
           </div>
@@ -373,16 +562,21 @@ export function TodayRail({
         </div>
       ) : null}
 
-      <div className="rail-heading">
+      <div className="rail-heading rail-heading--schedule">
         <span>Schedule</span>
         <span>{heading}</span>
       </div>
-      {rail.allDay.map((e) => (
-        <div key={e.id} className="rail-allday" title={e.title}>
-          {e.title}
-        </div>
-      ))}
-      <div className="rail-grid" ref={grid}>
+      {rail.allDay.slice(0, allDayShown).map(allDayEntry)}
+      {rail.allDay.length > allDayShown ? (
+        <details className="rail-more" data-place-disclosure="today-allday-more">
+          <summary className="magic-fb-pill" data-focus-key="today-allday-more">{rail.allDay.length - allDayShown} more all day</summary>
+          {rail.allDay.slice(allDayShown).map(allDayEntry)}
+        </details>
+      ) : null}
+      {isCompactEmpty ? <div className="rail-empty-schedule" role="status">
+        <p>{emptyScheduleMessage(sources, rail.allDay.length > 0, now)}</p>
+        {onInspectSources && calendarCoverageNeedsCheck(sources, now) && <button type="button" className="home-show-next magic-fb-pill" onClick={onInspectSources}>Check sources</button>}
+      </div> : <div className="rail-grid" ref={grid}>
         <div
           className="rail-grid-inner"
           style={{ height: hourCount * HOUR_PX + 12 }}
@@ -494,21 +688,35 @@ export function TodayRail({
             </p>
           )}
         </div>
+      </div>}
+      <div className="rail-action-feedback" role={actionError ? "alert" : "status"}>
+        {actionError || (pending ? `${pending}…` : "")}
       </div>
-      {undo ? (
-        <div className="rail-undo" role="status">
-          <span>Skipped “{undo.title}”</span>
+      <div role="status" aria-live="polite">
+      {undoEntries.map(entry => (
+        <div className="rail-undo" key={`${entry.date}:${entry.key}`}>
+          <span>Skipped “{entry.block.title}”{entry.date !== rail.date ? ` (${entry.date})` : ""}</span>
           <button
-            onClick={() => {
-              void onPlan({ type: "day-plan-remove", key: undo.id, date: rail.date });
-              setUndo(null);
-            }}
+            data-plan-focus={`undo:${entry.date}:${entry.key}`}
+            aria-label={`Undo skip: ${entry.block.title}`}
+            aria-disabled={!!pending}
+            onClick={() => { void undoSkip(entry); }}
           >
             Undo
           </button>
         </div>
-      ) : null}
+      ))}
+      </div>
       <p className="rail-foot">{freshness}</p>
     </aside>
   );
+}
+
+/** Reset transient actions when the source accounts change; saved recovery stays in their snapshot. */
+export function TodayRail(props: ComponentProps<typeof TodayRailContent>) {
+  const accounts = [...new Set([
+    ...props.sources.map(source => source.accountScope),
+    ...(props.sources.length ? [] : props.resources.map(resource => resource.sourceId)),
+  ].filter(Boolean))].sort();
+  return <TodayRailContent key={JSON.stringify(accounts)} {...props} />;
 }

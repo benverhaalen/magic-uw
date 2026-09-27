@@ -1,0 +1,65 @@
+/* Inline context inside prose. Everything inherits the sentence's font and size.
+   The time tag moves to the next line as a unit instead of splitting mid-tag, and
+   wraps inside itself (at a separator) only when it is wider than the line, e.g.
+   at 200% text in a narrow window. Its own tighter leading plus em padding keeps
+   the filled, outlined box taller than the text yet shorter than the sentence's
+   line (1.3em + 0.28em < 1.72em), so the fill extends outward from the glyphs
+   without enlarging the line or touching adjacent lines. */
+.magic-inline-time {
+  --_fill: var(--magic-inline-time-fill, var(--magic-fill-tag-candidate));
+  --_ink: var(--magic-inline-time-ink, var(--magic-ink-tag-candidate));
+  --_line: var(--magic-inline-time-line, var(--magic-line-tag-candidate));
+  display: inline-block;
+  max-width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  line-height: 1.3;
+  vertical-align: baseline;
+  color: var(--_ink);
+  padding: 0.14em 0.36em;
+  margin-inline: 0.06em;
+  border-radius: var(--magic-radius-tag-candidate);
+  background: var(--_fill);
+  box-shadow: inset 0 0 0 1px var(--_line);
+}
+.magic-inline-time__part { white-space: nowrap; }
+/* Trailing punctuation stays with its tag; the tag leaves room for it when it fills a line. */
+.magic-inline-time-group { white-space: nowrap; }
+.magic-inline-time-group > .magic-inline-time { white-space: normal; max-width: calc(100% - 0.5em); }
+
+/* Only a real calendar/deadline route gets link behavior: link ink, underline, pointer. */
+a.magic-inline-time--link {
+  color: var(--magic-ink-link);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+/* Inside prose a ring must stay within the word spaces; beats host rules like `.desktop-workspace a:focus-visible`. */
+a.magic-inline-time--link.magic-inline-time--link:focus-visible, .magic-inline-entity.magic-inline-entity > a:focus-visible { outline: 2px solid var(--magic-focus); outline-offset: 1px; }
+
+.magic-inline-entity > a {
+  font: inherit;
+  font-weight: inherit;
+  color: var(--magic-ink-link);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, currentColor 55%, transparent);
+  text-underline-offset: 0.22em;
+  border-radius: 3px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.magic-inline-entity > a:focus-visible { text-decoration-color: currentColor; }
+
+@media (hover: hover) {
+  /* Backing appears only in response to the pointer; the spread shadow grows outward, not the line. */
+  .magic-inline-entity > a:hover {
+    background: var(--magic-fill-secondary);
+    box-shadow: 0 0 0 0.14em var(--magic-fill-secondary);
+    text-decoration-color: currentColor;
+  }
+  a.magic-inline-time--link:hover { background: var(--magic-inline-time-fill-hover, color-mix(in srgb, var(--_fill), #29231f 7%)); }
+}
+
+.magic-inline-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

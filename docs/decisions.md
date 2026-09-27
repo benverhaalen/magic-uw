@@ -14,12 +14,12 @@ A context register, not an implementation backlog. No ownership is assigned.
 | Working method          | Reference-driven design across research, architecture, interface, implementation, and verification; inspect and test the transferred mechanism                               |
 | Current technical focus | Data access, local records, provenance, linking, and freshness                                                                                                               |
 | Computation             | Code for exact facts; Jev for typed judgments; language models for prose and deeper reasoning                                                                                |
-| Jev billing             | Company gateway pays for Claude/Codex/Gemini; OpenRouter users pay through their own key. Our TypeSafe key stays server-side. OpenRouter route is not built |
+| Jev billing             | Company gateway pays for Claude/Codex/Gemini; OpenRouter users pay through their own key. Our TypeSafe key stays server-side, except temporary [embedded-key builds](#2026-09-27--embedded-jev-key-temporary). OpenRouter route is not built |
 | Identity scrubbing      | Before hosted processing, remove student identities and unnecessary personal identifiers; retain relevant instructor/author names. Policy accepted; scrubber not implemented |
 | School actions          | Read only: no submitting, enrolling, or posting                                                                                                                              |
 | Learning policy         | Course policy first; coach when vague or silent                                                                                                                              |
 | Honesty                 | No false reassurance or unsupported readiness, speed, or reliability claims                                                                                                  |
-| Visual taste            | Warm ivory/ember-red compact shell; selective Cooper Light BT and readable Geist; vibrant flat cards under comparison                                                                              |
+| Visual taste            | Warm ivory/ember-red compact shell; selective Lora Medium (500, bundled; replaced Cooper Light BT September 27) and readable Geist; vibrant flat cards under comparison |
 | Current collaboration   | Shared context is pushed; runnable skeleton is pushed and implementation is authorized. Keep teammates informed without assigning work ownership                             |
 
 ## Resolved product decisions — September 26
@@ -138,6 +138,9 @@ Implementation choices, in code at `packages/domain/src/today-rail.ts`:
 
 Open for Ben: styling within the Home visual direction, whether the cap/cutoff should become settings, and multi-day planning.
 
+## 2026-09-27 — Editorial face: Lora Medium
+
+Ben supplied `Lora-Medium.ttf` and asked: “replace the cooper font with this font across everything in the app including website and everything mentioning cooper and then push the changes” (recorded September 27; message time unknown). Unmodified Lora Medium at weight 500 now fills the former Cooper roles in the desktop app, the informational website headings, the design lab and the marketing drafts' display text. Geist and layout are unchanged. The font and its OFL are tracked in `packages/ui/assets/fonts` and copied into both build outputs. Provenance and the treatment of earlier Cooper screenshots are in the [decision record](design/decision-record.md#editorial-face--recorded-september-27-2026-original-message-timestamp-unknown).
 ## 2026-09-27: Today rail meeting details from the Microsoft calendar
 
 Merged in [PR #15](https://github.com/benverhaalen/magic-uw/pull/15). The Graph calendar ([#12](https://github.com/benverhaalen/magic-uw/pull/12)) supplies each meeting's join link, provider, and the student's response; before this, the rail ignored all three and a declined meeting still blocked study suggestions. Rules, in code at `packages/domain/src/today-rail.ts` and `apps/desktop/src/renderer/TodayRail.tsx`:
@@ -177,6 +180,21 @@ Decisions and their reasons:
 - **Placement:** mounted in the current top bar; Ben's Home layout owns the final position.
 - **Announcement rule tightened after the field-test benchmark.** Any single keyword ("deadline", "quiz", "location") used to make an announcement important, which marked about half of a real student's announcements important. It is now judged per sentence: a clear change phrase (cancelled, no class, postponed, moved to, room change) or a topic word together with a change word in the same sentence, unless a negation says nothing changed. Aidan, September 27: “exam should always flag as important, different than deadline or assignment” — so exam, midterm and final mentions stay important on their own. Quizzes follow the change-word rule. The same test decides urgent course-staff email.
 
+## 2026-09-27 — Embedded Jev key (temporary)
+
+Aidan chose to ship Jev with the owner's TypeSafe key built into the desktop app until a hosted gateway exists. Source: Aidan, this project conversation, September 27, 2026 (about 4 a.m. Central; original message timestamps unavailable), answering a choice between the key on every laptop, the student's own key, a local model, and code rules only:
+
+> we pick option A
+
+> we understand this is a vulnerability and want to ship it anyway for now due to our short time frame we have a long term plan
+
+Aidan wrote "we"; Ben's agreement is as Aidan reported it and is not separately recorded here. This **reverses, for embedded builds only,** the September 26 rule that our TypeSafe key stays server-side ([pricing resolution](#pricing-and-ai-access-resolution--september-26)). The OpenRouter route and a hosted gateway remain the intended long-term paths.
+
+- **Accepted risk:** anyone with a build that carries the key can extract it and spend on the owner's TypeSafe account outside the app. In-app caps do not bound that; only TypeSafe-side account limits and key revocation do. The TypeSafe customer agreement has not been checked for this use.
+- **Mechanism:** `MAGIC_EMBED_TYPESAFE_KEY` at build time (`scripts/build.ts`) is compiled into `main.cjs` only; the desktop main process then runs the existing gateway on `127.0.0.1` with the repo-default caps per laptop (`apps/desktop/src/embedded-jev.ts`). The worker, renderer, logs and Git never receive it. A configured `MAGIC_GATEWAY_URL` takes precedence. Builds without the variable embed nothing and notifications run on code rules.
+- **Disclosure:** the setup agreement's Jev line and the Data & AI toggle now say the app contains our shared key and that announcements and email previews reach Jev with Course communications on. `CONSENT_DISCLOSURE_VERSION` moved to `setup-2026-09-27-jev`, so existing students accept again.
+- **Operating rules:** use a dedicated TypeSafe key for embedded builds, set account-side spend limits if TypeSafe offers them, and revoke and rebuild when a key is abused. Never commit or publicly publish `apps/desktop/dist/` from such a build.
+
 ## 2026-09-27: Today rail counts each Canvas assignment once
 
 Fixed on `sean/rail-dedupe-done`, found from a live student workspace where Due today showed 12 rows: the same three assignments three times each, plus two already submitted. Canvas lists one assignment in several places, and each is saved as its own resource (unique per source and Canvas id): the course's assignments list, the account to-do list, upcoming events, and recent activity. `projectWork` (`packages/domain/src/work.ts`), which feeds the Today rail's Due today, overdue, and suggestion candidates, listed every copy.
@@ -188,3 +206,7 @@ Rules, matching the existing `agenda()` merge in `packages/core/src/graph/agenda
 - **Done if any copy says so:** completed, submitted, excused, a submission time, or a submitted, graded, pending review, or complete workflow state. The to-do, upcoming, and activity copies carry no submission data, so trusting only one copy kept submitted work on the rail. Graded work with no submission time (paper or external-tool assignments) now counts as done.
 
 Not covered here, recorded for their owners: the Home list shows course-module copies of an assignment as a second "Partial capture" row (Home); a past-term course still marked active in Canvas is fully included, and the connector does not treat graded work as submitted (connectors). Marking one copy complete still writes a completion for that copy only; the rail now respects it through the any-copy rule.
+
+### Integration qualification — September 27, 2026
+
+The designed Home/Calendar use the existing account-scoped schedule projection before the rail. That consumer retains canonical contributor identity, disputed claims, module/feed obligations, and personal planning dates. The upstream raw-resource projection is also integrated, with two corrections: missing or unknown source/account metadata does **not** establish shared assignment identity, and divergent due claims are retained when verified copies merge. Already projected rows are not merged again. This supersedes the no-source merge fallback above. It does not resolve the saved fourteen-versus-six count: exact quiz/assignment crosswalk and calendar-only source state still require a successful authenticated capture.

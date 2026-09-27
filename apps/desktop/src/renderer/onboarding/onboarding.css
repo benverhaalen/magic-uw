@@ -11,7 +11,7 @@
   padding: 0 10px 10px;
   background: var(--magic-accent-frame); /* styles.css maps data-accent to this frame */
   color: var(--magic-ink);
-  font-family: var(--magic-font-interface);
+  font-family: var(--magic-font-interface); font-weight: var(--magic-font-interface-weight); letter-spacing: var(--magic-tracking);
   font-size: 14px;
 }
 .onb-bar {
@@ -24,7 +24,7 @@
 .onb-wordmark {
   font-family: var(--magic-font-editorial);
   font-size: var(--magic-type-identity);
-  font-weight: 400;
+  font-weight: 500;
   color: var(--magic-accent-frame-ink);
 }
 .onb-bar-end {
@@ -93,7 +93,7 @@
 }
 .onb-title {
   font-family: var(--magic-font-editorial);
-  font-weight: 400;
+  font-weight: 500;
   font-size: 26px;
   line-height: 1.2;
   letter-spacing: var(--magic-tracking);
@@ -136,7 +136,7 @@
   background: var(--magic-fill-review);
   color: var(--magic-ink-review);
   font-size: 14px;
-  font-weight: 560;
+  font-weight: inherit;
 }
 .onb-primary:hover:not(:disabled) {
   background: var(--magic-fill-review-hover);
@@ -288,7 +288,7 @@
 }
 .onb-tile-name {
   font-size: 15px;
-  font-weight: 560;
+  font-weight: inherit;
 }
 .onb-tile-meta {
   font-size: 13px;
@@ -315,7 +315,7 @@
 }
 .onb-connection.ok {
   color: var(--magic-ink);
-  font-weight: 560;
+  font-weight: inherit;
 }
 
 /* Connect: disclosure and terminal */
@@ -332,7 +332,7 @@
   border-top: 1px solid var(--magic-line-quiet);
 }
 .onb-facts dt {
-  font-weight: 560;
+  font-weight: inherit;
 }
 .onb-facts dd {
   margin: 0;
@@ -374,10 +374,10 @@
   display: none;
 }
 .onb-consent .consent-title {
-  font-family: var(--magic-font-interface);
+  font-family: var(--magic-font-interface); font-weight: var(--magic-font-interface-weight); letter-spacing: var(--magic-tracking);
   font-size: 16px;
-  font-weight: 560;
-  letter-spacing: normal;
+  font-weight: inherit;
+  letter-spacing: var(--magic-tracking);
   color: var(--magic-ink);
 }
 .onb-consent .settings-section {
@@ -417,7 +417,7 @@
   background: var(--magic-fill-review);
   color: var(--magic-ink-review);
   font-size: 14px;
-  font-weight: 560;
+  font-weight: inherit;
 }
 .onb-consent .button.primary:hover:not(:disabled) {
   background: var(--magic-fill-review-hover);
@@ -453,7 +453,7 @@
 }
 .onb-counts strong {
   font-family: var(--magic-font-editorial);
-  font-weight: 400;
+  font-weight: 500;
   font-size: var(--magic-type-section);
   color: var(--magic-ink);
 }
@@ -481,7 +481,7 @@
   min-width: 0;
 }
 .onb-source-label {
-  font-weight: 500;
+  font-weight: inherit;
   overflow-wrap: anywhere;
 }
 .onb-source-reason {
@@ -499,6 +499,32 @@
   font-size: 12px;
   color: var(--magic-ink-muted);
 }
+
+/* The finish step starts with a decision-sized overview. Every check remains in the
+   nested, bounded disclosure, so a large Canvas crawl cannot bury Open workspace. */
+.onb-readiness { margin-top: 24px; }
+.onb-readiness-saved { margin: 0 0 14px; color: var(--magic-ink-prose); }
+.onb-readiness-saved strong { color: var(--magic-ink); font-weight: 400; }
+.onb-readiness-notes { margin: 0 0 14px; padding-left: 20px; color: var(--magic-ink-status-warning-candidate); line-height: 1.5; }
+.onb-readiness-notes li + li { margin-top: 5px; }
+.onb-readiness-muted { color: var(--magic-ink-muted); font-size: 12px; }
+.onb-readiness-more { border-top: 1px solid var(--magic-line-quiet); }
+.onb-readiness-more > summary,
+.onb-readiness-group > summary { cursor: pointer; padding: 12px 0; }
+.onb-readiness-more > summary { color: var(--magic-ink-link); }
+.onb-readiness-more > summary:hover { color: var(--magic-ink); }
+.onb-readiness-more > summary:focus-visible,
+.onb-readiness-group > summary:focus-visible { outline: 2px solid var(--magic-focus); outline-offset: 2px; }
+.onb-less-label, .onb-readiness-more[open] .onb-more-label { display: none; }
+.onb-readiness-more[open] .onb-less-label { display: inline; }
+.onb-readiness-help, .onb-readiness-types { margin: 8px 0 12px; color: var(--magic-ink-muted); font-size: 13px; line-height: 1.45; }
+.onb-readiness-groups { max-height: min(30vh, 260px); overflow: auto; overscroll-behavior: contain; border-top: 1px solid var(--magic-line-quiet); }
+.onb-readiness-group { border-bottom: 1px solid var(--magic-line-quiet); }
+.onb-readiness-group > summary { display: list-item; padding-left: 2px; }
+.onb-readiness-group > summary span:first-child { overflow-wrap: anywhere; }
+.onb-readiness-group > summary .onb-readiness-muted { margin-left: 6px; white-space: nowrap; }
+.onb-readiness-group .onb-sources { max-height: min(25vh, 220px); overflow: auto; overscroll-behavior: contain; margin: 0 0 8px 12px; }
+.onb-step:has(.onb-readiness) .onb-actions { position: sticky; bottom: 0; z-index: 1; margin-top: 22px; padding: 12px 0; background: var(--magic-surface-workspace); }
 
 .onb-alert {
   display: flex;

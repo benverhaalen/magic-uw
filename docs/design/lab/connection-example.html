@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Canvas connection · Magic component study</title>
+  <link rel="stylesheet" href="components.css">
+  <link rel="stylesheet" href="connection-example.css">
+  <script src="local-fonts.js"></script>
+  <script type="module" src="connection-example.js"></script>
+</head>
+<body>
+  <main class="connection-study">
+    <header class="connection-study__intro">
+      <p class="mc-meta">Magic Canvas · Component study</p>
+      <h1>Source freshness & recovery</h1>
+      <p class="mc-meta">Synthetic fixture · Sep 26, 2026, Central time. The first refresh fails; retry succeeds. No Canvas connection or network request.</p>
+    </header>
+
+    <section class="mc-connection" aria-labelledby="connection-title" data-connection>
+      <div class="mc-connection__heading">
+        <div>
+          <h2 id="connection-title">Canvas</h2>
+          <p class="mc-meta">Demo University · Saved coursework</p>
+        </div>
+        <button class="mc-action" type="button" data-refresh aria-describedby="connection-feedback"><span data-refresh-label>Refresh</span>
+          <!-- Hugeicons free Stroke Rounded RefreshCw; MIT license in vendor/hugeicons/LICENSE.icons. -->
+          <svg class="mc-glyph" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" color="currentColor" aria-hidden="true"><path d="M3.04712 13C3.01082 12.6717 2.99219 12.338 2.99219 12C2.99219 7.02944 7.02162 3 11.9922 3C14.8195 3 17.3422 4.30367 18.9922 6.34267M20.9373 11C20.9736 11.3283 20.9922 11.662 20.9922 12C20.9922 16.9706 16.9628 21 11.9922 21C9.16492 21 6.64214 19.6963 4.99219 17.6573" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.35"/><path d="M15.9922 7H16.9922C18.4064 7 19.1135 7 19.5528 6.56066C19.9922 6.12132 19.9922 5.41421 19.9922 4V3" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.35"/><path d="M7.99219 17H6.99219C5.57797 17 4.87087 17 4.43153 17.4393C3.99219 17.8787 3.99219 18.5858 3.99219 20V21" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.35"/></svg>
+        </button>
+      </div>
+      <p class="mc-connection__freshness">Last synced <time data-captured-at datetime="2026-09-26T09:12:00-05:00">Sep 26 at 9:12 AM CDT</time></p>
+      <p class="mc-meta">This saved copy may not include later changes in Canvas.</p>
+      <p id="connection-feedback" class="mc-feedback mc-connection__feedback" role="status" aria-live="polite" aria-atomic="true" data-feedback>Saved coursework is available.</p>
+      <details class="mc-connection__saved">
+        <summary><span>View saved coursework</span><span class="mc-meta" data-saved-count>2 items</span></summary>
+        <ul data-saved-items>
+          <li><span>Interface exercise</span><span class="mc-meta">Software Design · Assignment</span></li>
+          <li><span>Testing & APIs</span><span class="mc-meta">Software Design · Reading</span></li>
+        </ul>
+        <p class="mc-meta">Saved titles in this specimen are synthetic. Syncing never marks work complete.</p>
+      </details>
+    </section>
+    <p class="mc-meta connection-study__note">Standalone R1 / R2 / R6 composition. This study demonstrates component behavior only; it does not establish application integration or shell fidelity.</p>
+  </main>
+</body>
+</html>

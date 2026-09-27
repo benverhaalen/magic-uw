@@ -29,6 +29,7 @@ export interface AskDeps {
   ledger: LedgerStore;
   now: () => Date;
   tokenBudget?: number;
+  resourceId?: string;
   /** owner: privacy. The router's protection; absent means none (a direct caller). */
   protection?: IntentProtection;
   /** owner: course-facts. The course prefix (brief + pack catalogue): used when the ask names one course. */
@@ -147,6 +148,7 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
   const meta = new Map<string, { resourceId: string; title: string; url: string }>();
   let used = 0;
   for (const f of facts.facts) {
+    if (deps.resourceId && f.resourceId !== deps.resourceId) continue; // an item-scoped ask stays within that item
     passages.push({ sourceId: f.sourceId, text: f.text });
     meta.set(f.sourceId, { resourceId: f.resourceId, title: f.title, url: f.url });
     used += Math.ceil(f.text.length / 4);
@@ -159,6 +161,7 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
   for (const h of [...claimHits, ...searched]) {
     if (seen.has(h.pid)) continue;
     seen.add(h.pid);
+    if (deps.resourceId && h.resourceId !== deps.resourceId) continue;
     if (passages.length >= ASK_MAX_PASSAGES) break;
     const p = store.passage(h.pid);
     if (!p || p.passage.redacted || !p.text.trim()) continue;

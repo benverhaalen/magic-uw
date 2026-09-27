@@ -20,7 +20,7 @@ const nav = [
 const head = `<link rel="icon" href="/assets/logo/favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,300..500,100,0&family=Geist:wght@400;500;600;700&family=Geist+Mono&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/assets/tokens.css" />
     <link rel="stylesheet" href="/assets/site.css" />
     <script src="/assets/config.js"></script>
@@ -96,6 +96,9 @@ await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });
 await copy(root);
 await cp("docs/design/tokens.css", join(out, "assets/tokens.css"));
+await mkdir(join(out, "assets/fonts"), { recursive: true });
+for (const name of ["Karma-Medium.ttf", "Karma-OFL.txt"])
+  await cp(join("packages/ui/assets/fonts", name), join(out, "assets/fonts", name));
 
 // Public account configuration for the browser (docs/accounts-and-payments.md). Only these three
 // values are ever written; the build stops if a secret key is supplied in their place.

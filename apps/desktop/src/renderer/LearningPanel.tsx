@@ -15,7 +15,7 @@ const outcomeLabels = {
   correct: "Matched the checked answer",
   partial: "Partly matched the checked answer",
   incorrect: "Did not match the checked answer",
-  undecided: "Needs review — the check could not decide",
+  undecided: "Needs review · the check could not decide",
 };
 function timestamp(value: string) {
   const date = new Date(value);

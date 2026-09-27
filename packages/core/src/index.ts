@@ -1,3 +1,5 @@
+import { courseWorkAdmission } from "./course-work-scope";
+import { currentPersonalDeadlineSource } from "./personal-deadlines";
 import type { CourseCoreStore } from "../../contracts/src/course-core";
 import {
   effectiveCoursePolicy,
@@ -25,7 +27,7 @@ import {
 import { maySend, resolveDeadline } from "@magic/domain";
 import type { JudgmentGateway } from "@magic/ai";
 import { contentCategories, courseIncluded, courseInclusion } from "./access";
-import { evidenceFor } from "./evidence";
+import { evidenceFor, linkExactEvidence } from "./evidence";
 import { readOnce } from "./graph/read-once";
 import { rebaseFixture } from "./fixture-dates";
 export { rebaseFixture } from "./fixture-dates";
@@ -35,6 +37,8 @@ import { classOf, type ContentClass, clearProtectedProjections, protectedPayload
 export { scrubText, rosterFor, toOriginalSpan } from "./identity";
 // owner: privacy: resolves protected projections and delegates every other claim to identity.ts.
 export { validateProtectedCitations as validateCitations } from "./privacy/protect";
+import { buildWorkSet } from "./work-set";
+export { buildWorkSet, launchWorkSet, materializeCopy, safeWebLink, selectWorkRetry, MAX_WORK_ITEMS, type WorkLaunchHost } from "./work-set";
 import { pullGuideForSubject } from "../../connectors/src/planning-public";
 import { gitlabProjectFromUrl } from "../../connectors/src/gitlab";
 import {
@@ -206,13 +210,22 @@ export function createCore(store: Store, options: CoreOptions) {
   }
   function snapshot(search?: string): Snapshot {
     // owner: T15. The full snapshot stays for debugging; views use scoped queries (queries.ts).
-    // Unsearched, the list is every resource: the views' evidence reuses it (one full read).
-    const listed = store.resources(search);
-    // One sources, links and jobs read each, shared by the views, the evidence and the fields below.
+    const savedResources = store.resources();
+    const listed = search?.trim() ? store.resources(search) : savedResources;
     const sources = store.sources();
     const links = store.links();
     const jobs = store.jobs();
-    const resources = resourceViews(withReads(store, { sources, links }), listed, search?.trim() ? undefined : listed);
+    const viewStore = withReads(readOnce(store, savedResources), { sources, links, jobs });
+    const views = resourceViews(viewStore, listed, savedResources);
+    const workSnapshot = store.personalWorkSnapshot(views.map(view => ({ canonicalResourceId: view.id,
+      contributorIds: view.deadlineContributors?.map(e => e.resourceId) ?? [] })), savedResources);
+    const workById = new Map(workSnapshot.descriptors.map(descriptor => [descriptor.scope.canonicalResourceId, descriptor]));
+    // Keep captured bodies in scoped reads; full snapshots omit raw HTML and document parts.
+    const resources = views.map(view => {
+      const { rawHtml: _html, parts: _parts, ...rest } = view as typeof view & { rawHtml?: unknown; parts?: unknown };
+      const personalWork = workById.get(view.id);
+      return { ...rest, ...(personalWork ? { personalWork } : {}) } as typeof view;
+    });
     // owner: course-facts. A course waiting on a queued or running `course.facts` job is pending.
     const factsQueued = new Set(
       jobs
@@ -241,6 +254,7 @@ export function createCore(store: Store, options: CoreOptions) {
         unreadable: store.planningUnreadable?.() ?? 0, // owner: privacy
       },
       resources,
+      courseWorkAdmission: courseWorkAdmission(viewStore, now(), savedResources),
       sources,
       privacy: store.privacy(),
       links,
@@ -260,6 +274,8 @@ export function createCore(store: Store, options: CoreOptions) {
       // owner: T06: the renderer routes on these and main's consent gate mirrors them.
       consents: store.consents?.() ?? [],
       dayPlan: store.dayPlan(),
+      personalReports: store.personalReports(),
+      personalWorkReports: workSnapshot.reports,
       // Unsearched snapshots already hold every live view; the feed reuses them.
       notifications: notifications.feed(search ? undefined : resources),
       gitlabLinks: store.gitlabLinks(),
@@ -322,14 +338,8 @@ export function createCore(store: Store, options: CoreOptions) {
                 ),
             );
     const profile = recipient === "jev" ? undefined : profileFor(r, sources);
-    const effectivePolicy = effectiveCoursePolicy(profile, r);
-    if (
-      profile &&
-      intelligenceView(profile, sources, now()).freshness !==
-        "current_capture" &&
-      effectivePolicy.mode === "allowed"
-    )
-      effectivePolicy.mode = "coaching";
+    const effectivePolicy = effectiveCoursePolicy(profile, r,
+      profile ? intelligenceView(profile, sources, now()).freshness : undefined);
     const policyResources = effectivePolicy.resourceIds
       .map((id) => store.resource(id))
       .filter((s): s is Resource => !!s && !s.deleted);
@@ -429,6 +439,9 @@ export function createCore(store: Store, options: CoreOptions) {
   async function extractCourses() {
     if (!options.courseExtractor || closed) return;
     for (const profile of store.courseIntelligence()) {
+      // Let interactive IPC run between profiles; reuse access lookup within this synchronous batch.
+      await new Promise<void>(resolve => setImmediate(resolve));
+      if (closed) return;
       const key = `${profile.id}:${profile.inputHash}:${options.courseExtractor.version ?? "v1"}`;
       if (
         options.courseExtractor.version &&
@@ -446,15 +459,16 @@ export function createCore(store: Store, options: CoreOptions) {
         continue;
       const attemptedAt = now();
       semanticAttempts.set(key, { status: "running", attemptedAt });
+      const included = courseInclusion(store);
       const resources = profile.dependencies
         .map((d) => store.resource(d.resourceId))
         .filter(
           (r): r is Resource =>
             !!r &&
             !r.deleted &&
-            courseIncluded(store, r) &&
             !r.gitlab &&
-            (r.externalId === "syllabus" || r.kind === "assignment"),
+            (r.externalId === "syllabus" || r.kind === "assignment") &&
+            included(r),
         );
       if (!resources.length) {
         semanticAttempts.set(key, { status: "unavailable", attemptedAt });
@@ -657,14 +671,17 @@ export function createCore(store: Store, options: CoreOptions) {
     return { verb, status: "ok" };
   }
   // end owner: T05b
-  function execute(raw: ResultOnlyCommand): Promise<ResultOnlyCommandResult>;
-  function execute(raw: unknown): Promise<CommandResult>;
-  async function execute(raw: unknown): Promise<CommandResult | ResultOnlyCommandResult> {
+  // An untyped caller (`command as never`) gets the full reply, not the result-only overload a `never` would otherwise match.
+  function execute(raw: never, requestSignal?: AbortSignal): Promise<CommandResult>;
+  function execute(raw: ResultOnlyCommand, requestSignal?: AbortSignal): Promise<ResultOnlyCommandResult>;
+  function execute(raw: unknown, requestSignal?: AbortSignal): Promise<CommandResult>;
+  async function execute(raw: unknown, requestSignal?: AbortSignal): Promise<CommandResult | ResultOnlyCommandResult> {
+    requestSignal?.throwIfAborted();
     if (closed) throw new Error("Workspace is closed.");
     const command = commandSchema.parse(raw);
     let message: string | undefined, manifest: ContextManifest | undefined;
     // owner: T05b
-    let seamResult: Partial<Pick<CommandResult, "learning" | "map" | "pack" | "workspace" | "command" | "notes">> = {};
+    let seamResult: Partial<Pick<CommandResult, "learning" | "map" | "pack" | "workspace" | "command" | "notes" | "personalWorkReceipt">> = {};
     // end owner: T05b
     switch (command.type) {
       case "snapshot":
@@ -673,6 +690,8 @@ export function createCore(store: Store, options: CoreOptions) {
         store.bumpGeneration?.(); // fix/sync-events: the workspace was replaced, not refreshed
         store.ingest(command.batch);
         saved(command.batch.source.id); // owner: T05b
+        // Same exact-link pass as live ingestion, so imported captures keep their evidence links.
+        linkExactEvidence(store);
         wake();
         message = "Capture imported locally.";
         break;
@@ -791,6 +810,8 @@ export function createCore(store: Store, options: CoreOptions) {
         }
         break;
       }
+      case "work-set":
+        return { snapshot: snapshot(), workSet: buildWorkSet(store, command.id) };
       case "planning-compare":
         return {
           snapshot: snapshot(),
@@ -846,10 +867,29 @@ export function createCore(store: Store, options: CoreOptions) {
         store.bumpGeneration?.(); // fix/sync-events
         store.ingest({ ...moved, observedAt: now() });
         saved(options.fixture.source.id); // owner: T05b
+        linkExactEvidence(store);
         wake();
         message = "Loaded a synthetic sample course.";
         break;
       }
+      case "personal-deadline":
+        store.setPersonalDeadlineChoice(command.value, () => currentPersonalDeadlineSource(store, command.value.resourceId));
+        break;
+      case "personal-work": {
+        // Recompute the source set at write time; a stale caller cannot omit changed deadline evidence.
+        const view = resourceViews(store, store.resources()).find(r => r.id === command.value.scope.canonicalResourceId);
+        const descriptor = view && store.describePersonalWork(view.id, view.deadlineContributors?.map(e => e.resourceId) ?? []);
+        if (!descriptor) throw new Error("This work is no longer available to check. Refresh your courses.");
+        const currentIds = descriptor.evidence.map(e => e.resourceId).sort();
+        const receivedIds = command.value.evidence.map(e => e.resourceId).sort();
+        if (JSON.stringify(currentIds) !== JSON.stringify(receivedIds))
+          throw new Error("The work requirements changed. Review the updated work before saving your choice.");
+        seamResult.personalWorkReceipt = store.setPersonalWork(command.value);
+        break;
+      }
+      case "personal-report":
+        store.setPersonalReport(command.value);
+        break;
       case "complete":
         store.setCompleted(command.id, command.completed);
         break;
@@ -1045,7 +1085,7 @@ export function createCore(store: Store, options: CoreOptions) {
         };
         const mode = command.value.mode ?? "run";
         seamResult = {
-          command: mode === "run" ? await seamCall((signal) => intent.handle(command.value, host, signal)) : await intent.handle(command.value, host, new AbortController().signal),
+          command: mode === "run" ? await seamCall((signal) => intent.handle(command.value, host, requestSignal ? AbortSignal.any([signal, requestSignal]) : signal)) : await intent.handle(command.value, host, new AbortController().signal),
         };
         break;
       }

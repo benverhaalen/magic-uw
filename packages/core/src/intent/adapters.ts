@@ -5,6 +5,7 @@
  * lane's plain-object `notesActions` (#16) come in through `adapters/notes.ts` when the worker
  * passes the module and its seam, and go first: their patterns are the most specific.
  */
+import { openPage } from "./page-action";
 import { agenda, flashcardsDue, generate, learnRound, openAssignment, openCourse, quizMe, search, ask } from "./actions";
 import { analyticsAssignment, analyticsCourse, analyticsNext } from "./adapters/analytics";
 import { guideView } from "./adapters/guides";
@@ -19,6 +20,7 @@ export { fromNotes, type NotesSeam } from "./adapters/notes";
 export function defaultActions(first: AnyAction[] = []): AnyAction[] {
   return [
     ...first,
+    openPage,
     generate,
     flashcardsDue,
     learnRound,

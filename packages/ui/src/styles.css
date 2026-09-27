@@ -1,0 +1,54 @@
+/* One canonical token source plus bundled, licensed Karma Medium and Geist fonts. */
+@import '../../../docs/design/tokens.css';
+@import './fonts.css';
+.magic-ui-action, .magic-ui-confirmation, .magic-ui-popover, .magic-ui-link, .magic-ui-disclosure {
+  font-family: var(--magic-font-interface); font-weight: var(--magic-font-interface-weight); letter-spacing: var(--magic-tracking); color: var(--magic-ink); box-sizing: border-box;
+}
+.magic-ui-action { display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; box-shadow: var(--magic-shadow-action); transition: background-color var(--magic-motion-overlay-enter) var(--magic-motion-ease-out); border: 0; border-radius: var(--magic-radius-control); min-height: 42px; padding: 10px 14px; font-size: var(--magic-type-control); line-height: 1.4; color: var(--magic-ink-action); background: var(--magic-fill-action); cursor: pointer; }
+.magic-ui-action--quiet { box-shadow: none; background: transparent; color: var(--magic-ink-link); text-decoration: none; }
+.magic-ui-action:disabled, .magic-ui-action[aria-disabled=true] { box-shadow: none; background: var(--magic-fill-disabled); color: var(--magic-ink-disabled); cursor: default; }
+.magic-ui-action[aria-busy=true] { cursor: progress; }
+.magic-ui-action:active:not(:disabled):not([aria-disabled=true]) { box-shadow: inset 0 0 0 999px var(--magic-fill-pressed-overlay); }
+.magic-ui-link { color: var(--magic-ink-link); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
+.magic-ui-meta { font-size: var(--magic-type-meta); color: var(--magic-ink-muted-strong); line-height: 1.5; margin: 6px 0; }
+.magic-ui-confirmation input { accent-color: var(--magic-focus); }
+.magic-ui-confirmation .magic-ui-action { min-height: 28px; padding: 0 4px; }
+.magic-ui-glyph { width: var(--magic-glyph-control); height: var(--magic-glyph-control); flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: var(--magic-icon-stroke-seed); stroke-linecap: round; stroke-linejoin: round; }
+.magic-ui-disclosure summary { display: flex; gap: 8px; align-items: center; list-style: none; cursor: pointer; }
+.magic-ui-disclosure summary::-webkit-details-marker { display: none; }
+.magic-ui-disclosure[open] > summary .magic-ui-glyph { transform: rotate(90deg); }
+.magic-ui-popover { position: fixed; inset: auto; margin: 0; padding: 6px; max-height: calc(100dvh - 24px); overflow: auto; border: 1px solid var(--magic-line-quiet); border-radius: var(--magic-radius-overlay); background: var(--magic-surface-raised); box-shadow: var(--magic-shadow-popover); }
+.magic-ui-popover nav { display: grid; }
+.magic-ui-popover a { padding: 10px; border-radius: var(--magic-radius-control); color: var(--magic-ink); font-size: var(--magic-type-control); overflow-wrap: anywhere; }
+:is(.magic-ui-action,.magic-ui-link,.magic-ui-disclosure summary,.magic-ui-confirmation input,.magic-ui-popover a):focus-visible { outline: 2px solid var(--magic-focus); outline-offset: 3px; }
+@media (hover: hover) {
+ .magic-ui-action:not(:disabled):not([aria-disabled=true]):hover { background: var(--magic-fill-action-hover); }
+ .magic-ui-action--quiet:not(:disabled):not([aria-disabled=true]):hover, .magic-ui-popover a:hover { background: var(--magic-fill-secondary-hover); }
+ .magic-ui-action--quiet:has(> svg):not(:disabled):not([aria-disabled=true]):hover:not(:focus-visible) { box-shadow: inset 0 0 0 1px var(--magic-line-quiet); }
+}
+
+/* Confirmation support and its inline undo share one readable semantic role. */
+.magic-ui-confirmation [role=status] { font: var(--magic-font-interface-weight) .8125rem/1.5 var(--magic-font-interface); min-height: 3em; margin: 0; }
+.magic-ui-confirmation [role=status] .magic-ui-action { font: inherit; min-width: 32px; min-height: 32px; vertical-align: baseline; }
+
+.magic-ui-confirmation [hidden] { display: none; }
+.magic-ui-confirmation--compact [role=status] { min-height: 0; }
+.magic-ui-confirmation__feedback { display: block; min-height: 1.5em; }
+
+
+.magic-ui-confirmation [role=status] { display: grid; }
+.magic-ui-confirmation__reserve, .magic-ui-confirmation__content { grid-area: 1 / 1; }
+.magic-ui-confirmation__reserve { visibility: hidden; pointer-events: none; }
+
+@media (prefers-reduced-motion: reduce) { .magic-ui-action { transition: none; } }
+
+/* Command purpose is explicit; quiet, pending and disabled retain their existing meaning. */
+.magic-ui-action--primary[data-action-intent=review] { --_purpose-fill:var(--magic-fill-review); --_purpose-ink:var(--magic-ink-review); }
+.magic-ui-action--primary[data-action-intent=coursework] { --_purpose-fill:var(--magic-fill-action-coursework); --_purpose-ink:var(--magic-ink-action-coursework); }
+.magic-ui-action--primary[data-action-intent=study] { --_purpose-fill:var(--magic-fill-action-study); --_purpose-ink:var(--magic-ink-action-study); }
+.magic-ui-action--primary[data-action-intent]:not(:disabled):not([aria-disabled=true]) { background:var(--_purpose-fill); color:var(--_purpose-ink); box-shadow:inset 0 0 0 999px transparent; transition:box-shadow var(--magic-fb-duration) var(--magic-fb-ease); }
+@media (hover:hover) and (pointer:fine) {
+  .magic-ui-action--primary[data-action-intent]:hover:not(:disabled):not([aria-disabled=true]) { box-shadow:inset 0 0 0 999px var(--magic-fill-pressed-overlay); }
+}
+.magic-ui-action--primary[data-action-intent]:active:not(:disabled):not([aria-disabled=true]) { box-shadow:inset 0 0 0 999px var(--magic-fill-pressed-overlay); transition-duration:0s; }
+@media (prefers-reduced-motion: reduce) { .magic-ui-action--primary[data-action-intent] { transition:none; } }

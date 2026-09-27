@@ -1,0 +1,19 @@
+/* The one editorial face: unmodified Google Fonts Karma Medium (SIL OFL 1.1, see
+   ../assets/fonts/Karma-OFL.txt). Bundlers resolve this relative URL; static
+   hosts must ship the same file and license beside their stylesheet. */
+@font-face {
+  font-family: "Karma";
+  src: url("../assets/fonts/Karma-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Unmodified Geist variable font, SIL OFL 1.1; ../assets/fonts/Geist-OFL.txt. */
+@font-face {
+  font-family: "Geist";
+  src: url("../assets/fonts/Geist-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}

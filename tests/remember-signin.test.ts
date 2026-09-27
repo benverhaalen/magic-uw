@@ -341,7 +341,7 @@ test("build switch: baked into the bundle at build time, and the preload is buil
   const build = read("scripts/build.ts");
   assert.match(build, /"apps\/desktop\/src\/signin-preload\.ts"/);
   assert.match(build, /process\.env\.MAGIC_REMEMBER_SIGNIN === "off" \? "off" : "on"/);
-  assert.match(build, /define: \{ "process\.env\.MAGIC_REMEMBER_SIGNIN": JSON\.stringify\(rememberSignIn\) \}/);
+  assert.match(build, /define:\s*\{[^}]*"process\.env\.MAGIC_REMEMBER_SIGNIN": JSON\.stringify\(rememberSignIn\)[^}]*\}/);
   const main = read("apps/desktop/src/main.ts");
   assert.match(main, /rememberSignInBuildEnabled\(process\.env\.MAGIC_REMEMBER_SIGNIN\)/);
   // A switched-off build keeps no saved sign-in from an earlier build.

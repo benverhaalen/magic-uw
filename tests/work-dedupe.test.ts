@@ -74,8 +74,8 @@ test("copies are never merged across accounts, and quiz ids never collide with a
   assert.equal(dueToday([copy("a", "s-assign"), copy("q", "s-quiz", { title: "Quiz #3" })]).length, 2, "same number, quiz vs assignment");
 });
 
-test("without source details, copies in the same course still merge by assignment id", () => {
-  assert.equal(dueToday([copy("todo", "s-todo"), copy("main", "s-assign")], false).length, 1);
+test("without source details, assignment identity remains source-specific", () => {
+  assert.equal(dueToday([copy("todo", "s-todo"), copy("main", "s-assign")], false).length, 2);
 });
 
 test("the Today rail shows each due assignment once", () => {
@@ -89,4 +89,28 @@ test("the Today rail shows each due assignment once", () => {
     sources,
   );
   assert.deepEqual(rail.due.map((d) => d.title), ["Brooks ch. 3"]);
+});
+
+
+test("verified copies retain differing due evidence rather than trusting one date", () => {
+  const resources = [copy("main", "s-assign"), copy("todo", "s-todo", {deadline: due("2026-09-29T04:59:00Z")})];
+  const item = projectWork(resources, NOW, TZ, sources).dueToday[0]!;
+  assert.equal(item.conflict, true);
+  assert.equal(item.resource.deadline.dueAt, null);
+  assert.equal(item.resource.deadline.claims.length, 2);
+  assert.equal(Date.parse(item.dueAt), Date.parse(TONIGHT));
+});
+
+test("already projected family retains its personal planning date and conflict evidence", () => {
+  const selected = {...copy("main", "s-assign"), scheduleDeadline: {family:"trusted"}, deadline: {...due(TONIGHT), planningAt:"2026-09-29T04:59:00Z", conflict:true}};
+  const item = projectWork([selected], NOW, TZ, sources).upcoming[0]!;
+  assert.equal(item.dueAt, selected.deadline.planningAt);
+  assert.equal(item.conflict, true);
+});
+
+test("unrecognized source scopes and absent accounts do not merge", () => {
+  const inputs=[copy("a","s-assign"),copy("b","s-todo")];
+  for (const fields of [{accountScope:""},{scope:"unverified"}]) {
+    assert.equal(projectWork(inputs,NOW,TZ,sources.map(s=>({...s,...fields}))).dueToday.length,2);
+  }
 });

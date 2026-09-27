@@ -1,0 +1,13 @@
+/* owner: voice-learning-media lane. Course videos under a reply: unboxed rows in the chat reading column,
+   Geist meta type, the shared quiet action. Canonical tokens only; no new colors or radii. */
+.magic-media { display: grid; gap: 8px; margin-top: 4px; }
+.magic-media-label { margin: 0; font-size: var(--magic-type-meta); line-height: 1.5; color: var(--magic-ink-muted-strong); }
+.magic-media-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.magic-media-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.magic-media-text { min-width: 0; display: grid; gap: 2px; }
+.magic-media-title { margin: 0; font-size: var(--magic-type-compact-control); line-height: 1.45; color: var(--magic-ink); overflow-wrap: anywhere; }
+.magic-media-meta, .magic-media-empty { margin: 0; font-size: var(--magic-type-meta); line-height: 1.5; color: var(--magic-ink-muted); overflow-wrap: anywhere; }
+.magic-media-error { margin: 0; font-size: var(--magic-type-meta); line-height: 1.5; color: var(--magic-ink-error); }
+.magic-media-row .magic-ui-action { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; }
+.magic-media-glyph { flex: 0 0 16px; }
+@media (max-width: 650px) { .magic-media-row { flex-direction: column; align-items: stretch; } }
