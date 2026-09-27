@@ -1,0 +1,64 @@
+<!doctype html>
+<html><head><meta charset="UTF-8" /></head><body>
+  <template>
+    <style>
+      @font-face { font-family: Karma; src: url("assets/fonts/Karma-Medium.ttf") format("truetype"); font-weight: 500; }
+            @font-face { font-family: Geist; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+      #opr-root { position: absolute; inset: 0; font-family: Geist, system-ui, sans-serif; color: #fff4ed; overflow: hidden; }
+      #opr-scrim { position: absolute; left: 1000px; top: 0; width: 920px; height: 1080px; background: linear-gradient(90deg, rgba(26, 13, 11, 0), rgba(26, 13, 11, 0.82) 22%, rgba(26, 13, 11, 0.92)); }
+      #opr-tiers { position: absolute; left: 1120px; top: 110px; width: 720px; display: flex; flex-direction: column; align-items: stretch; gap: 14px; }
+      .opr-tier { padding: 20px 28px; border-radius: 14px; background: rgba(255, 244, 237, 0.08); border: 1px solid rgba(255, 244, 237, 0.24); }
+      .opr-tier .t { font-size: 36px; font-family: Karma, Georgia, serif; font-weight: 500; letter-spacing: -0.02em; }
+      .opr-tier .d { font-size: 21px; color: #ffe9dd; margin-top: 4px; }
+      #opr-t1 { border-color: #f7c440; }
+      .opr-arrow { align-self: center; width: 24px; height: 20px; }
+      #opr-hub { position: absolute; left: 1120px; top: 600px; width: 720px; height: 240px; }
+      #opr-hub svg { position: absolute; inset: 0; width: 720px; height: 240px; overflow: visible; }
+      .opr-src { position: absolute; padding: 10px 16px; border-radius: 10px; background: #faf8f4; color: #29231f; font-size: 21px; font-weight: 700; white-space: nowrap; }
+      .opr-src span { font-weight: 400; color: #746d66; font-size: 16px; margin-left: 8px; }
+      #opr-lock { position: absolute; left: 1120px; top: 870px; width: 720px; display: flex; align-items: center; gap: 22px; }
+      #opr-lock svg { width: 80px; height: 62px; flex: none; }
+      #opr-lock .t { font-size: 38px; font-family: Karma, Georgia, serif; font-weight: 500; }
+      #opr-lock .d { font-size: 22px; color: #ffe9dd; }
+    </style>
+    <div id="opr-root" data-composition-id="o-protocol" data-width="1920" data-height="1080">
+      <div id="opr-scrim"></div>
+      <div id="opr-tiers">
+        <div class="opr-tier" id="opr-t1"><div class="t">Code first</div><div class="d">Dates, IDs, links and grades: exact work, no model</div></div>
+        <svg class="opr-arrow" id="opr-a1" viewBox="0 0 24 20"><path d="M12 0 V16 M5 10 L12 17 L19 10" fill="none" stroke="#f7c440" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        <div class="opr-tier" id="opr-t2"><div class="t">Jev</div><div class="d">Typed judgments only, never an action</div></div>
+        <svg class="opr-arrow" id="opr-a2" viewBox="0 0 24 20"><path d="M12 0 V16 M5 10 L12 17 L19 10" fill="none" stroke="#f7c440" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        <div class="opr-tier" id="opr-t3"><div class="t">Your AI, one checked call</div><div class="d">Only where language must be read</div></div>
+      </div>
+      <div id="opr-hub">
+        <svg viewBox="0 0 720 240">
+          <path class="opr-line" d="M 360 230 L 90 40" fill="none" stroke="#f7c440" stroke-width="3" stroke-dasharray="340" stroke-dashoffset="340" />
+          <path class="opr-line" d="M 360 230 L 280 40" fill="none" stroke="#f7c440" stroke-width="3" stroke-dasharray="340" stroke-dashoffset="340" />
+          <path class="opr-line" d="M 360 230 L 460 40" fill="none" stroke="#f7c440" stroke-width="3" stroke-dasharray="340" stroke-dashoffset="340" />
+          <path class="opr-line" d="M 360 230 L 640 40" fill="none" stroke="#f7c440" stroke-width="3" stroke-dasharray="340" stroke-dashoffset="340" />
+        </svg>
+        <div class="opr-src" style="left: 0px; top: 0px">Canvas<span>read-only</span></div>
+        <div class="opr-src" style="left: 170px; top: 60px">Enrollment<span>read-only</span></div>
+        <div class="opr-src" style="left: 390px; top: 0px">Outlook<span>read-only</span></div>
+        <div class="opr-src" style="left: 520px; top: 60px">Notes<span>Word · OneDrive</span></div>
+      </div>
+      <div id="opr-lock">
+        <svg viewBox="0 0 90 70" fill="none" stroke="#fff4ed" stroke-width="3" stroke-linejoin="round"><rect x="12" y="8" width="66" height="42" rx="4" /><path d="M4 58 H86 L80 50 H10 Z" /><rect x="35" y="24" width="20" height="16" rx="3" fill="#f7c440" stroke="#f7c440" /><path id="opr-shackle" d="M39 24 V19 a6 6 0 0 1 12 0 V24" stroke="#f7c440" /></svg>
+        <div><div class="t">Stays local</div><div class="d">What it sees is what you allow.</div></div>
+      </div>
+    </div>
+    <script>
+      (() => {
+        const tl = gsap.timeline({ paused: true });
+        tl.set("#opr-scrim", { opacity: 1 }, 0);
+        const seq = ["#opr-t1", "#opr-a1", "#opr-t2", "#opr-a2", "#opr-t3"];
+        seq.forEach((id, i) => tl.fromTo(id, { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "expo.out" }, 0.3 + i * 0.35));
+        tl.fromTo("#opr-root .opr-src", { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.45, ease: "expo.out", stagger: 0.18 }, 4.3);
+        tl.to("#opr-root .opr-line", { strokeDashoffset: 0, duration: 0.6, ease: "power2.out", stagger: 0.18 }, 4.5);
+        tl.fromTo("#opr-lock", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "expo.out" }, 6.9);
+        tl.fromTo("#opr-shackle", { y: -8 }, { y: 0, duration: 0.3, ease: "back.out(3)" }, 7.2);
+        window.__timelines["o-protocol"] = gsap.timeline({ paused: true }).add(tl.tweenFromTo(0, 8, { duration: 6, ease: "none" }));
+      })();
+    </script>
+  </template>
+</body></html>

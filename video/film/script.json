@@ -1,22 +1,110 @@
 {
-  "note": "Machine copy of SCRIPT.md. Times are film seconds. slot = [start, end] the line must fit. tts = what the TEMP guide voice says (spelled for pronunciation). tools/audio.mjs reads this to make the TEMP guide narration and compositions/captions.html.",
-  "voices": { "Ben": "am_michael", "Sean": "am_adam", "Nathaniel": "bm_george" },
+  "note": "Machine copy of the operator's 8-frame script (Sept 27). tts = TEMP guide voice text. caption:false = spoken, not burned in (the journey titles and facts carry the words). Previous: script.v1.json.",
+  "voices": {
+    "Ben": "am_michael"
+  },
   "lines": [
-    { "id": "k1", "part": "skit", "speaker": "Ben", "kind": "vo", "slot": [0.2, 6.9], "text": "This is Sean. Typical UW–Madison student. Five classes, five Canvas courses, one inbox he's afraid of.", "tts": "This is Sean. Typical U W Madison student. Five classes, five Canvas courses, one inbox he's afraid of." },
-    { "id": "k2", "part": "skit", "speaker": "Sean", "kind": "dialogue", "slot": [7.0, 10.8], "text": "Syllabus says the lab's due Thursday… calendar says Friday?", "tts": "Syllabus says the lab's due Thursday. Calendar says Friday?" },
-    { "id": "k3", "part": "skit", "speaker": "", "kind": "sound", "slot": [11.0, 14.8], "text": "[Phone buzzes: “Exam 2 moved to tomorrow.”]", "tts": "" },
-    { "id": "k4", "part": "skit", "speaker": "Nathaniel", "kind": "dialogue", "slot": [15.3, 19.6], "text": "Dude. Just ask Whiz.", "tts": "Dude. Just ask Whiz." },
-    { "id": "s1", "part": "showcase", "speaker": "Ben", "kind": "vo", "slot": [20.3, 23.0], "text": "Meet My Magic UW.", "tts": "Meet My Magic U W." },
-    { "id": "s2", "part": "showcase", "speaker": "Ben", "kind": "vo", "slot": [23.1, 29.0], "text": "One UW sign-in. It finds the AI you already use, Claude Code or Codex, and sets itself up.", "tts": "One U W sign-in. It finds the A I you already use, Claude Code or Codex, and sets itself up." },
-    { "id": "s3", "part": "showcase", "speaker": "Ben", "kind": "vo", "slot": [29.3, 38.0], "text": "Then Whiz pulls in every assignment, file and announcement from the courses you're actually taking.", "tts": "Then Whiz pulls in every assignment, file and announcement from the courses you're actually taking." },
-    { "id": "s4", "part": "showcase", "speaker": "Ben", "kind": "vo", "slot": [38.3, 46.0], "text": "Your day, ranked. And when an exam moves, you see it, in your professor's own words.", "tts": "Your day, ranked. And when an exam moves, you see it, in your professor's own words." },
-    { "id": "s5", "part": "showcase", "speaker": "Ben", "kind": "vo", "slot": [46.3, 53.0], "text": "Open anything, and it's already connected: the lecture, the syllabus rule, the real due date.", "tts": "Open anything, and it's already connected. The lecture, the syllabus rule, the real due date." },
-    { "id": "s6", "part": "showcase", "speaker": "Ben", "kind": "vo", "slot": [53.3, 62.0], "text": "One click builds a practice quiz from your own materials, and every answer points back to its source.", "tts": "One click builds a practice quiz from your own materials, and every answer points back to its source." },
-    { "id": "s7", "part": "showcase", "speaker": "Ben", "kind": "vo", "slot": [62.3, 71.0], "text": "See where you stand, and exactly what to study next.", "tts": "See where you stand, and exactly what to study next." },
-    { "id": "s8", "part": "showcase", "speaker": "Ben", "kind": "vo", "slot": [71.3, 79.0], "text": "Whiz guards the gate. The AI gets no tools, never submits or posts, and your data stays on your laptop.", "tts": "Whiz guards the gate. The A I gets no tools, never submits or posts, and your data stays on your laptop." },
-    { "id": "s9", "part": "showcase", "speaker": "Ben", "kind": "vo", "slot": [79.3, 90.0], "text": "Reopening is 24 times faster with 35 times fewer requests, and more than half of what you do needs no AI at all.", "tts": "Reopening is twenty-four times faster with thirty-five times fewer requests, and more than half of what you do needs no A I at all." },
-    { "id": "p1", "part": "presenters", "speaker": "Nathaniel", "kind": "dialogue", "slot": [90.3, 102.0], "text": "We didn't just build an app. My Magic UW is an open-source layer that wraps around the agent you already run: Claude Code, Codex, or any MCP-compatible harness.", "tts": "We didn't just build an app. My Magic U W is an open-source layer that wraps around the agent you already run. Claude Code, Codex, or any M C P compatible harness." },
-    { "id": "p2", "part": "presenters", "speaker": "Sean", "kind": "dialogue", "slot": [102.2, 112.0], "text": "Your agent drives our infrastructure. Code does the exact work, AI reads only what needs reading, and every answer is checked. What it sees is what you allow.", "tts": "Your agent drives our infrastructure. Code does the exact work, A I reads only what needs reading, and every answer is checked. What it sees is what you allow." },
-    { "id": "p3", "part": "presenters", "speaker": "Nathaniel", "kind": "dialogue", "slot": [112.2, 118.5], "text": "Open source, for every Badger. Plug your agent into your academic life.", "tts": "Open source, for every Badger. Plug your agent into your academic life." }
+    {
+      "id": "v1",
+      "part": "skit",
+      "speaker": "Ben",
+      "kind": "vo",
+      "slot": [
+        0.3,
+        12.8
+      ],
+      "text": "For the past three weeks, Sean has spent hours scouring Canvas, textbooks and Outlook just to get set up on a single homework assignment. That is, until he joined the student revolution: My Magic UW.",
+      "tts": "For the past three weeks, Sean has spent hours scouring Canvas, textbooks and Outlook just to get set up on a single homework assignment. That is, until he joined the student revolution: My Magic U W."
+    },
+    {
+      "id": "v2",
+      "part": "features",
+      "speaker": "Ben",
+      "kind": "vo",
+      "caption": false,
+      "slot": [
+        13.2,
+        26.2
+      ],
+      "text": "Our friend Wiz has agreed to show us around. All Sean has to do is check his daily briefing. It's preloaded with his most vital work, based on due date and importance, all run through a deterministic algorithm.",
+      "tts": "Our friend Wiz has agreed to show us around. All Sean has to do is check his daily briefing. It's preloaded with his most vital work, based on due date and importance, all run through a deterministic algorithm."
+    },
+    {
+      "id": "v3",
+      "part": "features",
+      "speaker": "Ben",
+      "kind": "vo",
+      "caption": false,
+      "slot": [
+        26.5,
+        29.5
+      ],
+      "text": "All he has to do is click once… and poof.",
+      "tts": "All he has to do is click once... and poof."
+    },
+    {
+      "id": "v4",
+      "part": "features",
+      "speaker": "Ben",
+      "kind": "vo",
+      "caption": false,
+      "slot": [
+        30,
+        35.6
+      ],
+      "text": "All of his resources are at his fingertips, in one click.",
+      "tts": "All of his resources are at his fingertips, in one click."
+    },
+    {
+      "id": "v5",
+      "part": "skit",
+      "speaker": "Ben",
+      "kind": "vo",
+      "slot": [
+        36.2,
+        41.8
+      ],
+      "text": "Sean is now flying through his assignment so fast, he might even have some extra time to study.",
+      "tts": "Sean is now flying through his assignment so fast, he might even have some extra time to study."
+    },
+    {
+      "id": "v6",
+      "part": "features",
+      "speaker": "Ben",
+      "kind": "vo",
+      "caption": false,
+      "slot": [
+        42.2,
+        46.9
+      ],
+      "text": "Luckily, Wiz has got us covered. Let's check out his custom practice test.",
+      "tts": "Luckily, Wiz has got us covered. Let's check out his custom practice test."
+    },
+    {
+      "id": "v7",
+      "part": "features",
+      "speaker": "Ben",
+      "kind": "vo",
+      "caption": false,
+      "slot": [
+        47.3,
+        60.6
+      ],
+      "text": "Practice tests and other study materials are ready within seconds, at practically zero cost, because the data is already preloaded into My Magic UW, and built on all of his existing class sources, not some random AI slop.",
+      "tts": "Practice tests and other study materials are ready within seconds, at practically zero cost, because the data is already preloaded into My Magic U W, and built on all of his existing class sources, not some random AI slop."
+    },
+    {
+      "id": "v8",
+      "part": "features",
+      "speaker": "Ben",
+      "kind": "vo",
+      "caption": false,
+      "slot": [
+        61.3,
+        69.8
+      ],
+      "text": "And here's the real magic underneath: all of Sean's data lives in one local database on his laptop, with one open protocol his own Claude Code plugs straight into.",
+      "tts": "And here's the real magic underneath: all of Sean's data lives in one local database on his laptop, with one open protocol his own Claude Code plugs straight into."
+    }
   ]
 }

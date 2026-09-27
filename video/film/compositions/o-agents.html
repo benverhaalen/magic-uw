@@ -1,0 +1,28 @@
+<!doctype html>
+<html><head><meta charset="UTF-8" /></head><body>
+  <template>
+    <style>
+      @font-face { font-family: Karma; src: url("assets/fonts/Karma-Medium.ttf") format("truetype"); font-weight: 500; }
+      @font-face { font-family: Geist; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+      /* Chips and repo over the agents-spell shot (right side), per PRODUCTION-SCRIPT 1:52-1:57. */
+      #oag-root { position: absolute; inset: 0; font-family: Geist, system-ui, sans-serif; color: #fff; }
+      #oag-chips { position: absolute; left: 1110px; bottom: 190px; display: flex; gap: 14px; }
+      .oag-chip { padding: 12px 20px; border-radius: 10px; background: #fff; color: #29231f; font-weight: 600; font-size: 26px; box-shadow: 0 12px 30px rgba(10, 4, 3, 0.5); }
+      #oag-note { position: absolute; left: 1112px; bottom: 150px; font-size: 18px; color: #faebec; }
+      #oag-url { position: absolute; left: 1110px; bottom: 84px; font-size: 32px; font-weight: 600; padding: 8px 16px; border-radius: 8px; background: rgba(26, 13, 11, 0.82); }
+    </style>
+    <div id="oag-root" data-composition-id="o-agents" data-width="1920" data-height="1080">
+      <div id="oag-chips"><div class="oag-chip">Claude Code</div><div class="oag-chip">Codex</div><div class="oag-chip">any MCP agent</div></div>
+      <div id="oag-note">MCP: an optional, read-only course bank with per-course grants</div>
+      <div id="oag-url">github.com/benverhaalen/magic-uw</div>
+    </div>
+    <script>
+      (() => {
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo("#oag-root .oag-chip", { y: 30, opacity: 0, scale: 0.8 }, { y: 0, opacity: 1, scale: 1, duration: 0.45, ease: "back.out(2.5)", stagger: 0.35 }, 0.6);
+        tl.fromTo(["#oag-note", "#oag-url"], { y: 16, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "expo.out", stagger: 0.2 }, 2.0);
+        window.__timelines["o-agents"] = tl;
+      })();
+    </script>
+  </template>
+</body></html>

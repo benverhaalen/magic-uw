@@ -1,19 +1,19 @@
 // Re-shoots every real-UI shot for the film from the app's own headless preview.
 //
-//   MAGIC_APP_DIR=<app checkout> npx tsx capture/capture.ts [--build]
+//   MAGIC_APP_DIR=<main checkout> MAGIC_STUDY_DIR=<study checkout> npx tsx capture/capture.ts [--build]
 //
-// - Starts a fresh `scripts/preview.ts` server in MAGIC_APP_DIR (synthetic sample course,
-//   temporary store, no school or AI connections) on a private port, then drives it with
-//   headless Chromium. No window ever opens.
-// - Walks the real onboarding, loads the sample course, then imports one more synthetic
-//   course (Algorithms 301 · Sample) through the app's own `import` command, so the film
-//   shows a reading-heavy and a CS-heavy course in the same app.
-// - Writes 2x PNGs to assets/ui/ (git-ignored) and assets/ui/manifest.json listing every
-//   shot as captured or missed. A missed shot is reported, never substituted.
-// - The practice quiz and flashcards need a model to generate. The preview has none, so the
-//   script feeds the real quiz/card components synthetic items (SYNTHETIC_QUIZ below) by
-//   answering the study.prep read at the bridge. The components, layout and KaTeX are real;
-//   the questions are ours and are labelled synthetic in STORYBOARD.md.
+// Two passes, same synthetic data:
+// - main pass (MAGIC_APP_DIR): Home / Daily Brief, Calendar (week and month), course page and its Analytics tab.
+// - study pass (MAGIC_STUDY_DIR, default = MAGIC_APP_DIR): Study & Learn, the catered item space, the practice
+//   quiz and flashcards. Once land/study-prepper merges, point both at one checkout.
+// Each pass starts a fresh `scripts/preview.ts` server (synthetic sample course, temporary store, no school or
+// AI connections) and drives it with headless Chromium. No window ever opens. After the sample course loads, the
+// script imports a second synthetic course (Algorithms 301 · Sample, with a lecture an hour from now and a
+// synthetic advising email) through the app's own `import` command.
+// Writes 2x PNGs to assets/ui/ (git-ignored) and assets/ui/manifest.json. A missed shot is reported, never
+// substituted. The preview has no model, so the quiz and card components get synthetic items at the bridge
+// (SYNTHETIC_QUIZ below): the components, layout and KaTeX are real; the questions are ours.
+// Windows: the preview needs 4f0f995 ("preview serves renderer assets on Windows") until it reaches main.
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { resolve, join } from "node:path";
@@ -21,33 +21,37 @@ import { chromium, type Page, type Route } from "playwright";
 
 const here = resolve(import.meta.dirname, "..");
 const appDir = resolve(process.env.MAGIC_APP_DIR ?? join(here, "..", ".."));
+const studyDir = resolve(process.env.MAGIC_STUDY_DIR ?? appDir);
 const outDir = join(here, "assets", "ui");
 const port = Number(process.env.CAPTURE_PORT ?? 4397);
 const scale = Number(process.env.CAPTURE_SCALE ?? 2);
 mkdirSync(outDir, { recursive: true });
 
 type Shot = { file: string; ok: boolean; note: string };
-const manifest: { app: string; appCommit: string; capturedAt: string; shots: Shot[] } = {
+const manifest: { app: string; appCommit: string; study: string; studyCommit: string; capturedAt: string; shots: Shot[] } = {
   app: appDir,
-  appCommit: git(["rev-parse", "--short", "HEAD"]),
+  appCommit: git(["rev-parse", "--short", "HEAD"], appDir),
+  study: studyDir,
+  studyCommit: git(["rev-parse", "--short", "HEAD"], studyDir),
   capturedAt: new Date().toISOString(),
   shots: [],
 };
 
-function git(args: string[]): string {
+function git(args: string[], cwd: string): string {
   try {
-    return execFileSync("git", args, { cwd: appDir, encoding: "utf8" }).trim();
+    return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
   } catch {
     return "unknown";
   }
 }
 
-if (process.argv.includes("--build") || !existsSync(join(appDir, "apps/desktop/dist/renderer/index.html"))) {
-  console.log(`building the renderer in ${appDir}`);
-  execFileSync("npx", ["tsx", "scripts/build.ts"], { cwd: appDir, stdio: "inherit", shell: true });
-}
+for (const dir of new Set([appDir, studyDir]))
+  if (process.argv.includes("--build") || !existsSync(join(dir, "apps/desktop/dist/renderer/index.html"))) {
+    console.log(`building the renderer in ${dir}`);
+    execFileSync("npx", ["tsx", "scripts/build.ts"], { cwd: dir, stdio: "inherit", shell: true });
+  }
 
-function startPreview(): Promise<{ child: ChildProcess; url: string }> {
+function startPreview(appDir: string, port: number): Promise<{ child: ChildProcess; url: string }> {
   return new Promise((ok, fail) => {
     const child = spawn("npx", ["tsx", "scripts/preview.ts"], {
       cwd: appDir,
@@ -85,6 +89,11 @@ const at = (days: number, hour: number) => {
   return d.toISOString();
 };
 const csCourse = "Algorithms 301 · Sample";
+const nextHour = () => {
+  const d = new Date(Date.now() + 3_600_000);
+  d.setMinutes(0, 0, 0);
+  return d.toISOString();
+};
 const cs = (externalId: string, kind: string, title: string, text: string, extra: Record<string, unknown> = {}) => ({
   externalId,
   kind,
@@ -130,6 +139,13 @@ function csBatch() {
       }),
       cs("lecture-12", "material", "Lecture 12 · The Master theorem", "For T(n) = aT(n/b) + f(n): compare f(n) with n^(log_b a). Merge sort: T(n) = 2T(n/2) + n, so T(n) = Θ(n log n)."),
       cs("syllabus", "material", "Syllabus · Late work", "Late work loses 10% per day, up to three days. Exams cannot be taken late without a documented reason."),
+      cs("lecture-13", "event", "Algorithms 301 · Lecture 13", "", {
+        deadlines: [{ value: nextHour(), kind: "event", quote: "start", authority: "structured", scopeConfirmed: true }],
+      }),
+      // Synthetic advising email (the Outlook connector is built but has not run live).
+      cs("advising", "message", "Advising: registration hold, reply by Friday", "Your registration hold can be cleared once you reply to schedule a check-in. Please reply by Friday.", {
+        mail: { messageId: "synthetic-advising-1", folder: "inbox", fromName: "Academic advising (sample)", receivedAt: new Date().toISOString(), preview: "Your registration hold can be cleared once you reply to schedule a check-in.", category: "advisor", categoryReason: "synthetic sample" },
+      }),
       cs("announce-exam2", "message", "Exam 2 moved to Friday", "Exam 2 now takes place on Friday in the usual room. Coverage is unchanged."),
     ],
   };
@@ -233,29 +249,21 @@ async function click(p: Page, name: string, role: "button" | "link" = "button", 
 }
 
 // ---------- the run ----------
-const { child, url } = await startPreview();
-console.log(`preview at ${url} (app ${manifest.appCommit})`);
-const browser = await chromium.launch({ headless: true });
-try {
-  const ctx = await browser.newContext({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: scale, reducedMotion: "reduce" });
-  const p = await ctx.newPage();
-  await p.route("**/query", studyRoute);
+async function onboard(p: Page, url: string, shots: boolean) {
   await p.goto(url);
   await settle(p, 1500);
-
-  console.log("onboarding");
-  await shoot(p, "onboard-agreement.png", "Real: first-run agreement (one checkbox), before sign-in");
+  if (shots) await shoot(p, "onboard-agreement.png", "Real: first-run agreement (one checkbox), before sign-in");
   await p.getByText("Load sample course").click();
   await settle(p, 1800);
-  await shoot(p, "onboard-choose-ai.png", "Real: Choose your AI (preview lists sample clients, labelled so on screen)");
-  await panel(p, "panel-choose-ai.png", "Real: the detected-client cards", "Claude Code", 110, 24);
+  if (shots) {
+    await shoot(p, "onboard-choose-ai.png", "Real: Choose your AI (preview lists sample clients, labelled so on screen)");
+    await panel(p, "panel-choose-ai.png", "Real: the detected-client cards", "Claude Code", 110, 24);
+  }
   for (let i = 0; i < 10; i++) {
     let clicked = "";
     for (const n of ["Continue", "Agree and continue", "Skip for now", "Open workspace"]) {
       const l = p.getByRole("button", { name: n, exact: true });
       if ((await l.count()) && (await l.first().isEnabled())) {
-        const h = (await p.locator("h1").first().textContent())?.trim() ?? "";
-        if (/^Connect your/.test(h)) await shoot(p, "onboard-connect-client.png", "Real: client connection step");
         await l.first().click();
         clicked = n;
         break;
@@ -264,87 +272,64 @@ try {
     if (!clicked) break;
     await settle(p, 1100);
   }
-
-  console.log("second synthetic course");
-  const imported = await p.evaluate(async (batch) => {
-    const r = await (window as any).magic.execute({ type: "import", batch });
-    return r.message ?? "ok";
-  }, csBatch());
+  const imported = await p.evaluate(async (batch) => (await (window as any).magic.execute({ type: "import", batch })).message ?? "ok", csBatch());
   console.log(`  import: ${imported}`);
   await p.reload();
   await settle(p, 2500);
-
-  console.log("home");
-  await shoot(p, "home.png", "Real: Home with briefing, Upcoming, Study & Learn and the Today rail");
-  await panel(p, "panel-upcoming.png", "Real: the ranked Upcoming list", "Upcoming", 240);
-  await panel(p, "panel-today.png", "Real: Today rail with the day's agenda", "Today", 600);
-  await panel(p, "panel-briefing.png", "Real: Briefing sentences", "Briefing", 120);
-
-  console.log("item space");
+}
+async function pass(name: string, dir: string, portNo: number, body: (p: Page, url: string) => Promise<void>) {
+  const { child, url } = await startPreview(dir, portNo);
+  console.log(`${name} pass: ${url} (${git(["rev-parse", "--short", "HEAD"], dir)})`);
+  const browser = await chromium.launch({ headless: true });
   try {
-    await click(p, "Details: Problem set 4: recurrences", "link");
-  } catch {
-    await click(p, "Details: Comparative analysis", "link");
+    const ctx = await browser.newContext({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: scale, reducedMotion: "reduce" });
+    const p = await ctx.newPage();
+    await p.route("**/query", studyRoute);
+    await body(p, url);
+  } catch (e) {
+    manifest.shots.push({ file: `${name}-pass`, ok: false, note: `pass stopped: ${(e as Error).message.split("\n")[0]}` });
+    console.log(`  ${name} pass stopped: ${(e as Error).message.split("\n")[0]}`);
+  } finally {
+    await browser.close();
+    stopPreview(child);
   }
-  await settle(p, 1200);
-  await shoot(p, "item-space.png", "Real: an assignment's item space (instructions, related material, start work)");
-  await panel(p, "panel-related.png", "Real: Related material links found by code", "Related material", 120);
-  await panel(p, "panel-instructions.png", "Real: Instructions", "Instructions", 120);
-
-  console.log("course page");
-  await click(p, "Home");
-  const courseBtn = p.getByRole("button", { name: csCourse, exact: true });
-  if (await courseBtn.count()) await courseBtn.first().click();
-  else await p.getByRole("button", { name: "Writing 101 · Sample", exact: true }).first().click();
-  await settle(p, 2000);
-  await shoot(p, "course-page.png", "Real: course page");
-  await panel(p, "panel-study-prep.png", "Real: Study prep on the course page (zero-token overview)", "Study prep", 300);
-
-  console.log("practice quiz (real component, synthetic items)");
+}
+async function quizAndCards(p: Page) {
   injectStudy = true;
   try {
     await p.locator(".sp-entry", { hasText: "Exam 2" }).first().click({ timeout: 8000 });
     await settle(p, 2000);
     await shoot(p, "study-space.png", "Real: the exam's study space (sources, zero-token overview, Studio)");
-    const studio = p.getByRole("button", { name: /Practice quiz/ });
-    console.log(`  studio buttons: ${(await p.getByRole("button").allTextContents()).filter((t) => /quiz|card|guide/i.test(t)).join(" / ")}`);
-    await studio.first().click({ timeout: 8000 });
+    await p.getByRole("button", { name: /Practice quiz/ }).first().click({ timeout: 8000 });
     await settle(p, 1500);
-    await shoot(p, "quiz-open.png", "Real quiz component, synthetic items: question 1");
     const quizPanel = p.locator(".sp-quiz").first();
+    const answer = async () => {
+      await p.locator(".sp-option").nth(1).click();
+      await p.getByRole("button", { name: /Check/ }).first().click();
+    };
     for (let i = 0; i < 5; i++) {
-      await p.getByRole("button", { name: "Next" }).first().click({ timeout: 3000 }).catch(async () => {
-        await p.locator(".sp-option").nth(1).click();
-        await p.getByRole("button", { name: /Check/ }).first().click();
-        await p.getByRole("button", { name: "Next" }).first().click();
-      });
-      await settle(p, 300);
-    }
-    await shoot(p, "quiz-q6.png", "Real quiz component, synthetic items: question 6 with KaTeX");
-    if (await quizPanel.count()) await quizPanel.screenshot({ path: join(outDir, "panel-quiz-q6.png") }).then(() => manifest.shots.push({ file: "panel-quiz-q6.png", ok: true, note: "Real quiz component: question 6 panel" }));
-    await p.locator(".sp-option").nth(1).click();
-    await p.getByRole("button", { name: /Check/ }).first().click();
-    await settle(p, 700);
-    await shoot(p, "quiz-q6-right.png", "Real quiz component: correct-answer feedback");
-    if (await quizPanel.count()) await quizPanel.screenshot({ path: join(outDir, "panel-quiz-right.png") }).then(() => manifest.shots.push({ file: "panel-quiz-right.png", ok: true, note: "Real quiz component: feedback panel" }));
-    // Answer the rest until the results screen shows.
-    for (let i = 0; i < 24 && !(await p.locator(".sp-quiz-done").count()); i++) {
-      const check = p.getByRole("button", { name: /Check/ });
-      if ((await check.count()) && (await check.first().isVisible())) {
-        await p.locator(".sp-option").nth(1).click();
-        await check.first().click();
-      } else await p.getByRole("button", { name: /^(Next|Finish)/ }).first().click();
+      await answer();
+      await p.getByRole("button", { name: "Next" }).first().click();
       await settle(p, 250);
     }
-    await shoot(p, "quiz-results-full.png", "Real quiz component: results screen (full window)");
+    await shoot(p, "quiz-q6.png", "Real quiz component, synthetic items: question 6 with KaTeX");
+    await quizPanel.screenshot({ path: join(outDir, "panel-quiz-q6.png") });
+    manifest.shots.push({ file: "panel-quiz-q6.png", ok: true, note: "Real quiz component: question 6 panel" });
+    await answer();
+    await settle(p, 700);
+    await quizPanel.screenshot({ path: join(outDir, "panel-quiz-right.png") });
+    manifest.shots.push({ file: "panel-quiz-right.png", ok: true, note: "Real quiz component: correct-answer feedback" });
+    for (let i = 0; i < 24 && !(await p.locator(".sp-quiz-done").count()); i++) {
+      const check = p.getByRole("button", { name: /Check/ });
+      if ((await check.count()) && (await check.first().isVisible())) await answer();
+      else await p.getByRole("button", { name: /^(Next|Finish)/ }).first().click();
+      await settle(p, 250);
+    }
     const done = p.locator(".sp-quiz-done").first();
-    if (await done.count()) await done.screenshot({ path: join(outDir, "panel-quiz-results.png") }).then(() => manifest.shots.push({ file: "panel-quiz-results.png", ok: true, note: "Real quiz component: results panel" }));
-    else manifest.shots.push({ file: "panel-quiz-results.png", ok: false, note: "results screen not reached" });
-  } catch (e) {
-    manifest.shots.push({ file: "quiz-*.png", ok: false, note: `practice quiz not reachable: ${(e as Error).message.split("\n")[0]}` });
-    console.log(`  MISSED quiz: ${(e as Error).message.split("\n")[0]}`);
-  }
-  try {
+    if (await done.count()) {
+      await done.screenshot({ path: join(outDir, "panel-quiz-results.png") });
+      manifest.shots.push({ file: "panel-quiz-results.png", ok: true, note: "Real quiz component: results panel" });
+    } else manifest.shots.push({ file: "panel-quiz-results.png", ok: false, note: "results screen not reached" });
     await p.getByRole("button", { name: /Flashcards/ }).first().click({ timeout: 6000 });
     await settle(p, 1200);
     await shoot(p, "cards-front.png", "Real flashcard component, synthetic card: front");
@@ -352,27 +337,66 @@ try {
     await settle(p, 900);
     await shoot(p, "cards-back.png", "Real flashcard component, synthetic card: back");
   } catch (e) {
-    manifest.shots.push({ file: "cards-*.png", ok: false, note: `flashcards not reachable: ${(e as Error).message.split("\n")[0]}` });
+    manifest.shots.push({ file: "quiz/cards", ok: false, note: `study prep not reachable: ${(e as Error).message.split("\n")[0]}` });
+    console.log(`  MISSED quiz/cards: ${(e as Error).message.split("\n")[0]}`);
   }
   injectStudy = false;
-
-  console.log("calendar");
   await p.keyboard.press("Escape");
   await settle(p, 500);
-  if (await p.locator("dialog[open]").count()) await p.locator("dialog[open] button[aria-label*=lose i], dialog[open] .sp-close").first().click().catch(() => {});
+}
+
+await pass("main", appDir, port, async (p, url) => {
+  await onboard(p, url, true);
+  await shoot(p, "home.png", "Real: Home / Daily Brief, Upcoming, Study & Learn and the Today rail (lecture an hour out)");
+  await panel(p, "panel-upcoming.png", "Real: the ranked Upcoming list", "Upcoming", 240);
+  await panel(p, "panel-today.png", "Real: Today rail", "Today", 600);
   await click(p, "Calendar");
   await settle(p, 1500);
   await shoot(p, "calendar.png", "Real: Calendar, this week");
-  const nextWeek = p.getByRole("button", { name: /next/i });
-  if (await nextWeek.count()) {
-    await nextWeek.first().click();
-    await settle(p, 1200);
-    await shoot(p, "calendar-next.png", "Real: Calendar, next week (problem set and Exam 2)");
-  } else manifest.shots.push({ file: "calendar-next.png", ok: false, note: "no next-week control found" });
-} finally {
-  writeFileSync(join(outDir, "manifest.json"), JSON.stringify(manifest, null, 2));
-  await browser.close();
-  stopPreview(child);
-}
+  const month = p.getByRole("button", { name: "Month", exact: true });
+  if (await month.count()) {
+    await month.first().click();
+    await settle(p, 1500);
+    await shoot(p, "calendar-month.png", "Real: Calendar, month view");
+  }
+  await p.getByRole("button", { name: csCourse, exact: true }).first().click();
+  await settle(p, 2000);
+  await shoot(p, "course-page.png", "Real: course page (Overview)");
+  await p.getByRole("button", { name: "Analytics", exact: true }).first().click();
+  await settle(p, 2500);
+  await shoot(p, "analytics.png", "Real: course Analytics tab (the app labels it Synthetic sample)");
+  await p.mouse.wheel(0, 700);
+  await settle(p, 1200);
+  await shoot(p, "analytics-lower.png", "Real: course Analytics tab, lower half (completion, prep, topic mastery)");
+  await p.mouse.wheel(0, -700);
+  await p.getByRole("button", { name: "Overview", exact: true }).first().click();
+  await settle(p, 1500);
+  await quizAndCards(p);
+});
+
+await pass("study", studyDir, port + 1, async (p, url) => {
+  await onboard(p, url, false);
+  await click(p, "Study & Learn");
+  await settle(p, 2000);
+  await shoot(p, "study-learn.png", "Real: Study & Learn, every work item by when it's due");
+  await p.getByText("Problem set 4: recurrences").first().click();
+  await settle(p, 2500);
+  await shoot(p, "item-space.png", "Real: the catered item space for a problem set (cards, practice, explain, instructions, worked examples, linked materials)");
+  const dlg = p.locator("dialog[open], [role=dialog]").first();
+  if (await dlg.count()) {
+    await dlg.screenshot({ path: join(outDir, "panel-item-space.png") });
+    manifest.shots.push({ file: "panel-item-space.png", ok: true, note: "Real: item space panel" });
+  } else await panel(p, "panel-item-space.png", "Real: item space panel", "Problem set 4: recurrences", 300);
+  await p.keyboard.press("Escape");
+  await settle(p, 800);
+  if (!manifest.shots.some((s) => s.file === "panel-quiz-q6.png" && s.ok)) {
+    await p.getByRole("button", { name: csCourse, exact: true }).first().click();
+    await settle(p, 2000);
+    await quizAndCards(p);
+  }
+});
+
+writeFileSync(join(outDir, "manifest.json"), JSON.stringify(manifest, null, 2));
 const missed = manifest.shots.filter((s) => !s.ok);
 console.log(`${manifest.shots.length - missed.length} shots captured, ${missed.length} missed (see assets/ui/manifest.json)`);
+for (const m of missed) console.log(`  missed: ${m.file}: ${m.note}`);

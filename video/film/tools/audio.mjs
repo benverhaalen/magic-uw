@@ -19,7 +19,7 @@ import { homedir } from "node:os";
 const root = resolve(import.meta.dirname, "..");
 const A = (...p) => join(root, "assets", ...p);
 const script = JSON.parse(readFileSync(join(root, "script.json"), "utf8"));
-const FILM = 120;
+const FILM = JSON.parse(readFileSync(join(root, "edit.json"), "utf8")).duration;
 const ff = (args) => execFileSync("ffmpeg", ["-loglevel", "error", "-y", ...args], { stdio: "inherit" });
 const probe = (f) => Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", f], { encoding: "utf8" }).trim());
 for (const d of [A(), A("sfx"), A("vo"), A("ui")]) mkdirSync(d, { recursive: true });
@@ -37,8 +37,13 @@ function placeholder(file, seconds, title, detail) {
   writeFileSync(A(`${file}.PLACEHOLDER`), "Generated placeholder. Replace the .mp4 with the filmed take and delete this marker.\n");
   console.log(`slot ${file}: placeholder written`);
 }
-placeholder("skit.mp4", 20, "SKIT: filmed by the team", "assets/skit.mp4  ·  0:00-0:20  ·  see SCRIPT.md, Skit (draft)");
-placeholder("presenters.mp4", 30, "PRESENTERS: Nathaniel and Sean on camera", "assets/presenters.mp4  ·  1:30-2:00  ·  keep the right 45 percent of frame clear");
+mkdirSync(A("film"), { recursive: true });
+placeholder("film/skit-sean.mp4", 13, "FILM: Sean scouring Canvas, textbooks and Outlook", "assets/film/skit-sean.mp4  ·  0:00-0:13  ·  frame 1");
+placeholder("film/sean-rejoice.mp4", 6, "FILM: Sean rejoicing, flying through the work", "assets/film/sean-rejoice.mp4  ·  0:36-0:42  ·  frame 5");
+placeholder("film/skit-split.mp4", 13, "FILM: split-screen skit, Sean and Nathaniel", "assets/film/skit-split.mp4  ·  0:03-0:16  ·  PRODUCTION-SCRIPT.md");
+placeholder("film/mic-click.mp4", 6, "FILM: Nathaniel clicks the mic", "assets/film/mic-click.mp4  ·  0:16-0:22");
+placeholder("film/sean-goof.mp4", 6, "FILM: Sean, still digging", "assets/film/sean-goof.mp4  ·  0:50-0:56");
+placeholder("film/presenter.mp4", 30, "FILM: Nathaniel presents, framed left", "assets/film/presenter.mp4  ·  1:30-2:00  ·  keep the right 45 percent clear");
 
 // ---------- SFX: the media-use bundled library (Pixabay Content License) ----------
 const sfxDirs = [".claude", ".agents", ".codex"].map((d) => join(homedir(), d, "skills", "media-use", "audio", "assets", "sfx"));
@@ -75,6 +80,7 @@ if (process.argv.includes("--temp-vo")) {
   // Mix Ben's lines into the narration slot, and the on-camera lines into a separate guide
   // track (the skit and presenter footage will carry those voices once filmed).
   const mix = (ids, file) => {
+    if (!ids.length) return ff(["-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", "-t", String(FILM), A(file)]);
     const inputs = [], filters = [];
     ids.forEach((l, i) => {
       inputs.push("-i", A("vo", `${l.id}.wav`));
@@ -114,7 +120,7 @@ console.log("music-bed.wav: ducked under the voice");
 
 // ---------- captions: always on, burned in from script.json ----------
 const chunks = [];
-for (const line of script.lines) {
+for (const line of script.lines.filter((l) => l.caption !== false)) {
   const said = durations[line.id]?.seconds;
   const length = Math.min(line.slot[1] - line.slot[0], said ? said + 0.35 : line.slot[1] - line.slot[0]);
   const words = line.text.split(/\s+/);
@@ -149,7 +155,7 @@ writeFileSync(
       #captions { position: absolute; inset: 0; pointer-events: none; }
       #captions .cap { position: absolute; left: 50%; bottom: 54px; width: 1400px; margin: 0 0 0 -700px; text-align: center; font-family: Geist, system-ui, sans-serif; font-weight: 500; font-size: 38px; line-height: 1.3; color: #fff4ed; text-shadow: 0 2px 10px rgba(26, 13, 11, 0.9), 0 0 2px rgba(26, 13, 11, 0.9); }
       #captions .cap b { font-weight: 700; color: #f7c440; }
-      #captions .cap.is-presenters { left: 60px; width: 960px; margin: 0; text-align: left; }
+      #captions .cap.is-presenter { left: 60px; width: 900px; margin: 0; text-align: left; }
     </style>
     <div id="captions" data-composition-id="captions" data-width="1920" data-height="1080">
 ${items}

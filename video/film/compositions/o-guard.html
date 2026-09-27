@@ -1,0 +1,28 @@
+<!doctype html>
+<html><head><meta charset="UTF-8" /></head><body>
+  <template>
+    <style>
+      @font-face { font-family: Karma; src: url("assets/fonts/Karma-Medium.ttf") format("truetype"); font-weight: 500; }
+      @font-face { font-family: Geist; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+      /* Labels over the guard shot (right side), per PRODUCTION-SCRIPT 1:38-1:44. */
+      #ogd-root { position: absolute; inset: 0; font-family: Geist, system-ui, sans-serif; color: #fff; }
+      #ogd-labels { position: absolute; left: 1130px; bottom: 150px; display: flex; flex-direction: column; gap: 14px; }
+      .ogd-l { display: flex; align-items: center; gap: 14px; padding: 12px 20px; border-radius: 10px; background: rgba(26, 13, 11, 0.82); border: 1px solid rgba(247, 196, 64, 0.45); font-family: Karma, Georgia, serif; font-weight: 500; font-size: 32px; }
+      .ogd-l svg { width: 30px; height: 30px; flex: none; }
+    </style>
+    <div id="ogd-root" data-composition-id="o-guard" data-width="1920" data-height="1080">
+      <div id="ogd-labels">
+        <div class="ogd-l" id="ogd-1"><svg viewBox="0 0 24 24" fill="none" stroke="#f7c440" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10" /><path d="M5 5 L19 19" /></svg>No tools for the AI</div>
+        <div class="ogd-l" id="ogd-2"><svg viewBox="0 0 24 24" fill="none" stroke="#f7c440" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg>Read-only</div>
+        <div class="ogd-l" id="ogd-3"><svg viewBox="0 0 24 24" fill="none" stroke="#f7c440" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4" /><path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z" /></svg>You choose what's shared</div>
+      </div>
+    </div>
+    <script>
+      (() => {
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo("#ogd-root .ogd-l", { x: 40, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5, ease: "expo.out", stagger: 0.9 }, 0.8);
+        window.__timelines["o-guard"] = tl;
+      })();
+    </script>
+  </template>
+</body></html>

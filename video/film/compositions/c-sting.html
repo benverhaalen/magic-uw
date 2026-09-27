@@ -1,0 +1,33 @@
+<!doctype html>
+<html><head><meta charset="UTF-8" /></head><body>
+  <template>
+    <style>
+      /* Stand-in for assets/hf/whiz-sting.mp4: Whiz pops in with a star burst, then the frame opens to the app. */
+      #cst-root { position: absolute; inset: 0; overflow: hidden; background: linear-gradient(135deg, #9b0000, #5c0b10); }
+      #cst-whiz { position: absolute; left: 810px; top: 300px; width: 300px; height: 482px; }
+      .cst-star { position: absolute; left: 945px; top: 380px; width: 30px; height: 30px; }
+    </style>
+    <div id="cst-root" data-composition-id="c-sting" data-width="1920" data-height="1080">
+      <img id="cst-whiz" src="assets/brand/mark-on-dark.svg" alt="" />
+      <svg class="cst-star" viewBox="-10 -10 20 20"><path d="M0 -10 L2.4 -2.4 L10 0 L2.4 2.4 L0 10 L-2.4 2.4 L-10 0 L-2.4 -2.4 Z" fill="#f7c440" /></svg>
+      <svg class="cst-star" viewBox="-10 -10 20 20"><path d="M0 -10 L2.4 -2.4 L10 0 L2.4 2.4 L0 10 L-2.4 2.4 L-10 0 L-2.4 -2.4 Z" fill="#ffffff" /></svg>
+      <svg class="cst-star" viewBox="-10 -10 20 20"><path d="M0 -10 L2.4 -2.4 L10 0 L2.4 2.4 L0 10 L-2.4 2.4 L-10 0 L-2.4 -2.4 Z" fill="#f7c440" /></svg>
+      <svg class="cst-star" viewBox="-10 -10 20 20"><path d="M0 -10 L2.4 -2.4 L10 0 L2.4 2.4 L0 10 L-2.4 2.4 L-10 0 L-2.4 -2.4 Z" fill="#ffffff" /></svg>
+      <svg class="cst-star" viewBox="-10 -10 20 20"><path d="M0 -10 L2.4 -2.4 L10 0 L2.4 2.4 L0 10 L-2.4 2.4 L-10 0 L-2.4 -2.4 Z" fill="#f7c440" /></svg>
+      <svg class="cst-star" viewBox="-10 -10 20 20"><path d="M0 -10 L2.4 -2.4 L10 0 L2.4 2.4 L0 10 L-2.4 2.4 L-10 0 L-2.4 -2.4 Z" fill="#ffffff" /></svg>
+    </div>
+    <script>
+      (() => {
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo("#cst-whiz", { scale: 0.3, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.45, ease: "back.out(2.4)" }, 0);
+        document.querySelectorAll("#cst-root .cst-star").forEach((el, i) => {
+          const a = (i / 6) * Math.PI * 2;
+          tl.fromTo(el, { x: 0, y: 0, scale: 0, opacity: 1 }, { x: Math.cos(a) * 260, y: Math.sin(a) * 220, scale: 1.4, rotation: 90, duration: 0.8, ease: "expo.out" }, 0.3);
+          tl.to(el, { opacity: 0, duration: 0.3 }, 1.2);
+        });
+        tl.to("#cst-whiz", { scale: 1.6, opacity: 0, duration: 0.45, ease: "power2.in" }, 1.5);
+        window.__timelines["c-sting"] = tl;
+      })();
+    </script>
+  </template>
+</body></html>

@@ -1,0 +1,36 @@
+<!doctype html>
+<html><head><meta charset="UTF-8" /></head><body>
+  <template>
+    <style>
+      @font-face { font-family: Karma; src: url("assets/fonts/Karma-Medium.ttf") format("truetype"); font-weight: 500; }
+      @font-face { font-family: Geist; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+      /* The end card: plain on purpose, held to 2:00. Dark room from the site (--dark-fill). */
+      #cen-root { position: absolute; inset: 0; font-family: Geist, system-ui, sans-serif; color: #fff; overflow: hidden; background: linear-gradient(135deg, #9b0000, #5c0b10); }
+      #cen-stack { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+      #cen-whiz { width: 150px; height: 241px; }
+      #cen-name { font-family: Karma, Georgia, serif; font-weight: 500; font-size: 96px; line-height: 1; margin-top: 26px; }
+      #cen-line { font-family: Karma, Georgia, serif; font-weight: 500; font-size: 40px; color: #f7c440; margin-top: 16px; }
+      #cen-url { font-size: 32px; font-weight: 600; margin-top: 36px; }
+      #cen-oss { font-size: 24px; margin-top: 10px; color: #faebec; }
+      #cen-legal { font-size: 18px; margin-top: 40px; color: #faebec; line-height: 1.6; }
+    </style>
+    <div id="cen-root" data-composition-id="c-end" data-width="1920" data-height="1080">
+      <div id="cen-stack">
+        <img id="cen-whiz" src="assets/brand/mark-on-dark.svg" alt="" />
+        <div id="cen-name">My Magic UW</div>
+        <div id="cen-line">Built by Badgers, for Badgers</div>
+        <div id="cen-url">github.com/benverhaalen/magic-uw</div>
+        <div id="cen-oss">Open source · MIT</div>
+        <div id="cen-legal"><div>Not affiliated with UW–Madison</div><div>Canvas is a trademark of Instructure</div></div>
+      </div>
+    </div>
+    <script>
+      (() => {
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo("#cen-whiz", { scale: 0.6, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.5, ease: "back.out(2)" }, 0.1);
+        tl.fromTo(["#cen-name", "#cen-line", "#cen-url", "#cen-oss", "#cen-legal"], { y: 22, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "expo.out", stagger: 0.12 }, 0.3);
+        window.__timelines["c-end"] = tl;
+      })();
+    </script>
+  </template>
+</body></html>

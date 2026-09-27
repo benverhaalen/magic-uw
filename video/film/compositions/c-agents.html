@@ -1,0 +1,52 @@
+<!doctype html>
+<html><head><meta charset="UTF-8" /></head><body>
+  <template>
+    <style>
+      @font-face { font-family: Karma; src: url("assets/fonts/Karma-Medium.ttf") format("truetype"); font-weight: 500; }
+            @font-face { font-family: Geist; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+      #cag-root { position: absolute; inset: 0; font-family: Geist, system-ui, sans-serif; color: #fff4ed; overflow: hidden; }
+      /* Overlays sit on the right 45% of frame (x >= 1056); the presenters own the left. */
+      #cag-room { position: absolute; inset: 0; background: radial-gradient(ellipse 70% 70% at 65% 40%, #9b0000 0%, transparent 60%), linear-gradient(135deg, #5c0b10, #1a0d0b); }
+      #cag-whiz { position: absolute; left: 420px; top: 300px; width: 300px; height: 482px; }
+      #cag-scrim { position: absolute; left: 1000px; top: 0; width: 920px; height: 1080px; background: linear-gradient(90deg, rgba(26, 13, 11, 0), rgba(26, 13, 11, 0.82) 22%, rgba(26, 13, 11, 0.92)); }
+      #cag-ring { position: absolute; left: 1228px; top: 230px; width: 520px; height: 520px; overflow: visible; }
+      #cag-center { position: absolute; left: 1228px; top: 230px; width: 520px; height: 520px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+      #cag-center .t { font-size: 44px; font-family: Karma, Georgia, serif; font-weight: 500; letter-spacing: -0.02em; }
+      #cag-center .d { font-size: 22px; color: #ffe9dd; margin-top: 6px; }
+      .cag-chip { display: none; position: absolute; padding: 16px 26px; border-radius: 14px; background: #faf8f4; color: #29231f; font-size: 28px; font-weight: 700; white-space: nowrap; box-shadow: 0 16px 40px rgba(10, 4, 3, 0.55); }
+      #cag-c1 { left: 1378px; top: 196px; }
+      #cag-c2 { left: 1590px; top: 640px; }
+      #cag-c3 { left: 1110px; top: 640px; }
+      #cag-note { display: none; position: absolute; left: 1110px; top: 820px; width: 740px; font-size: 22px; color: #ffe9dd; text-align: center; }
+    </style>
+    <div id="cag-root" data-composition-id="c-agents" data-width="1920" data-height="1080">
+      <div id="cag-room"></div>
+      <img id="cag-whiz" src="assets/brand/mark-on-dark.svg" alt="" />
+      <svg id="cag-ring" viewBox="0 0 520 520">
+        <defs><filter id="cag-glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="8" /></filter></defs>
+        <circle cx="260" cy="260" r="220" fill="none" stroke="#f7c440" stroke-width="10" opacity="0.5" filter="url(#cag-glow)" id="cag-glowring" />
+        <circle cx="260" cy="260" r="220" fill="none" stroke="#f7c440" stroke-width="4" stroke-dasharray="1383" stroke-dashoffset="1383" id="cag-arc" />
+      </svg>
+      <div id="cag-center"><div class="t">My Magic UW layer</div><div class="d">Open source, around your agent</div></div>
+      <div class="cag-chip" id="cag-c1">Claude Code</div>
+      <div class="cag-chip" id="cag-c2">Codex</div>
+      <div class="cag-chip" id="cag-c3">Any MCP client</div>
+      <div id="cag-note">MCP: an optional, read-only course bank with per-course grants</div>
+    </div>
+    <script>
+      (() => {
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo("#cag-whiz", { x: -60, opacity: 0 }, { x: 0, opacity: 1, duration: 0.6, ease: "back.out(2)" }, 0);
+        tl.to("#cag-arc", { strokeDashoffset: 0, duration: 1.4, ease: "power2.inOut" }, 1.0);
+        tl.fromTo("#cag-glowring", { opacity: 0 }, { opacity: 0.5, duration: 0.8 }, 1.8);
+        tl.fromTo("#cag-center", { scale: 0.85, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.6, ease: "expo.out" }, 2.2);
+        // Chips snap onto the ring as each agent is named.
+        [["#cag-c1", 6.5, 0, -160], ["#cag-c2", 7.9, 160, 120], ["#cag-c3", 9.3, -160, 120]].forEach(([id, t, dx, dy]) => {
+          tl.fromTo(id, { x: dx, y: dy, opacity: 0, scale: 0.7 }, { x: 0, y: 0, opacity: 1, scale: 1, duration: 0.5, ease: "back.out(3)" }, t);
+        });
+        tl.fromTo("#cag-note", { opacity: 0 }, { opacity: 0.9, duration: 0.5 }, 10.0);
+        window.__timelines["c-agents"] = gsap.timeline({ paused: true }).add(tl.tweenFromTo(0, 11, { duration: 4, ease: "none" }));
+      })();
+    </script>
+  </template>
+</body></html>

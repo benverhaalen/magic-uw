@@ -1,0 +1,56 @@
+<!doctype html>
+<html><head><meta charset="UTF-8" /></head><body>
+  <template>
+    <style>
+      @font-face { font-family: Karma; src: url("assets/fonts/Karma-Medium.ttf") format("truetype"); font-weight: 500; }
+      @font-face { font-family: Geist; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+      /* Every figure traces to video/film/SOURCES.md (docs/semester-model.md, per-action table). */
+      #ova-root { position: absolute; inset: 0; font-family: Geist, system-ui, sans-serif; color: #fff; overflow: hidden; }
+      #ova-scrim { position: absolute; left: 1000px; top: 0; width: 920px; height: 1080px; background: linear-gradient(90deg, rgba(26, 13, 11, 0), rgba(26, 13, 11, 0.86) 20%, rgba(26, 13, 11, 0.94)); }
+      #ova-panel { position: absolute; left: 1090px; top: 120px; width: 760px; }
+      #ova-h { font-family: Karma, Georgia, serif; font-weight: 500; font-size: 46px; line-height: 1.1; }
+      #ova-sub { font-size: 20px; color: #f7c440; margin-top: 8px; }
+      #ova-table { margin-top: 26px; width: 760px; border-collapse: collapse; font-size: 22px; }
+      #ova-table th { text-align: left; font-weight: 500; font-size: 17px; color: #faebec; padding: 0 0 10px; }
+      #ova-table th.n, #ova-table td.n { text-align: right; }
+      #ova-table td { padding: 12px 0; border-top: 1px solid rgba(255, 255, 255, 0.18); font-variant-numeric: tabular-nums; }
+      #ova-table td.ours { color: #f7c440; font-weight: 600; }
+      #ova-sem { margin-top: 22px; font-size: 26px; font-weight: 500; line-height: 1.35; }
+      #ova-sem b { color: #f7c440; font-weight: 600; }
+      #ova-reopen { margin-top: 16px; font-size: 22px; color: #faebec; }
+      #ova-note { margin-top: 14px; font-size: 16px; color: #faebec; line-height: 1.45; }
+      #ova-url { margin-top: 20px; font-size: 26px; font-weight: 600; }
+    </style>
+    <div id="ova-root" data-composition-id="o-value" data-width="1920" data-height="1080">
+      <div id="ova-scrim"></div>
+      <div id="ova-panel">
+        <div id="ova-h">What each action costs</div>
+        <div id="ova-sub">Modelled at list prices on a synthetic semester</div>
+        <table id="ova-table">
+          <thead><tr><th>Action</th><th class="n">Ours</th><th class="n">Typical AI study tool</th></tr></thead>
+          <tbody>
+            <tr class="ova-row"><td>What's due this week</td><td class="n ours">$0.000 · code</td><td class="n">≈ $0.0026</td></tr>
+            <tr class="ova-row"><td>Explain a lecture topic</td><td class="n ours">≈ $0.0018</td><td class="n">≈ $0.0026</td></tr>
+            <tr class="ova-row"><td>20 flashcards</td><td class="n ours">≈ $0.0022</td><td class="n">≈ $0.0026</td></tr>
+            <tr class="ova-row"><td>Find the slides</td><td class="n ours">$0.000 · code</td><td class="n">≈ $0.0026</td></tr>
+          </tbody>
+        </table>
+        <div id="ova-sem">Per semester, typical use: <b>ours $1.91–2.24</b>, with <b>55%</b> of actions free (no model call).</div>
+        <div id="ova-reopen">Reopening: 70 s → 2.9 s, 283 → 8 requests · measured on a synthetic account</div>
+        <div id="ova-note">Per action: prompt tokens at $2 per million input (Sonnet 5 list price); output not included. The semester figure includes output and caching.</div>
+        <div id="ova-url">github.com/benverhaalen/magic-uw</div>
+      </div>
+    </div>
+    <script>
+      (() => {
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo("#ova-scrim", { opacity: 0 }, { opacity: 1, duration: 0.4 }, 0);
+        tl.fromTo(["#ova-h", "#ova-sub"], { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "expo.out", stagger: 0.1 }, 0.1);
+        tl.fromTo("#ova-table thead", { opacity: 0 }, { opacity: 1, duration: 0.3 }, 0.4);
+        tl.fromTo("#ova-root .ova-row", { x: 40, opacity: 0 }, { x: 0, opacity: 1, duration: 0.45, ease: "expo.out", stagger: 0.28 }, 0.55);
+        tl.fromTo(["#ova-sem", "#ova-reopen", "#ova-note", "#ova-url"], { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "expo.out", stagger: 0.25 }, 2.0);
+        window.__timelines["o-value"] = tl;
+      })();
+    </script>
+  </template>
+</body></html>
