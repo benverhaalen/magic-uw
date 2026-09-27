@@ -8,14 +8,32 @@ import {
   type CourseFactKind,
   type CoursePage as CoursePageModel,
 } from "../../../../../packages/domain/src/course-page";
+import { localTime } from "../../../../../packages/domain/src/today-rail";
+// Shared primitives from the evidence-info lane (codex/evidence-info). Final paths are the integration contract.
+import { EvidenceInfo } from "../../../../../packages/ui/src/evidence-info";
+import {
+  createAssignmentTypeHues,
+  deadlineEmphasis,
+  deadlineSurface,
+  type AssignmentTypeHue,
+  type IdentityHue,
+} from "../../../../../packages/ui/src/deadline-emphasis";
+import "../../../../../packages/ui/src/evidence-info.css";
+import "../../../../../packages/ui/src/deadline-emphasis.css";
 import { Glyph } from "../DesktopShell";
-import { courseTone } from "../Home";
 import {
   courseWork,
+  dueCivilDate,
   freshnessText,
+  gradeWeights,
   groupSummary,
+  nextClass,
   shownFacts,
   unknownFacts,
+  groupHues,
+  pageTypeGroups,
+  type CourseSchedule,
+  type GradeWeights,
   type NextItem,
   type WorkEntry,
   type WorkGroup,
@@ -204,11 +222,13 @@ function WorkRow({
 
 function Group({
   group,
+  hue,
   open,
   selectedId,
   onSelect,
 }: {
   group: WorkGroup;
+  hue: IdentityHue | null;
   open: boolean;
   selectedId: string | null;
   onSelect: (id: string) => void;
@@ -221,6 +241,7 @@ function Group({
     <details className="course-group" data-place-disclosure={`group-${key}`} open={open}>
       <summary>
         <Chevron />
+        <TypeSwatch hue={hue} />
         <span className="course-group-name">{group.name}</span>
         <span className="course-group-counts">{groupSummary(group)}</span>
       </summary>
@@ -238,13 +259,34 @@ function Group({
   );
 }
 
-function NextRow({ item, onSelect }: { item: NextItem; onSelect: (id: string) => void }) {
+/** A small mark in the type's hue beside its explicit name; color is never the only label. */
+function TypeSwatch({ hue }: { hue: IdentityHue | null }) {
+  return hue ? <span className="course-type-swatch" data-magic-hue={hue} aria-hidden="true" /> : null;
+}
+
+function NextRow({
+  item,
+  hue,
+  today,
+  timeZone,
+  onSelect,
+}: {
+  item: NextItem;
+  /** The verified assignment type's hue; null (neutral) when Canvas lists no group for it. */
+  hue: IdentityHue | null;
+  today: string;
+  timeZone: string;
+  onSelect: (id: string) => void;
+}) {
   const r = item.entry.resource;
   const due = new Date(whenDue(r)!);
+  // The type's hue; the shared recipe strengthens it as the local due date gets closer.
+  const emphasis = deadlineEmphasis({ today, due: dueCivilDate(r, timeZone), completed: isDone(r) || undefined });
   return (
     <li>
       <button
-        className={`course-next-row tone-${courseTone(`${r.sourceId}:${r.courseId}`)}`}
+        className={hue ? "course-next-row" : "course-next-row is-untyped"}
+        {...(hue ? deadlineSurface(emphasis.bin, hue) : {})}
         data-focus-key={`course-next-${r.id}`}
         data-place-anchor={`course-next-${r.id}`}
         data-resource-ids={item.entry.copies.map((c) => c.id).join(" ")}
@@ -261,7 +303,10 @@ function NextRow({ item, onSelect }: { item: NextItem; onSelect: (id: string) =>
           <span className="course-next-title">{r.title}</span>
         </span>
         <span className="course-next-due">
-          <strong>{new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" }).format(due)}</strong>
+          <strong>
+            {emphasis.label && emphasis.bin !== "unknown" ? <em>{emphasis.label}</em> : null}
+            {new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" }).format(due)}
+          </strong>
           <span>{new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(due)}</span>
         </span>
         <Glyph name="chevron" />
@@ -290,6 +335,36 @@ function MaterialRow({
   );
 }
 
+/**
+ * Canvas category weights as listed: aligned names, exact right-aligned percentages and a bar on a
+ * fixed 0 to 100 scale in each type's own hue. Partial totals stay partial; no assignment impact.
+ */
+function GradeScale({ grades, hueOf }: { grades: GradeWeights; hueOf: (groupId: string) => IdentityHue | null }) {
+  return (
+    <ul className="course-grades">
+      {grades.rows.map((w) => (
+        <li key={w.groupId} className="course-grade" data-magic-hue={hueOf(w.groupId) ?? undefined}>
+          <span className="course-grade-name">
+            {w.name}
+            {w.rules ? <span className="course-grade-rule">{w.rules}</span> : null}
+          </span>
+          <span className={w.weight != null ? "course-grade-value" : "course-grade-value is-missing"}>
+            {w.weight != null ? `${w.weight}%` : "Not listed"}
+          </span>
+          <span className="course-grade-bar" aria-hidden="true">
+            {w.weight != null ? <span style={{ width: `${w.bar}%` }} /> : null}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function minuteText(minute: number): string {
+  const d = new Date(Date.UTC(2000, 0, 1, Math.floor(minute / 60), minute % 60));
+  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(d);
+}
+
 export function CoursePageView({
   page,
   selectedId,
@@ -297,6 +372,8 @@ export function CoursePageView({
   onBack,
   open,
   detail,
+  schedule,
+  typeHueOf,
 }: {
   page: CoursePageModel;
   selectedId: string | null;
@@ -305,15 +382,36 @@ export function CoursePageView({
   open: (url: string) => void;
   /** The shared resource detail, so an item opened here is the same object as on Home. */
   detail: ReactNode;
+  /**
+   * Verified class meetings linked to exactly this Canvas course. Unbound until the backend links
+   * Canvas courses to enrollment records; see docs/plans/2026-09-27-course-brief.md.
+   */
+  schedule?: CourseSchedule | null;
+  /**
+   * The app-wide type-hue mapper, `createAssignmentTypeHues(snapshot.resources)`, the same instance
+   * Home and Calendar use so an assignment keeps one hue everywhere. Unbound, the page builds the
+   * mapper from its own verified groups (identical for rows from the groups' own source).
+   */
+  typeHueOf?: (r: { sourceId: string; courseId: string; assignmentGroupId?: string | null }) => AssignmentTypeHue | null;
 }) {
   const syllabus = page.syllabus;
   const work = courseWork(page);
   const next = work.next;
   const moreDated = work.counts.upcoming - next.length;
   const undatedOpen = work.counts.undatedOpen;
-  const facts = shownFacts(page);
+  const facts = shownFacts(page).filter((kind) => kind !== "grading");
   const unknown = unknownFacts(page);
+  const grades = gradeWeights(page);
+  const gradingText = page.facts.grading;
   const status = freshnessText(page, (iso) => when(iso, true));
+  const nowIso = new Date().toISOString();
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const today = localTime(nowIso, timeZone).date;
+  const upcomingClass = nextClass(schedule, nowIso);
+  // Each verified assignment type (Canvas group) has its own hue from the shared mapper; ungrouped is neutral.
+  const typeHue = typeHueOf ?? createAssignmentTypeHues(pageTypeGroups(page, work));
+  const hues = groupHues(page, work, (r) => typeHue(r)?.hue ?? null);
+  const hueOf = (groupId: string | null): IdentityHue | null => (groupId == null ? null : hues.get(groupId) ?? null);
   // The concise label the sidebar already shows, then the course's own title as detail. No new shortening.
   const label = page.code || page.courseName;
   const officialTitle = page.code ? page.courseName : null;
@@ -324,6 +422,98 @@ export function CoursePageView({
     assessment: "Exams and assessments",
     topic: "Topics",
   };
+  const otherMissing = unknown.names.filter((name) => name !== "AI use policy" && name !== "grading breakdown");
+  const syllabusNote =
+    syllabus.state === "canvas"
+      ? "Read from the Canvas syllabus and course records."
+      : syllabus.state === "file"
+        ? `The syllabus file (${syllabus.resource.title}) is saved but not read for policy or grading yet.`
+        : "No syllabus captured. Details come from Canvas records.";
+  const workSummary = [
+    moreDated ? `${moreDated} more dated` : "",
+    undatedOpen ? `${undatedOpen} without a due date` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  // The overview exists only when it has something verified to say; no empty right column.
+  const hasOverview = !!grades || gradingText.state !== "not_found" || facts.length > 0 || !!upcomingClass;
+  const overview = hasOverview ? (
+    <aside className="course-overview" aria-label="Course overview">
+      {grades || gradingText.state !== "not_found" ? (
+        <section aria-labelledby="course-grading">
+          <h2 id="course-grading">
+            Grading
+            <EvidenceInfo label="About grading sources">
+              {grades ? "Category weights as listed on the course's Canvas assignment groups. Canvas may not use them for your final grade, and they do not say what a single assignment is worth. " : ""}
+              {syllabusNote}
+            </EvidenceInfo>
+          </h2>
+          {grades ? <GradeScale grades={grades} hueOf={hueOf} /> : null}
+          {grades && (grades.listedTotal !== 100 || grades.unlisted) ? (
+            <p className="course-overview-note">
+              Listed weights add to {grades.listedTotal}%
+              {grades.unlisted ? `; ${grades.unlisted} ${grades.unlisted === 1 ? "category has" : "categories have"} no weight` : ""}.
+            </p>
+          ) : null}
+          {gradingText.state !== "not_found" ? (
+            <div className="course-grading-text">
+              {gradingText.state === "conflict" ? (
+                <p className="attention-text">Sources disagree. Compare them before relying on this.</p>
+              ) : null}
+              {gradingText.items.filter((item) => !item.assignmentTitle).slice(0, 2).map((item, index) => (
+                <p key={index}>
+                  {item.text.length > 200 ? `${item.text.slice(0, 200)}…` : item.text}
+                  {item.method === "local_model" ? <span className="badge">Found by local model</span> : null}
+                </p>
+              ))}
+              <Evidence fact={gradingText} open={open} />
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+      <section aria-labelledby="course-class">
+        <h2 id="course-class">
+          Next class
+          {!upcomingClass ? (
+            <EvidenceInfo label="About class times">
+              Class times come only from your enrollment record for this exact course. That record is not linked to this Canvas course yet, so no time is shown.
+            </EvidenceInfo>
+          ) : null}
+        </h2>
+        {upcomingClass ? (
+          <p className="course-class">
+            <strong>
+              {new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }).format(
+                new Date(`${upcomingClass.date}T00:00:00Z`),
+              )}
+            </strong>
+            <span>
+              {minuteText(upcomingClass.startMinute)} to {minuteText(upcomingClass.endMinute)}
+              {upcomingClass.location ? ` · ${upcomingClass.location}` : ""}
+            </span>
+          </p>
+        ) : (
+          <p className="course-overview-note">Not linked yet</p>
+        )}
+      </section>
+      {facts.length || unknown.aiMissing ? (
+        <section aria-labelledby="course-rules">
+          <h2 id="course-rules">
+            Course rules
+            {otherMissing.length ? (
+              <EvidenceInfo label="About course rules">Not found in saved sources: {otherMissing.join(", ")}.</EvidenceInfo>
+            ) : null}
+          </h2>
+          {facts.map((kind) => (
+            <FactRow key={kind} label={factLabel[kind]} fact={page.facts[kind]} open={open} />
+          ))}
+          {unknown.aiMissing ? (
+            <p className="course-overview-cue">No AI use policy found. Ask your instructor before using AI.</p>
+          ) : null}
+        </section>
+      ) : null}
+    </aside>
+  ) : null;
   return (
     <>
       <div className="page-heading course-heading">
@@ -334,122 +524,72 @@ export function CoursePageView({
         <h1 tabIndex={-1} title={page.rawCourseName}>{label}</h1>
         <p className="course-subline">
           {officialTitle || page.term ? <span>{[officialTitle, page.term].filter(Boolean).join(" · ")}</span> : null}
-          <span className={status.attention ? "course-status attention-text" : "course-status"}>{status.text}</span>
+          <span className="course-status">
+            {status.cue ? <span className="attention-text">{status.cue}</span> : null}
+            <EvidenceInfo label="About this course's saved copy">{status.text}.</EvidenceInfo>
+          </span>
         </p>
       </div>
-      <div className={`course-layout ${selectedId ? "has-detail" : ""}`}>
-        <div className="course-main">
-          <section className="course-section" aria-labelledby="course-next">
-            <h2 id="course-next">Next up</h2>
-            {next.length ? (
-              <ul className="course-next">
-                {next.map((item) => (
-                  <NextRow key={item.entry.key} item={item} onSelect={onSelect} />
-                ))}
-              </ul>
-            ) : (
-              <p className="course-quiet">
-                {work.counts.total
-                  ? `No dated work ahead in the saved Canvas records${page.freshness !== "current_capture" ? ", which may be out of date" : ""}.`
-                  : "No assignments captured for this course."}
-              </p>
-            )}
-          </section>
-
+      <div className={`course-layout ${selectedId ? "has-detail" : overview ? "has-overview" : ""}`}>
+        <section className="course-section course-next-section" aria-labelledby="course-next">
+          <h2 id="course-next">Next up</h2>
+          {next.length ? (
+            <ul className="course-next">
+              {next.map((item) => (
+                <NextRow
+                  key={item.entry.key}
+                  item={item}
+                  hue={hueOf(item.groupId)}
+                  today={today}
+                  timeZone={timeZone}
+                  onSelect={onSelect}
+                />
+              ))}
+            </ul>
+          ) : (
+            <p className="course-quiet">
+              {work.counts.total
+                ? `No dated work ahead in the saved Canvas records${page.freshness !== "current_capture" ? ", which may be out of date" : ""}.`
+                : "No assignments captured for this course."}
+            </p>
+          )}
           {work.rest.length ? (
-            <section className="course-section" aria-labelledby="course-work">
-              <h2 id="course-work">
-                {next.length ? "More coursework" : "Coursework"}
-                {moreDated || undatedOpen ? (
-                  <span className="course-count">
-                    {[moreDated ? `${moreDated} more dated` : "", undatedOpen ? `${undatedOpen} without a due date` : ""]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </span>
-                ) : null}
-              </h2>
+            <details className="course-index" data-place-disclosure="coursework-index">
+              <summary>
+                <Chevron />
+                <span className="course-index-name">{next.length ? "More coursework" : "All coursework"}</span>
+                {workSummary ? <span className="course-group-counts">{workSummary}</span> : null}
+              </summary>
               {work.rest.map((group) => (
                 <Group
                   key={group.id ?? "other"}
                   group={group}
+                  hue={hueOf(group.id)}
                   open={work.rest.length === 1}
                   selectedId={selectedId}
                   onSelect={onSelect}
                 />
               ))}
-            </section>
+            </details>
           ) : null}
+        </section>
 
-          <section className="course-section" aria-labelledby="course-how">
-            <h2 id="course-how">How this course works</h2>
-            <p className="course-quiet">
-              {syllabus.state === "canvas" ? (
-                <>
-                  From the{" "}
-                  <button className="link-button" onClick={() => open(syllabus.resource.url)}>
-                    Canvas syllabus
-                  </button>{" "}
-                  and course records.
-                </>
-              ) : syllabus.state === "file" ? (
-                <>
-                  Syllabus file:{" "}
-                  <button className="link-button" onClick={() => open(syllabus.resource.url)}>
-                    {syllabus.resource.title}
-                  </button>
-                  . Not read for policy or grading yet.
-                </>
-              ) : (
-                "No syllabus captured. Details come from Canvas records."
-              )}
+        {selectedId ? null : overview}
+
+        {/* T43: the notebook replaces this section with its tiers for the same course key. */}
+        <section className="course-section course-materials" aria-labelledby="course-materials">
+          <h2 id="course-materials">
+            Materials
+            {materialCount ? <span className="course-count">{materialCount}</span> : null}
+          </h2>
+          {/* A syllabus file is already a material row; the Canvas syllabus page is not. */}
+          {syllabus.state === "canvas" ? (
+            <p className="course-syllabus">
+              <button className="link-button" onClick={() => open(syllabus.resource.url)}>
+                Canvas syllabus
+              </button>
             </p>
-            {facts.map((kind) =>
-              kind === "grading" ? (
-                <FactRow key={kind} label={factLabel[kind]} fact={page.facts.grading} open={open}>
-                  {page.weights.some((w) => w.weight != null) ? (
-                    <>
-                      <table className="course-weights">
-                        <tbody>
-                          {page.weights.map((w) => (
-                            <tr key={w.groupId}>
-                              <th scope="row">{w.name}</th>
-                              <td>{w.weight != null ? `${w.weight}%` : "Not listed"}</td>
-                              <td className="muted">
-                                {[
-                                  w.dropLowest ? `drops lowest ${w.dropLowest}` : "",
-                                  w.dropHighest ? `drops highest ${w.dropHighest}` : "",
-                                ]
-                                  .filter(Boolean)
-                                  .join(", ")}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      <p className="course-quiet">
-                        Weights as listed in Canvas. Canvas may not apply them to your final grade.
-                      </p>
-                    </>
-                  ) : null}
-                </FactRow>
-              ) : (
-                <FactRow key={kind} label={factLabel[kind]} fact={page.facts[kind]} open={open} />
-              ),
-            )}
-            {unknown.names.length ? (
-              <p className="course-unknowns">
-                Not found in saved sources: {unknown.names.join(", ")}.
-                {unknown.aiMissing ? " Without a stated AI policy, ask your instructor before using AI." : ""}
-              </p>
-            ) : null}
-          </section>
-
-          {/* T43: the notebook replaces this section with its tiers for the same course key. */}
-          <section className="course-section course-materials" aria-labelledby="course-materials">
-            <h2 id="course-materials">
-              Materials
-              {materialCount ? <span className="course-count">{materialCount}</span> : null}
-            </h2>
+          ) : null}
             {page.modules
               ? page.modules.map((module, index) => (
                   <details
@@ -485,8 +625,7 @@ export function CoursePageView({
               </details>
             ) : null}
             {!materialCount ? <p className="course-quiet">No course materials captured.</p> : null}
-          </section>
-        </div>
+        </section>
         {selectedId ? detail : null}
       </div>
     </>
