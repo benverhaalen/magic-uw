@@ -1,6 +1,6 @@
 # Backend branch integration audit
 
-Audited September 26, 2026. Baselines: main `18a8486`, backend branch `1f8b1f7`, original Start work `2817609`. Research and integration recommendations; no product code merged by this audit.
+Audited September 26, 2026. Baselines: main `18a8486`, backend branch `1f8b1f7`, original Start work `2817609`. Historical research and recommendations; see the resolution below for the subsequent authorized product integration.
 
 ## Work boundaries
 
@@ -80,3 +80,24 @@ Remaining acceptance work:
 5. Keep fuzzy proposals and Madgrades explicitly partial until their normal consumer/setup journeys are connected.
 
 This preserves Nate's current architecture and the three active windows. It is an integration plan, not authorization inferred from branch existence.
+
+
+## Selective integration resolution
+
+Ben authorized integration after the audit. The isolated `integration/backend-current` branch now includes current main through `23fd8b6`, preserving Nate’s T17 scheduler, wave-D learning operations and My Magic UW rename. The current architecture remains the integration base. No active frontend/course/sync worktree was reset or rewritten.
+
+- **Evidence privacy:** MCP filters contributing sources before deadline derivation and reports their categories. Source labels, section names, grade/comment strings and nested evidence use the scrubber. Search and output use the resource’s account-scoped roster.
+- **Identity and citations:** automatic local roster capture and immutable outgoing projections are integrated. Tests cover roster changes, denied communications, unseen quote ranges, compressed record history and purge. Necessary profile identifiers live in the private local roster; this is deliberately distinct from exporting them in coursework/snapshots.
+- **Study generation:** Nate’s actual quiz/card runner now checks and scrubs every initial/retry/escalated send, binds previews to outgoing prompt/input/schema, restores citations from frozen passage maps and discards results after evidence or permission changes. See [the exact boundary and limits](pipeline-details.md#study-generation-at-the-actual-send-boundary).
+- **Deadlines:** deterministic source-anchored prose extraction enters canonical queries. An explicit prose extension conflicting with structured Canvas remains a visible conflict with a conservative planning date; it is not promoted to unquestioned truth.
+- **Jev recovery:** kind-scoped durable cooldowns preserve other registered jobs. Typed budget refusals survive the desktop IPC path; tests cover restart and retry bounds.
+- **Madgrades:** protected token transport and public planning comparison are integrated. Student token setup and live response validation remain open. Historical grades do not rank recommendations or establish mastery; private planning data remains excluded from AI/MCP.
+- **Deferred:** fuzzy material linking and old Start work were not merged. Main’s existing calendar behavior is preserved. Frontend keeps ownership of its current Start work bridge and UI adaptation.
+
+The driver inspected scoped worker diffs and an independent account-scope review; the latter exposed a search-redaction bug fixed before delivery. A worker’s Jev review highlighted contributor-category and authorization placement issues during development; the final boundary was checked directly and exercised with synthetic runner calls. No live provider, personal coursework, Madgrades response or external application launch was used for this integration.
+
+### Combined verification
+
+Integrated product revision `218cad1`: TypeScript and desktop/web build passed. The complete suite passed **734 tests, with one Windows-only skip** (735 total) using Node 24 and test concurrency four. The hidden Electron check passed renderer → preload → worker → SQLite, including synthetic planning import, MCP export and local purge. The first hidden run timed out after initial Electron download; the unchanged built app passed on rerun, so the initial cause remains unproven. An installation-only PTY executable-bit issue was repaired with the repository's existing native preparation script; its eight tests then passed.
+
+These checks establish the combined synthetic integration and hidden desktop bridge, not live provider quality, live UW access or frontend usability. Private logs and generated build outputs remain outside committed files.
