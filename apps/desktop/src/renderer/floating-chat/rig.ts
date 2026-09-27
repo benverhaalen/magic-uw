@@ -57,23 +57,27 @@ export const WIZARD_MOVING: Record<Exclude<WizardState, "settle">, readonly stri
   error: ["head"],
 };
 
-/** Web Animations for the one-shots, as data so tests can check the budget. */
+/**
+ * Web Animations for the one-shots, as data so tests can check the budget. The ease sits on each
+ * keyframe: an `easing` option would curve the whole iteration and squeeze the held poses.
+ */
+const EASE = "cubic-bezier(0.23, 1, 0.32, 1)";
 export function wizardShotPlan(shot: "answered" | "error" | "settle") {
-  const out = { duration: 0, easing: "cubic-bezier(0.23, 1, 0.32, 1)", fill: "none" as const };
+  const out = { duration: 0, easing: "linear", fill: "none" as const };
   if (shot === "settle") return {
     target: "#wizard",
-    keyframes: [{ transform: "scale(1)" }, { transform: "scale(1.07, 0.9)", offset: 0.3 }, { transform: "scale(0.97, 1.04)", offset: 0.65 }, { transform: "scale(1)" }],
+    keyframes: [{ transform: "scale(1)", easing: EASE }, { transform: "scale(1.07, 0.9)", offset: 0.3, easing: EASE }, { transform: "scale(0.97, 1.04)", offset: 0.65, easing: EASE }, { transform: "scale(1)" }],
     options: { ...out, duration: WIZARD_SHOT_MS.settle },
   };
   if (shot === "error") return {
     target: "#head",
-    keyframes: [{ transform: "rotate(0)" }, { transform: "rotate(-9deg)", offset: 0.25 }, { transform: "rotate(-9deg)", offset: 0.7 }, { transform: "rotate(0)" }],
+    keyframes: [{ transform: "rotate(0)", easing: EASE }, { transform: "rotate(-9deg)", offset: 0.25 }, { transform: "rotate(-9deg)", offset: 0.7, easing: EASE }, { transform: "rotate(0)" }],
     options: { ...out, duration: WIZARD_SHOT_MS.error },
   };
   // Each spark travels out from the wand tip, flares and fades; staggered 50 ms.
   return {
     target: ".s",
-    keyframes: [{ opacity: 0, transform: "scale(0)" }, { opacity: 1, transform: "scale(1.3)", offset: 0.35 }, { opacity: 0, transform: "scale(0.5)" }],
+    keyframes: [{ opacity: 0, transform: "scale(0)", easing: EASE }, { opacity: 1, transform: "scale(1.3)", offset: 0.35, easing: EASE }, { opacity: 0, transform: "scale(0.5)" }],
     options: { ...out, duration: WIZARD_SHOT_MS.answered - 150 },
     stagger: 50,
   };

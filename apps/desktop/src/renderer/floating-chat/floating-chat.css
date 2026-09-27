@@ -1,0 +1,46 @@
+/* owner: floating-chat. Light-DOM styles for what the app slots into <magic-floating-chat>: the chat
+ * lane's ChatPane, fitted to a narrow panel, plus the empty state and the composer. Canonical tokens
+ * only. The ChatPane selectors below only tighten its full-pane geometry; its own rules stay authoritative. */
+magic-floating-chat .fc-body { min-height: 100%; display: flex; flex-direction: column; }
+magic-floating-chat .magic-chat { max-width: none; padding: 14px 16px 18px; }
+magic-floating-chat .magic-chat-origin { margin-bottom: 14px; }
+magic-floating-chat .magic-chat-thread { gap: 24px; }
+magic-floating-chat .magic-chat-prompt { font-size: var(--magic-type-work-title); }
+magic-floating-chat .magic-chat-answer { flex-direction: column; align-items: stretch; gap: 12px; }
+magic-floating-chat .magic-chat-actions { flex-basis: auto; }
+magic-floating-chat .magic-chat-due-row { min-height: 0; gap: 10px; padding: 10px 12px; }
+magic-floating-chat .magic-chat-due-title { font-size: var(--magic-type-study-title); }
+
+magic-floating-chat .fc-empty { margin: auto 0 0; padding: 18px 16px 14px; display: grid; gap: 8px; justify-items: start; }
+magic-floating-chat .fc-empty-lead { margin: 0; font: 500 var(--magic-type-section)/1.35 var(--magic-font-editorial); color: var(--magic-ink); overflow-wrap: anywhere; }
+magic-floating-chat .fc-empty-note { margin: 0; font-size: var(--magic-type-compact-control); line-height: 1.55; color: var(--magic-ink-muted-strong); }
+magic-floating-chat .fc-suggest {
+  margin-top: 4px; min-height: 32px; padding: 6px 12px; border: 0; border-radius: var(--magic-radius-control);
+  background: var(--magic-fill-secondary); color: var(--magic-ink-secondary);
+  font: inherit; font-size: var(--magic-type-compact-control); cursor: pointer;
+}
+
+magic-floating-chat .fc-composer { margin: 0; padding: 8px 10px 10px; border-top: 1px solid var(--magic-line-quiet); background: var(--magic-surface-raised); }
+magic-floating-chat .fc-error { margin: 0 2px 6px; font-size: var(--magic-type-meta); line-height: 1.4; color: var(--magic-ink-error); }
+magic-floating-chat .fc-row {
+  display: flex; align-items: flex-end; gap: 4px; padding: 3px 3px 3px 10px;
+  border: 1px solid var(--magic-line-field); border-radius: var(--magic-radius-control); background: var(--magic-surface-raised);
+}
+magic-floating-chat .fc-row:focus-within { border-color: var(--magic-focus); box-shadow: 0 0 0 1px var(--magic-focus); }
+magic-floating-chat .fc-field {
+  flex: 1; min-width: 0; min-height: 32px; max-height: calc(6lh + 12px); margin: 0; padding: 6px 0;
+  field-sizing: content; resize: none; overflow-y: auto; border: 0; outline: 0; background: transparent;
+  font: 400 var(--magic-type-control)/1.45 var(--magic-font-interface); color: var(--magic-ink);
+}
+magic-floating-chat .fc-field::placeholder { color: var(--magic-ink-muted); }
+magic-floating-chat .fc-send {
+  flex: none; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0;
+  border-radius: calc(var(--magic-radius-control) - 2px); background: var(--magic-fill-action); color: var(--magic-ink-action); cursor: pointer;
+}
+magic-floating-chat .fc-send[aria-disabled=true] { background: var(--magic-fill-disabled); color: var(--magic-ink-disabled); cursor: default; }
+magic-floating-chat .fc-glyph { width: var(--magic-glyph-control); height: var(--magic-glyph-control); fill: none; stroke: currentColor; stroke-width: var(--magic-icon-stroke-seed); stroke-linecap: round; stroke-linejoin: round; }
+magic-floating-chat :is(.fc-suggest, .fc-send):focus-visible { outline: 2px solid var(--magic-focus); outline-offset: 2px; }
+@media (hover: hover) {
+  magic-floating-chat .fc-suggest:hover { background: var(--magic-fill-secondary-hover); }
+  magic-floating-chat .fc-send:not([aria-disabled=true]):hover { background: var(--magic-fill-action-hover); }
+}

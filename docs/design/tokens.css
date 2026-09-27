@@ -210,3 +210,22 @@
   /* Base colour for small component shadows (mixed with transparency at the call site). */
   --magic-shadow-color: light-dark(#29231f, #000000);
 }
+
+/* Wizard illustration (proposal, September 27, floating chat): the character's own palette, traced
+   from marketing/uploads/Wizard_logo.jpg and read by floating-chat/wizard.svg. Light values are the
+   nearest existing token value to each measured logo colour (line: ink #29231f vs #221715; hat:
+   accent-current-time vs #bf4842; beard: fill-avatar vs #e2d4bb; eye: surface-quiet vs #f4f0e9;
+   wand: ink-avatar; spark: the study fill's first stop), or the measured colour where no token is
+   near (robe #6f8141, nose #ce8c66). Own values, not aliases, so a role change never repaints the
+   character. Dark values keep the figure distinct on the darker launcher disc. No wizard colour
+   carries text; tests/floating-chat.test.ts checks the part contrasts (3:1 non-text) per theme. */
+:root {
+  --magic-wizard-line: light-dark(#29231f, #15110e);
+  --magic-wizard-hat: light-dark(#c15842, #d2664d);
+  --magic-wizard-robe: light-dark(#6f8141, #82964f);
+  --magic-wizard-beard: light-dark(#e8d3b2, #dcc6a3);
+  --magic-wizard-eye: light-dark(#f8f4ee, #ece6dc);
+  --magic-wizard-nose: light-dark(#ce8c66, #d99a75);
+  --magic-wizard-wand: light-dark(#63432e, #8b6647);
+  --magic-wizard-spark: light-dark(#f1cc78, #f6d88f);
+}

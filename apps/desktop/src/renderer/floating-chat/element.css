@@ -111,7 +111,11 @@
 :host([data-corner=top-right]) .grip::before { transform: rotate(-90deg); }
 :host([data-corner=top-left]) .grip { right: 0; bottom: 0; cursor: nwse-resize; }
 :host([data-corner=top-left]) .grip::before { transform: rotate(180deg); }
-:host([data-corner^=bottom]) .head { padding-left: 22px; }
+:host([data-corner=bottom-right]) .head { padding-left: 24px; }
+:host([data-corner=bottom-left]) .head { padding-right: 26px; }
+/* A bottom grip gets its own gutter so it never covers the composer's send button or field. */
+:host([data-corner=top-left]) .foot { padding-right: 18px; }
+:host([data-corner=top-right]) .foot { padding-left: 18px; }
 
 .sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 

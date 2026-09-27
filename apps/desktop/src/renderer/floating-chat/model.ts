@@ -44,17 +44,32 @@ export function nearestCorner(point: Point, view: Size): Corner {
 const overlaps = (a0: number, a1: number, b0: number, b1: number) => a0 < b1 && b0 < a1;
 const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), Math.max(lo, hi));
 
+/** A tall region at a window side (a sidebar): it narrows the frame instead of pushing up or down. */
+export const isSideColumn = (r: Rect, view: Size) => r.bottom - r.top >= view.height / 2 && r.right - r.left < view.width / 2;
+/** The horizontal frame left between side columns. */
+export function horizontalBounds(view: Size, inset: number, avoid: readonly Rect[]): { left: number; right: number } {
+  let left = inset, right = view.width - inset;
+  for (const r of avoid) {
+    if (!isSideColumn(r, view)) continue;
+    if ((r.left + r.right) / 2 < view.width / 2) left = Math.max(left, r.right + inset);
+    else right = Math.min(right, r.left - inset);
+  }
+  return { left, right };
+}
+
 /**
- * Where the launcher sits in a corner: inset from the window edges, then moved vertically off any
- * avoided region it would cover (the shell header above, a bottom bar or profile row below).
+ * Where the launcher sits in a corner: inset from the window edges and beside any side column, then
+ * moved vertically off any other avoided region it would cover (the shell header, a bottom bar).
  */
 export function cornerPoint(corner: Corner, view: Size, box: Size, inset: number, avoid: readonly Rect[] = []): Point {
-  const x = isLeft(corner) ? inset : view.width - inset - box.width;
+  const frame = horizontalBounds(view, inset, avoid);
+  const x = isLeft(corner) ? frame.left : frame.right - box.width;
   let y = isTop(corner) ? inset : view.height - inset - box.height;
+  const bars = avoid.filter((r) => !isSideColumn(r, view));
   // A few passes settle stacked regions (for example a bar directly above another).
   for (let pass = 0; pass < 3; pass++) {
     let moved = false;
-    for (const r of avoid) {
+    for (const r of bars) {
       if (!overlaps(x, x + box.width, r.left, r.right) || !overlaps(y, y + box.height, r.top, r.bottom)) continue;
       const next = isTop(corner) ? r.bottom + inset : r.top - inset - box.height;
       if (next !== y) { y = next; moved = true; }
@@ -77,7 +92,7 @@ export function cornerForKey(corner: Corner, key: string): Corner | null {
 export function verticalBounds(left: number, right: number, view: Size, inset: number, avoid: readonly Rect[]): { top: number; bottom: number } {
   let top = inset, bottom = view.height - inset;
   for (const r of avoid) {
-    if (!overlaps(left, right, r.left, r.right)) continue;
+    if (isSideColumn(r, view) || !overlaps(left, right, r.left, r.right)) continue;
     if ((r.top + r.bottom) / 2 < view.height / 2) top = Math.max(top, r.bottom + inset);
     else bottom = Math.min(bottom, r.top - inset);
   }
@@ -94,8 +109,10 @@ export interface PanelPlacement {
  * aligned to the same side. Its size is the student's chosen size, fitted to the room available.
  */
 export function placePanel(corner: Corner, dock: Rect, view: Size, want: Size, inset: number, avoid: readonly Rect[] = []): PanelPlacement {
-  const width = clamp(want.width, Math.min(PANEL_MIN.width, view.width - 2 * inset), Math.min(PANEL_MAX.width, view.width - 2 * inset));
-  const x = clamp(isLeft(corner) ? dock.left : dock.right - width, inset, view.width - inset - width);
+  const frame = horizontalBounds(view, inset, avoid);
+  const span = Math.max(0, frame.right - frame.left);
+  const width = clamp(want.width, Math.min(PANEL_MIN.width, span), Math.min(PANEL_MAX.width, span));
+  const x = clamp(isLeft(corner) ? dock.left : dock.right - width, frame.left, frame.right - width);
   const room = verticalBounds(x, x + width, view, inset, avoid);
   let y: number, height: number;
   if (isTop(corner)) {
