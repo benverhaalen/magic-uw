@@ -6,14 +6,13 @@
 .home-work-flag { font-size:12px; font-weight:550; }
 .home-work-details { flex:0 0 38px; display:flex; align-items:center; justify-content:center; color:inherit; border-radius:0 var(--magic-radius-card) var(--magic-radius-card) 0; }
 .home-work-details svg { width:15px; height:15px; }
-.home-work-details:hover { background:rgba(255,255,255,.28); }
+.home-work-details { transition:background-color var(--magic-fb-duration) var(--magic-fb-ease); }
 .home-work-details:focus-visible { outline:2px solid var(--magic-focus); outline-offset:-2px; }
 .home-work-group { display:grid; gap:6px; }
 .home-group-more>summary,.home-more>summary { list-style:none; display:inline-flex; align-items:center; gap:6px; cursor:pointer; color:var(--magic-ink-muted-strong); font:400 12px/1.5 var(--magic-font-interface); padding:3px 2px; border-radius:var(--magic-radius-control); }
 .home-group-more>summary::-webkit-details-marker,.home-more>summary::-webkit-details-marker { display:none; }
 .home-group-more>summary svg,.home-more>summary svg { width:12px; height:12px; transition:transform .15s; }
 .home-group-more[open]>summary svg,.home-more[open]>summary svg { transform:rotate(90deg); }
-.home-group-more>summary:hover,.home-more>summary:hover { color:var(--magic-ink); }
 .home-group-more>summary:focus-visible,.home-more>summary:focus-visible { outline:2px solid var(--magic-focus); outline-offset:2px; }
 .home-group-more>.home-work-list { margin-top:6px; }
 .home-more-list { display:flex; flex-direction:column; align-items:flex-start; gap:2px; margin-top:10px; }
@@ -48,10 +47,34 @@
 .home-today .rail-more>.rail-due--home { margin:4px 0 0; }
 .home-today .rail-allday--home { flex-shrink:0; display:block; width:100%; min-height:26px; margin:0 0 5px; padding:5px 8px; border:0; text-align:left; font:400 12px/1.35 var(--magic-font-interface); background:var(--magic-fill-schedule-event); color:var(--magic-ink-schedule-event); border-radius:var(--magic-radius-control); overflow:hidden; white-space:nowrap; text-overflow:ellipsis; cursor:pointer; }
 .home-today .rail-allday--home>span { font-size:12px; font-weight:600; margin-right:6px; }
-.home-today .rail-allday--home:hover { text-decoration:underline; }
+.home-today .rail-allday--home { transition:box-shadow var(--magic-fb-duration) var(--magic-fb-ease); }
 .home-today .rail-allday--home:focus-visible { outline:2px solid var(--magic-focus); outline-offset:1px; }
 .home-today .rail-empty-schedule { flex-shrink:0; }
 
 .home-show-next { margin-top:10px; border:0; border-radius:var(--magic-radius-control); background:transparent; padding:6px 2px; color:var(--magic-ink-muted-strong); font:400 12px/1.5 var(--magic-font-interface); cursor:pointer; }
-.home-show-next:hover { color:var(--magic-ink); text-decoration:underline; }
 .home-show-next:focus-visible { outline:2px solid var(--magic-focus); outline-offset:2px; }
+
+/* Home feedback, using the shared families in packages/ui/src/motion/feedback.css. Small actions are
+ * pills: the fill extends into the gutter (negative margin) so labels keep their resting position,
+ * never underline and never move. Cards react as one surface; the tint is an inset shadow under the
+ * text, so titles and dates stay unchanged. Press lands at once; hover and release ease out. */
+.home-show-next,.home-group-more>summary,.home-more>summary { padding-inline:10px; margin-inline:-8px; }
+.home-upcoming .home-section-heading button,.home-reading .home-provenance button,.home-today .rail-more>summary { padding-inline:8px; margin-inline:-8px; }
+.home-today .rail-more>summary { width:fit-content; }
+/* Show next + Show less side by side: both fills overhang 8px, so the second starts 12px after the first (4px between fills). */
+.home-show-next+.home-show-next { margin-inline-start:12px; }
+.home-show-next,.home-group-more>summary,.home-more>summary,.home-upcoming .home-section-heading button,.home-reading .home-provenance button,.home-today .rail-more>summary {
+  border-radius:999px; text-decoration:none;
+  transition-property:background-color,color; transition-duration:var(--magic-fb-duration); transition-timing-function:var(--magic-fb-ease);
+}
+.home-study-action { box-shadow:var(--magic-fb-card-rest); transition:box-shadow var(--magic-fb-duration) var(--magic-fb-ease); }
+@media (hover:hover) and (pointer:fine) {
+  .home-show-next:hover,.home-group-more>summary:hover,.home-more>summary:hover,.home-upcoming .home-section-heading button:hover,.home-reading .home-provenance button:hover,.home-today .rail-more>summary:hover { background-color:var(--magic-fb-pill-hover); color:var(--magic-ink); }
+  .home-study-action:hover { box-shadow:var(--magic-fb-card-hover); }
+  .home-work-details:hover { background-color:rgba(255,255,255,.28); }
+  .home-today .rail-allday--home:hover { box-shadow:inset 0 0 0 999px var(--magic-fb-hover-overlay); }
+}
+.home-show-next:active,.home-group-more>summary:active,.home-more>summary:active,.home-upcoming .home-section-heading button:active,.home-reading .home-provenance button:active,.home-today .rail-more>summary:active { background-color:var(--magic-fb-pill-press); transition-duration:0s; }
+.home-study-action:active { box-shadow:var(--magic-fb-card-press); transition-duration:0s; }
+.home-work-details:active { background-color:rgba(255,255,255,.42); transition-duration:0s; }
+.home-today .rail-allday--home:active { box-shadow:inset 0 0 0 999px var(--magic-fb-press-overlay); transition-duration:0s; }

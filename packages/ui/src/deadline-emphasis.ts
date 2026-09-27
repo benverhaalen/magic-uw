@@ -5,7 +5,7 @@
  */
 export type DeadlineBin = 'overdue' | 'today' | 'tomorrow' | 'week' | 'later' | 'unknown' | 'completed';
 /** Hue names in wheel order. Values come from the palette role seam in deadline-emphasis.css. */
-export const IDENTITY_HUES = ['rose', 'coral', 'orange', 'yellow', 'lime', 'green', 'teal', 'blue', 'indigo', 'purple', 'magenta'] as const;
+export const IDENTITY_HUES = ['rose', 'coral', 'orange', 'yellow', 'lime', 'green', 'mint', 'teal', 'sky', 'blue', 'indigo', 'purple', 'magenta'] as const;
 export type IdentityHue = typeof IDENTITY_HUES[number];
 export interface DeadlineEmphasis {
   bin: DeadlineBin;
@@ -89,7 +89,9 @@ const byText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
  * Pass the full snapshot resources and sources on every surface; a filtered subset can change ranks.
  */
 export function createAssignmentTypeHues(resources: readonly GroupedResource[], accounts?: SourceAccounts) {
-  const n = IDENTITY_HUES.length, stride = [4, 3, 5, 2, 1].find(s => gcd(s, n) === 1)!;
+  // Stride 5 of 13: any course with up to five groups keeps at least one hue between every pair on the
+  // wheel (observed real maximum: 13 groups, which still never collide).
+  const n = IDENTITY_HUES.length, stride = [5, 4, 3, 2, 1].find(s => gcd(s, n) === 1)!;
   const account = accountResolver(accounts);
   const scopeOf = (sourceId: string) => { const a = account(sourceId); return a ? `account:${a}` : `source:${sourceId}`; };
   const byCourse = new Map<string, Map<string, { position: number; names: string[] }>>();

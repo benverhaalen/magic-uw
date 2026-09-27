@@ -324,6 +324,15 @@ export function TodayRail({
           requestAnimationFrame(()=>{ if(pane) pane.scrollTop=scroll; if(next===due.length) pane?.querySelector<HTMLElement>('.rail-due--home li:last-child button')?.focus({preventScroll:true}); });
         }}>Show next {Math.min(3,due.length-dueShown)}</button>
       ) : null}
+      {homeDueItems && dueShown > 3 ? (
+        <button className="home-show-next" data-focus-key="today-less" aria-label={`Show fewer due today; ${dueShown} of ${due.length} shown`} onClick={event => {
+          const pane=event.currentTarget.closest('.desktop-workspace') as HTMLElement | null;
+          const rail=event.currentTarget.closest('.today-rail') as HTMLElement | null;
+          const scroll=pane?.scrollTop ?? 0;
+          onHomeDueCountChange?.(3);
+          requestAnimationFrame(()=>{ if(pane) pane.scrollTop=scroll; const next=rail?.querySelector<HTMLElement>('[data-focus-key="today-next"]'); next?.focus({preventScroll:true}); next?.scrollIntoView({block:"nearest"}); });
+        }}>Show less</button>
+      ) : null}
 
       {editing ? (
         <form

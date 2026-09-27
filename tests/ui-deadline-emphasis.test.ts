@@ -70,7 +70,18 @@ test('verified assignment groups get distinct hues within a course, stable acros
   const tie = createAssignmentTypeHues([group('s', 'c', 'b', 1, 'B'), group('s', 'c', 'a', 1, 'A'), group('s', 'c', 'z', undefined, 'Z')]);
   const order = ['a', 'b', 'z'].map(id => tie({ sourceId: 's', courseId: 'c', assignmentGroupId: id })!.hue);
   const offset = IDENTITY_HUES.indexOf(order[0]);
-  assert.deepEqual(order.map(h => (IDENTITY_HUES.indexOf(h) - offset + IDENTITY_HUES.length) % IDENTITY_HUES.length), [0, 4, 8]);
+  assert.deepEqual(order.map(h => (IDENTITY_HUES.indexOf(h) - offset + IDENTITY_HUES.length) % IDENTITY_HUES.length), [0, 5, 10]);
+});
+
+test('palette capacity: 13 verified groups (observed COMPSCI 639) never collide; up to five keep a hue between them', () => {
+  assert.ok(IDENTITY_HUES.length >= 13);
+  for (let k = 2; k <= 5; k++) {
+    const gs = Array.from({ length: k }, (_, i) => group('canvas', `c${k}`, `g${i}`, i + 1, `G${i}`));
+    const typed = createAssignmentTypeHues(gs);
+    const at = gs.map(g => IDENTITY_HUES.indexOf(typed(work('canvas', `c${k}`, g.externalId, 'x'))!.hue)).sort((a, b) => a - b);
+    const gaps = at.map((v, i) => ((at[(i + 1) % k] - v) + IDENTITY_HUES.length) % IDENTITY_HUES.length || IDENTITY_HUES.length);
+    assert.ok(Math.min(...gaps) >= 2, `${k} groups: wheel gaps ${gaps}`);
+  }
 });
 
 test('unverified or untyped work is neutral; titles never type anything', () => {

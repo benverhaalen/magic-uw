@@ -81,7 +81,7 @@ export function CoursesOverview({
             {card.code ? <span className="course-card-code">{card.code}</span> : null}
             <span className="course-card-cue">
               {card.cue}
-              {card.next ? <span className="muted"> · {when(whenDue(card.next))}</span> : null}
+              {card.next ? <span className="muted"> · {card.next.deadline.conflict ? "Dates disagree" : when(whenDue(card.next))}</span> : null}
             </span>
             {card.freshness === "stale" || card.freshness === "partial" ? (
               <span className="course-card-note">
@@ -178,7 +178,7 @@ const itemType: Record<string, string> = {
 function identityNotes(entry: WorkEntry): string[] {
   return [
     entry.sameTitleElsewhere ? `Canvas id ${entry.resource.externalId}` : "",
-    entry.dueDiffers ? "Canvas lists disagree on the due date" : "",
+    entry.resource.deadline.conflict || entry.dueDiffers ? "Dates disagree" : "",
   ].filter(Boolean);
 }
 
@@ -281,12 +281,12 @@ function NextRow({
   const r = item.entry.resource;
   const due = new Date(whenDue(r)!);
   // The type's hue; the shared recipe strengthens it as the local due date gets closer.
-  const emphasis = deadlineEmphasis({ today, due: dueCivilDate(r, timeZone), completed: isDone(r) || undefined });
+  const emphasis = deadlineEmphasis({ today, due: r.deadline.conflict || item.entry.dueDiffers ? null : dueCivilDate(r, timeZone), completed: isDone(r) || undefined });
   return (
     <li>
       <button
         className={hue ? "course-next-row" : "course-next-row is-untyped"}
-        {...(hue ? deadlineSurface(emphasis.bin, hue) : {})}
+        {...deadlineSurface(emphasis.bin, hue)}
         data-focus-key={`course-next-${r.id}`}
         data-place-anchor={`course-next-${r.id}`}
         data-resource-ids={item.entry.copies.map((c) => c.id).join(" ")}

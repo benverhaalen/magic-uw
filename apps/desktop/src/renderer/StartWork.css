@@ -34,12 +34,19 @@
 .magic-start-work--action [role=status] p { margin:0 0 4px; }
 .magic-start-work--action .magic-start-work__receipt { margin:0; padding-inline-start:1rem; font-size:12px; }
 
-/* Feedback belongs to the complete flat card, including its sibling detail control. */
-.home-work-card { transition: box-shadow 140ms ease, filter 140ms ease, transform 100ms ease; }
-.home-work-card:hover { filter: saturate(1.15) brightness(.97); box-shadow: 0 3px 9px #38242218; }
-.home-work-card:focus-within { box-shadow: 0 0 0 2px var(--magic-focus); }
-.home-work-card:active { transform: translateY(1px); box-shadow: 0 1px 3px #38242218; }
-@media (prefers-reduced-motion: reduce) { .home-work-card { transition: none; } .home-work-card:active { transform: none; } }
+/* Feedback belongs to the complete flat card (shared card family, packages/ui/src/motion/feedback.css):
+ * the whole tile tints and lifts on hover, including over its sibling detail control, and deepens at
+ * once when the row is pressed. The tint is an inset shadow under the text, so title and deadline
+ * never change or move; no filter or transform. Keyboard focus rings the tile, not the inner row. */
+.magic-start-work .home-work-card { box-shadow: var(--magic-fb-card-edge, 0 0 0 0 transparent), var(--magic-fb-card-rest); transition: box-shadow var(--magic-fb-duration) var(--magic-fb-ease); }
+@media (hover: hover) and (pointer: fine) { .home-work-card:hover:not(:has(>.home-work-row[aria-disabled=true])) { box-shadow: var(--magic-fb-card-edge, 0 0 0 0 transparent), var(--magic-fb-card-hover); } }
+.home-work-card:has(>.home-work-row:active:not([aria-disabled=true])) { box-shadow: var(--magic-fb-card-edge, 0 0 0 0 transparent), var(--magic-fb-card-press); transition-duration: 0s; }
+/* Deadline edges (packages/ui/src/deadline-emphasis.css) are box-shadows too: carried as the first layer
+ * so hover and press never erase them. Values mirror that file until it sets --magic-fb-card-edge itself. */
+.magic-start-work .home-work-card[data-magic-deadline=overdue] { --magic-fb-card-edge: inset 0 0 0 1.5px var(--magic-deadline-ink); }
+.magic-start-work .home-work-card[data-magic-deadline=completed] { --magic-fb-card-edge: inset 0 0 0 1px var(--magic-line-quiet); }
+.home-work-card:has(>.home-work-row:focus-visible) { outline: 2px solid var(--magic-focus); outline-offset: 2px; }
+.magic-start-work--compact .home-work-card>.home-work-row:focus-visible { outline-color: transparent; }
 
 .home-work-status-slot { position: relative; flex: 0 0 92px; width: 92px; display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding: 0 4px; box-sizing: border-box; font: 500 12px/1.3 var(--magic-font-interface); }
 .magic-start-work--compact .home-work-status-slot [role=status] { padding: 0; font: inherit; }

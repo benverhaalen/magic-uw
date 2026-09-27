@@ -1,0 +1,110 @@
+/* Interactive feedback families. Every clickable thing answers hover (fine pointers only), press
+ * and keyboard focus with a fill, overlay or shadow: never scale, bounce, underline flash, weight
+ * change or a layout change. Text stays still. Press lands at once; hover and release ease out.
+ * Families: pill (small semantic actions: "Show next 3", section actions, disclosures), card (one
+ * whole clickable tile; sibling controls stay distinct), surface (icon/nav/segmented controls),
+ * link (prose entity links: persistent underline, stable affordance), field (inputs) and status
+ * (reserved action/status slot). Hosts use these classes or map existing selectors to the same
+ * declarations with the --magic-fb-* values below. There is deliberately no global link/button reset.
+ */
+:root {
+  --magic-fb-duration: 160ms;
+  --magic-fb-ease: cubic-bezier(0.23, 1, 0.32, 1);
+  --magic-fb-pill-hover: color-mix(in srgb, var(--magic-ink) 6%, transparent);
+  --magic-fb-pill-press: color-mix(in srgb, var(--magic-ink) 11%, transparent);
+  --magic-fb-pill-inset: 8px;
+  --magic-fb-hover-overlay: color-mix(in srgb, var(--magic-ink) 5%, transparent);
+  --magic-fb-press-overlay: var(--magic-fill-pressed-overlay);
+  /* Card states always have the same three layers: host edge, lift, tint (so they interpolate). */
+  --magic-fb-card-rest: 0 0 0 0 transparent, inset 0 0 0 999px transparent;
+  --magic-fb-card-hover: 0 3px 10px -2px color-mix(in srgb, var(--magic-ink) 14%, transparent), inset 0 0 0 999px color-mix(in srgb, var(--magic-ink) 4%, transparent);
+  --magic-fb-card-press: 0 1px 2px 0 color-mix(in srgb, var(--magic-ink) 10%, transparent), inset 0 0 0 999px color-mix(in srgb, var(--magic-ink) 9%, transparent);
+  --magic-fb-press-opacity: .72;
+}
+
+/* Hover first so press, declared later at equal or higher specificity, wins while pressed. */
+@media (hover: hover) and (pointer: fine) {
+  .magic-fb-pill:hover:not(:disabled, [aria-disabled=true]) { background-color: var(--magic-fb-pill-hover); color: var(--magic-ink); }
+  .magic-fb-surface:hover { box-shadow: inset 0 0 0 999px var(--magic-fb-hover-overlay); }
+  .magic-fb-card:hover:not(:has(.magic-fb-card__primary[aria-disabled=true])) { box-shadow: var(--magic-fb-card-edge, 0 0 0 0 transparent), var(--magic-fb-card-hover); }
+  .magic-fb-link:hover { text-decoration-thickness: 2px; }
+  .magic-fb-field:hover:not(:focus) { border-color: var(--magic-ink-muted); }
+}
+
+/* Pill: a small semantic action. The fill extends into the gutter by --magic-fb-pill-inset
+ * (negative margin), so the label keeps its resting position and nothing around it moves. */
+.magic-fb-pill {
+  border-radius: 999px;
+  padding-inline: calc(var(--magic-fb-pill-inset) + 2px);
+  margin-inline: calc(var(--magic-fb-pill-inset) * -1);
+  text-decoration: none;
+  transition-property: background-color, color;
+  transition-duration: var(--magic-fb-duration);
+  transition-timing-function: var(--magic-fb-ease);
+}
+.magic-fb-pill:active:not(:disabled, [aria-disabled=true]) { background-color: var(--magic-fb-pill-press); transition-duration: 0s; }
+
+/* Card: .magic-fb-card is the visible tile and reacts as one surface (title, date, body, arrow).
+ * The tint is an inset shadow, painted under the text, so the title never changes. Pressing the
+ * tile's main control (.magic-fb-card__primary) deepens it; sibling controls keep their own state.
+ * A host edge drawn as a box-shadow (overdue or completed outline) goes in --magic-fb-card-edge, set
+ * on the tile, so hover and press keep it; never set box-shadow on a card tile directly. */
+.magic-fb-card {
+  box-shadow: var(--magic-fb-card-edge, 0 0 0 0 transparent), var(--magic-fb-card-rest);
+  transition-property: box-shadow;
+  transition-duration: var(--magic-fb-duration);
+  transition-timing-function: var(--magic-fb-ease);
+}
+.magic-fb-card:has(.magic-fb-card__primary:active:not([aria-disabled=true])) { box-shadow: var(--magic-fb-card-edge, 0 0 0 0 transparent), var(--magic-fb-card-press); transition-duration: 0s; }
+.magic-fb-card:has(.magic-fb-card__primary:focus-visible) { outline: 2px solid var(--magic-focus); outline-offset: 2px; }
+.magic-fb-card .magic-fb-card__primary:focus-visible { outline-color: transparent; }
+
+/* Surface: icon buttons, navigation rows, segmented and day controls. */
+.magic-fb-surface {
+  transition-property: background-color, color, box-shadow;
+  transition-duration: var(--magic-fb-duration);
+  transition-timing-function: var(--magic-fb-ease);
+}
+.magic-fb-surface:active { box-shadow: inset 0 0 0 999px var(--magic-fb-press-overlay); transition-duration: 0s; }
+
+/* Link: prose entity links stay identifiable at rest (persistent underline); hover only firms it. */
+.magic-fb-link {
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition-property: color, text-decoration-thickness;
+  transition-duration: var(--magic-fb-duration);
+  transition-timing-function: var(--magic-fb-ease);
+}
+.magic-fb-link:active { opacity: var(--magic-fb-press-opacity); }
+
+/* Field: inputs, selects and textareas. */
+.magic-fb-field {
+  transition-property: border-color, box-shadow;
+  transition-duration: var(--magic-fb-duration);
+  transition-timing-function: var(--magic-fb-ease);
+}
+
+/* Status: a reserved action/status slot inside a tile. The host sets data-status to idle,
+ * pending, success or failure and renders one message (plus at most one recovery control). The
+ * slot's box never changes size, so title, deadline, tile and following rows never move. */
+.magic-fb-status {
+  display: grid;
+  align-items: center;
+  justify-items: end;
+  inline-size: var(--magic-fb-status-size, 92px);
+  min-block-size: 32px;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  overflow: clip;
+  overflow-clip-margin: 4px;
+}
+.magic-fb-status__message {
+  max-inline-size: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  transition: opacity var(--magic-fb-duration) var(--magic-fb-ease);
+}
+@starting-style { .magic-fb-status__message { opacity: 0; } }
+.magic-fb-status[data-status=pending] .magic-fb-status__message { opacity: .8; }

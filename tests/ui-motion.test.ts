@@ -104,3 +104,34 @@ test('motion.css mirrors the token values, names its properties and ships reduce
   assert.doesNotMatch(css, /scale\(/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
 });
+
+test('feedback.css answers hover only on fine pointers, lands press after hover, and never moves text', () => {
+  const css = readFileSync(new URL('../packages/ui/src/motion/feedback.css', import.meta.url), 'utf8');
+  const motion = readFileSync(new URL('../packages/ui/src/motion/motion.css', import.meta.url), 'utf8');
+  assert.match(motion, /@import '\.\/feedback\.css';/);
+  const hoverBlock = css.indexOf('@media (hover: hover) and (pointer: fine)');
+  assert.ok(hoverBlock >= 0);
+  const outside = css.slice(0, hoverBlock) + css.slice(css.indexOf('\n}\n', hoverBlock));
+  assert.doesNotMatch(outside, /:hover/, 'every hover rule is gated to fine pointers');
+  for (const [hover, press] of [['.magic-fb-pill:hover', '.magic-fb-pill:active'], ['.magic-fb-surface:hover', '.magic-fb-surface:active'], ['.magic-fb-card:hover', '.magic-fb-card__primary:active']]) {
+    assert.ok(css.indexOf(hover) > hoverBlock && css.indexOf(press) > css.indexOf(hover), `${press} is declared after ${hover}, so pressing wins`);
+  }
+  assert.doesNotMatch(css, /transition(-property)?:\s*all/);
+  assert.doesNotMatch(css, /scale\(|translate|rotate\(|filter:|font-weight/);
+  assert.match(css, /\.magic-fb-pill \{[^}]*text-decoration: none/, 'small actions never underline');
+  assert.match(css, /\.magic-fb-pill \{[^}]*margin-inline: calc\(var\(--magic-fb-pill-inset\) \* -1\)/, 'pill fill extends into the gutter, label stays put');
+  const edge = 'var(--magic-fb-card-edge, 0 0 0 0 transparent), var(--magic-fb-card-';
+  for (const state of ['rest', 'hover', 'press']) assert.ok(css.includes(edge + state + ')'), `card ${state} keeps the host edge layer (overdue/completed outline)`);
+  assert.equal(css.match(/box-shadow: var\(--magic-fb-card-(rest|hover|press)\)/g), null, 'no card state drops the edge layer');
+  assert.match(css, /inline-size: var\(--magic-fb-status-size, 92px\)/, 'status slot has a fixed inline size');
+  assert.doesNotMatch(css, /(^|[\s,}])(a|button|\*)\s*(:[a-z-]+)?\s*\{/m, 'no global element reset');
+});
+
+test('Home work cards keep their deadline edge through rest, hover and press', () => {
+  const css = readFileSync(new URL('../apps/desktop/src/renderer/StartWork.css', import.meta.url), 'utf8');
+  const cardShadows = css.split('\n').filter(line => /home-work-card[^{]*\{[^}]*box-shadow:/.test(line));
+  assert.ok(cardShadows.length >= 3);
+  for (const line of cardShadows) assert.match(line, /box-shadow: var\(--magic-fb-card-edge, 0 0 0 0 transparent\), var\(--magic-fb-card-(rest|hover|press)\)/, line);
+  assert.match(css, /\[data-magic-deadline=overdue\] \{ --magic-fb-card-edge:/);
+  assert.match(css, /\[data-magic-deadline=completed\] \{ --magic-fb-card-edge:/);
+});

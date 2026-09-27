@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Command, ResourceView, Snapshot } from '@magic/contracts';
 import { localTime } from '@magic/domain';
+import { createAssignmentTypeHues, deadlineEmphasis, deadlineSurface } from '../../../../packages/ui/src/deadline-emphasis';
 import { Action, EvidenceLink } from '../../../../packages/ui/src';
 import { InlineEntity, InlineTime, presentationLabel, sourceDates } from '../../../../packages/ui/src/inline-context';
 import { deadlineReportEvidence } from './PersonalReport';
@@ -9,12 +10,11 @@ import { StartWork, preparedWorkRevision } from './StartWork';
 import { TodayRail } from './TodayRail';
 import { Glyph } from './DesktopShell';
 import { resourceHref } from './navigation';
-import { canonicalHomeResources, homeCourseLabel, scopeKey, selectHomeEvidence, type UpcomingGroup } from './home/projection';
+import { canonicalHomeResources, homeCourseLabel, selectHomeEvidence, type UpcomingGroup } from './home/projection';
 import './home/Home.css';
 export function ObjectLink({ resource, children }: { resource: ResourceView; children?: ReactNode }) {
   return <EvidenceLink source={{ resourceId: resource.id, version: resource.contentHash, href: resourceHref(resource.id), sourceLabel: resource.courseName, capturedAt: resource.observedAt }}>{children ?? resource.title}</EvidenceLink>;
 }
-export function courseTone(id: string) { return ['rose', 'blue', 'coral'][Array.from(id).reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % 3]; }
 export function dueLabel(value: string | null) {
   return value ? new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(value)) : 'Due date not found';
 }
@@ -32,6 +32,7 @@ export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPl
   const canonical=useMemo(()=>canonicalHomeResources(resources,snapshot.sources),[resources,snapshot.sources]);
   const {work,passages,study}=useMemo(()=>selectHomeEvidence(canonical,snapshot,now,timeZone),[canonical,snapshot,now,timeZone]);
   const refreshKey = preparedWorkRevision(snapshot);
+  const typeHueOf=useMemo(()=>createAssignmentTypeHues(snapshot.resources,snapshot.sources),[snapshot.resources,snapshot.sources]);
   const label=(r:ResourceView)=>homeCourseLabel(r,canonical,snapshot.sources);
   const course=(r:ResourceView)=>label(r).code ?? label(r).title;
   const conflict = canonical.find(r => r.deadline.conflict && !r.completed && !r.submitted);
@@ -53,10 +54,11 @@ export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPl
   function workRow(resource:ResourceView) {
     const due=resource.deadline.planningAt!;
     return <StartWork key={resource.id} resource={resource} refreshKey={refreshKey} onInspect={() => onSelect(resource.id)} compact={{
-      className:`tone-${courseTone(scopeKey(resource,snapshot.sources))}`,
+      className:'home-work-typed',
+      surface:deadlineSurface(deadlineEmphasis({today,due:resource.deadline.conflict?null:localTime(due,timeZone).date}).bin,typeHueOf(resource)?.hue??null),
       description:`${course(resource)}, due ${when(due)} ${time(due)}${resource.deadline.conflict?', saved dates disagree':''}`,
       summary:<span className="home-work-summary">
-        <span className="home-work-identity"><span className="home-work-meta" title={label(resource).raw}>{course(resource)}{resource.points!=null && <span>{resource.points} pts</span>}</span><span className="home-work-name" title={resource.title}>{resource.title}</span></span>
+        <span className="home-work-identity"><span className="home-work-meta" title={label(resource).raw}>{course(resource)}{typeHueOf(resource) && <span>{typeHueOf(resource)!.groupName}</span>}{resource.points!=null && <span>{resource.points} pts</span>}</span><span className="home-work-name" title={resource.title}>{resource.title}</span></span>
         <span className="home-work-due"><strong>{when(due)}</strong><span>{time(due)}</span>{resource.deadline.conflict && <span className="home-work-flag">Dates disagree</span>}</span>
       </span>,
       trailing:<a className="home-work-details" href={resourceHref(resource.id)} data-focus-key={`inspect-work-${resource.id}`} aria-label={`Details: ${resource.title}`} title="Details"><Glyph name="chevron"/></a>,
@@ -96,6 +98,7 @@ export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPl
       <div className="home-work-list">{shown.map(group)}</div>
       {!work.upcoming.length && <p className="home-empty">No future dated work in this saved capture.{work.today.length?' Today’s deadlines are in Today.':''}</p>}
       {remaining>0 && <button className="home-show-next" data-focus-key="upcoming-next" onClick={showNext}>Show next {Math.min(UPCOMING_BATCH,remaining)}</button>}
+      {upcomingCount>UPCOMING_BATCH && <button className="home-show-next" data-focus-key="upcoming-less" onClick={()=>{onUpcomingCountChange?.(UPCOMING_BATCH);requestAnimationFrame(()=>{const button=document.querySelector<HTMLElement>('[data-focus-key="upcoming-next"]');button?.focus({preventScroll:true});button?.scrollIntoView({block:"nearest"});});}}>Show less</button>}
     </section>
     <section className="home-study" aria-labelledby="study-title" data-place-anchor="study"><h2 id="study-title">Study &amp; Learn</h2><div className="home-study-grid">{study.map(({material,context})=><a className="home-study-action" href={resourceHref(material.id)} data-focus-key={`study-${material.id}`} key={material.id}><span title={label(material).raw}>{course(material)}</span><h3>Review {material.title}</h3><p>Referenced in {context.title}</p><div><span>Open saved material</span><Glyph name="forward"/></div></a>)}</div>
       {!study.length && <p className="home-empty">No specific review material is supported by the current saved instructions.</p>}

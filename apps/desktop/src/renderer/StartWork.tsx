@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { ResourceView, WorkLaunchReceipt, WorkSet, Snapshot } from "@magic/contracts";
 import { Action, Disclosure } from "../../../../packages/ui/src";
+import type { deadlineSurface } from "../../../../packages/ui/src/deadline-emphasis";
 import { destinationAction } from "../../../../packages/ui/src/inline-context";
 import { Glyph } from "./DesktopShell";
 import "./StartWork.css";
@@ -12,7 +13,7 @@ export function preparedWorkRevision(snapshot: Snapshot) {
 type Props = {
   resource: ResourceView; refreshKey: string; onInspect?: () => void;
   /** A flat row: the whole row starts this work. `trailing` holds sibling controls, never nested in the row. */
-  compact?: { className: string; summary: ReactNode; description?: string; trailing?: ReactNode };
+  compact?: { surface?: ReturnType<typeof deadlineSurface>; className: string; summary: ReactNode; description?: string; trailing?: ReactNode };
   /** A labeled action beside a briefing passage, with the same prepared set, receipt and retry. */
   action?: boolean;
 };
@@ -110,7 +111,7 @@ function PreparedWork({ resource, refreshKey, compact, action, onInspect }: Prop
   const destinations = fallback ? "Opens the saved assignment details." : set ? destinationSummary(set) : error ? "Destinations unavailable." : "Preparing what opens…";
   return <section ref={container} className={compact ? 'magic-start-work magic-start-work--compact' : action ? 'magic-start-work magic-start-work--action' : 'magic-start-work'} aria-label={compact || action ? `Prepared work: ${resource.title}` : undefined} aria-labelledby={compact || action ? undefined : heading} data-place-anchor={compact ? `work-${resource.id}` : undefined}>
     {!compact && !action && <h3 id={heading}>Start work</h3>}
-    {compact ? <div className={`home-work-card ${compact.className}`}>
+    {compact ? <div className={`home-work-card ${compact.className}`} {...compact.surface}>
       <button className="home-work-row" data-focus-key={`work-${resource.id}`} aria-label={`${launchLabel}: ${resource.title}`} aria-describedby={described} title={set ? `${launchLabel}. ${set.items.map(item => item.title).join(" + ")}` : undefined} aria-busy={pending || undefined} aria-disabled={unavailable} onClick={activate}>
         {compact.summary}
 
