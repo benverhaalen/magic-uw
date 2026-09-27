@@ -7,10 +7,10 @@ import { queryRequestSchema } from "@magic/contracts"; // owner: T15
 import fixture from "../../../fixtures/course.json";
 import { randomUUID } from "node:crypto";
 import { createLocalService } from "./local-service";
-import { createIngestion } from "./ingestion";
+import { createIngestion, ACQUISITION_APP } from "./ingestion";
 import { createLearningRouter, type StudyContext } from "../../../packages/learning/src/router";
 import { createStudyContextResolver } from "./learning-context";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import {
   createLocalDocumentExtractor,
   createLocalOcrAdapter,
@@ -213,17 +213,11 @@ const {
   MAGIC_TESSERACT_PATH: tesseractPath,
   MAGIC_TESSDATA_DIRECTORY: tessdataDirectory,
 } = process.env;
-const extractor = createLocalDocumentExtractor(
+const tesseract =
   pdftoppmPath && tesseractPath && tessdataDirectory
-    ? {
-        ocr: createLocalOcrAdapter({
-          pdftoppmPath,
-          tesseractPath,
-          tessdataDirectory,
-        }),
-      }
-    : {},
-);
+    ? createLocalOcrAdapter({ pdftoppmPath, tesseractPath, tessdataDirectory })
+    : undefined; // owner: acquisition: also the background OCR's fallback
+const extractor = createLocalDocumentExtractor(tesseract ? { ocr: tesseract } : {});
 // owner: T30. Microsoft Graph through main's proxy: this process never sees a token. Main says
 // which scopes the student granted; the delta links live in main's encrypted vault.
 let graphScopes: string[] = [];
@@ -259,6 +253,10 @@ const ingestion = createIngestion(store, {
   graph: graphHost, // owner: T30
   secrets: (operation, key, value) =>
     hostRead("source-secret", { operation, key, value }),
+  // owner: acquisition: main's session file route and the extraction threads exist here.
+  acquisition: ACQUISITION_APP,
+  ...(tesseract ? { ocr: tesseract } : {}),
+  extractWorkerScript: join(__dirname, "extract-worker.cjs"),
 });
 // owner: pipeline. The material pipeline's drain: code-only jobs (passages, links and facts, the
 // course pass) in bounded idle slices. A sync aborts the slice between jobs and wakes it when done;
