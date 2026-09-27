@@ -1,7 +1,6 @@
 import { judgmentFailureError } from "./judgment-errors";
 import { createLocalCourseExtractor } from "@magic/ai";
 import { createStore } from "@magic/storage";
-import { maySend } from "@magic/domain";
 import { courseInclusion, contentCategories } from "../../../packages/core/src/access";
 import { protectedPayloadScrubber, classOf } from "../../../packages/core/src/privacy/protect";
 import { buildReceipt, egressFor } from "../../../packages/core/src/egress";
