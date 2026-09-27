@@ -70,7 +70,7 @@ ChatGPT, Claude, and Gemini are selectable data preferences and context-preview 
 | --------------------- | ------------------------------------------------------------------------------------------------------------- |
 | `apps/desktop`        | Isolated renderer/preload, browser session, desktop capabilities, local worker                                |
 | `apps/gateway`        | Narrow Jev endpoint, owner credential, enrollment and persistent usage limits                                 |
-| `apps/web`            | Informational page; no download link until a release exists                                                   |
+| `apps/web`            | Informational page; no download link until a release exists. Vercel serves `apps/web/dist` via `vercel.json` |
 | `packages/contracts`  | Shared schemas, store interface, commands, and renderer bridge                                                |
 | `packages/domain`     | Pure deadline resolution and data-sharing rules                                                               |
 | `packages/storage`    | SQLite migrations, versions, field observations, typed changes, search, jobs, grants, and student state       |
