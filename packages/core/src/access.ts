@@ -28,6 +28,8 @@ export function courseInclusion(
         r.course,
       ]),
   );
+  // One read per inclusion map: the settings cannot change while one call uses it.
+  const selectedTerm = store.ingestionSettings().selectedTerm;
   return (resource) => {
     const source = sources.get(resource.sourceId);
     if (!source) return false;
@@ -39,10 +41,10 @@ export function courseInclusion(
     )
       return false;
     if (
-      store.ingestionSettings().selectedTerm &&
+      selectedTerm &&
       course &&
-      store.ingestionSettings().selectedTerm !== course.termName &&
-      store.ingestionSettings().selectedTerm !== course.termId
+      selectedTerm !== course.termName &&
+      selectedTerm !== course.termId
     )
       return false;
     if (
