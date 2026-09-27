@@ -26,6 +26,14 @@ import {
   readBounded,
 } from "../../../packages/connectors/src/network";
 import { checkedSpaceProbeUrl } from "../../../packages/connectors/src/space-hosts"; // owner: T05b
+// owner: acquisition
+import {
+  canvasFileDownloadUrl,
+  causeHeaders,
+  fetchCanvasFile,
+} from "../../../packages/connectors/src/canvas-file-download";
+import { MaterialReadError } from "../../../packages/connectors/src/network";
+// end owner: acquisition
 import { clearSignOutSecrets, createSecretVault } from "./secrets";
 import { purgeHostData } from "./purge-host"; // owner: platform-fix
 import { createGoogleNotesAuth } from "./notes-google"; // owner: notes
@@ -497,6 +505,67 @@ app
           }
           return;
         }
+        // owner: acquisition. A course file's bytes in the student's Canvas session. Redirects are
+        // followed here, only to the Canvas origin and Instructure's file hosts (canvasFileHost);
+        // non-Canvas hops get no cookies. Bytes cross as a Uint8Array; a failure crosses as a cause
+        // header (code and host only), never a URL.
+        const fileUrl =
+          message.payload?.service === "canvas"
+            ? canvasFileDownloadUrl(String(message.payload.url), "https://canvas.wisc.edu")
+            : undefined;
+        if (fileUrl) {
+          const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(55_000)]);
+          let result: { status: number; url: string; headers: Record<string, string>; body: Uint8Array | string };
+          try {
+            const file = await fetchCanvasFile(fileUrl, {
+              origin: "https://canvas.wisc.edu",
+              session: (url, init) => studentSession.fetch(url, init),
+              plain: (url, init) => fetch(url, init),
+              signal,
+            });
+            const limit = 100 * 1024 * 1024;
+            if (Number(file.response.headers.get("content-length")) > limit)
+              throw new MaterialReadError("byte_limit");
+            const chunks: Uint8Array[] = [];
+            let size = 0;
+            const reader = file.response.body?.getReader();
+            while (reader) {
+              const next = await reader.read();
+              if (next.done) break;
+              size += next.value.byteLength;
+              if (size > limit) {
+                await reader.cancel().catch(() => {});
+                throw new MaterialReadError("byte_limit");
+              }
+              chunks.push(next.value);
+            }
+            const body = new Uint8Array(size);
+            let offset = 0;
+            for (const chunk of chunks) {
+              body.set(chunk, offset);
+              offset += chunk.byteLength;
+            }
+            const headers: Record<string, string> = { "x-magic-host-class": file.hostClass };
+            for (const key of ["content-type", "content-length", "last-modified", "etag"])
+              if (file.response.headers.has(key)) headers[key] = file.response.headers.get(key)!;
+            headers["content-length"] = String(size);
+            result = { status: 200, url: fileUrl, headers, body };
+            trialLog({ event: "file-fetch", hostClass: file.hostClass, hops: file.hops, status: 200, bytes: size });
+          } catch (error) {
+            if (controller.signal.aborted) {
+              worker.postMessage({ kind: "source-response", id: message.id, error: true });
+              sourceReads.delete(message.id);
+              return;
+            }
+            const headers = causeHeaders(error);
+            result = { status: 502, url: fileUrl, headers, body: "" };
+            trialLog({ event: "file-fetch", status: 502, cause: headers["x-magic-cause"], host: headers["x-magic-cause-host"] });
+          }
+          worker.postMessage({ kind: "source-response", id: message.id, result });
+          sourceReads.delete(message.id);
+          return;
+        }
+        // end owner: acquisition
         // end owner: T30
         try {
           const { service, url } = message.payload;
