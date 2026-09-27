@@ -60,6 +60,11 @@ export async function parseCalendar(
     ...unfolded.matchAll(/BEGIN:VEVENT\r?\n([\s\S]*?)END:VEVENT/g),
   ].map((match) => match[1]!);
   const badTimeUids = new Set<string>();
+  // Outlook names zones the Windows way ("Central Standard Time") and defines them in a
+  // VTIMEZONE block, which the parser uses. Only undefined, unknown zones are unresolved.
+  const definedZones = new Set(
+    [...unfolded.matchAll(/BEGIN:VTIMEZONE\r?\n[\s\S]*?^TZID:([^\r\n]+)[\s\S]*?END:VTIMEZONE/gm)].map((m) => m[1]!.trim()),
+  );
   for (const raw of rawEvents) {
     const uid = raw.match(/^UID:(.*)$/m)?.[1]?.trim();
     const start = raw.match(/^DTSTART([^:]*):(.*)$/m);
@@ -71,7 +76,7 @@ export async function parseCalendar(
       const zone = start[1]!.match(/TZID="?([^;"]+)/)?.[1];
       try {
         if (!zone) throw new Error();
-        new Intl.DateTimeFormat("en", { timeZone: zone });
+        if (!definedZones.has(zone)) new Intl.DateTimeFormat("en", { timeZone: zone });
       } catch {
         badTimeUids.add(uid);
       }
@@ -80,83 +85,120 @@ export async function parseCalendar(
   const events = Object.values(parsed).filter(
     (item): item is VEvent => item?.type === "VEVENT",
   );
-  if (events.length !== count)
+  const movedMeetings = rawEvents.filter((raw) => /^RECURRENCE-ID[;:]/m.test(raw)).length;
+  if (events.length !== count - movedMeetings)
     diagnostics.push({
       code: "event_count_mismatch",
       path: [],
       severity: "warning",
     });
+  const nowMs = (options.now?.() ?? new Date()).getTime();
+  // Repeating classes are expanded for the near term only; the rail and week views read this window.
+  const windowStart = new Date(nowMs - RECURRENCE_PAST_MS);
+  const windowEnd = new Date(nowMs + RECURRENCE_AHEAD_MS);
+  const build = (
+    source: VEvent,
+    startDate: Date,
+    endDate: Date | undefined,
+    allDay: boolean,
+    recurrenceId?: string,
+  ) => {
+    const start = date(startDate, allDay);
+    if (!source.uid || !start) throw new MaterialReadError("calendar_event_invalid");
+    const rawUrl = value(source.url);
+    let url =
+      options.defaultUrl ??
+      `${options.canvasOrigin}/courses/${encodeURIComponent(options.courseId)}`;
+    if (rawUrl) url = publicUrl(rawUrl).href;
+    const parsedUrl = new URL(url);
+    const assignmentPath = parsedUrl.pathname.match(
+      /^\/courses\/([^/]+)\/assignments\/(\d+)\/?$/,
+    );
+    const exact =
+      options.assignmentUrls?.get(url) ??
+      (parsedUrl.origin === options.canvasOrigin &&
+      assignmentPath?.[1] === options.courseId
+        ? assignmentPath[2]
+        : undefined);
+    const timezone = (startDate as Date & { tz?: string }).tz;
+    const location = value(source.location).trim().slice(0, 500);
+    // Teams meetings are labeled in location or title; a published calendar omits the join link.
+    const teams = /microsoft teams/i.test(`${location} ${value(source.summary)}`);
+    const cancelled = source.status === "CANCELLED";
+    resources.push(
+      resourceInputSchema.parse({
+        externalId: recurrenceId
+          ? `calendar:${contentHash(`${source.uid}:${recurrenceId}`)}`
+          : `calendar:${contentHash(source.uid)}`,
+        kind: "event",
+        courseId: options.courseId,
+        courseName: options.courseName,
+        title: value(source.summary) || "Calendar event",
+        url,
+        text: "",
+        updatedAt: date(source.lastmodified),
+        workflowState: source.status,
+        calendar: {
+          uid: source.uid,
+          start,
+          end: date(endDate, allDay) ?? null,
+          allDay,
+          ...(timezone ? { timezone } : {}),
+          lastModified: date(source.lastmodified) ?? null,
+          ...(exact ? { assignmentExternalId: exact } : {}),
+          ...(recurrenceId ? { recurrenceId } : {}),
+          ...(location ? { location } : {}),
+          ...(teams ? { onlineMeeting: "teams" as const } : {}),
+        },
+        // DATE has no time or zone. Keep the date, without manufacturing a midnight deadline.
+        deadlines:
+          allDay || cancelled
+            ? []
+            : [
+                {
+                  value: start,
+                  kind: exact ? "due" : "event",
+                  quote: `Calendar DTSTART: ${start}`,
+                  authority: "structured",
+                  scopeConfirmed: Boolean(exact),
+                },
+              ],
+      }),
+    );
+  };
   for (const event of events) {
     try {
       if (badTimeUids.has(event.uid))
         throw new MaterialReadError("calendar_timezone_unresolved");
       const allDay = event.datetype === "date";
-      const start = date(event.start, allDay);
-      if (!event.uid || !start)
+      if (!event.uid || !date(event.start, allDay))
         throw new MaterialReadError("calendar_event_invalid");
-      if (event.rrule || event.recurrences)
-        diagnostics.push({
-          code: "recurrence_not_expanded",
-          path: [],
-          severity: "warning",
-        });
-      const rawUrl = value(event.url);
-      let url =
-        options.defaultUrl ??
-        `${options.canvasOrigin}/courses/${encodeURIComponent(options.courseId)}`;
-      if (rawUrl) url = publicUrl(rawUrl).href;
-      const parsedUrl = new URL(url);
-      const assignmentPath = parsedUrl.pathname.match(
-        /^\/courses\/([^/]+)\/assignments\/(\d+)\/?$/,
-      );
-      const exact =
-        options.assignmentUrls?.get(url) ??
-        (parsedUrl.origin === options.canvasOrigin &&
-        assignmentPath?.[1] === options.courseId
-          ? assignmentPath[2]
-          : undefined);
-      const timezone = (event.start as Date & { tz?: string }).tz;
-      const location = value(event.location).trim().slice(0, 500);
-      // Teams meetings are labeled in location or title; a published calendar omits the join link.
-      const teams = /microsoft teams/i.test(`${location} ${value(event.summary)}`);
-      const cancelled = event.status === "CANCELLED";
-      resources.push(
-        resourceInputSchema.parse({
-          externalId: `calendar:${contentHash(event.uid)}`,
-          kind: "event",
-          courseId: options.courseId,
-          courseName: options.courseName,
-          title: value(event.summary) || "Calendar event",
-          url,
-          text: "",
-          updatedAt: date(event.lastmodified),
-          workflowState: event.status,
-          calendar: {
-            uid: event.uid,
-            start,
-            end: date(event.end, allDay) ?? null,
-            allDay,
-            ...(timezone ? { timezone } : {}),
-            lastModified: date(event.lastmodified) ?? null,
-            ...(exact ? { assignmentExternalId: exact } : {}),
-            ...(location ? { location } : {}),
-            ...(teams ? { onlineMeeting: "teams" as const } : {}),
-          },
-          // DATE has no time or zone. Keep the date, without manufacturing a midnight deadline.
-          deadlines:
-            allDay || cancelled
-              ? []
-              : [
-                  {
-                    value: start,
-                    kind: exact ? "due" : "event",
-                    quote: `Calendar DTSTART: ${start}`,
-                    authority: "structured",
-                    scopeConfirmed: Boolean(exact),
-                  },
-                ],
-        }),
-      );
+      if (!event.rrule) {
+        build(event, event.start, event.end, allDay);
+        continue;
+      }
+      // One event per meeting. The library returns canceled dates too, and moved
+      // meetings arrive separately keyed by their original time; apply both here.
+      const durationMs =
+        event.end && event.start ? event.end.getTime() - event.start.getTime() : 0;
+      const exdates = new Set(Object.keys(event.exdate ?? {}));
+      const occurrences = event.rrule.between(windowStart, windowEnd, true);
+      if (occurrences.length > MAX_OCCURRENCES)
+        diagnostics.push({ code: "recurrence_truncated", path: [], severity: "warning" });
+      for (const occurrence of occurrences.slice(0, MAX_OCCURRENCES)) {
+        const key = occurrence.toISOString();
+        if (exdates.has(key)) continue;
+        const moved = event.recurrences?.[key] as VEvent | undefined;
+        if (moved) {
+          if (moved.status === "CANCELLED") continue;
+          build({ ...event, ...moved, uid: event.uid } as VEvent, moved.start, moved.end, allDay, key);
+        } else {
+          const at = Object.assign(new Date(occurrence), {
+            tz: (event.start as Date & { tz?: string }).tz,
+          });
+          build(event, at, durationMs ? new Date(occurrence.getTime() + durationMs) : undefined, allDay, key);
+        }
+      }
     } catch (error) {
       diagnostics.push({
         code:
@@ -233,6 +275,9 @@ export function calendarConnector(
   };
 }
 
+const RECURRENCE_PAST_MS = 86400000;
+const RECURRENCE_AHEAD_MS = 21 * 86400000;
+const MAX_OCCURRENCES = 400;
 export const OUTLOOK_CALENDAR_URL = "https://outlook.office.com/calendar/view/day";
 /** The student's own published Outlook calendar: meetings and appointments, not coursework. */
 export function outlookCalendarConnector(options: {
