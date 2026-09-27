@@ -14,11 +14,15 @@ import {
 
 export const FLOATING_CHAT_TAG = "magic-floating-chat";
 export type FloatingChatCloseReason = "toggle" | "escape" | "minimise" | "end";
+export type FloatingChatWarmTrigger = "hover" | "open";
 export interface FloatingChatEvents {
   "floating-chat-open": CustomEvent<Record<string, never>>;
   "floating-chat-close": CustomEvent<{ reason: FloatingChatCloseReason }>;
-  /** Once per session, on the first hover or keyboard focus of the launcher: warm the chat path now. */
-  "floating-chat-warm": CustomEvent<Record<string, never>>;
+  /**
+   * Once per session, on the first hover or keyboard focus of the launcher (`trigger: "hover"`) or
+   * the first open (`"open"`): warm the chat path now. Cancel it to decline; the next one asks again.
+   */
+  "floating-chat-warm": CustomEvent<{ trigger: FloatingChatWarmTrigger }>;
   "floating-chat-move": CustomEvent<{ corner: Corner }>;
 }
 
@@ -132,11 +136,11 @@ export class MagicFloatingChat extends HTMLElement {
       this.toggle();
     });
     on(this.#launcher, "pointerenter", (e) => {
-      this.#warm();
+      this.#warm("hover");
       if (e.pointerType === "mouse" && !this.#drag) this.#rig?.setState("hover");
     });
     on(this.#launcher, "focus", () => {
-      this.#warm();
+      this.#warm("hover");
       if (this.#launcher.matches(":focus-visible")) this.#rig?.setState("hover");
     });
     on(this.#launcher, "keydown", (e) => {
@@ -204,6 +208,7 @@ export class MagicFloatingChat extends HTMLElement {
     this.#launcher.setAttribute("aria-expanded", "true");
     if (this.hasAttribute("data-intro")) { this.removeAttribute("data-intro"); writeIntroSeen(this.#storage); }
     this.#emit("floating-chat-open", {});
+    this.#warm("open");
     requestAnimationFrame(() => {
       const target = this.querySelector<HTMLElement>("[data-autofocus]") ?? this.#shadow.querySelector<HTMLElement>(".head button");
       target?.focus({ preventScroll: true });
@@ -243,10 +248,10 @@ export class MagicFloatingChat extends HTMLElement {
     this.dispatchEvent(new CustomEvent(type, { detail, bubbles: true, composed: true }));
   }
 
-  /** Once per session. A host that cannot warm now (local-only mode) cancels the event, so a later hover can. */
-  #warm() {
+  /** Once per session. A host that may not warm on this trigger cancels the event, so a later one can ask again. */
+  #warm(trigger: FloatingChatWarmTrigger) {
     if (warmedAlready()) return;
-    const event = new CustomEvent("floating-chat-warm", { detail: {}, bubbles: true, composed: true, cancelable: true });
+    const event = new CustomEvent("floating-chat-warm", { detail: { trigger }, bubbles: true, composed: true, cancelable: true });
     if (this.dispatchEvent(event)) markWarmed();
   }
 

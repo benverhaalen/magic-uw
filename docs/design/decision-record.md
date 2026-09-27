@@ -186,3 +186,16 @@ Operator brief, relayed to the design integrator (not a Ben quote): onboarding l
 - The lab-only `ink-on-shell-secondary` measures 4.17:1 on the light highlight. It is recorded, not changed.
 
 Details and tables: [theming](theming.md). Supersedes nothing; D13's "shell customization is later scope" still holds, since accents do not touch the shell.
+
+**Merged with the accent frame (later on September 27):** main gained Sean's interim accent frame (164cf91, 9c4695e), in which the accent colours the window frame around the white content, with a readable frame ink. On `feat/floating-chat` it is expressed through these tokens: the desktop chrome and sidebar sit on `--magic-accent-frame` and its ink, and frame hover, selected and focus tokens mix toward the workspace surface, measured at 5.15:1 or more for rose, blue and coral in light and dark (styles.css). "Warm" keeps today's shell with the default blue commands. To that extent accents now touch the shell, which D13 placed in later scope; this is Sean's interim choice, pending Ben.
+
+### Floating chat — recorded September 27, 2026
+
+Lead decisions on the floating chat's open questions (relayed by the session lead, not a Ben quote):
+
+- The top bar's chat button opens the floating panel about the current page. The earlier "Page-wide chat is not connected yet" notice was false once the panel existed and is removed. With the setting off, the button says so and points to Data & AI.
+- Left corners stay beside the sidebar, never over the navigation.
+- Warm-up: a hover (or keyboard focus) warms the student's AI only when their settings already let chat run on their hosted AI without a preview. Otherwise the first open warms it, and in local-only mode or with no hosted AI agreed to, nothing does. Hovering never starts an AI session the student did not ask for. Rule: `floating-chat/warm.ts`.
+- The `--magic-wizard-*` illustration tokens are accepted.
+
+**Open conflict:** on main, Aidan recoloured the website and marketing wizard to one UW cardinal outfit (September 27, `marketing/logo-design-elements/README.md`). The accepted app tokens keep the traced rust hat and olive robe, so the app's wizard and the website's differ. Which palette the app follows is for Ben and Aidan.

@@ -213,3 +213,20 @@ test("wizard parts stay distinct (3:1 non-text), and the figure separates from e
   }
   assert.deepEqual(failures, []);
 });
+
+test("warm-up: a hover warms only when chat already runs on hosted AI without a preview; otherwise the first open, or never", async () => {
+  const { chatWarmPolicy } = await import("../apps/desktop/src/renderer/floating-chat/warm");
+  const { defaultPrivacy } = await import("@magic/contracts");
+  const { CONSENT_DISCLOSURE_VERSION } = await import("@magic/domain");
+  const agreed = [{ recipient: "claude" as const, disclosureVersion: CONSENT_DISCLOSURE_VERSION, grantedAt: "2026-09-27T12:00:00.000Z" }];
+  const hosted = { ...defaultPrivacy, mode: "selective_cloud" as const, hostedProvider: "claude" as const, shareCourseText: true };
+  assert.equal(chatWarmPolicy(hosted, agreed), "hover");
+  assert.equal(chatWarmPolicy({ ...hosted, alwaysPreview: true }, agreed), "open", "always-preview: the student opens before anything warms");
+  assert.equal(chatWarmPolicy({ ...hosted, shareCourseText: false }, agreed), "open", "course text not shared: an answer cannot run as asked");
+  assert.equal(chatWarmPolicy(defaultPrivacy, agreed), "never", "fully local mode");
+  assert.equal(chatWarmPolicy({ ...hosted, mode: "local_only" }, agreed), "never");
+  assert.equal(chatWarmPolicy({ ...hosted, hostedProvider: "none" }, agreed), "never");
+  assert.equal(chatWarmPolicy(hosted, []), "never", "no agreement with the chosen AI");
+  assert.equal(chatWarmPolicy(hosted, [{ ...agreed[0]!, disclosureVersion: "setup-2025-01-01" }]), "never", "an outdated agreement");
+  assert.equal(chatWarmPolicy({ ...hosted, hostedProvider: "codex" }, agreed), "never", "agreed to a different AI");
+});

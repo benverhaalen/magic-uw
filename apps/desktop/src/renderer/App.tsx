@@ -33,7 +33,7 @@ import { Action, Disclosure } from "../../../../packages/ui/src";
 import { useDesktopNavigation, type DesktopView } from "./navigation";
 import { CourseSpaceDetails } from "./CourseSpaceDetails";
 import { NotificationsMenu } from "./NotificationsMenu";
-import { FloatingChat, FloatingChatSetting } from "./floating-chat";
+import { FloatingChat, FloatingChatSetting, chatWarmPolicy, openFloatingChat } from "./floating-chat";
 
 type View = DesktopView;
 // owner: T05b. Route slots, each rendering nothing until its task fills it: the notebook (T43),
@@ -421,12 +421,16 @@ export function App() {
         />
       </>}
       onCompose={() => {
-        if (selected) { document.querySelector<HTMLElement>(".local-ai-panel")?.scrollIntoView({ behavior: "smooth" }); }
-        setNotice(selected ? "Ask about this item in its Local AI section. Your model and sharing settings still apply." : "Page-wide chat is not connected yet. Open a course item to ask about its saved context with Local AI.");
+        // owner: floating-chat. The chat button opens the floating chat about this page.
+        const opened = openFloatingChat();
+        if (opened === "opened") return;
+        if (opened === "hidden") { setNotice("Chat is available once setup is finished and your courses are connected."); return; }
+        if (selected) document.querySelector<HTMLElement>(".local-ai-panel")?.scrollIntoView({ behavior: "smooth" });
+        setNotice(selected ? "Floating chat is off. Ask about this item in its Local AI section, or turn Floating chat on in Data & AI." : "Floating chat is off. Turn it on in Data & AI to chat about this page.");
       }}>
         <WorkspaceCommandBarSlot snapshot={snapshot} /* owner: T05b */ />
         {/* owner: floating-chat. One mount; portalled to <body>, off when the setting is off. */}
-        {snapshot && <FloatingChat hidden={view === "consent" || (resources.length === 0 && !uwConsented)} warm={snapshot.privacy.mode !== "local_only"} view={view}
+        {snapshot && <FloatingChat hidden={view === "consent" || (resources.length === 0 && !uwConsented)} warm={chatWarmPolicy(snapshot.privacy, snapshot.consents ?? [])} view={view}
           resource={view === "resource" ? selected : null} course={view === "courses" ? coursePage : null} courseKey={navigation.courseKey}
           cards={courseCards} bridge={window.magic} resources={resources} sources={snapshot.sources} now={snapshot.generatedAt}
           onNavigate={(next, id, key) => navigation.navigate(next, id, key)} onOpenSetup={target => setView(target === "sources" ? "sources" : "privacy")}/>}

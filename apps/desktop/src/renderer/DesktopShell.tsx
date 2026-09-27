@@ -31,7 +31,7 @@ export function DesktopShell({ view, title, courses, selectedCourseKey, sample, 
       <button aria-label="Go back" disabled={!canBack} onClick={onBack}><Glyph name="back"/></button>
       <button aria-label="Go forward" disabled={!canForward} onClick={onForward}><Glyph name="forward"/></button>
       <button aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!collapsed} onClick={() => setCollapsed(!collapsed)}><Glyph name="panel"/></button>
-      <button aria-label="New context chat" onClick={onCompose}><Glyph name="compose"/></button>
+      <button aria-label="Chat about this page" onClick={onCompose}><Glyph name="compose"/></button>
     </div><span className="desktop-page-title" title={title}>{title}</span><div className="desktop-status">{status}<span className="desktop-state">{sample ? 'Sample data' : busy ? 'Working…' : ''}</span></div></header>
     <aside className="desktop-sidebar" aria-label="Workspace">
       <nav aria-label="Main navigation">{([

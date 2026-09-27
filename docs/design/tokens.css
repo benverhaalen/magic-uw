@@ -211,7 +211,7 @@
   --magic-shadow-color: light-dark(#29231f, #000000);
 }
 
-/* Wizard illustration (proposal, September 27, floating chat): the character's own palette, traced
+/* Wizard illustration (accepted September 27, floating chat; see decision-record.md): the character's own palette, traced
    from marketing/uploads/Wizard_logo.jpg and read by floating-chat/wizard.svg. Light values are the
    nearest existing token value to each measured logo colour (line: ink #29231f vs #221715; hat:
    accent-current-time vs #bf4842; beard: fill-avatar vs #e2d4bb; eye: surface-quiet vs #f4f0e9;

@@ -13,6 +13,7 @@ import { continueChat, currentScope, followUpHint, getChat, startChat, subscribe
 import { beginSubmit, edit, expand, initialLauncher, isBlank, rebase, settleSubmit, type LauncherState } from "../conversation-launcher/model";
 import type { DesktopView } from "../navigation";
 import { defineFloatingChat, FLOATING_CHAT_TAG, type FloatingChatEvents, type MagicFloatingChat } from "./element";
+import type { ChatWarmPolicy } from "./warm";
 import type { WizardState } from "./rig";
 import { useFloatingChatEnabled } from "./setting";
 import "./floating-chat.css";
@@ -30,13 +31,22 @@ declare module "react" {
 
 /** Shell regions the launcher and panel keep clear of: the header, the sidebar (a side column), a bottom composer bar. */
 export const FLOATING_CHAT_AVOID = ".desktop-chrome, .desktop-sidebar, .conversation-launcher-dock > .conversation-launcher";
+/** The shell's chat button asks the mounted panel to open; `detail.result` says what happened. */
+const OPEN_EVENT = "magic-floating-chat-open";
+export type OpenFloatingChatResult = "opened" | "hidden" | "off";
+/** Opens the floating chat about the current page. "off": the setting unmounted it; "hidden": setup is showing. */
+export function openFloatingChat(): OpenFloatingChatResult {
+  const detail: { result: OpenFloatingChatResult } = { result: "off" };
+  document.dispatchEvent(new CustomEvent(OPEN_EVENT, { detail }));
+  return detail.result;
+}
 const PAGE_LABELS: Partial<Record<string, string>> = { today: "Home", courses: "Courses", myuw: "My UW", calendar: "Calendar", sources: "Connected sources", privacy: "Data & AI" };
 
 export interface FloatingChatProps {
   /** Onboarding, agreements and first-run setup: nothing to chat about yet. */
   hidden: boolean;
-  /** Warm the router's AI path on first hover. Off in local-only mode: a hover never starts a hosted session there. */
-  warm: boolean;
+  /** When the router's AI path may be warmed: `chatWarmPolicy` of the student's settings (warm.ts). */
+  warm: ChatWarmPolicy;
   view: DesktopView;
   resource: ResourceView | null;
   course: CoursePage | null;
@@ -60,7 +70,7 @@ export function FloatingChat(props: FloatingChatProps) {
   return createPortal(<FloatingChatHost {...props}/>, document.body);
 }
 
-function FloatingChatHost({ hidden, warm: warmAllowed, view, resource, course, courseKey, cards, bridge, resources, sources, now, onNavigate, onOpenSetup }: FloatingChatProps) {
+function FloatingChatHost({ hidden, warm: warmPolicy, view, resource, course, courseKey, cards, bridge, resources, sources, now, onNavigate, onOpenSetup }: FloatingChatProps) {
   const host = useRef<MagicFloatingChat>(null);
   const field = useRef<HTMLTextAreaElement>(null);
   const [chatId, setChatId] = useState<string | null>(null);
@@ -116,22 +126,37 @@ function FloatingChatHost({ hidden, warm: warmAllowed, view, resource, course, c
     submit();
   };
 
-  // Element events: warm the router once per session, end the chat on Close.
+  // Element events: warm the router once per session, end the chat on Close. A hover warms only when
+  // the policy is "hover"; otherwise the first open does ("open"), or nothing does ("never").
   useEffect(() => {
     const node = host.current;
     if (!node) return;
-    const warm = (event: Event) => {
-      if (!warmAllowed) { event.preventDefault(); return; }
+    const warm = (event: FloatingChatEvents["floating-chat-warm"]) => {
+      if (warmPolicy === "never" || (warmPolicy === "open" && event.detail.trigger !== "open")) { event.preventDefault(); return; }
       void bridge.execute?.({ type: "command", value: { text: "", context: { view: "chat" }, mode: "prewarm" } }).catch(() => undefined);
     };
     const closed = (event: FloatingChatEvents["floating-chat-close"]) => { if (event.detail.reason === "end") setChatId(null); };
-    node.addEventListener("floating-chat-warm", warm);
+    node.addEventListener("floating-chat-warm", warm as EventListener);
     node.addEventListener("floating-chat-close", closed as EventListener);
     return () => {
-      node.removeEventListener("floating-chat-warm", warm);
+      node.removeEventListener("floating-chat-warm", warm as EventListener);
       node.removeEventListener("floating-chat-close", closed as EventListener);
     };
-  }, [bridge, warmAllowed]);
+  }, [bridge, warmPolicy]);
+
+  // The shell's chat button opens the panel about the current page (the Scope chip shows which).
+  useEffect(() => {
+    const open = (event: Event) => {
+      const detail = (event as CustomEvent<{ result: OpenFloatingChatResult }>).detail;
+      if (hidden) { detail.result = "hidden"; return; }
+      detail.result = "opened";
+      const node = host.current;
+      if (node?.isOpen) node.querySelector<HTMLElement>("[data-autofocus]")?.focus({ preventScroll: true });
+      else node?.open();
+    };
+    document.addEventListener(OPEN_EVENT, open);
+    return () => document.removeEventListener(OPEN_EVENT, open);
+  }, [hidden]);
 
   // Hidden during onboarding and setup; an open panel closes without taking focus.
   useLayoutEffect(() => { if (hidden && host.current?.isOpen) host.current.close("minimise", false); }, [hidden]);
