@@ -128,7 +128,7 @@ export const agenda: ActionSpec<ResolvedArgs> = {
   argsSchema: args,
   examples: ["what's due tomorrow", "anything due in cs 400 this week"],
   patterns: [
-    /^(?:(?:what|whats|what's|what is|anything|show me|show|list|my|do i have|have i got|is there|is anything|tell me)\s+)*(?:(?:stuff|things|work|assignments?|homework|hw|anything|left|coming up|that's|thats|else|is)\s+)*(?:due|deadlines?|agenda|upcoming|on my (?:plate|agenda))(?:\s+(?:soon|next|coming up|for))?$/,
+    /^(?:(?:what|whats|what's|what is|anything|show me|show|list|my|do i have|have i got|is there|is anything|tell me)\s+)*(?:(?:stuff|things|work|assignments?|homework|hw|anything|left|coming up|that's|thats|else|is)\s+)*(?:due|deadlines?|agenda|upcoming|up|on my (?:plate|agenda))(?:\s+(?:soon|next|coming up|for))?$/,
     /^(?:what do i have|what have i got|what's on|whats on|what is on)$/,
   ],
   label: (a) => `What's due${a.date ? ` ${a.date.label}` : " this week"}${a.course ? ` · ${courseLabel(a.course)}` : ""}`,

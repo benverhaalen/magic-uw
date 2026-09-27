@@ -351,6 +351,8 @@ export function App() {
   const [consentPending, setConsentPending] = useState<PrivacyPreferences | null>(null);
   // owner: reconfigure. Set by "Re-run setup" (step 1) or a client's "Sign in" (the Your AI step).
   const [setupAt, setSetupAt] = useState<StepId | null>(null);
+  // Finishing setup re-renders now instead of waiting on a snapshot read that a running sync can stall.
+  const [, setSetupFinished] = useState(0);
   const privacyReturnFocus = useRef<string | null>(null);
   const consentReturnToPrivacy = useRef(false);
   useLayoutEffect(() => {
@@ -544,6 +546,7 @@ export function App() {
         onLoadSample={() => run({ type: "fixture" })}
         onFinish={() => {
           setSetupAt(null); // owner: reconfigure
+          setSetupFinished((count) => count + 1);
           setView("today");
           void refresh();
         }}

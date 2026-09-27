@@ -8,7 +8,7 @@ import type { ClientHealth, ClientId, PrivacyPreferences } from "@magic/contract
 import { clientInfo } from "../onboarding/model";
 
 export type AiChoice = ClientId | "local" | "off";
-export const HOSTED_CHOICES: readonly ClientId[] = ["claude", "codex", "gemini"];
+export const HOSTED_CHOICES: readonly ClientId[] = ["claude", "codex"];
 
 export const LOCAL_KEY = "magic.yourAi.local";
 const localListeners = new Set<() => void>();
@@ -36,8 +36,9 @@ export function aiChoiceOf(privacy: PrivacyPreferences, localOn: boolean): AiCho
 /** The preference change for a choice (null: none needed). Local and Off both mean "no hosted AI". */
 export function aiChoicePatch(privacy: PrivacyPreferences, choice: AiChoice): Partial<PrivacyPreferences> | null {
   if (choice === "local" || choice === "off") return privacy.hostedProvider === "none" ? null : { hostedProvider: "none" };
-  if (privacy.hostedProvider === choice && privacy.mode === "selective_cloud") return null;
-  return { hostedProvider: choice, mode: "selective_cloud" };
+  if (privacy.hostedProvider === choice && privacy.mode === "selective_cloud" && privacy.shareCourseText) return null;
+  // Choosing Claude Code or Codex shares course passages with it, as setup does: chat can't answer without them.
+  return { hostedProvider: choice, mode: "selective_cloud", shareCourseText: true };
 }
 
 export const choiceName = (choice: AiChoice) =>

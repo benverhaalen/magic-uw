@@ -24,16 +24,16 @@ import { localDataBytes } from "../apps/desktop/src/local-data";
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const cloud: PrivacyPreferences = { ...defaultPrivacy, mode: "selective_cloud" };
-const hosted: PrivacyPreferences = { ...cloud, hostedProvider: "claude" };
+const hosted: PrivacyPreferences = { ...cloud, hostedProvider: "claude", shareCourseText: true };
 const row = (id: string) => SHARE_ROWS.find((r) => r.id === id)!;
 const health = (state: ClientHealth["state"], extra: Partial<ClientHealth> = {}): ClientHealth => ({
   id: "claude", state, mode: "instant", source: "status", instant: { available: true }, modes: ["instant", "isolated"], checkedAt: "2026-09-27T12:00:00.000Z", ...extra,
 });
 
 test("your AI: a hosted choice selects it with cloud access on; this computer and Off both clear the hosted AI", () => {
-  assert.deepEqual(aiChoicePatch(defaultPrivacy, "claude"), { hostedProvider: "claude", mode: "selective_cloud" });
+  assert.deepEqual(aiChoicePatch(defaultPrivacy, "claude"), { hostedProvider: "claude", mode: "selective_cloud", shareCourseText: true });
   assert.equal(aiChoicePatch(hosted, "claude"), null);
-  assert.deepEqual(aiChoicePatch(hosted, "codex"), { hostedProvider: "codex", mode: "selective_cloud" });
+  assert.deepEqual(aiChoicePatch(hosted, "codex"), { hostedProvider: "codex", mode: "selective_cloud", shareCourseText: true });
   assert.deepEqual(aiChoicePatch(hosted, "local"), { hostedProvider: "none" });
   assert.deepEqual(aiChoicePatch(hosted, "off"), { hostedProvider: "none" });
   assert.equal(aiChoicePatch(defaultPrivacy, "off"), null);

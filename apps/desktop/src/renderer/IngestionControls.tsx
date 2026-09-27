@@ -366,7 +366,6 @@ export function McpConnections({
             <option value="local">Local model</option>
             <option value="chatgpt">ChatGPT</option>
             <option value="claude">Claude</option>
-            <option value="gemini">Gemini</option>
           </select>
         </label>
         <p className="small muted">

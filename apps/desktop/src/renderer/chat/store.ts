@@ -1,6 +1,6 @@
 import type { AppBridge, LocalAnswer, ResourceView, SourceHealth } from "@magic/contracts";
 import {
-  chatItem, dueCaveat, dueInScope, localErrorIsBusy, localErrorNeedsSetup, namesAnotherItem, permits, permittedCourses, permittedScope,
+  chatItem, dueCaveat, dueInScope, namesAnotherItem, permits, permittedCourses, permittedScope,
   resolveCourseMention, routeIntent, safeWebLink, scopeCourses, scopeLabel, studentError, withoutMention,
   type ChatCourse, type ChatItem, type ChatScope, type DueRow, type DueWindow,
 } from "./model";
@@ -277,7 +277,7 @@ async function run(chat: Chat, x: Exchange, rt: ChatRuntime) {
       allowedBase = permittedScope(initialPlan.scope, permitted);
     }
     if (!allowedBase) return update(chat, x, { state: "failed", error: { text: "This course is no longer included. Choose an included course or update Sources.", setup: "sources" } });
-    if (rt.bridge.intentRun && !x.local && !x.target && !x.wide && !x.course) {
+    if (rt.bridge.intentRun && !x.target && !x.wide && !x.course) {
       const courses = scopeCourses(allowedBase);
       const context = { view: chat.origin.view, ...(courses.length === 1 ? {courseId: courses[0]!.key} : {}), ...(allowedBase.kind === 'item' ? {resourceId: allowedBase.item.id} : {}) };
       const result = await rt.bridge.intentRun({ operationId: x.id, text: x.prompt, context });
@@ -329,7 +329,13 @@ async function run(chat: Chat, x: Exchange, rt: ChatRuntime) {
       if (!target) return update(chat, x, { state: "failed", error: { text: `${chosen.title} is no longer in your saved workspace.`, setup: null } });
       if (!permits(permitted, target, chat.origin.scope)) return update(chat, x, { state: "failed", error: { text: `${target.title} is not in an included course.`, setup: "sources" } });
       if (intent.kind === "open") return await open(chat, x, target, rt, live);
-      return await ask(chat, x, target, rt, live, `${x.id}:${ticket}`);
+      // An item question is answered by the student's connected Claude Code or Codex, scoped to that item.
+      if (!rt.bridge.intentRun) return update(chat, x, { state: "failed", error: { text: "Answers need your connected Claude Code or Codex. Choose it in Data & AI.", setup: "local-model" } });
+      update(chat, x, { step: "ask", target });
+      const courseKey = target.courseKey;
+      const result = await rt.bridge.intentRun({ operationId: x.id, text: x.prompt, context: { view: chat.origin.view, ...(courseKey ? { courseId: courseKey } : {}), resourceId: target.id } });
+      if (!live()) return;
+      return applyIntent(chat, x, result, rt, permitted, scope);
     }
     if (intent.kind === "open") return update(chat, x, { state: "done", result: { kind: "note", text: "Choose one item to open. Ask about it by name and pick it from the saved matches." } });
 
@@ -366,6 +372,9 @@ async function run(chat: Chat, x: Exchange, rt: ChatRuntime) {
 /** Maps the router's result into the chat. Rows and items come from the same saved data the pages show. */
 function applyIntent(chat: Chat, x: Exchange, r: IntentResult, rt: ChatRuntime, permitted: ChatCourse[], base: ChatScope) {
   const byKey = new Map(permitted.map((c) => [c.key, c]));
+  // The send gate refused the connected client: say how to turn it on instead of the gate's bare reason.
+  if (r.status === "unavailable" && /Fully local processing|hosted AI has not been selected|not agreed to share|Sharing course text is disabled/.test(r.reason))
+    return update(chat, x, { state: "failed", step: null, error: { text: "Chat answers through your Claude Code or Codex. Choose it as Your AI in Data & AI.", setup: "local-model", detail: r.reason } });
   if (r.status === "unavailable") return update(chat, x, { state: "done", step: null, result: { kind: "unavailable", reason: r.reason } });
   if (r.status === "answer") return update(chat, x, { state: "done", step: null, result: { kind: "grounded", text: r.text, citations: r.citations, notFound: r.notFound, dropped: r.dropped, path: r.path } });
   if (r.status === "clarify") {
@@ -419,28 +428,6 @@ function refresh(item: ChatItem, rt: ChatRuntime): ChatItem | null {
 }
 function message(cause: unknown, fallback: string) {
   return cause instanceof Error && cause.message ? cause.message : fallback;
-}
-
-const BUSY = "Another answer is running on this device. Try again when it finishes.";
-async function ask(chat: Chat, x: Exchange, target: ChatItem, rt: ChatRuntime, live: () => boolean, owner: string) {
-  if (!rt.bridge.localAsk) return update(chat, x, { state: "failed", error: { text: "Answers need the desktop app's local model. This window cannot run it.", setup: "local-model" } });
-  if (localOwner) return update(chat, x, { state: "failed", error: { text: BUSY, setup: null } });
-  localOwner = owner;
-  update(chat, x, { step: "ask", target });
-  try {
-    const answer = await rt.bridge.localAsk({ id: target.id, inputHash: target.contentHash, question: x.prompt });
-    if (!live()) return;
-    if (answer.resourceId !== target.id || answer.inputHash !== target.contentHash)
-      return update(chat, x, { state: "failed", step: null, error: { text: "The answer did not match this item's current version, so it was not shown.", setup: null } });
-    update(chat, x, { state: "done", step: null, result: { kind: "answer", answer, item: target } });
-  } catch (cause) {
-    if (!live()) return;
-    const raw = message(cause, "");
-    if (localErrorIsBusy(raw)) return update(chat, x, { state: "failed", step: null, error: { text: BUSY, setup: null } });
-    update(chat, x, { state: "failed", step: null, error: { ...studentError(raw, "The local model could not answer. Try again."), setup: localErrorNeedsSetup(raw) ? "local-model" : null } });
-  } finally {
-    if (localOwner === owner) localOwner = null;
-  }
 }
 
 async function open(chat: Chat, x: Exchange, target: ChatItem, rt: ChatRuntime, live: () => boolean) {

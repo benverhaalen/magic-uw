@@ -132,7 +132,7 @@ function ExchangeView({ chat, x, runtime, onOpenSetup, Info }: ViewProps) {
     <p>{x.error.text}</p>
     <div className="magic-chat-row">
       <button className="magic-chat-text" disabled={busy} onClick={() => retry(chat, x)}>Try again</button>
-      {x.error.setup === "local-model" ? <button className="magic-chat-text" onClick={() => onOpenSetup("local-model")}>Set up local model</button> : null}
+      {x.error.setup === "local-model" ? <button className="magic-chat-text" onClick={() => onOpenSetup("local-model")}>Choose your AI</button> : null}
       {x.error.setup === "sources" ? <button className="magic-chat-text" onClick={() => onOpenSetup("sources")}>Choose courses</button> : null}
     </div>
     {x.error.detail ? <details className="magic-chat-tech"><summary>Technical details</summary><pre>{x.error.detail}</pre></details> : null}
@@ -148,7 +148,7 @@ function ExchangeView({ chat, x, runtime, onOpenSetup, Info }: ViewProps) {
     <p className="magic-chat-prose">{r.reason}</p>
     <div className="magic-chat-row">
       <button className="magic-chat-text" disabled={busy} onClick={() => retry(chat, x)}>Try again</button>
-      <button className="magic-chat-text" disabled={busy} onClick={() => answerLocally(chat, x)}>Answer from one saved item on this device</button>
+      <button className="magic-chat-text" disabled={busy} onClick={() => answerLocally(chat, x)}>Answer from one saved item</button>
     </div>
   </div>;
   if (r.kind === "action") return <p className="magic-chat-prose">{r.hint ? `This reads as a command: ${r.hint}.` : "This reads as a command."} Chat only reads your saved coursework, so it did not run it.</p>;

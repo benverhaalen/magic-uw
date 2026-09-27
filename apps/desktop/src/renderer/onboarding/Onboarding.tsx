@@ -4,7 +4,8 @@ import {
   CONSENT_DISCLOSURE_VERSION,
   hasCurrentConsent,
 } from "../../../../../packages/domain/src/index";
-import { ConsentSetup } from "../consent/ConsentSetup";
+import { ConsentSetup, missingConsents } from "../consent/ConsentSetup";
+import { writeLocalChoice } from "../ai-choice/answering";
 import { ACCENTS, applyAppearance, readAppearance, writeAppearance, type Appearance, type ThemePreference } from "../appearance";
 import { signInAndSync, signInMessage } from "../sign-in";
 import { ClientHealthNotice } from "./ClientHealthNotice";
@@ -227,6 +228,8 @@ export function Onboarding(props: OnboardingProps) {
         onLoadSample={loadSample}
         onBack={back}
         onFinish={() => {
+          // Saved now, not in the state updater: App reads it on its next render to leave setup.
+          writeProgress({ ...progress, done: true });
           update({ done: true });
           // Finishing setup accepts the course choice if the step was never confirmed.
           if (snapshot.ingestionSettings?.awaitingCourseChoice) void window.magic?.syncCanvas?.({ confirm: true });
@@ -1016,10 +1019,13 @@ function ConnectClient({
             setFinishing(true);
             try {
               await clients.choose(id);
-              // owner: client-detection (e2e harness): runs go to the chosen client only when the
-              // privacy preference names it, so a student who picked Codex isn't blocked.
-              if (snapshot.privacy.mode !== "local_only" && snapshot.privacy.hostedProvider !== id)
-                await run({ type: "privacy", value: { ...snapshot.privacy, hostedProvider: id } });
+              // owner: ai-choice (c82fa42). The chosen client is also "Your AI" in Data & AI: the send gate's
+              // selected AI with cloud access on and course passages shared, exactly what the student just
+              // agreed to ("Passages from your courses, only when you ask"). Saved only when every agreement
+              // it needs is current.
+              const next = { ...snapshot.privacy, mode: "selective_cloud" as const, hostedProvider: id, shareCourseText: true };
+              if (!missingConsents(next, snapshot.consents).length) await run({ type: "privacy", value: next });
+              writeLocalChoice(false);
               onConnected();
             } catch {
               setProblem(`Could not save ${info.name} as your AI.`);
