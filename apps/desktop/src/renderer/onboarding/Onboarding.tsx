@@ -1,81 +1,50 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { Command, CommandResult, Snapshot } from "@magic/contracts";
+import type { ClientHealth, ClientMode, Command, CommandResult, OutlookStatus, SignInOutcome, Snapshot } from "@magic/contracts";
 import {
   CONSENT_DISCLOSURE_VERSION,
   hasCurrentConsent,
 } from "../../../../../packages/domain/src/index";
 import { ConsentSetup } from "../consent/ConsentSetup";
+import { ACCENTS, applyAppearance, readAppearance, writeAppearance, type Appearance, type ThemePreference } from "../appearance";
+import { signInAndSync, signInMessage } from "../sign-in";
+import { ClientHealthNotice } from "./ClientHealthNotice";
+import { Icon, Spinner } from "./icons";
 import {
   clientInfo,
+  clientOrder,
   createPreviewClients,
   firstIncompleteStep,
+  healthFromStatus,
   orderedClients,
   readProgress,
+  recommendedClient,
+  selectable,
   steps,
   summarize,
   writeProgress,
   type ClientId,
-  type ClientStatus,
   type ClientsBridge,
   type OnboardingProgress,
   type StepId,
+  type UwProgress,
 } from "./model";
+import { TerminalPane } from "./TerminalPane";
 import "./onboarding.css";
+import "./client-health.css";
 
 /**
- * T81 first-run onboarding: Welcome → Your AI → Connect → UW → Populating.
- * Composes T06's ConsentSetup for the UW step and codes against the T80 client bridge
- * (a local type in ./model until integration). Without the bridge (the browser preview) it
- * runs on a labelled preview fixture.
+ * T81 first-run onboarding, reordered by D51 (owner: client-health): Agreement → UW sign-in →
+ * Your AI (each client with its health and connection mode) → Appearance → Connections → done.
+ * Composes T06's ConsentSetup and the T80 client bridge. Without the bridge (the browser
+ * preview) it runs on a labelled preview fixture.
  */
 
-type Bridge = { clients?: ClientsBridge };
 const previewBridge = createPreviewClients();
 function clientsBridge(): { clients: ClientsBridge; preview: boolean } {
-  const live = (window.magic as unknown as Bridge | undefined)?.clients;
+  const live = window.magic?.clients;
   return live ? { clients: live, preview: false } : { clients: previewBridge, preview: true };
 }
-
-// Lucide paths (ISC licence), drawn at 20 × 20 on a 24 grid with the design seed's stroke.
-const iconPaths = {
-  back: <path d="m15 18-6-6 6-6" />,
-  check: <path d="M20 6 9 17l-5-5" />,
-  external: (
-    <>
-      <path d="M15 3h6v6" />
-      <path d="M10 14 21 3" />
-      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-    </>
-  ),
-  alert: (
-    <>
-      <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
-      <path d="M12 9v4" />
-      <path d="M12 17h.01" />
-    </>
-  ),
-  terminal: (
-    <>
-      <path d="m4 17 6-6-6-6" />
-      <path d="M12 19h8" />
-    </>
-  ),
-};
-function Icon({ name, className }: { name: keyof typeof iconPaths; className?: string }) {
-  return (
-    <svg
-      className={`onb-icon${className ? ` ${className}` : ""}`}
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      focusable="false"
-    >
-      {iconPaths[name]}
-    </svg>
-  );
-}
-function Spinner() {
-  return <span className="onb-spinner" aria-hidden="true" />;
-}
+const defaultTerminal = (sessionId: string) => <TerminalPane sessionId={sessionId} />;
 
 export interface OnboardingProps {
   snapshot: Snapshot;
@@ -87,22 +56,22 @@ export interface OnboardingProps {
   /** App's runner for several commands; ConsentSetup uses it. */
   runAll: (commands: Command[]) => Promise<unknown>;
   canSignIn: boolean;
-  /** The existing UW sign-in (then Canvas sync). */
+  /** The existing UW sign-in (then Canvas sync); used only where the bridge has no outcome. */
   signIn: () => Promise<unknown>;
   openExternal: (url: string) => void;
   onLoadSample: () => Promise<CommandResult | undefined>;
   onFinish: () => void;
-  /** The built-in terminal (TerminalPane, another seat). A placeholder shows when absent. */
+  /** The built-in terminal; defaults to TerminalPane. */
   renderTerminal?: (sessionId: string) => ReactNode;
 }
 
 export function Onboarding(props: OnboardingProps) {
   const { snapshot, busy, error, onDismissError } = props;
   const { clients, preview } = useMemo(clientsBridge, []);
+  const renderTerminal = props.renderTerminal ?? defaultTerminal;
   const [progress, setProgressState] = useState<OnboardingProgress>(() => readProgress());
-  const [step, setStep] = useState<StepId>(() =>
-    firstIncompleteStep(snapshot, readProgress(), hasCurrentConsent),
-  );
+  const [step, setStep] = useState<StepId>(() => firstIncompleteStep(snapshot, readProgress(), hasCurrentConsent));
+  const [autoSignIn, setAutoSignIn] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const firstRender = useRef(true);
 
@@ -124,11 +93,15 @@ export function Onboarding(props: OnboardingProps) {
   }, [step]);
 
   const index = steps.findIndex((entry) => entry.id === step);
+  const back = index > 0 ? () => setStep(steps[index - 1].id) : null;
+  const next = () => setStep(steps[Math.min(index + 1, steps.length - 1)].id);
   const loadSample = async () => {
     const result = await props.onLoadSample();
-    if (result?.snapshot?.resources.length) setStep("populating");
+    if (result?.snapshot?.resources.length) {
+      update({ uw: "skipped" });
+      setStep("client");
+    }
   };
-  const back = index > 0 ? () => setStep(steps[index - 1].id) : null;
   const heading = (text: string) => (
     <h1 className="onb-title" id="onb-step-title" ref={headingRef} tabIndex={-1}>
       {text}
@@ -136,73 +109,84 @@ export function Onboarding(props: OnboardingProps) {
   );
 
   let body: ReactNode;
-  if (step === "welcome")
+  if (step === "consent")
     body = (
-      <Welcome
-        heading={heading}
-        onStart={() => {
-          update({ welcomed: true });
-          setStep("ai");
-        }}
-      />
-    );
-  else if (step === "ai")
-    body = (
-      <ChooseClient
-        heading={heading}
-        clients={clients}
-        preview={preview}
-        initial={progress.client === "later" ? null : progress.client}
-        openExternal={props.openExternal}
-        onBack={back}
-        onChoose={(id) => {
-          update({ client: id, clientConnected: progress.client === id && progress.clientConnected });
-          setStep("connect");
-        }}
-        onLater={() => {
-          update({ client: "later", clientConnected: false });
-          setStep("uw");
-        }}
-      />
-    );
-  else if (step === "connect" && progress.client && progress.client !== "later")
-    body = (
-      <ConnectClient
-        key={progress.client}
-        heading={heading}
-        id={progress.client}
-        clients={clients}
-        preview={preview}
-        snapshot={snapshot}
-        busy={busy}
-        run={props.run}
-        renderTerminal={props.renderTerminal}
-        onBack={back}
-        onConnected={() => {
-          update({ clientConnected: true });
-          setStep("uw");
-        }}
-      />
-    );
-  else if (step === "connect")
-    // Set up later skipped this step; Back from UW lands on the client choice instead.
-    body = (
-      <SkippedConnect heading={heading} onBack={() => setStep("ai")} onNext={() => setStep("uw")} />
-    );
-  else if (step === "uw")
-    body = (
-      <ConnectUw
+      <ConsentStep
         heading={heading}
         snapshot={snapshot}
         busy={busy}
         canSignIn={props.canSignIn}
         runAll={props.runAll}
         onLoadSample={loadSample}
+        onAgreed={(start) => {
+          update({ started: true });
+          setAutoSignIn(start && props.canSignIn);
+          setStep("uw");
+        }}
+      />
+    );
+  else if (step === "uw")
+    body = (
+      <UwStep
+        heading={heading}
+        snapshot={snapshot}
+        canSignIn={props.canSignIn}
+        autoStart={autoSignIn}
+        previous={progress.uw}
+        run={props.run}
+        onLoadSample={loadSample}
         onBack={back}
-        onSignIn={async () => {
-          update({ uwStarted: true });
-          setStep("populating");
-          if (props.canSignIn) await props.signIn();
+        onOutcome={(uw) => update({ uw })}
+        onNext={() => {
+          setAutoSignIn(false);
+          next();
+        }}
+      />
+    );
+  else if (step === "client")
+    body = (
+      <ClientStep
+        heading={heading}
+        clients={clients}
+        preview={preview}
+        snapshot={snapshot}
+        busy={busy}
+        run={props.run}
+        renderTerminal={renderTerminal}
+        openExternal={props.openExternal}
+        chosen={progress.client === "later" ? null : progress.client}
+        onBack={back}
+        onChosen={(id) => update({ client: id, clientConnected: false })}
+        onConnected={() => {
+          update({ clientConnected: true });
+          next();
+        }}
+        onLater={() => {
+          update({ client: "later", clientConnected: false });
+          next();
+        }}
+      />
+    );
+  else if (step === "appearance")
+    body = (
+      <AppearanceStep
+        heading={heading}
+        onBack={back}
+        onNext={() => {
+          update({ appearanceDone: true });
+          next();
+        }}
+      />
+    );
+  else if (step === "connections")
+    body = (
+      <ConnectionsStep
+        heading={heading}
+        run={props.run}
+        onBack={back}
+        onNext={() => {
+          update({ connectionsDone: true });
+          next();
         }}
       />
     );
@@ -227,9 +211,7 @@ export function Onboarding(props: OnboardingProps) {
       <header className="onb-bar">
         <span className="onb-wordmark">My Magic UW</span>
         <span className="onb-bar-end">
-          {preview ? (
-            <span className="onb-preview-flag">Preview: sample AI clients, not detected</span>
-          ) : null}
+          {preview ? <span className="onb-preview-flag">Preview: sample AI clients, not detected</span> : null}
           {snapshot.fixtureMode ? <span className="onb-preview-flag">Synthetic sample</span> : null}
         </span>
       </header>
@@ -269,13 +251,7 @@ export function Onboarding(props: OnboardingProps) {
 
 type Heading = (text: string) => ReactNode;
 
-function Actions({
-  onBack,
-  children,
-}: {
-  onBack: (() => void) | null;
-  children: ReactNode;
-}) {
+function Actions({ onBack, children }: { onBack: (() => void) | null; children: ReactNode }) {
   return (
     <div className="onb-actions">
       {onBack ? (
@@ -291,122 +267,316 @@ function Actions({
   );
 }
 
-function Welcome({ heading, onStart }: { heading: Heading; onStart: () => void }) {
+// --- 1. Agreement ---------------------------------------------------------------------------------
+function ConsentStep({
+  heading,
+  snapshot,
+  busy,
+  canSignIn,
+  runAll,
+  onLoadSample,
+  onAgreed,
+}: {
+  heading: Heading;
+  snapshot: Snapshot;
+  busy: boolean;
+  canSignIn: boolean;
+  runAll: (commands: Command[]) => Promise<unknown>;
+  onLoadSample: () => unknown;
+  /** `start`: the checkbox was just ticked, so UW sign-in opens straight away. */
+  onAgreed: (start: boolean) => void;
+}) {
+  const agreed = hasCurrentConsent(snapshot.consents, "uw");
   return (
-    <div className="onb-welcome">
+    <>
       {heading("Your classes, in one place.")}
       <p className="onb-lede">
-        My Magic UW reads your UW courses, keeps what matters on this computer, and helps you
-        start the right work with sources you can check.
+        My Magic UW reads your UW courses, keeps what matters on this computer, and helps you start the right work with
+        sources you can check.
       </p>
       <p className="onb-affiliation">
-        My Magic UW is an independent student project. It is not affiliated with, sponsored by or endorsed by the University of Wisconsin–Madison.
+        My Magic UW is an independent student project. It is not affiliated with, sponsored by or endorsed by the
+        University of Wisconsin–Madison.
       </p>
-      <Actions onBack={null}>
-        <button className="onb-primary" onClick={onStart} autoFocus>
-          Get started
-        </button>
-      </Actions>
-    </div>
+      {agreed ? (
+        <Actions onBack={null}>
+          <button className="onb-primary" onClick={() => onAgreed(false)} autoFocus>
+            Continue
+          </button>
+        </Actions>
+      ) : (
+        <>
+          {/* T06's consent content, composed unchanged: its checkbox grants, then onAgreedToSetup. */}
+          <div className="onb-consent">
+            <ConsentSetup
+              snapshot={snapshot}
+              busy={busy}
+              pending={null}
+              canSignIn={canSignIn}
+              runAll={runAll}
+              onAgreedToSetup={() => onAgreed(true)}
+              onSample={() => onLoadSample()}
+              onClose={null}
+              embedded
+            />
+          </div>
+        </>
+      )}
+    </>
   );
 }
 
-function ChooseClient({
+// --- 2. UW sign-in ----------------------------------------------------------------------------
+function UwStep({
   heading,
-  clients,
-  preview,
-  initial,
-  openExternal,
+  snapshot,
+  canSignIn,
+  autoStart,
+  previous,
+  run,
+  onLoadSample,
   onBack,
-  onChoose,
-  onLater,
+  onOutcome,
+  onNext,
 }: {
+  heading: Heading;
+  snapshot: Snapshot;
+  canSignIn: boolean;
+  autoStart: boolean;
+  previous: UwProgress;
+  run: (command: Command) => Promise<CommandResult | undefined>;
+  onLoadSample: () => unknown;
+  onBack: (() => void) | null;
+  onOutcome: (uw: UwProgress) => void;
+  onNext: () => void;
+}) {
+  const [signing, setSigning] = useState(false);
+  const [outcome, setOutcome] = useState<SignInOutcome | null>(
+    previous === "confirmed" ? { status: "confirmed", service: "canvas" } : null,
+  );
+  const started = useRef(false);
+  const start = useCallback(async () => {
+    setSigning(true);
+    setOutcome(null);
+    try {
+      // FDB-002: Canvas is read only after a confirmed sign-in; a closed window starts nothing.
+      const result = await signInAndSync(window.magic ?? {});
+      setOutcome(result.outcome);
+      onOutcome(result.outcome.status);
+      if (result.synced) void run({ type: "snapshot" });
+    } catch (error) {
+      const failed: SignInOutcome = {
+        status: "failed",
+        service: "canvas",
+        reason: error instanceof Error && error.message.length < 200 ? error.message : "The UW sign-in window couldn't open.",
+      };
+      setOutcome(failed);
+      onOutcome("failed");
+    } finally {
+      setSigning(false);
+    }
+  }, [onOutcome, run]);
+  useEffect(() => {
+    if (autoStart && canSignIn && !started.current && previous !== "confirmed") {
+      started.current = true;
+      void start();
+    }
+  }, [autoStart, canSignIn, previous, start]);
+  const confirmed = outcome?.status === "confirmed" || snapshot.sources.length > 0;
+  return (
+    <>
+      {heading("Sign in to UW")}
+      <p className="onb-lede">
+        UW's own page opens in a window. Your NetID, password and Duo stay with UW; My Magic UW keeps only the signed-in
+        session on this computer.
+      </p>
+      <div className={`onb-connection${confirmed ? " ok" : ""}`} role="status" aria-live="polite">
+        {signing ? (
+          <>
+            <Spinner />
+            <span>Finish signing in on UW's page.</span>
+          </>
+        ) : outcome ? (
+          <>
+            <Icon name={outcome.status === "confirmed" ? "check" : "alert"} className={outcome.status === "confirmed" ? "onb-ok" : "onb-warn"} />
+            <span>{signInMessage(outcome)}</span>
+          </>
+        ) : confirmed ? (
+          <>
+            <Icon name="check" className="onb-ok" />
+            <span>Signed in to UW.</span>
+          </>
+        ) : !canSignIn ? (
+          <span>UW sign-in is available in the desktop app only.</span>
+        ) : null}
+      </div>
+      <Actions onBack={onBack}>
+        {!confirmed ? (
+          <button
+            className="onb-quiet"
+            onClick={() => {
+              onOutcome("skipped");
+              onNext();
+            }}
+          >
+            Skip for now
+          </button>
+        ) : null}
+        {!confirmed && !canSignIn ? (
+          <button className="onb-quiet" onClick={() => onLoadSample()}>
+            Load sample course
+          </button>
+        ) : null}
+        {confirmed ? (
+          <button className="onb-primary" onClick={onNext}>
+            Continue
+          </button>
+        ) : canSignIn ? (
+          <button className="onb-primary" disabled={signing} onClick={() => void start()}>
+            {outcome ? "Sign in again" : "Sign in to UW"}
+          </button>
+        ) : null}
+      </Actions>
+    </>
+  );
+}
+
+// --- 3. Your AI -----------------------------------------------------------------------------------
+const stateWords: Record<ClientHealth["state"], string> = {
+  ok: "Ready",
+  installed: "Installed",
+  not_installed: "Not installed",
+  not_signed_in: "Not signed in",
+  plan_insufficient: "Plan can't run it",
+  usage_limited: "Usage limit reached",
+  model_unavailable: "Model unavailable",
+  offline: "Can't connect",
+};
+
+/** A tile's real status: what the client on this computer says, in its saved mode. Signs nothing in. */
+function tileStatus(id: ClientId, h: ClientHealth | undefined): string {
+  if (id === "gemini") return h?.state === "ok" ? "Your key is saved" : "Uses your API key";
+  if (!h) return "Not checked";
+  if (h.mode === "isolated" && h.state === "not_signed_in") return "Sign in once here";
+  if (h.mode === "instant" && h.state === "installed" && !h.instant.available) return "Needs an update";
+  if (h.state === "ok") return h.plan ? `Signed in · ${h.plan[0].toUpperCase()}${h.plan.slice(1)}` : "Signed in";
+  return stateWords[h.state];
+}
+
+function ClientStep(props: {
   heading: Heading;
   clients: ClientsBridge;
   preview: boolean;
-  initial: ClientId | null;
+  snapshot: Snapshot;
+  busy: boolean;
+  run: (command: Command) => Promise<CommandResult | undefined>;
+  renderTerminal: (sessionId: string) => ReactNode;
   openExternal: (url: string) => void;
+  chosen: ClientId | null;
   onBack: (() => void) | null;
-  onChoose: (id: ClientId) => void;
+  onChosen: (id: ClientId) => void;
+  onConnected: () => void;
   onLater: () => void;
 }) {
-  const [statuses, setStatuses] = useState<ClientStatus[] | null>(null);
+  const { heading, clients } = props;
+  const [health, setHealth] = useState<Partial<Record<ClientId, ClientHealth>> | null>(null);
   const [failed, setFailed] = useState(false);
-  const [selected, setSelected] = useState<ClientId | null>(initial);
-  const detect = useCallback(() => {
+  const [selected, setSelected] = useState<ClientId | null>(props.chosen);
+  const [mode, setMode] = useState<ClientMode | null>(null);
+  const [connecting, setConnecting] = useState<ClientId | null>(props.chosen);
+  const check = useCallback(async () => {
     setFailed(false);
-    setStatuses(null);
-    clients
-      .detect()
-      .then((found) => {
-        const ordered = orderedClients(found);
-        setStatuses(ordered);
-        // Preselect the first installed client when nothing was chosen before.
-        setSelected((current) =>
-          current && ordered.some((s) => s.id === current && s.installed)
-            ? current
-            : (ordered.find((s) => s.installed)?.id ?? null),
-        );
-      })
-      .catch(() => setFailed(true));
+    setHealth(null);
+    try {
+      const found = orderedClients(await clients.detect());
+      const entries = await Promise.all(
+        found.map(async (status): Promise<[ClientId, ClientHealth]> => {
+          if (!clients.health) return [status.id, healthFromStatus(status)];
+          try {
+            return [status.id, await clients.health(status.id)];
+          } catch {
+            return [status.id, healthFromStatus(status)];
+          }
+        }),
+      );
+      const map = Object.fromEntries(entries) as Record<ClientId, ClientHealth>;
+      setHealth(map);
+      setSelected((current) => (current && selectable(current, map[current]) ? current : recommendedClient(map)));
+    } catch {
+      setFailed(true);
+    }
   }, [clients]);
-  useEffect(detect, [detect]);
+  useEffect(() => {
+    void check();
+  }, [check]);
+  const current = selected && health ? health[selected] : undefined;
+  // Instant unless the student opted into a separate sign-in before (operator, 2026-09-27).
+  useEffect(() => {
+    if (current) setMode(current.mode);
+  }, [current]);
+  const recommended = health ? recommendedClient(health) : null;
 
+  if (connecting)
+    return (
+      <ConnectClient
+        key={`${connecting}-${mode ?? ""}`}
+        {...props}
+        id={connecting}
+        mode={mode ?? (connecting === "gemini" ? "api_key" : "isolated")}
+        onBack={() => setConnecting(null)}
+        onMode={setMode}
+      />
+    );
   return (
     <>
       {heading("Choose your AI")}
       <p className="onb-lede">
-        My Magic UW uses a separate profile of your AI, just for this app. Your own settings stay
-        as they are.
+        My Magic UW writes study material with an AI you already use. Pick one; you can change it later in Data &amp; AI.
       </p>
       {failed ? (
         <div className="onb-inline-status" role="status">
           <Icon name="alert" />
           <span>Could not check which AI clients are installed.</span>
-          <button className="onb-quiet" onClick={detect}>
+          <button className="onb-quiet" onClick={() => void check()}>
             Check again
           </button>
         </div>
-      ) : !statuses ? (
+      ) : !health ? (
         <div className="onb-inline-status" role="status">
           <Spinner />
-          <span>Looking for Claude Code, Codex and Gemini CLI…</span>
+          <span>Checking Claude Code, Codex and Gemini…</span>
         </div>
       ) : (
         <div className="onb-tiles" role="radiogroup" aria-label="AI client">
-          {statuses.map((status) => {
-            const info = clientInfo[status.id];
-            const checked = selected === status.id;
+          {clientOrder.map((id) => {
+            const info = clientInfo[id];
+            const h = health[id];
+            const enabled = selectable(id, h);
+            const checked = selected === id;
             return (
-              <div
-                key={status.id}
-                className={`onb-tile${checked ? " selected" : ""}${status.installed ? "" : " missing"}`}
-              >
+              <div key={id} className={`onb-tile${checked ? " selected" : ""}${enabled ? "" : " missing"}`}>
                 <label className="onb-tile-choice">
                   <input
                     type="radio"
                     name="onb-client"
-                    value={status.id}
+                    value={id}
                     checked={checked}
-                    disabled={!status.installed}
-                    onChange={() => setSelected(status.id)}
+                    disabled={!enabled}
+                    onChange={() => setSelected(id)}
                   />
                   <span className="onb-tile-name">{info.name}</span>
-                  <span className="onb-tile-meta">
-                    {status.installed
-                      ? status.version
-                        ? `Version ${status.version}`
-                        : "Installed"
-                      : "Not installed"}
-                  </span>
+                  <span className="onb-tile-meta">{tileStatus(id, h)}</span>
+                  {h?.version && id !== "gemini" ? <span className="onb-tile-meta">Version {h.version}</span> : null}
+                  {h && id !== "gemini" && h.mode === "isolated" ? <span className="chn-mode">Separate sign-in</span> : null}
+                  {recommended === id ? <span className="chn-recommended">Recommended</span> : null}
                   <span className="onb-tile-check" aria-hidden="true">
                     {checked ? <Icon name="check" /> : null}
                   </span>
                 </label>
-                {!status.installed ? (
+                {!enabled ? (
                   <button
                     className="onb-link"
-                    onClick={() => openExternal(status.installUrl ?? info.installUrl)}
+                    onClick={() => props.openExternal(info.installUrl)}
                     aria-label={`How to install ${info.name} (opens in your browser)`}
                   >
                     How to install
@@ -418,27 +588,60 @@ function ChooseClient({
           })}
         </div>
       )}
-      {preview && statuses ? (
-        <p className="onb-note">
-          Preview: these clients are sample data. The desktop app detects what is really
-          installed.
-        </p>
+      {current && selected !== "gemini" && current.state !== "not_installed" ? (
+        <div className="chn-modes">
+          {mode === "instant" && current.state !== "ok" ? (
+            <ClientHealthNotice
+              health={current}
+              openExternal={props.openExternal}
+              onCheckAgain={() => void check()}
+              onSwitch={() => setSelected(clientOrder.find((id) => id !== current.id && selectable(id, health?.[id])) ?? "gemini")}
+            />
+          ) : null}
+          {mode === "instant" && current.instant.note ? <p className="onb-note">{current.instant.note}</p> : null}
+          <details className="chn-advanced" open={mode === "isolated"}>
+            <summary>Advanced</summary>
+            <label className="chn-check">
+              <input
+                type="checkbox"
+                checked={mode === "isolated"}
+                onChange={(event) => setMode(event.target.checked ? "isolated" : "instant")}
+              />
+              <span>Use a separate sign-in for My Magic UW</span>
+            </label>
+            <p className="onb-note">
+              The app keeps its own {clientInfo[current.id].name} profile, apart from yours, and you sign in to it once inside
+              My Magic UW.
+            </p>
+          </details>
+        </div>
       ) : null}
-      <Actions onBack={onBack}>
-        <button className="onb-quiet" onClick={onLater}>
+      {props.preview && health ? (
+        <p className="onb-note">Preview: these clients are sample data. The desktop app checks what is really installed.</p>
+      ) : null}
+      <Actions onBack={props.onBack}>
+        <button className="onb-quiet" onClick={props.onLater}>
           Set up later
         </button>
         <button
           className="onb-primary"
-          disabled={!selected}
-          onClick={() => selected && onChoose(selected)}
+          disabled={
+            !selected ||
+            !selectable(selected, current) ||
+            current?.state === "not_installed" ||
+            (mode === "instant" && current?.state === "installed" && !current.instant.available)
+          }
+          onClick={() => {
+            if (!selected) return;
+            props.onChosen(selected);
+            setConnecting(selected);
+          }}
         >
           Continue
         </button>
       </Actions>
       <p className="onb-note">
-        Until an AI is connected, My Magic UW still reads and organizes your courses; writing
-        study material waits.
+        Until an AI is connected, My Magic UW still reads and organizes your courses; writing study material waits.
       </p>
     </>
   );
@@ -447,48 +650,67 @@ function ChooseClient({
 function ConnectClient({
   heading,
   id,
+  mode,
   clients,
   preview,
   snapshot,
   busy,
   run,
   renderTerminal,
+  openExternal,
   onBack,
+  onMode,
   onConnected,
 }: {
   heading: Heading;
   id: ClientId;
+  mode: ClientMode;
   clients: ClientsBridge;
   preview: boolean;
   snapshot: Snapshot;
   busy: boolean;
   run: (command: Command) => Promise<CommandResult | undefined>;
-  renderTerminal?: (sessionId: string) => ReactNode;
+  renderTerminal: (sessionId: string) => ReactNode;
+  openExternal: (url: string) => void;
   onBack: (() => void) | null;
+  onMode: (mode: ClientMode) => void;
   onConnected: () => void;
 }) {
   const info = clientInfo[id];
   const agreed = hasCurrentConsent(snapshot.consents, info.recipient);
+  const [health, setHealth] = useState<ClientHealth | null>(null);
   const [session, setSession] = useState<string | null>(null);
-  const [status, setStatus] = useState<ClientStatus | null>(null);
   const [problem, setProblem] = useState("");
+  const [checking, setChecking] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  const signedIn = status?.signedIn === true;
+  const ready = health?.state === "ok";
 
-  // Once agreed: prepare the app's own profile, then open the sign-in unless already signed in.
+  const refresh = useCallback(async () => {
+    setChecking(true);
+    try {
+      const h = clients.setMode ? await clients.setMode(id, mode) : clients.health ? await clients.health(id, mode) : healthFromStatus(await clients.authStatus(id));
+      setHealth(h);
+      return h;
+    } catch (error) {
+      setProblem(error instanceof Error && error.message.length < 200 ? error.message : `Could not check ${info.name}.`);
+      return null;
+    } finally {
+      setChecking(false);
+    }
+  }, [clients, id, info.name, mode]);
+
+  // Once agreed: check the client in the chosen mode; the separate profile opens its sign-in.
   useEffect(() => {
     if (!agreed) return;
     let cancelled = false;
     let opened: string | null = null;
     setProblem("");
     (async () => {
+      if (mode === "isolated") await clients.prepare(id).catch(() => undefined);
+      const h = await refresh();
+      if (cancelled || !h || mode !== "isolated" || h.state !== "not_signed_in") return;
       try {
-        await clients.prepare(id);
-        const current = await clients.authStatus(id);
-        if (cancelled) return;
-        setStatus(current);
-        if (current.signedIn === true) return;
         const { sessionId } = await clients.terminal.open(id, "signin");
         opened = sessionId;
         if (cancelled) void clients.terminal.close(sessionId);
@@ -501,27 +723,25 @@ function ConnectClient({
       cancelled = true;
       if (opened) void clients.terminal.close(opened);
     };
-  }, [agreed, clients, id, info.name, attempt]);
+  }, [agreed, clients, id, info.name, mode, refresh, attempt]);
 
-  // Poll the client's own sign-in state until it reports signed in.
+  // The separate profile's sign-in: poll the client's own state until it reports signed in.
   useEffect(() => {
-    if (!agreed || signedIn) return;
+    if (!agreed || mode !== "isolated" || !session || ready) return;
     const timer = window.setInterval(() => {
       clients
         .authStatus(id)
-        .then(setStatus)
+        .then((s) => (s.signedIn === true ? refresh() : undefined))
         .catch(() => undefined);
     }, 1500);
     return () => window.clearInterval(timer);
-  }, [agreed, clients, id, signedIn]);
+  }, [agreed, clients, id, mode, session, ready, refresh]);
 
   if (!agreed)
     return (
       <>
         {heading(`Connect ${info.name}`)}
-        <p className="onb-lede">
-          Before anything is sent, here is what {info.provider} receives through {info.name}.
-        </p>
+        <p className="onb-lede">Before anything is sent, here is what {info.provider} receives through {info.name}.</p>
         <dl className="onb-facts">
           <div>
             <dt>What is sent</dt>
@@ -533,11 +753,17 @@ function ConnectClient({
           </div>
           <div>
             <dt>Who pays</dt>
-            <dd>Usage counts toward your own {info.plan} or API key.</dd>
+            <dd>Usage counts toward your own {info.plan}.</dd>
           </div>
           <div>
             <dt>Your settings</dt>
-            <dd>The app signs in with its own {info.name} profile and never changes yours.</dd>
+            <dd>
+              {id === "gemini"
+                ? "Your key is stored encrypted on this computer and sent only to Google."
+                : mode === "instant"
+                  ? `The app runs your ${info.name} with its own settings passed in and never changes yours.`
+                  : `The app signs in with its own ${info.name} profile and never changes yours.`}
+            </dd>
           </div>
         </dl>
         <Actions onBack={onBack}>
@@ -547,11 +773,7 @@ function ConnectClient({
             onClick={() =>
               void run({
                 type: "consent",
-                value: {
-                  action: "grant",
-                  recipient: info.recipient,
-                  disclosureVersion: CONSENT_DISCLOSURE_VERSION,
-                },
+                value: { action: "grant", recipient: info.recipient, disclosureVersion: CONSENT_DISCLOSURE_VERSION },
               })
             }
           >
@@ -562,71 +784,86 @@ function ConnectClient({
       </>
     );
 
-  const method =
-    status?.method === "subscription"
-      ? `with your ${info.plan}`
-      : status?.method === "api-key"
-        ? "with an API key"
-        : "";
+  const quickChat =
+    id !== "gemini" && health && health.state !== "not_installed"
+      ? async () => (await clients.terminal.open(id, "chat")).sessionId
+      : undefined;
+  const closeChat = (sessionId: string) => void clients.terminal.close(sessionId);
   return (
     <>
-      {heading(`Sign in to ${info.name}`)}
+      {heading(id === "gemini" ? "Add your Gemini key" : mode === "instant" ? `Connect your ${info.name}` : `Sign in to ${info.name}`)}
       <p className="onb-lede">
-        {signedIn
-          ? `${info.name} is ready for My Magic UW.`
-          : `${info.name}'s own sign-in runs below, in a session separate from your usual one.`}
+        {ready
+          ? id === "gemini"
+            ? "Your key is saved. My Magic UW sends requests to Google with it, only when you ask for study material."
+            : mode === "instant"
+              ? `My Magic UW runs your own ${info.name} with its settings passed in. Nothing in your settings changes.`
+              : `My Magic UW uses its own ${info.name} profile, apart from yours.`
+          : id === "gemini"
+            ? "Gemini's command-line sign-in can't be used by other apps, so My Magic UW uses your own API key."
+            : mode === "instant"
+              ? `My Magic UW uses the ${info.name} on this computer. Nothing is written to your settings.`
+              : `${info.name}'s own sign-in runs below, in a session separate from your usual one.`}
       </p>
-      {!signedIn ? (
+      {id === "gemini" && !ready ? (
+        <GeminiKeyForm clients={clients} openExternal={openExternal} onSaved={() => void refresh()} />
+      ) : null}
+      {mode === "isolated" && !ready && session ? (
         <div className="onb-terminal-slot">
-          {session && renderTerminal ? (
-            renderTerminal(session)
-          ) : (
+          {preview ? (
             <div className="onb-terminal-placeholder">
               <Icon name="terminal" />
-              <p>
-                {session
-                  ? preview
-                    ? `Preview: ${info.name}'s sign-in would run here. It completes by itself in a few seconds.`
-                    : `${info.name}'s sign-in terminal appears here.`
-                  : `Starting ${info.name}…`}
-              </p>
+              <p>Preview: {info.name}'s sign-in would run here. It completes by itself in a few seconds.</p>
             </div>
+          ) : (
+            renderTerminal(session)
           )}
         </div>
       ) : null}
-      <div className={`onb-connection${signedIn ? " ok" : ""}`} role="status" aria-live="polite">
-        {problem ? (
-          <>
-            <Icon name="alert" />
-            <span>{problem}</span>
-            <button className="onb-quiet" onClick={() => setAttempt((n) => n + 1)}>
-              Try again
-            </button>
-          </>
-        ) : signedIn ? (
-          <>
-            <Icon name="check" className="onb-ok" />
-            <span>
-              Connected{method ? ` ${method}` : ""}
-              {preview ? " (preview)" : ""}
-            </span>
-          </>
-        ) : status?.signedIn === "unknown" ? (
-          <>
-            <Spinner />
-            <span>Finish signing in above. {info.name} has not confirmed yet.</span>
-          </>
-        ) : (
-          <>
-            <Spinner />
-            <span>Waiting for you to sign in to {info.name}…</span>
-          </>
-        )}
-      </div>
+      {problem ? (
+        <div className="onb-connection" role="alert">
+          <Icon name="alert" />
+          <span>{problem}</span>
+          <button className="onb-quiet" onClick={() => setAttempt((n) => n + 1)}>
+            Try again
+          </button>
+        </div>
+      ) : !health ? (
+        <div className="onb-connection" role="status">
+          <Spinner />
+          <span>Checking {info.name}…</span>
+        </div>
+      ) : ready ? (
+        <ClientHealthNotice
+          health={health}
+          compact
+          onQuickChat={quickChat}
+          onCloseChat={closeChat}
+          renderTerminal={preview ? undefined : renderTerminal}
+          openExternal={openExternal}
+        />
+      ) : mode === "isolated" && health.state === "not_signed_in" ? (
+        <div className="onb-connection" role="status" aria-live="polite">
+          <Spinner />
+          <span>Waiting for you to sign in to {info.name}…</span>
+        </div>
+      ) : id === "gemini" && health.state === "not_signed_in" ? null : (
+        <ClientHealthNotice
+          health={health}
+          checking={checking}
+          onQuickChat={quickChat}
+          onCloseChat={closeChat}
+          renderTerminal={preview ? undefined : renderTerminal}
+          openExternal={openExternal}
+          onCheckAgain={() => void refresh()}
+          onSwitch={onBack ?? undefined}
+          onUseProfile={mode === "instant" && health.modes.includes("isolated") ? () => onMode("isolated") : undefined}
+        />
+      )}
       <Actions onBack={onBack}>
         <button
           className="onb-primary"
-          disabled={!signedIn || finishing}
+          disabled={!ready || finishing}
           onClick={async () => {
             setFinishing(true);
             try {
@@ -646,20 +883,125 @@ function ConnectClient({
   );
 }
 
-function SkippedConnect({
-  heading,
-  onBack,
-  onNext,
-}: {
-  heading: Heading;
-  onBack: () => void;
-  onNext: () => void;
-}) {
+function GeminiKeyForm({ clients, openExternal, onSaved }: { clients: ClientsBridge; openExternal: (url: string) => void; onSaved: () => void }) {
+  const [value, setValue] = useState("");
+  const [inEnvironment, setInEnvironment] = useState(false);
+  const [problem, setProblem] = useState("");
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    void clients.geminiKey?.status().then((s) => setInEnvironment(s.inEnvironment)).catch(() => undefined);
+  }, [clients]);
+  if (!clients.geminiKey) return <p className="onb-note">Adding a key needs a newer version of the desktop app.</p>;
+  return (
+    <form
+      className="chn-key"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        setSaving(true);
+        setProblem("");
+        try {
+          await clients.geminiKey!.save(value);
+          setValue("");
+          onSaved();
+        } catch (error) {
+          setProblem(error instanceof Error && error.message.length < 200 ? error.message : "The key couldn't be saved.");
+        } finally {
+          setSaving(false);
+        }
+      }}
+    >
+      <label className="chn-key-label" htmlFor="onb-gemini-key">
+        Gemini API key
+      </label>
+      <div className="chn-key-row">
+        <input
+          id="onb-gemini-key"
+          className="chn-key-input"
+          type="password"
+          autoComplete="off"
+          spellCheck={false}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        />
+        <button className="onb-primary" type="submit" disabled={saving || value.trim().length < 20}>
+          {saving ? "Saving…" : "Save key"}
+        </button>
+      </div>
+      <p className="onb-note">
+        {inEnvironment
+          ? "A GEMINI_API_KEY is set on this computer. My Magic UW doesn't read it on its own; paste it here to use it. "
+          : ""}
+        Stored encrypted on this computer and sent only to Google.{" "}
+        <button type="button" className="onb-link" onClick={() => openExternal("https://aistudio.google.com/apikey")}>
+          Get a key in Google AI Studio
+          <Icon name="external" />
+        </button>
+      </p>
+      {problem ? (
+        <p className="chn-error-text" role="alert">
+          {problem}
+        </p>
+      ) : null}
+    </form>
+  );
+}
+
+// --- 4. Appearance --------------------------------------------------------------------------------
+const themes: { id: ThemePreference; label: string; detail: string }[] = [
+  { id: "system", label: "Match this computer", detail: "Follows your light or dark setting" },
+  { id: "light", label: "Light", detail: "Always light" },
+  { id: "dark", label: "Dark", detail: "Always dark" },
+];
+
+function AppearanceStep({ heading, onBack, onNext }: { heading: Heading; onBack: (() => void) | null; onNext: () => void }) {
+  const [appearance, setAppearance] = useState<Appearance>(() => readAppearance());
+  const change = (next: Appearance) => {
+    setAppearance(next);
+    writeAppearance(next);
+    applyAppearance(next);
+  };
   return (
     <>
-      {heading("No AI connected yet")}
-      <p className="onb-lede">
-        You chose to set up your AI later. Connect one any time from Data &amp; AI.
+      {heading("Choose how it looks")}
+      <p className="onb-lede">Pick a mode and an accent. You can change both later in Settings.</p>
+      <fieldset className="chn-fieldset">
+        <legend>Mode</legend>
+        <div className="chn-segments">
+          {themes.map((t) => (
+            <label key={t.id} className={`chn-segment${appearance.theme === t.id ? " selected" : ""}`}>
+              <input
+                type="radio"
+                name="onb-theme"
+                value={t.id}
+                checked={appearance.theme === t.id}
+                onChange={() => change({ ...appearance, theme: t.id })}
+              />
+              <span className="chn-segment-name">{t.label}</span>
+              <span className="chn-segment-detail">{t.detail}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <fieldset className="chn-fieldset">
+        <legend>Accent</legend>
+        <div className="chn-swatches">
+          {ACCENTS.map((a) => (
+            <label key={a.id} className={`chn-swatch${appearance.accent === a.id ? " selected" : ""}`}>
+              <input
+                type="radio"
+                name="onb-accent"
+                value={a.id}
+                checked={appearance.accent === a.id}
+                onChange={() => change({ ...appearance, accent: a.id })}
+              />
+              <span className="chn-swatch-chip" style={{ background: `var(${a.swatch})` }} aria-hidden="true" />
+              <span className="chn-swatch-name">{a.label}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <p className="onb-note">
+        Your choice is saved now. Dark mode and accent colours take effect as the My Magic UW design system adds them.
       </p>
       <Actions onBack={onBack}>
         <button className="onb-primary" onClick={onNext}>
@@ -670,69 +1012,115 @@ function SkippedConnect({
   );
 }
 
-function ConnectUw({
+// --- 5. Connections -------------------------------------------------------------------------------
+type RowState = { kind: "checking" } | { kind: "unavailable"; text: string } | { kind: "connect"; text: string; label: string } | { kind: "working"; text: string } | { kind: "connected"; text: string } | { kind: "waiting"; text: string };
+
+function outlookRow(status: OutlookStatus | null): RowState {
+  if (!status) return { kind: "unavailable", text: "Available in the desktop app." };
+  switch (status.outlook) {
+    case "not_set_up":
+      return { kind: "unavailable", text: "Not set up in this build." };
+    case "connected":
+      return { kind: "connected", text: "Connected." };
+    case "needs_uw_approval":
+      return { kind: "waiting", text: "Waiting for UW to approve My Magic UW for your account." };
+    case "expired":
+      return { kind: "connect", text: "The sign-in expired.", label: "Reconnect" };
+    case "error":
+      return { kind: "connect", text: "The last connection attempt failed.", label: "Try again" };
+    default:
+      return { kind: "connect", text: "Mail and calendar, read with your own Microsoft sign-in.", label: "Connect" };
+  }
+}
+
+function ConnectionsStep({
   heading,
-  snapshot,
-  busy,
-  canSignIn,
-  runAll,
-  onLoadSample,
+  run,
   onBack,
-  onSignIn,
+  onNext,
 }: {
   heading: Heading;
-  snapshot: Snapshot;
-  busy: boolean;
-  canSignIn: boolean;
-  runAll: (commands: Command[]) => Promise<unknown>;
-  onLoadSample: () => unknown;
+  run: (command: Command) => Promise<CommandResult | undefined>;
   onBack: (() => void) | null;
-  onSignIn: () => Promise<unknown>;
+  onNext: () => void;
 }) {
-  const agreed = hasCurrentConsent(snapshot.consents, "uw");
+  const [microsoft, setMicrosoft] = useState<RowState>({ kind: "checking" });
+  const [google, setGoogle] = useState<RowState>({ kind: "checking" });
+  const googleIdle: RowState = { kind: "connect", text: "Your lecture notes, synced to Google Docs you choose.", label: "Connect" };
+  useEffect(() => {
+    const bridge = window.magic;
+    if (bridge?.outlookStatus) bridge.outlookStatus().then((s) => setMicrosoft(outlookRow(s))).catch(() => setMicrosoft(outlookRow(null)));
+    else setMicrosoft(outlookRow(null));
+    run({ type: "notes", request: { op: "notes.sync.status" } })
+      .then((result) => {
+        const notes = result?.notes;
+        if (!notes || notes.status !== "ok" || !("sync" in notes)) return setGoogle({ kind: "unavailable", text: "Not available here." });
+        const g = notes.sync.providers.find((p) => p.provider === "google");
+        setGoogle(g?.connected && g.enabled ? { kind: "connected", text: "Connected." } : googleIdle);
+      })
+      .catch(() => setGoogle({ kind: "unavailable", text: "Not available here." }));
+    // googleIdle is constant text.
+  }, [run]);
+  const connectMicrosoft = async () => {
+    setMicrosoft({ kind: "working", text: "Finish signing in with Microsoft." });
+    try {
+      setMicrosoft(outlookRow((await window.magic?.outlookConnect?.()) ?? null));
+    } catch {
+      setMicrosoft({ kind: "connect", text: "Microsoft sign-in didn't finish.", label: "Try again" });
+    }
+  };
+  const connectGoogle = async () => {
+    setGoogle({ kind: "working", text: "Finish signing in with Google in your browser." });
+    const result = await run({ type: "notes", request: { op: "notes.sync.enable", provider: "google" } });
+    const notes = result?.notes;
+    if (notes?.status === "ok") setGoogle({ kind: "connected", text: "Connected." });
+    else
+      setGoogle({
+        kind: notes?.status === "not_connected" && /isn't configured/.test("message" in notes ? notes.message : "") ? "unavailable" : "connect",
+        text: notes && "message" in notes ? notes.message : "Google sign-in didn't finish.",
+        label: "Try again",
+      } as RowState);
+  };
+  const row = (name: string, state: RowState, connect: () => void) => (
+    <li className="chn-row">
+      <span className="chn-row-text">
+        <span className="chn-row-name">{name}</span>
+        <span className="chn-row-detail">{state.kind === "checking" ? "Checking…" : state.text}</span>
+      </span>
+      <span className="chn-row-end">
+        {state.kind === "connected" ? (
+          <span className="chn-row-ok">
+            <Icon name="check" className="onb-ok" />
+            Connected
+          </span>
+        ) : state.kind === "connect" ? (
+          <button className="chn-action" onClick={connect}>
+            {state.label}
+          </button>
+        ) : state.kind === "working" || state.kind === "checking" ? (
+          <Spinner />
+        ) : null}
+      </span>
+    </li>
+  );
   return (
     <>
-      {heading("Connect to UW")}
-      {agreed ? (
-        <>
-          <p className="onb-lede">
-            You have agreed. Sign in on UW's own page, and My Magic UW starts reading your
-            courses.
-          </p>
-          <Actions onBack={onBack}>
-            <button className="onb-primary" disabled={busy} onClick={() => void onSignIn()}>
-              {canSignIn ? "Sign in to UW" : "Continue"}
-            </button>
-          </Actions>
-          {!canSignIn ? (
-            <p className="onb-note">UW sign-in is available in the desktop app only.</p>
-          ) : null}
-        </>
-      ) : (
-        <>
-          {/* T06's consent content, composed unchanged: its checkbox grants, then onAgreedToSetup. */}
-          <div className="onb-consent">
-            <ConsentSetup
-              snapshot={snapshot}
-              busy={busy}
-              pending={null}
-              canSignIn={canSignIn}
-              runAll={runAll}
-              onAgreedToSetup={() => void onSignIn()}
-              onSample={() => onLoadSample()}
-              onClose={null}
-              embedded
-            />
-          </div>
-          <Actions onBack={onBack}>
-            <span />
-          </Actions>
-        </>
-      )}
+      {heading("Add other accounts")}
+      <p className="onb-lede">Optional. Each one uses that service's own sign-in, and you can disconnect it any time.</p>
+      <ul className="chn-rows" aria-label="Optional connections">
+        {row("Microsoft 365", microsoft, () => void connectMicrosoft())}
+        {row("Google Drive", google, () => void connectGoogle())}
+      </ul>
+      <Actions onBack={onBack}>
+        <button className="onb-primary" onClick={onNext}>
+          {microsoft.kind === "connected" || google.kind === "connected" ? "Continue" : "Skip for now"}
+        </button>
+      </Actions>
     </>
   );
 }
 
+// --- 6. Your workspace ------------------------------------------------------------------------
 function Populating({
   heading,
   snapshot,
@@ -805,12 +1193,8 @@ function Populating({
           ))}
         </ul>
       ) : null}
-      {snapshot.fixtureMode ? (
-        <p className="onb-note">This is a synthetic sample course, not your coursework.</p>
-      ) : null}
-      {noClient ? (
-        <p className="onb-note">No AI is connected, so study material waits until you add one.</p>
-      ) : null}
+      {snapshot.fixtureMode ? <p className="onb-note">This is a synthetic sample course, not your coursework.</p> : null}
+      {noClient ? <p className="onb-note">No AI is connected, so study material waits until you add one.</p> : null}
       <Actions onBack={onBack}>
         {summary.outcome === "empty" ? (
           <button className="onb-quiet" disabled={busy} onClick={() => onLoadSample()}>

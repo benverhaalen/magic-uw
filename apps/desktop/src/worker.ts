@@ -4,6 +4,7 @@ import { createStore } from "@magic/storage";
 import { createCore } from "@magic/core";
 import { captureBatchSchema, planningCaptureSchema, type PlanningCapture } from "@magic/contracts";
 import { queryRequestSchema } from "@magic/contracts"; // owner: T15
+import type { MailTriageState, MessageTriageState } from "@magic/contracts"; // owner: notifications gateway relay
 import fixture from "../../../fixtures/course.json";
 import { randomUUID } from "node:crypto";
 import { createLocalService } from "./local-service";
@@ -52,25 +53,53 @@ import { APPROACH_PACK, createApproachHandler } from "../../../packages/core/src
 import type { PackScope } from "@magic/contracts"; // owner: page-views
 import { isIsolated, isProfileReady, profileEnv, readClientSettings, resolveClient, workDir } from "./clients/profiles";
 const generationUserData = dirname(process.env.MAGIC_DB_PATH!);
-let generationRuntime: { client: string; runner: ModelRunner } | null = null;
-async function generationRunner(): Promise<ModelRunner | null> {
-  const { chosen } = await readClientSettings(generationUserData);
-  if (!chosen || !isIsolated(chosen) || !(await isProfileReady(chosen, generationUserData))) return null;
-  if (generationRuntime?.client === chosen) return generationRuntime.runner;
-  const command = resolveClient(chosen, { userData: generationUserData });
+// owner: client-health (D50). Every generation path (packs and guides, notes, the intent router)
+// runs the chosen client in its saved mode: instant by default (the student's own signed-in
+// Claude Code or Codex, the app's configuration passed as flags only), the D45 profile only when
+// the student opted in, or Gemini with the student's key, asked from main's vault for each build
+// and never logged. Health is checked before every run, so a signed-out, limited or offline
+// client fails with its own typed error instead of a generic one.
+import { clientBackend, clientRunOptions, healthGatedBackend, type CliRunOptions } from "./clients/health";
+import { modeOf } from "./clients/instant";
+import type { ClientId } from "@magic/contracts";
+async function isolatedOptions(id: "claude" | "codex"): Promise<CliRunOptions | null> {
+  if (!isIsolated(id) || !(await isProfileReady(id, generationUserData))) return null;
+  const command = resolveClient(id, { userData: generationUserData });
   if (!command) return null;
   const env = Object.fromEntries(
-    Object.entries(profileEnv(chosen, { userData: generationUserData })).flatMap(([k, v]) => (v === undefined ? [] : [[k, v]])),
+    Object.entries(profileEnv(id, { userData: generationUserData })).flatMap(([k, v]) => (v === undefined ? [] : [[k, v]])),
   );
-  const options = { command, workDir: workDir(generationUserData, chosen), env };
+  return { command, workDir: workDir(generationUserData, id), env };
+}
+async function geminiKey(): Promise<string | undefined> {
+  const reply = (await hostRead("ai-key", { provider: "gemini" }, undefined, 10_000).catch(() => null)) as { key?: unknown } | null;
+  return typeof reply?.key === "string" && reply.key ? reply.key : undefined;
+}
+/** The chosen client, and a cache key that changes with its mode so a switch rebuilds the runner. */
+async function chosenClient(): Promise<{ id: ClientId; key: string } | null> {
+  const { chosen } = await readClientSettings(generationUserData);
+  return chosen ? { id: chosen, key: `${chosen}:${await modeOf(chosen, generationUserData)}` } : null;
+}
+let generationRuntime: { client: string; runner: ModelRunner } | null = null;
+async function generationRunner(): Promise<ModelRunner | null> {
+  const chosen = await chosenClient();
+  if (!chosen) return null;
+  if (generationRuntime?.client === chosen.key) return generationRuntime.runner;
   // owner: ai-paths. Claude runs through the warm session pool (one per worker, replaced on a
   // client change); Codex stays one-shot.
   const { pooledClaudeBackend } = await import("../../../packages/core/src/pack-handler");
-  const backend = chosen === "claude" ? pooledClaudeBackend(options) : createCodexBackend(options);
   // end owner: ai-paths
-  generationRuntime = { client: chosen, runner: createPackRuntime(backend, DEFAULT_PACK_CONFIG).runner };
+  const built = await clientBackend(
+    chosen.id,
+    { userData: generationUserData, geminiKey },
+    { claude: pooledClaudeBackend, codex: createCodexBackend },
+    () => (chosen.id === "gemini" ? Promise.resolve(null) : isolatedOptions(chosen.id)),
+  ).catch(() => null); // Gemini without a key: "Connect your AI first", and nothing is sent.
+  if (!built) return null;
+  generationRuntime = { client: chosen.key, runner: createPackRuntime(built.backend, DEFAULT_PACK_CONFIG).runner };
   return generationRuntime.runner;
 }
+// end owner: client-health
 const generation = createPackHandler({ store, runner: generationRunner });
 // end owner: generation
 // owner: page-views. The "page-approach" pack (the pages' optional "how to approach it"
@@ -84,6 +113,35 @@ const generation = createPackHandler({ store, runner: generationRunner });
   });
 }
 // end owner: page-views
+/** Jev judgments run in main (network + consent gate); the reply arrives as "evaluation". */
+function relayJudgment(
+  message:
+    | { kind: "evaluate"; payload: unknown }
+    | { kind: "triage"; state: MessageTriageState }
+    | { kind: "mailTriage"; state: MailTriageState },
+  signal: AbortSignal,
+): Promise<any> {
+  const id = randomUUID();
+  return new Promise<any>((resolve, reject) => {
+    const cancel = () => {
+      port.postMessage({ kind: "abort", id });
+      pending.delete(id);
+      reject(new Error("Cancelled"));
+    };
+    signal.addEventListener("abort", cancel, { once: true });
+    pending.set(id, {
+      resolve(value) {
+        signal.removeEventListener("abort", cancel);
+        resolve(value);
+      },
+      reject(error) {
+        signal.removeEventListener("abort", cancel);
+        reject(error);
+      },
+    });
+    port.postMessage({ ...message, id });
+  });
+}
 // owner: intent. The command bar's router. Claude answers through a warm session pool (lane
 // interactive:intent, tools off, the byte-stable catalogue prefix) so the AI fallback skips the
 // CLI's start-up after the first call; Codex stays one-shot (its app-server is unmeasured, S9).
@@ -94,24 +152,23 @@ import { createModelRunner, createSessionPool, type SessionPool } from "../../..
 import { askPack, classifyPack } from "../../../packages/packs/intent/src/index";
 let intentRuntime: { client: string; runner: ModelRunner; pool: SessionPool | null } | null = null;
 async function intentRunner(): Promise<ModelRunner | null> {
-  const { chosen } = await readClientSettings(generationUserData);
-  if (!chosen || !isIsolated(chosen) || !(await isProfileReady(chosen, generationUserData))) return null;
-  if (intentRuntime?.client === chosen) return intentRuntime.runner;
+  // owner: client-health: the chosen client in its saved mode (instant by default), health-gated.
+  const chosen = await chosenClient();
+  if (!chosen) return null;
+  if (intentRuntime?.client === chosen.key) return intentRuntime.runner;
   await intentRuntime?.pool?.close();
   intentRuntime = null;
-  if (chosen !== "claude") {
+  if (chosen.id !== "claude") {
     const runner = await generationRunner();
-    if (runner) intentRuntime = { client: chosen, runner, pool: null };
+    if (runner) intentRuntime = { client: chosen.key, runner, pool: null };
     return runner;
   }
-  const command = resolveClient(chosen, { userData: generationUserData });
-  if (!command) return null;
-  const env = Object.fromEntries(
-    Object.entries(profileEnv(chosen, { userData: generationUserData })).flatMap(([k, v]) => (v === undefined ? [] : [[k, v]])),
-  );
-  const options = { command, workDir: workDir(generationUserData, chosen), env };
+  const run = await clientRunOptions("claude", { userData: generationUserData }, () => isolatedOptions("claude"));
+  if (!run) return null;
+  const options = run.options;
+  // end owner: client-health
   const pool = createSessionPool({ ...options, fallback: createClaudeBackend(options), kinds: { [classifyPack.id]: classifyPack.schema, [askPack.id]: askPack.schema } });
-  intentRuntime = { client: chosen, runner: createModelRunner({ backend: pool }), pool };
+  intentRuntime = { client: chosen.key, runner: createModelRunner({ backend: healthGatedBackend(pool, run.check) }), pool }; // owner: client-health: gated
   return intentRuntime.runner;
 }
 // prewarm (the bar opened) finds the client, then starts its pooled session with the catalogue prefix.
@@ -185,26 +242,13 @@ const core = createCore(store, {
     ? {
         gateway: {
           evaluate(payload: any, signal: AbortSignal) {
-            const id = randomUUID();
-            return new Promise<any>((resolve, reject) => {
-              const cancel = () => {
-                port.postMessage({ kind: "abort", id });
-                pending.delete(id);
-                reject(new Error("Cancelled"));
-              };
-              signal.addEventListener("abort", cancel, { once: true });
-              pending.set(id, {
-                resolve(value) {
-                  signal.removeEventListener("abort", cancel);
-                  resolve(value);
-                },
-                reject(error) {
-                  signal.removeEventListener("abort", cancel);
-                  reject(error);
-                },
-              });
-              port.postMessage({ kind: "evaluate", id, payload });
-            });
+            return relayJudgment({ kind: "evaluate", payload }, signal);
+          },
+          triage(state: MessageTriageState, signal: AbortSignal) {
+            return relayJudgment({ kind: "triage", state }, signal);
+          },
+          mailTriage(state: MailTriageState, signal: AbortSignal) {
+            return relayJudgment({ kind: "mailTriage", state }, signal);
           },
         },
       }
