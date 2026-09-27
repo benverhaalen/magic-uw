@@ -7,9 +7,52 @@ export type WorkListState = {
   visible: Partial<Record<WorkSection, number>>;
   /** Rows acted on remain at their original position during this visit, including Back. */
   pins: Record<string, { section: WorkSection; date: string | null }>;
+  /** Day disclosure choices for one admitted scope; any other scope starts with every day open. */
+  days?: { scope: string; open: Record<string, boolean> };
 };
 export const initialWorkListState = (): WorkListState => ({ expanded: {}, visible: {}, pins: {} });
 export type WorkGroup = { key: string; label: string; date: string | null; rows: CourseWorkRow[] };
+/** A dated day's identity is its section and ISO date; Today is distinct, so a day becoming Today opens again. */
+export function workDayKey(group: WorkGroup, today: string): string | null {
+  if (!group.date || group.key.endsWith(':past-due')) return null;
+  return group.date === today ? `${group.key}:today` : group.key;
+}
+export function workDayOpen(state: WorkListState, scope: string, day: string | null): boolean {
+  return !day || state.days?.scope !== scope || (state.days.open[day] ?? true);
+}
+export function setWorkDayOpen(state: WorkListState, scope: string, day: string, open: boolean): WorkListState {
+  const previous = state.days?.scope === scope ? state.days.open : {};
+  return { ...state, days: { scope, open: { ...previous, [day]: open } } };
+}
+export type WorkPage = { groups: (WorkGroup & { open: boolean; total: number })[]; limit: number; hidden: number };
+/** Collapsed days keep their heading in order and take no page budget; only open rows are paged.
+ * A collapsed day carries exactly the rows it shows when open, so the view animates the same rows out and in. */
+export function pageWorkGroups(groups: WorkGroup[], isOpen: (group: WorkGroup) => boolean, requested = 20): WorkPage {
+  const open = groups.filter(isOpen);
+  const limit = workPageSize(open, requested), total = open.reduce((n, group) => n + group.rows.length, 0);
+  let remaining = limit, before = 0;
+  const shown: WorkPage['groups'] = [];
+  for (const group of groups) {
+    // An empty day has nothing to disclose; the view already omits it.
+    if (!group.rows.length) continue;
+    if (!isOpen(group)) {
+      const budget = workPageSize(groups.filter(candidate => candidate === group || isOpen(candidate)), requested) - before;
+      shown.push({ ...group, rows: group.rows.slice(0, Math.max(budget, 0)), open: false, total: group.rows.length }); continue;
+    }
+    if (remaining <= 0) break;
+    const rows = group.rows.slice(0, remaining); remaining -= rows.length; before += rows.length;
+    shown.push({ ...group, rows, open: true, total: group.rows.length });
+  }
+  return { groups: shown, limit, hidden: Math.max(total - limit, 0) };
+}
+/** Opening a collapsed day shown after a full page extends the page like Show more, so the day never disappears behind it. */
+export function openWorkDayState(state: WorkListState, scope: string, section: WorkSection, groups: WorkGroup[], today: string, day: string, open: boolean): WorkListState {
+  const next = setWorkDayOpen(state, scope, day, open);
+  if (!open) return next;
+  const page = pageWorkGroups(groups, group => workDayOpen(next, scope, workDayKey(group, today)), next.visible[section] ?? 20);
+  if (page.groups.some(group => workDayKey(group, today) === day && group.rows.length)) return next;
+  return { ...next, visible: { ...next.visible, [section]: page.limit + 20 } };
+}
 export type WorkBucket = { section: WorkSection; label: string; groups: WorkGroup[]; count: number };
 export const workRowAnchor = (key: string) => `course-work-${key}`;
 export const workRowFocus = (key: string, control: 'open' | 'action' | 'check') => `${workRowAnchor(key)}-${control}`;

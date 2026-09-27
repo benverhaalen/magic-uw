@@ -14,6 +14,12 @@
 .cw-day-header { display: flex; align-items: baseline; gap: 10px; padding: 0 8px 9px; }
 .cw-list .cw-day-header h2 { margin: 0; font: 500 var(--magic-type-study-title) / 1.4 var(--magic-font-editorial); letter-spacing: 0; }
 .cw-day-date { font-size: var(--magic-type-meta); color: var(--magic-ink-muted-strong, var(--magic-ink-muted)); }
+/* Day heading disclosure: keeps the heading type; the chevron starts where the heading did and pill feedback extends into the gutter. */
+.cw-list .cw-day-toggle { display: inline-flex; align-items: baseline; flex-wrap: wrap; column-gap: 8px; max-width: 100%; min-height: 36px; padding-block: 2px; margin-inline: calc((var(--magic-fb-pill-inset) + 2px) * -1) 0; border: 0; color: inherit; font: inherit; letter-spacing: inherit; text-align: left; cursor: pointer; }
+/* The chevron turns with the rows' .magic-motion-rows disclosure as one event: same duration and curve. */
+.cw-day-toggle svg { flex: none; align-self: center; width: 15px; height: 15px; color: var(--magic-ink-muted-strong, var(--magic-ink-muted)); transition: transform var(--magic-motion-disclosure) var(--magic-motion-ease-out); }
+.cw-day-toggle[aria-expanded=true] svg { transform: rotate(90deg); }
+.cw-day-toggle .cw-day-date, .cw-day-count { font: var(--magic-font-interface-weight, 400) var(--magic-type-meta) / 1.5 var(--magic-font-interface); color: var(--magic-ink-muted-strong, var(--magic-ink-muted)); font-variant-numeric: tabular-nums; }
 .cw-rows { list-style: none; margin: 0; padding: 0; }
 .cw-row { position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; column-gap: 12px; padding: 13px 12px; border-radius: var(--magic-radius-card); transition: background 160ms ease-out; }
 .cw-row + .cw-row { margin-top: 2px; }
@@ -59,4 +65,4 @@
 .cw-empty p { margin: 0 0 14px; }
 @media (max-width: 1000px) { .cw-list { max-width: 760px; } .cw-row { gap: 9px; padding-inline: 6px; } .cw-primary { min-width: 112px; padding-left: 4px; } }
 @media (max-width: 680px) { .cw-row { grid-template-columns: 28px minmax(0, 1fr); row-gap: 8px; } .cw-primary { grid-column: 2; justify-content: flex-start; padding-left: 0; } .cw-meta { gap: 4px 7px; } }
-@media (prefers-reduced-motion: reduce) { .cw-row, .cw-view-toggle button, .cw-check input, .cw-disclosure svg { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .cw-row, .cw-view-toggle button, .cw-check input, .cw-disclosure svg, .cw-day-toggle svg { transition: none; } }

@@ -4,8 +4,8 @@ import { EvidenceInfo } from '../../../../../packages/ui/src/evidence-info';
 import { courseIdentityHues } from './course-index-view';
 import type { CourseWorkModel, CourseWorkRow } from './course-work-model';
 import { WorkGlyph } from './CoursesViewToggle';
-import { groupCourseWork, workToday, workPlacement, workPageSize, workTimeLabel, workSourceLabel, workRowAnchor, workRowFocus,
-  type WorkListState, type WorkSection, type WorkBucket } from './course-work-display';
+import { groupCourseWork, workToday, workPlacement, workTimeLabel, workSourceLabel, workRowAnchor, workRowFocus,
+  pageWorkGroups, workDayKey, workDayOpen, openWorkDayState, type WorkListState, type WorkSection, type WorkBucket, type WorkPage } from './course-work-display';
 import '../../../../../packages/ui/src/deadline-emphasis.css';
 import './courses-work-view.css';
 
@@ -56,7 +56,8 @@ function ScopedWorkList({ model, state, onStateChange, timeZone, now, onOpen, on
   function captureListPlace() {
     const pane = top.current?.closest<HTMLElement>('.desktop-workspace'); if (!pane) return;
     const edge = pane.getBoundingClientRect().top;
-    const anchor = Array.from(top.current?.querySelectorAll<HTMLElement>('[data-place-anchor]') ?? []).find(node => node.getBoundingClientRect().bottom > edge);
+    // Rows inside a collapsed day stay mounted for its exit motion but are not a place to return to.
+    const anchor = Array.from(top.current?.querySelectorAll<HTMLElement>('[data-place-anchor]') ?? []).find(node => !node.closest('[inert]') && node.getBoundingClientRect().bottom > edge);
     const active = document.activeElement as HTMLElement | null;
     place.current = { anchor: anchor?.dataset.placeAnchor ?? null, offset: anchor ? anchor.getBoundingClientRect().top - edge : 0,
       focus: active && top.current?.contains(active) ? active.dataset.focusKey ?? null : place.current?.focus ?? null };
@@ -111,6 +112,10 @@ function ScopedWorkList({ model, state, onStateChange, timeZone, now, onOpen, on
     const current = stateRef.current;
     publish({ ...current, expanded: { ...current.expanded, [section]: expanded } });
   }
+  function setDay(section: WorkSection, day: string, open: boolean) {
+    const groups = groupCourseWork(model.rows, today, stateRef.current).find(bucket => bucket.section === section)?.groups ?? [];
+    publish(openWorkDayState(stateRef.current, model.scope.key, section, groups, today, day, open));
+  }
   function reveal(section: WorkSection) {
     expand(section, true);
     requestAnimationFrame(() => top.current?.querySelector<HTMLElement>(`[data-work-section="${section}"]`)?.scrollIntoView({ block: 'start', behavior: 'instant' }));
@@ -121,7 +126,7 @@ function ScopedWorkList({ model, state, onStateChange, timeZone, now, onOpen, on
   const currentCount = buckets.find(bucket => bucket.section === 'current')?.count ?? 0;
   return <div className="cw-list" ref={top}>
     {currentCount > 20 && hiddenUncertainty.length > 0 && <p className="cw-uncertainty">Some saved work has {hiddenUncertainty.map((bucket, index) => <span key={bucket.section}>{index > 0 ? ' or ' : ''}<button onClick={() => reveal(bucket.section)}>{bucket.section === 'conflict' ? 'dates to confirm' : 'no date'}</button></span>)}.</p>}
-    {buckets.map(bucket => <WorkSectionView key={bucket.section} bucket={bucket} state={state} onStateChange={publish} onExpand={expand}>
+    {buckets.map(bucket => <WorkSectionView key={bucket.section} bucket={bucket} state={state} scope={model.scope.key} today={today} onStateChange={publish} onExpand={expand} onDay={setDay}>
       {row => {
         const response = feedback[row.key], saved = response?.receipt;
         const authoritative = row.report;
@@ -142,15 +147,13 @@ function ScopedWorkList({ model, state, onStateChange, timeZone, now, onOpen, on
     </footer>
   </div>;
 }
-function WorkSectionView({ bucket, state, onStateChange, onExpand, children }: {
-  bucket: WorkBucket; state: WorkListState; onStateChange: (state: WorkListState) => void;
-  onExpand: (section: WorkSection, expanded: boolean) => void; children: (row: CourseWorkRow) => React.ReactNode;
+function WorkSectionView({ bucket, state, scope, today, onStateChange, onExpand, onDay, children }: {
+  bucket: WorkBucket; state: WorkListState; scope: string; today: string; onStateChange: (state: WorkListState) => void;
+  onExpand: (section: WorkSection, expanded: boolean) => void; onDay: (section: WorkSection, day: string, open: boolean) => void; children: (row: CourseWorkRow) => React.ReactNode;
 }) {
   const id = useId(), trigger = useRef<HTMLButtonElement>(null), section = useRef<HTMLElement>(null);
   const open = bucket.section === 'current' || (state.expanded[bucket.section] ?? ['conflict', 'undated'].includes(bucket.section));
-  const limit = workPageSize(bucket.groups, state.visible[bucket.section] ?? 20);
-  let remaining = limit;
-  const groups = bucket.groups.map(group => { const rows = group.rows.slice(0, Math.max(remaining, 0)); remaining -= rows.length; return { ...group, rows }; }).filter(group => group.rows.length > 0);
+  const { groups, limit, hidden } = pageWorkGroups(bucket.groups, group => workDayOpen(state, scope, workDayKey(group, today)), state.visible[bucket.section] ?? 20);
   function collapse() {
     const currentAnchor = section.current?.closest('.desktop-workspace');
     const position = trigger.current?.getBoundingClientRect().top ?? 0;
@@ -160,18 +163,38 @@ function WorkSectionView({ bucket, state, onStateChange, onExpand, children }: {
   return <section ref={section} className="cw-bucket" data-work-section={bucket.section}>
     {bucket.section !== 'current' && <button ref={trigger} type="button" className="cw-disclosure magic-fb-pill" aria-expanded={open} aria-controls={id}
       data-focus-key={`course-work-section-${bucket.section}`} onClick={() => open ? collapse() : onExpand(bucket.section, true)}><WorkGlyph name="chevron"/>{bucket.label}{!open ? ` · ${bucket.count}` : ''}</button>}
-    {open && <div id={id}>{groups.map(group => <section className="cw-day" key={group.key}>
-      {(bucket.section === 'current' || group.date) && <header className="cw-day-header"><h2>{group.label}</h2>{group.date && ['Today', 'Tomorrow'].includes(group.label) && <time className="cw-day-date" dateTime={group.date}>{new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(`${group.date}T12:00:00Z`))}</time>}</header>}
-      <ul className="cw-rows">{group.rows.map(children)}</ul></section>)}
-      {limit < bucket.count && <button className="cw-page-control magic-fb-pill" data-focus-key={`course-work-more-${bucket.section}`} onClick={() => onStateChange({ ...state, visible: { ...state.visible, [bucket.section]: limit + 20 } })}>Show {Math.min(20, bucket.count - limit)} more</button>}
+    {open && <div id={id}>{groups.map(group => <WorkDayView key={group.key} group={group} day={workDayKey(group, today)} heading={bucket.section === 'current' || !!group.date} onDay={(day, open) => onDay(bucket.section, day, open)}>{group.rows.map(children)}</WorkDayView>)}
+      {hidden > 0 && <button className="cw-page-control magic-fb-pill" data-focus-key={`course-work-more-${bucket.section}`} onClick={() => onStateChange({ ...state, visible: { ...state.visible, [bucket.section]: limit + 20 } })}>Show {Math.min(20, hidden)} more</button>}
       {limit > 30 && <button className="cw-page-control magic-fb-pill" data-focus-key={`course-work-less-${bucket.section}`} onClick={event => {
         const pane = event.currentTarget.closest('.desktop-workspace'), top = section.current?.getBoundingClientRect().top ?? 0;
-        // Focus a persistent section trigger before removing the later rows and this button.
-        (trigger.current ?? section.current?.querySelector<HTMLElement>('.cw-open'))?.focus({ preventScroll: true });
+        // Focus a persistent section or first day trigger before removing the later rows and this button.
+        (trigger.current ?? section.current?.querySelector<HTMLElement>('.cw-day-toggle, .cw-open'))?.focus({ preventScroll: true });
         onStateChange({ ...state, visible: { ...state.visible, [bucket.section]: 20 } });
         requestAnimationFrame(() => { if (pane && section.current) pane.scrollTop += section.current.getBoundingClientRect().top - top; });
       }}>Show less</button>}
     </div>}
+  </section>;
+}
+function WorkDayView({ group, day, heading, onDay, children }: {
+  group: WorkPage['groups'][number]; day: string | null; heading: boolean; onDay: (day: string, open: boolean) => void; children: React.ReactNode;
+}) {
+  const id = useId(), trigger = useRef<HTMLButtonElement>(null), rows = useRef<HTMLDivElement>(null);
+  const date = group.date && ['Today', 'Tomorrow'].includes(group.label) && <time className="cw-day-date" dateTime={group.date}>{new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(`${group.date}T12:00:00Z`))}</time>;
+  function toggle(day: string) {
+    // Closing makes the rows inert at once; focus inside them returns to the heading instead of the page.
+    if (group.open && rows.current?.contains(document.activeElement)) trigger.current?.focus({ preventScroll: true });
+    onDay(day, !group.open);
+  }
+  const list = <ul className="cw-rows">{children}</ul>;
+  return <section className="cw-day">
+    {heading && <header className="cw-day-header" data-place-anchor={day ? `course-day-${day}` : undefined}>
+      {day ? <h2><button ref={trigger} type="button" className="cw-day-toggle magic-fb-pill" aria-expanded={group.open} aria-controls={id} data-focus-key={`course-day-${day}`} onClick={() => toggle(day)}>
+        <WorkGlyph name="chevron"/><span>{group.label}</span>{date}{!group.open && <span className="cw-day-count">· {group.total}</span>}</button></h2>
+        : <><h2>{group.label}</h2>{date}</>}
+    </header>}
+    {/* The shared disclosure-rows recipe: the same mounted node changes height and opacity, so a reversal
+        retargets from the painted value; closed rows are inert immediately and hidden once the exit ends. */}
+    {day ? <div ref={rows} id={id} className="magic-motion-rows cw-day-rows" data-open={group.open} inert={!group.open}><div>{list}</div></div> : list}
   </section>;
 }
 function WorkRow({ row, today, hue, showDate, feedback, action, onOpen, onAction, onCheck, onRetry }: {
