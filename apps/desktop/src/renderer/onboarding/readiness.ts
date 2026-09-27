@@ -1,5 +1,5 @@
 import type { ResourceView, Snapshot, SourceHealth } from "@magic/contracts";
-import type { SourceLine } from "./model";
+import { hiddenFromStudents, isFileScope, sourceLine, type SourceLine } from "./model";
 import { verifiedCanvasEnrollment } from "../enrollment-evidence";
 
 /** A compact index over every saved check. Nothing is discarded from the drilldown. */
@@ -28,7 +28,28 @@ const key = (accountScope: string, courseId: string) => JSON.stringify([accountS
 const incomplete = (line: SourceLine) => line.state === "partial" || line.state === "failed";
 const historical = (source: SourceHealth) => source.diagnostics?.some((d) => d.code === "historical_course_metadata_only") ?? false;
 
-export function projectReadiness(snapshot: Snapshot, lines: SourceLine[], now = new Date()): ReadinessOverview {
+/**
+ * Every saved check behind the summary's lines. The Populating summary folds course files into one
+ * line per course and leaves out courses the student excluded (03795ec); the drilldown still holds
+ * each of those checks, secondary. Lists Canvas hides from students are not checks.
+ */
+function everyCheck(snapshot: Snapshot, lines: SourceLine[]): SourceLine[] {
+  const byId = new Map(lines.map((line) => [line.id, line]));
+  const sourceIds = new Set(snapshot.sources.map((source) => source.id));
+  const leaves = snapshot.sources.filter((source) => !hiddenFromStudents(source)).map((source): SourceLine => {
+    const line = byId.get(source.id);
+    if (line) return line;
+    // A file the budget deferred is still coming in, as the summary says, not a partial read.
+    if (isFileScope(source.scope) && source.diagnostics?.some((d) => d.code === "file_budget_deferred"))
+      return { id: source.id, label: source.label, state: "reading", status: "Still coming in" };
+    return sourceLine(source, false);
+  });
+  // A course-files line stands for leaf checks listed above; any other producer line stays as it is.
+  return [...leaves, ...lines.filter((line) => !sourceIds.has(line.id) && !line.id.startsWith("files:"))];
+}
+
+export function projectReadiness(snapshot: Snapshot, summaryLines: SourceLine[], now = new Date()): ReadinessOverview {
+  const lines = everyCheck(snapshot, summaryLines);
   const sourceById = new Map(snapshot.sources.map((source) => [source.id, source]));
   const courseResources = new Map<string, ResourceView>();
   for (const resource of snapshot.resources) {

@@ -979,10 +979,10 @@ export function createCore(store: Store, options: CoreOptions) {
       case "day-plan-remove":
         store.removeDayPlanEntry(command.key, command.date);
         break;
-      case 'personal-calendar-save':
+      case "personal-calendar-save":
         store.setPersonalCalendarEvent(command.event);
         break;
-      case 'personal-calendar-remove':
+      case "personal-calendar-remove":
         store.removePersonalCalendarEvent(command.id);
         break;
       case "notifications-read":

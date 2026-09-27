@@ -49,7 +49,7 @@ export function codeAssignmentKind(r: Pick<Resource, "kind" | "submissionTypes">
  * The store with this call's own sources, links or jobs read reused, so the evidence and inclusion
  * helpers don't read them again (each is read-only within one call).
  */
-export function withReads(store: Store, reads: { sources?: ReturnType<Store["sources"]>; links?: ReturnType<Store["links"]>; jobs?: ReturnType<Store["jobs"]> }): Store {
+export function withReads(store: Store, reads: { sources?: ReturnType<Store["sources"]>; links?: ReturnType<Store["links"]>; jobs?: ReturnType<Store["jobs"]>; courseOverrides?: ReturnType<Store["courseOverrides"]>; ingestionSettings?: ReturnType<Store["ingestionSettings"]> }): Store {
   return Object.create(
     store,
     Object.fromEntries(Object.entries(reads).filter(([, value]) => value !== undefined).map(([key, value]) => [key, { value: () => value }])),
@@ -58,7 +58,9 @@ export function withReads(store: Store, reads: { sources?: ReturnType<Store["sou
 
 /** The one mapping from stored resources to what a view shows: deadline, label, order. */
 export function resourceViews(store: Store, list: Resource[], allResources?: Resource[]): ResourceView[] {
-  store = allResources ? readOnce(store, allResources) : store;
+  // Inclusion and evidence both need every resource: one list read per call, shared by both.
+  allResources ??= store.resources();
+  store = readOnce(store, allResources);
   const included = courseInclusion(store, allResources);
   const sources = new Map(store.sources().map(source => [source.id, source]));
   const permitted = (resource: Resource) => !resource.deleted && included(resource) && sources.get(resource.sourceId)?.status !== "inaccessible";
@@ -179,8 +181,10 @@ export function runQuery(store: Store, request: QueryRequest, context: QueryCont
     case "summary": {
       const sources = store.sources();
       const all = store.resources();
-      // This call's sources read is shared with the evidence and inclusion below.
-      const shared = withReads(store, { sources });
+      const courseOverrides = store.courseOverrides();
+      const ingestionSettings = store.ingestionSettings();
+      // This call's sources and course-choice reads are shared with the evidence and inclusion below.
+      const shared = withReads(store, { sources, courseOverrides, ingestionSettings });
       const views = resourceViews(shared, all.filter((r) => r.kind === "assignment"), all);
       // Inclusion is the same for every resource of one course: built once from this call's list.
       const included = courseInclusion(readOnce(shared, all));
@@ -224,8 +228,8 @@ export function runQuery(store: Store, request: QueryRequest, context: QueryCont
         sources,
         privacy: store.privacy(),
         consents: store.consents?.() ?? [],
-        ingestionSettings: store.ingestionSettings(),
-        courseOverrides: store.courseOverrides(),
+        ingestionSettings,
+        courseOverrides,
         gatewayConfigured: context.gatewayConfigured,
         fixtureMode: sources.some((s) => s.kind === "fixture"),
         courses: [...courses.values()].sort((a, b) => a.courseName.localeCompare(b.courseName)),
