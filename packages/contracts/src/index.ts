@@ -948,6 +948,19 @@ export const dayPlanEntrySchema = z
   })
   .strict();
 export type DayPlanEntry = z.infer<typeof dayPlanEntrySchema>;
+/**
+ * A UW GitLab project the student linked to a course by hand, for courses whose Canvas
+ * material never links the project. `projectPath` is the namespace/project path.
+ */
+export const gitlabLinkSchema = z
+  .object({
+    accountScope: id,
+    courseId: id,
+    projectPath: z.string().min(3).max(300).regex(/^[\w.-]+(?:\/[\w.-]+)+$/),
+    addedAt: instant,
+  })
+  .strict();
+export type GitlabLink = z.infer<typeof gitlabLinkSchema>;
 export const syncRunSchema = z
   .object({
     id,
@@ -1038,6 +1051,10 @@ export interface Store {
   dayPlan(): DayPlanEntry[];
   setDayPlanEntry(value: DayPlanEntry): void;
   removeDayPlanEntry(key: string, date: string): void;
+  gitlabLinks(): GitlabLink[];
+  /** Adds or refreshes one course's manual GitLab project link. */
+  setGitlabLink(value: GitlabLink): void;
+  removeGitlabLink(accountScope: string, courseId: string, projectPath: string): void;
   /**
    * Deletes a source the student disconnected and everything captured from it; returns the
    * number of items removed. Not for failed or empty reads, which must never erase coursework.
@@ -1118,6 +1135,7 @@ export interface Snapshot {
   mcpGrants?: McpGrant[];
   consents?: ConsentRecord[];
   dayPlan?: DayPlanEntry[];
+  gitlabLinks?: GitlabLink[];
 }
 // owner: T05b. The integration seams: the learning channel (spec §8.1 of the learning spec,
 // its practice addendum, and T47/T53's practice.target and practice.assessmentQuiz), the
@@ -1650,6 +1668,23 @@ export const commandSchema = z.discriminatedUnion("type", [
     })
     .strict(),
   z.object({ type: z.literal("fixture") }).strict(),
+  // A student-supplied UW GitLab project for a course the connector could not discover.
+  z
+    .object({
+      type: z.literal("gitlab-link"),
+      accountScope: id,
+      courseId: id,
+      url: z.string().min(1).max(2000),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("gitlab-unlink"),
+      accountScope: id,
+      courseId: id,
+      projectPath: z.string().min(1).max(300),
+    })
+    .strict(),
   // Removes only the Outlook calendar and its meetings from this device. Used by disconnect and sign-out.
   z.object({ type: z.literal("outlook-disconnect") }).strict(),
   // owner: T30. Removes the Graph mail and calendar records (tokens and delta links are main's).

@@ -73,6 +73,7 @@ import {
 import {
   gitlabConnector,
   gitlabProjectFromUrl,
+  gitlabProjectsForCourse,
 } from "../../../packages/connectors/src/gitlab";
 import { courseInclusion } from "../../../packages/core/src/access";
 import { createRefreshCoordinator } from "../../../packages/core/src/refresh";
@@ -1319,14 +1320,12 @@ export function createIngestion(
           save(batch);
         }
       }
-      const projects = [
-        ...new Set(
-          resources
-            .flatMap((r) => r.links ?? [])
-            .map((l) => gitlabProjectFromUrl(typeof l === "string" ? l : l.url))
-            .filter((v): v is string => !!v),
-        ),
-      ];
+      // Projects Canvas material links to, plus any the student linked to this course by hand.
+      const projects = gitlabProjectsForCourse(
+        resources.flatMap((r) => r.links ?? []).map((l) => (typeof l === "string" ? l : l.url)),
+        store.gitlabLinks(),
+        { accountScope: source.accountScope, courseId: course.courseId },
+      );
       if (host.gitlabFetch && projects.length)
         for await (const batch of gitlabConnector({
           fetch: host.gitlabFetch,
