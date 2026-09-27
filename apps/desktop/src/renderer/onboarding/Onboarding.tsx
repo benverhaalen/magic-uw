@@ -217,10 +217,14 @@ export function Onboarding(props: OnboardingProps) {
         snapshot={snapshot}
         busy={busy}
         noClient={progress.client === "later"}
+        onSignIn={() => void props.signIn()}
+        onRetry={() => void window.magic?.syncCanvas?.().then(() => props.run({ type: "snapshot" }))}
         onLoadSample={loadSample}
         onBack={back}
         onFinish={() => {
           update({ done: true });
+          // Finishing setup accepts the course choice if the step was never confirmed.
+          if (snapshot.ingestionSettings?.awaitingCourseChoice) void window.magic?.syncCanvas?.({ confirm: true });
           props.onFinish();
         }}
       />
@@ -504,7 +508,7 @@ function CoursesStep({
     void run({ type: "course-override", value: { accountScope: course.accountScope, courseId: course.courseId, included } });
   const start = () => {
     // The first full read, of the checked courses only; it continues while setup goes on.
-    if (window.magic?.syncCanvas) void window.magic.syncCanvas().then(() => run({ type: "snapshot" }));
+    if (window.magic?.syncCanvas) void window.magic.syncCanvas({ confirm: true }).then(() => run({ type: "snapshot" }));
     onNext();
   };
   return (
@@ -1257,6 +1261,8 @@ function Populating({
   snapshot,
   busy,
   noClient,
+  onSignIn,
+  onRetry,
   onLoadSample,
   onBack,
   onFinish,
@@ -1265,11 +1271,14 @@ function Populating({
   snapshot: Snapshot;
   busy: boolean;
   noClient: boolean;
+  onSignIn: () => void;
+  onRetry: () => void;
   onLoadSample: () => unknown;
   onBack: (() => void) | null;
   onFinish: () => void;
 }) {
   const summary = summarize(snapshot, busy);
+  const [whyOpen, setWhyOpen] = useState<string | null>(null);
   const title =
     summary.outcome === "empty"
       ? "Nothing connected yet"
@@ -1287,8 +1296,10 @@ function Populating({
           : summary.outcome === "reading"
             ? "This keeps going if you open your workspace now."
             : summary.outcome === "issues"
-              ? "Some sources were not fully read. What was read is saved; the rest is listed below."
-              : "Everything connected was read."}
+              ? "These weren't fully read. What was read is saved; each one says why and what you can do."
+              : summary.filesArriving
+                ? `Your courses' assignments and modules are read. ${summary.filesArriving} course ${summary.filesArriving === 1 ? "file is" : "files are"} still coming in; they keep arriving after you open your workspace.`
+                : "Everything connected was read."}
       </p>
       {summary.counts.length > 0 ? (
         <ul className="onb-counts" aria-label="Items found">
@@ -1315,10 +1326,18 @@ function Populating({
               <span className="onb-source-text">
                 <span className="onb-source-label">{source.label}</span>
                 {source.reason ? <span className="onb-source-reason">{source.reason}</span> : null}
+                {whyOpen === source.id && source.why ? <span className="onb-source-reason">{source.why}</span> : null}
               </span>
               <span className="onb-source-status">
                 {source.status}
                 {source.detail ? <span className="onb-source-detail">{source.detail}</span> : null}
+                {source.action === "sign-in" ? (
+                  <button className="onb-link" onClick={onSignIn}>Sign in again</button>
+                ) : source.action === "retry" ? (
+                  <button className="onb-link" disabled={busy} onClick={onRetry}>Retry</button>
+                ) : source.action === "why" && source.why ? (
+                  <button className="onb-link" aria-expanded={whyOpen === source.id} onClick={() => setWhyOpen(whyOpen === source.id ? null : source.id)}>Why?</button>
+                ) : null}
               </span>
             </li>
           ))}

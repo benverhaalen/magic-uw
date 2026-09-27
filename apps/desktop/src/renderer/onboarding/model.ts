@@ -307,7 +307,7 @@ export function firstIncompleteStep(snapshot: Snapshot, progress: OnboardingProg
   if (!uwConsented(snapshot, hasConsent)) return "consent";
   const readSomething = snapshot.sources.length > 0;
   if (!readSomething && progress.uw !== "confirmed" && progress.uw !== "skipped") return "uw";
-  if (!progress.coursesDone && courseChoices(snapshot).length) return "courses";
+  if (!progress.coursesDone && snapshot.ingestionSettings?.awaitingCourseChoice) return "courses";
   if (progress.client === null || (progress.client !== "later" && !progress.clientConnected)) return "client";
   if (!progress.appearanceDone) return "appearance";
   if (!progress.connectionsDone) return "connections";
@@ -364,7 +364,7 @@ export function courseChoices(snapshot: Snapshot): CourseChoice[] {
       name: r.courseName,
       term: r.course.termName ?? null,
       group,
-      checked: override ?? (group === "this-term"),
+      checked: override ?? r.course.selection?.included === true,
     });
   }
   return out.sort((a, b) => (a.group === b.group ? a.name.localeCompare(b.name) : a.group === "this-term" ? -1 : 1));
@@ -372,6 +372,8 @@ export function courseChoices(snapshot: Snapshot): CourseChoice[] {
 
 // --- Populating summary ------------------------------------------------------------------------
 export type SourceState = "reading" | "ready" | "partial" | "failed";
+/** One thing the student can do about a line: sign in again, read it again, or see why. */
+export type SourceAction = "sign-in" | "retry" | "why";
 export interface SourceLine {
   id: string;
   label: string;
@@ -381,24 +383,46 @@ export interface SourceLine {
   /** Why it is partial or failed; absent when ready. */
   reason?: string;
   detail?: string;
+  action?: SourceAction;
+  /** The longer explanation behind "Why?". */
+  why?: string;
 }
 export interface PopulateSummary {
   sources: SourceLine[];
   counts: { label: string; count: number }[];
   total: number;
   reading: boolean;
-  /** "empty" when nothing is connected; "issues" when any source is partial or failed. */
+  /** Course files still arriving (read in the background; the workspace is usable meanwhile). */
+  filesArriving: number;
+  /** Course lists Canvas doesn't show students (a hidden Pages or Files tab): normal, not an issue. */
+  hiddenLists: number;
+  /**
+   * "empty": nothing connected. "ready": every included course has its assignments and modules
+   * read (files may still be arriving). "issues": a source the student included wasn't fully read.
+   */
   outcome: "empty" | "reading" | "ready" | "issues";
 }
 
 const reasons: Record<Exclude<SourceHealth["status"], "ok">, string> = {
-  partial: "Some pages could not be read. What was read is saved.",
+  partial: "Some of it could not be read. What was read is saved.",
   needs_sign_in: "UW asked you to sign in again.",
-  error: "It could not be read this time. Try again from Sources.",
+  error: "It could not be read this time.",
   inaccessible: "Your account cannot open it.",
   not_published: "The instructor has not published it yet.",
-  needs_attention: "Something in it needs a look in Sources.",
+  needs_attention: "It changed in a way that needs a look before it replaces what was saved.",
 };
+const whys: Partial<Record<string, string>> = {
+  record_count_drop: "Far fewer items came back than last time, so the earlier copy was kept instead of deleting it.",
+  key_text_loss: "Most of the text came back empty, so the earlier copy was kept.",
+  date_coverage_loss: "Most due dates came back missing, so the earlier copy was kept.",
+  scope_time_limit: "Canvas took too long to answer; the rest is read on the next refresh.",
+  rate_limit_exhausted: "Canvas asked the app to slow down; the rest is read on the next refresh.",
+  page_limit: "The list was longer than one refresh reads; the rest is read on the next refresh.",
+  request_failed: "The connection to Canvas failed; the rest is read on the next refresh.",
+  http_failure: "Canvas answered with an error; the rest is read on the next refresh.",
+};
+const actionFor = (status: SourceHealth["status"]): SourceAction | undefined =>
+  status === "needs_sign_in" ? "sign-in" : status === "error" || status === "partial" ? "retry" : status === "needs_attention" ? "why" : undefined;
 const kindWords: { kind: ResourceView["kind"]; one: string; many: string }[] = [
   { kind: "course", one: "course", many: "courses" },
   { kind: "assignment", one: "assignment", many: "assignments" },
@@ -406,6 +430,9 @@ const kindWords: { kind: ResourceView["kind"]; one: string; many: string }[] = [
   { kind: "event", one: "calendar event", many: "calendar events" },
   { kind: "message", one: "announcement or message", many: "announcements and messages" },
 ];
+/** Course lists a student may simply not be shown (Canvas answers 401/403/404 for a hidden tab). */
+const LIST_SCOPES = new Set(["pages", "files", "folders", "quizzes", "discussions", "assignment-groups", "submissions", "announcements", "syllabus", "modules", "calendar-discovery"]);
+const isFileScope = (scope: string) => /^(?:file|document):/.test(scope);
 
 function sourceLine(source: SourceHealth, busy: boolean): SourceLine {
   const progress = source.progress;
@@ -429,6 +456,7 @@ function sourceLine(source: SourceHealth, busy: boolean): SourceLine {
     };
   if (source.status === "ok" && source.complete)
     return { id: source.id, label: source.label, state: "ready", status: "Done", detail: found };
+  const why = source.diagnostics?.map((d) => whys[d.code]).find(Boolean);
   if (source.status === "ok" || source.status === "partial")
     return {
       id: source.id,
@@ -437,6 +465,8 @@ function sourceLine(source: SourceHealth, busy: boolean): SourceLine {
       status: "Partly read",
       reason: reasons.partial,
       detail: found,
+      action: "retry",
+      ...(why ? { why } : {}),
     };
   return {
     id: source.id,
@@ -445,11 +475,59 @@ function sourceLine(source: SourceHealth, busy: boolean): SourceLine {
     status: source.status === "needs_sign_in" ? "Sign in needed" : "Not read",
     reason: reasons[source.status],
     detail: source.resourceCount > 0 ? `${found} earlier` : undefined,
+    ...(actionFor(source.status) ? { action: actionFor(source.status) } : {}),
+    ...(why ? { why } : {}),
   };
 }
 
 export function summarize(snapshot: Snapshot, busy: boolean): PopulateSummary {
-  const sources = snapshot.sources.map((source) => sourceLine(source, busy));
+  // The student's course choices: a course they excluded, and Canvas's nameless rows, are not issues.
+  const sourceById = new Map(snapshot.sources.map((s) => [s.id, s]));
+  const overrides = new Map((snapshot.courseOverrides ?? []).map((o) => [`${o.accountScope}|${o.courseId}`, o.included]));
+  const courseRows = new Map<string, ResourceView>();
+  for (const r of snapshot.resources) {
+    const source = sourceById.get(r.sourceId);
+    if (r.kind === "course" && !r.deleted && r.course && source?.scope === "course") courseRows.set(`${source.accountScope}|${r.courseId}`, r);
+  }
+  const included = (key: string) => {
+    const row = courseRows.get(key);
+    if (!row) return true;
+    if (row.course?.accessRestricted || /\(name unavailable\)$/.test(row.courseName)) return false;
+    return overrides.get(key) ?? row.course?.selection?.included ?? true;
+  };
+  const lines: SourceLine[] = [];
+  const files = new Map<string, { done: number; arriving: number; failed: number; name: string }>();
+  let hiddenLists = 0;
+  for (const source of snapshot.sources) {
+    const key = `${source.accountScope}|${source.courseId}`;
+    if (source.kind === "canvas" && courseRows.has(key) && !included(key)) continue;
+    if (source.status === "inaccessible" && (LIST_SCOPES.has(source.scope) || isFileScope(source.scope))) {
+      hiddenLists++; // not available to students: fine, and not a partial read
+      continue;
+    }
+    if (isFileScope(source.scope)) {
+      const entry = files.get(key) ?? { done: 0, arriving: 0, failed: 0, name: courseRows.get(key)?.courseName ?? "Course" };
+      const deferred = source.diagnostics?.some((d) => d.code === "file_budget_deferred");
+      if (source.status === "ok" && source.complete) entry.done++;
+      else if (deferred || source.progress || (busy && source.status === "ok")) entry.arriving++;
+      else entry.failed++;
+      files.set(key, entry);
+      continue;
+    }
+    lines.push(sourceLine(source, busy));
+  }
+  for (const [key, entry] of files)
+    lines.push({
+      id: `files:${key}`,
+      label: `${entry.name} · course files`,
+      state: entry.arriving ? "reading" : entry.failed ? "partial" : "ready",
+      status: entry.arriving ? "Still coming in" : entry.failed ? "Partly read" : "Done",
+      detail: `${entry.done} of ${entry.done + entry.arriving + entry.failed} read`,
+      ...(!entry.arriving && entry.failed
+        ? { reason: `${entry.failed} ${entry.failed === 1 ? "file" : "files"} could not be read.`, action: "why" as const,
+            why: "Some files could not be downloaded or have no readable text (a scan, a video). Each one is listed in Sources with its cause." }
+        : {}),
+    });
   const live = snapshot.resources.filter((resource) => !resource.deleted);
   const counts = kindWords
     .map(({ kind, one, many }) => {
@@ -457,9 +535,25 @@ export function summarize(snapshot: Snapshot, busy: boolean): PopulateSummary {
       return { label: count === 1 ? one : many, count };
     })
     .filter((entry) => entry.count > 0);
-  const reading = busy || sources.some((line) => line.state === "reading");
-  const issues = sources.some((line) => line.state === "partial" || line.state === "failed");
+  const nonFile = lines.filter((line) => !line.id.startsWith("files:"));
+  const issues = nonFile.some((line) => line.state === "partial" || line.state === "failed");
+  const reading = busy || lines.some((line) => line.state === "reading");
+  // Ready once every included course has its assignments and modules read; files may follow.
+  const includedCourses = [...courseRows.keys()].filter(included);
+  const read = (key: string, scope: string) =>
+    snapshot.sources.some((s) => `${s.accountScope}|${s.courseId}` === key && s.scope === scope && (s.status === "ok" ? s.complete : s.status === "inaccessible"));
+  const coursesReady =
+    includedCourses.length > 0 && includedCourses.every((key) => read(key, "assignments") && read(key, "modules"));
+  const filesArriving = [...files.values()].reduce((sum, entry) => sum + entry.arriving, 0);
   const outcome =
-    sources.length === 0 && !busy ? "empty" : reading ? "reading" : issues ? "issues" : "ready";
-  return { sources, counts, total: live.length, reading, outcome };
+    lines.length === 0 && !busy
+      ? "empty"
+      : coursesReady && !issues
+        ? "ready"
+        : nonFile.some((line) => line.state === "reading") || (busy && !coursesReady)
+          ? "reading"
+          : issues
+            ? "issues"
+            : "ready";
+  return { sources: lines, counts, total: live.length, reading, filesArriving, hiddenLists, outcome };
 }

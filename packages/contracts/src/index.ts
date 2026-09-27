@@ -1091,6 +1091,11 @@ export interface Store {
   removeSource(sourceId: string): number;
   resources(search?: string): Resource[];
   resource(id: string): Resource | undefined;
+  /**
+   * fix/current-courses-only. Earlier stored versions of one resource, newest first (read-only);
+   * lets a caller put back a version a later observation overwrote, instead of deleting.
+   */
+  resourceHistory?(id: string): Array<{ version: number; capturedAt: string; resource: ResourceInput }>;
   sources(): SourceHealth[];
   privacy(): PrivacyPreferences;
   setPrivacy(value: PrivacyPreferences): void;
@@ -2229,7 +2234,7 @@ export interface AppBridge {
   signInUW?(service?: SignInService): Promise<SignInOutcome>;
   syncPlanning?(): Promise<CommandResult>;
   /** `discover` (fix/current-courses-only): read only the course lists, so the student chooses first. */
-  syncCanvas?(options?: { discover?: boolean }): Promise<CommandResult>;
+  syncCanvas?(options?: { discover?: boolean; confirm?: boolean }): Promise<CommandResult>;
   signOutUW?(): Promise<void>;
   /** Saves (or with null, removes) the published Outlook calendar link in the encrypted vault. */
   setOutlookCalendar?(url: string | null): Promise<{ connected: boolean }>;
