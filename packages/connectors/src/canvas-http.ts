@@ -24,6 +24,11 @@ export interface CanvasRate {
   remaining?: number;
   cost?: number;
 }
+/** A scope's request count. `onStart` runs as each attempt's exchange begins, inside its scheduler slot. */
+export interface CanvasScopeStats {
+  requests: number;
+  onStart?: () => void;
+}
 export interface CanvasHttpOptions {
   fetch: CanvasFetch;
   origin?: string;
@@ -450,7 +455,7 @@ export class CanvasHttp {
   async request(
     input: string,
     signal?: AbortSignal,
-    scopeStats?: { requests: number },
+    scopeStats?: CanvasScopeStats,
     priority = 0,
     options: { fresh?: boolean } = {},
   ): Promise<{ data: unknown; link: string | null }> {
@@ -481,7 +486,7 @@ export class CanvasHttp {
   private async exchange(
     url: string,
     signal: AbortSignal | undefined,
-    scopeStats: { requests: number } | undefined,
+    scopeStats: CanvasScopeStats | undefined,
   ): Promise<
     | { redirect: true; facts?: CanvasProfileFacts }
     | {
@@ -502,7 +507,10 @@ export class CanvasHttp {
       ...(signal ? [signal] : []),
     ]);
     this.rate.requests++;
-    if (scopeStats) scopeStats.requests++;
+    if (scopeStats) {
+      scopeStats.requests++;
+      scopeStats.onStart?.();
+    }
     const response = await abortable(
       this.options.fetch(url, {
         method: "GET",
@@ -560,7 +568,7 @@ export class CanvasHttp {
   private async read(
     url: string,
     signal: AbortSignal | undefined,
-    scopeStats: { requests: number } | undefined,
+    scopeStats: CanvasScopeStats | undefined,
     priority: number,
   ): Promise<{ data: unknown; link: string | null }> {
     try {

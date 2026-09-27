@@ -14,6 +14,7 @@ import {
   CanvasFailure,
   canvasNextPage,
   type CanvasHttpOptions,
+  type CanvasScopeStats,
 } from "./canvas-http";
 import { readCanvasModules, createCanvasModuleRun, type CanvasModuleRun } from "./canvas-modules";
 import { canvasContent } from "./canvas-content";
@@ -331,10 +332,11 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
         complete: boolean;
         status: CaptureBatch["status"];
       }> {
-        const scopeSignal = AbortSignal.any([
-          combined,
-          AbortSignal.timeout(options.scopeTimeoutMs ?? 120_000),
-        ]);
+        // The scope's own time budget starts when its first request holds a scheduler slot, not
+        // while it queues behind other scopes (a course's page wave starts every page at once).
+        const budget = new AbortController(),
+          scopeSignal = AbortSignal.any([combined, budget.signal]);
+        let budgetTimer: ReturnType<typeof setTimeout> | undefined;
         const items: T[] = [],
           resources: ResourceInput[] = [],
           diagnostics: CaptureDiagnostic[] = [];
@@ -342,7 +344,18 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
           seenIds = new Set<string>(),
           started = performance.now(),
           initial = url,
-          requestStats = { requests: 0 };
+          requestStats: CanvasScopeStats = {
+            requests: 0,
+            onStart: () => {
+              budgetTimer ??= setTimeout(
+                () =>
+                  budget.abort(
+                    new DOMException("Scope time limit reached", "TimeoutError"),
+                  ),
+                options.scopeTimeoutMs ?? 120_000,
+              );
+            },
+          };
         let next: string | null = url,
           pages = 0,
           status: CaptureBatch["status"] = "ok",
@@ -487,12 +500,18 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
           if (next) throw new CanvasFailure("partial", "page_limit");
           if (invalid) status = "partial";
         } catch (error) {
-          combined.throwIfAborted();
-          status = scopeSignal.aborted
+          if (combined.aborted) {
+            // The run stopped before this scope reached the network: not read yet, not failed.
+            if (budgetTimer === undefined && pages === 0)
+              emit(course.id, courseName(course), scope, [], "partial", false,
+                [{ code: "scope_deferred", path: [], severity: "warning" }], started);
+            combined.throwIfAborted();
+          }
+          status = budget.signal.aborted
             ? "partial"
             : failure(error, resources.length > 0);
           diagnostics.push(
-            ...(scopeSignal.aborted
+            ...(budget.signal.aborted
               ? [
                   {
                     code: "scope_time_limit",
@@ -502,6 +521,8 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
                 ]
               : diagnostic(error)),
           );
+        } finally {
+          clearTimeout(budgetTimer);
         }
         const complete = status === "ok";
         emit(
