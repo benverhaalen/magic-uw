@@ -51,6 +51,25 @@ and building a rendering pipeline isn't in budget for a 24h window. Concretely, 
 - **No new dependency gets installed in `magic-uw` for this.** The video's tooling lives outside the
   product repo entirely.
 
+### Optional AI help: references Ben shared
+
+Ben shared these posts as possible methods for making or polishing parts of the video. They are
+references, not a requirement to use Opus 5.5 or to change the six-beat story. Screen recording
+remains the default. Try AI help only if it improves a specific shot or saves production time while
+staying within the two-minute runtime cap.
+
+| Post | What the author shows or says | Possible use here |
+| --- | --- | --- |
+| [Leo's launch-video tips](https://x.com/leodev/status/2102897952587133299) | The seven tips already assessed against this repo in [`story.md`](story.md#production-approach-launch-video-tips-applied-2026-09-26): compare tools, direct the narrative beats yourself, and give an agent the actual codebase and visual context. | Keep the confirmed race, proposed later beats, and real product material in the brief; use an agent for a bounded edit or graphic rather than asking it to choose the demo's claims. |
+| [Moritz's example](https://x.com/moritzkremb/status/2103066071838466494), [prompt](https://x.com/moritzkremb/status/2103066083905417476), and replies | Moritz says he gave Opus 5.5 one broad prompt to pick a recognizable SaaS, gather real web assets, and make a polished motion-graphics launch video about its features and benefits. He says he supplied [only the prompt](https://x.com/moritzkremb/status/2103201184185983001) and [named HyperFrames](https://x.com/moritzkremb/status/2103181107466567815) in the comments. His posts do not document the full build or revision process. | A quick way to request a visual treatment or motion concept. Treat the result as a candidate for a short segment, then check it against the real app and story. |
+| [Shann's finished example](https://x.com/shannholmberg/status/2103057568402960791) and [how-to guide](https://x.com/shannholmberg/status/2103173892831674715) | Shann describes using Opus 5.5 for scene planning, screen recording, animation, and editing, with Codex generating an image when needed. His method starts with the goal, audience, format, brand context, and examples; reviews a scene-by-scene storyboard; renders a preview; and revises with timestamped feedback, including audio direction. The example shows product UI, guided movement, and short captions. | Give an agent the current beat plan, real screen captures, and available brand assets, while keeping unapproved beats labeled as proposals. Review the storyboard before rendering; generate supporting graphics only where they clarify a real interaction. |
+
+If anyone wants to try this, test **one short proof segment** first, such as beat 3's assignment
+click and evidence reveal. Compare its readable product detail, editing time, and factual accuracy
+with a straightforward cut of the same footage. Keep the treatment only if it helps. Any generated
+image or motion layer should support the recorded interaction; it must not depict an unbuilt screen,
+invent linked evidence, or turn an unverified capability into a video claim.
+
 ## 2. The race (beat 1) — recording method
 
 **Changed 2026-09-26 per Sean: not a software split-screen edit. Two real people, filmed together,

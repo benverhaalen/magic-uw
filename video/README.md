@@ -39,3 +39,5 @@ before treating it as locked, same as any other materially different interpretat
 ## Files
 
 - `story.md` — working draft: narrative arc, beats, what's shown live vs. narrated, open questions.
+- `script.md` — proposed narration and on-screen text for those beats.
+- `production.md` — capture, editing, and export plan, including [optional AI video references](production.md#optional-ai-help-references-ben-shared).
