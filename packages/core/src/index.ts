@@ -13,6 +13,8 @@ import { maySend, resolveDeadline } from "@magic/domain";
 import { judgmentResultSchema, type JudgmentGateway } from "@magic/ai";
 import { contentCategories, courseIncluded } from "./access";
 import { evidenceFor } from "./evidence";
+import { rebaseFixture } from "./fixture-dates";
+export { rebaseFixture } from "./fixture-dates";
 import { pullGuideForSubject } from "../../connectors/src/planning-public";
 import { createPublicClient, type PublicClient } from "../../connectors/src/network";
 import { comparePlanning } from "./planning";
@@ -23,6 +25,8 @@ export interface CoreOptions {
   fixture: CaptureBatch;
   gateway?: JudgmentGateway;
   now?: () => Date;
+  /** Local time zone used to place the sample course on today. Defaults to the system zone. */
+  timeZone?: string;
   planningPublicClient?: PublicClient;
   planningHttp?: Pick<UwPlanningHttp, "read">;
 }
@@ -317,7 +321,12 @@ export function createCore(store: Store, options: CoreOptions) {
           throw new Error(
             "Use a separate workspace for sample data. Your real sources are already connected.",
           );
-        store.ingest({ ...options.fixture, observedAt: now() });
+        const moved = rebaseFixture(
+          options.fixture,
+          options.now?.() ?? new Date(),
+          options.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+        );
+        store.ingest({ ...moved, observedAt: now() });
         wake();
         message = "Loaded a synthetic sample course.";
         break;

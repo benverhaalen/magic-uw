@@ -23,7 +23,7 @@
         {
           "value": "2026-09-29T04:59:00Z",
           "kind": "due",
-          "quote": "Due September 28 at 11:59 PM Central",
+          "quote": "due_at: 2026-09-29T04:59:00Z",
           "authority": "structured",
           "scopeConfirmed": true
         }
