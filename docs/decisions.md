@@ -114,6 +114,7 @@ Ben resolved the pricing/provider disagreement with: "nathaniels is the way" (th
 - **Disclosure flow accepted:** Ben chose "Adopt this flow (Recommended)": consent once per provider, visible selected context and a receipt per request, with a blocking preview for the first sharing of a new sensitive category or when the student enables **always preview**. Keep the exact outgoing payload inspectable. Code must enforce course/category grants and revocation on every request; ongoing consent does not permit new categories or recipients. Disclosure timing does not relax data minimization or identity scrubbing.
 - These answers resolve commercial direction, paid-provider access, Jev billing, and disclosure timing. Other research-branch choices, including runtime permissions and storage/MCP architecture, still need scoped integration review; this is not a blanket branch merge.
 - Existing local-model code stays documented honestly. Automatic local model setup is no longer a launch requirement. No runtime, payment, or account settings were changed by this documentation correction.
+- **Open conflict, website price:** on September 26 Aidan chose to publish the $10 one-time price from the `marketing/Pricing.dc.html` draft on the website (Pricing page and FAQ) instead of the $5 license above. Ben has not confirmed the change; resolve it with both before treating either price as final.
 
 ## Design foundation and handoff — September 26
 
