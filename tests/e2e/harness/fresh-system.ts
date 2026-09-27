@@ -77,6 +77,8 @@ export interface FreshSystem {
   page: Page;
   env: Record<string, string>;
   setScenario(scenario: Scenario): Promise<void>;
+  /** Uncaught renderer errors and console errors so far (also saved as renderer-errors.txt). */
+  errors(): string[];
   /** Tier 1: the fake clients' call records. */
   calls(): Promise<FakeCall[]>;
   /** Stops tracing and the app; returns the trace and video paths. Removes the temp root unless kept. */
@@ -222,6 +224,11 @@ export async function launchFreshSystem(options: FreshSystemOptions): Promise<Fr
   });
   await app.context().tracing.start({ screenshots: true, snapshots: true, title: options.name });
   const page = await app.firstWindow();
+  const rendererErrors: string[] = [];
+  page.on("pageerror", (error) => rendererErrors.push(`pageerror: ${error.message}`));
+  page.on("console", (message) => {
+    if (message.type() === "error") rendererErrors.push(`console: ${message.text().slice(0, 500)}`);
+  });
   await page.waitForLoadState("domcontentloaded");
 
   return {
@@ -243,6 +250,7 @@ export async function launchFreshSystem(options: FreshSystemOptions): Promise<Fr
         else if (!existsSync(exe)) await writeClient(bin, id, FAKE);
       }
     },
+    errors: () => [...rendererErrors],
     async calls() {
       if (!existsSync(join(bin, "calls.jsonl"))) return [];
       const text = await readFile(join(bin, "calls.jsonl"), "utf8");
@@ -254,6 +262,7 @@ export async function launchFreshSystem(options: FreshSystemOptions): Promise<Fr
       const video = page.video();
       await app.close().catch(() => undefined);
       const videoPath = video ? await video.path().catch(() => null) : null;
+      if (rendererErrors.length) await writeFile(join(artifacts, "renderer-errors.txt"), rendererErrors.join("\n"));
       for (const log of ["calls.jsonl", "guard.jsonl"])
         if (existsSync(join(bin, log))) await copyFile(join(bin, log), join(artifacts, log));
       // The temp root holds only files this launcher made (no links into the operator's home).

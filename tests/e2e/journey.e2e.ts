@@ -35,7 +35,7 @@ test("Tier 1 journey: fresh system, fake clients, the real UI", { timeout: 150_0
   const scenario: Scenario = structuredClone(SCENARIOS.signedIn);
   const sys = await launchFreshSystem({ name: "journey", scenario });
   const { page } = sys;
-  const steps = createSteps("journey", { onFail: () => page.locator("body").innerText() });
+  const steps = createSteps("journey", { onFail: async () => [...sys.errors(), await page.locator("body").innerText()].join("\n") });
   const before = await snapshotHome(sys.home);
   let courseId = "";
   try {
@@ -178,24 +178,63 @@ test("Tier 1 journey: fresh system, fake clients, the real UI", { timeout: 150_0
       );
     });
 
-    await steps.step("Cards with Claude Code: checked and stored; the UI stays responsive", async () => {
-      // Hold the model's answer open and use the UI meanwhile.
-      await sys.setScenario({ ...scenario, claude: { ...scenario.claude, delayMs: 2500 } });
-      await page.evaluate((c) => {
-        (window as any).__pack = (window as any).magic.execute(c);
-      }, { type: "pack", pack: "cards", scope: { courseId } });
+    const practice = () => page.getByRole("region", { name: "Practice", exact: true });
+    /** The result line under the Generate buttons: its badge (status) and text. */
+    const generated = async (pattern: RegExp) => {
+      const line = practice().locator(".backend-partial", { hasText: pattern }).first();
+      await line.waitFor({ timeout: 60_000 });
+      return { status: (await line.locator(".badge").innerText()).trim(), text: (await line.innerText()).replace(/\s+/g, " ").trim() };
+    };
+    const modelCalls = async (client: "claude" | "codex") =>
+      (await sys.calls()).filter((c) => c.client === client && (c.kind === "ask" || c.kind === "run")).length;
+
+    await steps.step("Workspace tools → Practice: the course select and the sample course", async () => {
+      await page.getByRole("button", { name: "Workspace tools", exact: true }).first().click();
+      await page.getByRole("tab", { name: "Practice", exact: true }).click();
+      const select = page.getByRole("combobox", { name: "Course" });
+      await select.waitFor();
+      await select.selectOption({ label: "Writing 101 · Sample" });
+      assert.equal(await select.evaluate((e) => (e as HTMLSelectElement).selectedOptions[0]?.textContent), "Writing 101 · Sample");
+      await practice().getByRole("button", { name: "Generate flashcards" }).waitFor({ timeout: 30_000 });
+    });
+
+    await steps.step("Generate flashcards with Claude Code; the workspace answers while it runs", async () => {
+      // Hold the model's answer open; meanwhile open Agenda, which the worker must answer.
+      await sys.setScenario({ ...scenario, claude: { ...scenario.claude, delayMs: 3000 } });
+      await practice().getByRole("button", { name: "Generate flashcards" }).click();
       await page.waitForTimeout(300);
       const started = performance.now();
-      await page.getByRole("button", { name: "Courses", exact: true }).first().click();
-      await page.getByText("Writing 101 · Sample").first().waitFor({ timeout: RESPONSIVE_BUDGET_MS * 4 });
+      await page.getByRole("tab", { name: "Agenda", exact: true }).click();
+      const agenda = page.getByRole("region", { name: "Daily agenda" });
+      await agenda.waitFor({ timeout: RESPONSIVE_BUDGET_MS * 4 });
+      await page.waitForFunction(() => {
+        const section = document.querySelector("section[aria-label='Daily agenda']");
+        return !!section && !section.textContent?.includes("Loading…");
+      }, undefined, { timeout: RESPONSIVE_BUDGET_MS * 4 });
       const uiMs = Math.round(performance.now() - started);
-      const cards = (await page.evaluate(() => (window as any).__pack)).pack;
+      const agendaDoneAt = Date.now();
+      assert.ok(uiMs <= RESPONSIVE_BUDGET_MS, `Agenda took ${uiMs} ms to load during generation (budget ${RESPONSIVE_BUDGET_MS})`);
+      // The model answer is held 3 s after the ask reaches the client: Agenda finished before it.
+      const ask = await (async () => {
+        for (let i = 0; i < 60; i++) {
+          const found = (await sys.calls()).find((c) => c.client === "claude" && c.kind === "ask");
+          if (found) return found;
+          await page.waitForTimeout(250);
+        }
+        return null;
+      })();
+      assert.ok(ask, "the model was asked");
+      assert.ok(agendaDoneAt < ask.at + 3000, "Agenda loaded while the generation was still running");
       await sys.setScenario(scenario);
-      assert.ok(uiMs <= RESPONSIVE_BUDGET_MS, `a UI action during generation took ${uiMs} ms (budget ${RESPONSIVE_BUDGET_MS})`);
-      assert.equal(cards.status, "done", `${cards.status}: ${cards.message}`);
-      assert.ok(cards.counts.accepted > 0, `accepted ${cards.counts.accepted} of ${cards.counts.generated}`);
-      assert.ok(cards.tokens.in > 0, "tokens reported by the client");
-      console.log(`  cards: ${cards.counts.accepted}/${cards.counts.generated} accepted, ${cards.tokens.in} in / ${cards.tokens.out} out tokens; UI action during the run: ${uiMs} ms`);
+      // Wait for the answer, then ask again: a cache hit proves the cards were checked and stored.
+      await page.waitForFunction(() => false, undefined, { timeout: 3500 }).catch(() => undefined);
+      await page.getByRole("tab", { name: "Practice", exact: true }).click();
+      await practice().getByRole("button", { name: "Generate flashcards" }).click();
+      const again = await generated(/cached/);
+      assert.equal(again.status, "done", again.text);
+      assert.match(again.text, /cached, 0 tokens$/);
+      assert.equal(await modelCalls("claude"), 1, "one model call in all");
+      console.log(`  Claude Code: cards stored (then: "${again.text}"); Agenda loaded during the run in ${uiMs} ms`);
     });
 
     await steps.step("Claude Code runs: instant-mode argv and the app's own folder", async () => {
@@ -206,33 +245,34 @@ test("Tier 1 journey: fresh system, fake clients, the real UI", { timeout: 150_0
       expectInstantCwd(calls.filter((c) => c.kind !== "version"), sys.userData);
     });
 
-    await steps.step("Codex: its agreement and choice; cards with instant-mode argv", async () => {
+    await steps.step("Codex: its agreement and choice; Generate flashcards; instant-mode argv", async () => {
       await execute(page, { type: "consent", value: { action: "grant", recipient: "codex", disclosureVersion: CONSENT_DISCLOSURE_VERSION } });
       await page.evaluate(() => (window as any).magic.clients.choose("codex"));
       // The select has no Codex option (see the todo test below), so this goes through the bridge.
       await allowProvider(page, "codex");
-      const cards = (await execute(page, { type: "pack", pack: "cards", scope: { courseId } })).pack;
-      assert.equal(cards.status, "done", `${cards.status}: ${cards.message}`);
-      assert.equal(cards.cached, false, "the cache is per route: Claude's answer isn't reused for Codex");
-      const detail = JSON.stringify({ counts: cards.counts, tokens: cards.tokens });
-      assert.ok(cards.counts.generated > 0 && cards.tokens.in > 0, detail);
-      // The fake writes the same sentences for both clients: the course-wide duplicate check drops
-      // what Claude's cards already cover instead of storing them twice.
-      assert.equal(cards.counts.droppedBy.near_duplicate ?? 0, cards.counts.generated - cards.counts.accepted, detail);
+      // Re-enter Practice so its result line starts empty.
+      await page.getByRole("tab", { name: "Agenda", exact: true }).click();
+      await page.getByRole("tab", { name: "Practice", exact: true }).click();
+      await practice().getByRole("button", { name: "Generate flashcards" }).click();
+      const result = await generated(/tokens/);
+      assert.equal(result.status, "done", result.text);
+      assert.match(result.text, /· [1-9]\d* tokens$/, "tokens spent, not a cache hit: the cache is per route");
       const calls = (await sys.calls()).filter((c) => c.client === "codex");
       const runs = calls.filter((c) => c.kind === "run");
       assert.equal(runs.length, 1, "one call");
       expectCodexInstantArgv(runs[0].argv, CODEX_LISTED_TOOLS);
       expectInstantCwd(calls.filter((c) => c.kind !== "version"), sys.userData);
+      console.log(`  Codex: "${result.text}"`);
     });
 
-    await steps.step("Codex: the same request again is a cache hit (0 tokens, no call)", async () => {
-      const before = (await sys.calls()).filter((c) => c.kind === "run").length;
-      const cards = (await execute(page, { type: "pack", pack: "cards", scope: { courseId } })).pack;
-      assert.equal(cards.status, "done");
-      assert.equal(cards.cached, true);
-      assert.deepEqual(cards.tokens, { in: 0, cached: 0, out: 0 });
-      assert.equal((await sys.calls()).filter((c) => c.kind === "run").length, before, "a cache hit calls no client");
+    await steps.step("Codex: Generate flashcards again is a cache hit (0 tokens, no call)", async () => {
+      await page.getByRole("tab", { name: "Agenda", exact: true }).click();
+      await page.getByRole("tab", { name: "Practice", exact: true }).click();
+      await practice().getByRole("button", { name: "Generate flashcards" }).click();
+      const result = await generated(/cached/);
+      assert.equal(result.status, "done");
+      assert.match(result.text, /cached, 0 tokens$/);
+      assert.equal(await modelCalls("codex"), 1, "a cache hit calls no client");
     });
 
     await steps.step("No client sign-in or interactive session was started", async () => {
