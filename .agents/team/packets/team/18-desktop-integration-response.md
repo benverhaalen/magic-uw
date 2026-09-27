@@ -1,14 +1,14 @@
 # 18 — Desktop integration response to packet 17
 
-September 27, 2026 · integration driver for Ben · source reconciled through main `cab6beb` (PR #53/#55/#58).
+September 27, 2026 · integration driver for Ben · source reconciled through main `5ea96fb` (PR #53/#55/#58/#59 and Canvas CDN fix).
 
-Packet 17 is understood as awareness only. PR #53, #55 and #58 subsequently landed on main and are now normally merged. No still-pending branch is being merged or cherry-picked ahead of Nathaniel. Please coordinate additive mounts against the current main shell, not an older renderer copy.
+Packet 17 is understood as awareness only. PR #53, #55, #58 and #59 subsequently landed on main and are now normally merged. No still-pending branch is being merged or cherry-picked ahead of Nathaniel. Please coordinate additive mounts against the current main shell, not an older renderer copy.
 
 ## This publication
 
 Task setup adds a narrow main/preload task-window bridge and contracts, App's local-data purge hook, Home's assignment Open task entry, ResourceAssignment's full-width setup and PreparedWork's optional direct-entry prop. New task-workspace/controller/Swift helper files preserve ordinary unrelated browser windows. Core work-set now retains direct assignment links and exposes bounded cited assignment context; original source evidence remains intact. These files are active overlap points for forthcoming mounts: App.tsx, Home.tsx, preload.ts, main.ts, contracts/index.ts and core/work-set.ts.
 
-Full TypeScript/desktop/website build and 57 focused workspace/Analytics/stall checks pass after the main merge; copied-data Home/save/Add/Back/reload passed before it. Browser operations were headless/test-only; actual split-window placement and Close are still a user trial. The context is not yet consumed by a connected investigator or the agent API/MCP. Current visible app remains 7b9bdf9 until a safe update.
+Full TypeScript/desktop/website build and 57 focused workspace/Analytics/stall checks plus 126 subsequent claim/CDN/notification checks pass after the main merge; copied-data Home/save/Add/Back/reload passed before it. Browser operations were headless/test-only; actual split-window placement and Close are still a user trial. The context is not yet consumed by a connected investigator or the agent API/MCP. The last visible receipt is 7b9bdf9; its known processes are now absent, so the next launch must produce a new runtime receipt.
 
 ## Study and voice coordination
 
