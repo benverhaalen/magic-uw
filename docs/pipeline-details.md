@@ -50,7 +50,11 @@ The useful older analogy is record linkage's three-way decision: link, do not li
 6. **State sample limits.** With zero errors in 300 independent representative auto-links, the one-sided 95% binomial upper error bound is `1 - 0.05^(1/300)`, about 0.994%; that does not establish 99.9% precision. Course clustering and distribution shift weaken the independence/representativeness assumptions. Report counts and coverage instead of an unsupported “near-perfect” claim.
 7. **Learn from corrections carefully.** Preserve confirmed/undone decisions, the reason if voluntarily supplied, evidence hash, question/model/rule version, and time. Silence is not approval; undo may reflect relevance or preference rather than false identity. Review those cases, sample auto-links and suppressed candidates too, retune offline, then check a fresh holdout. Do not silently lower thresholds because users accepted a selected subset of chips.
 
-Acceptance checks: wrong-course P1 never merges; no-match can abstain; multiple supporting documents survive; rejected links are not silently restored; changed evidence invalidates obsolete judgments; uncertain links remain inspectable. The ingestion coordinator implements exact same-course URL/ID links and user overrides. Fuzzy candidate generation, scoring, and threshold tuning remain unimplemented.
+Acceptance checks: wrong-course P1 never merges; no-match can abstain; multiple supporting documents survive; rejected links are not silently restored; changed evidence invalidates obsolete judgments; uncertain links remain inspectable. The ingestion coordinator implements exact same-course URL/ID links and user overrides. Fuzzy candidate generation and scoring now exist (`packages/core/src/fuzzy-links.ts`, rule `link.fuzzy.v1`), and synthetic multi-course tests cover these six checks.
+
+- **What exists:** code blocks candidates to the same account and course before scoring. Candidates are proposed `supports` links with an explainable score. There is no automatic band. Below the review cut point the linker abstains.
+- **Thresholds:** the review cut point (`minScore` 0.3) and feature weights are unevaluated parameters chosen on synthetic data. They are not the tuned or approved values described above.
+- **What does not exist:** labeled pairs, held-out evaluation, cut-point sweeps, and any precision, recall or review-burden figures. Threshold tuning remains unimplemented.
 
 ## Historical Canvas and academic reconciliation
 

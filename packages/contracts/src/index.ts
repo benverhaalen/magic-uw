@@ -507,6 +507,42 @@ export interface Link {
   status: "proposed" | "accepted" | "rejected";
   inputHash: string;
 }
+/** Explainable lexical features for a suggested (never exact) supporting-material link. */
+export interface LinkCandidateFeatures {
+  titleOverlap: number;
+  sharedTitleTerms: string[];
+  textSimilarity: number;
+  reference: number;
+  referenceBy: ("assignment_names_target" | "target_names_assignment")[];
+  sameModule: number;
+  sharedModuleIds: string[];
+  /** Null when either side lacks a usable date: unknown, not zero. */
+  dateProximity: number | null;
+  numberConflict: boolean;
+}
+export interface LinkCandidate {
+  linkId: string;
+  targetId: string;
+  targetTitle: string;
+  targetKind: Resource["kind"];
+  score: number;
+  rank: number;
+  match: "suggested";
+  status: Link["status"];
+  reason: string;
+  features: LinkCandidateFeatures;
+}
+export interface LinkCandidateListing {
+  assignmentId: string;
+  version: string;
+  minScore: number;
+  considered: number;
+  /** True when no live (non-rejected) suggestion met the threshold. */
+  abstained: boolean;
+  topScore: number | null;
+  runnerUpMargin: number | null;
+  candidates: LinkCandidate[];
+}
 export interface Job {
   id: string;
   kind: string;
@@ -777,6 +813,13 @@ export const commandSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("enrich"), id }).strict(),
   z
     .object({
+      type: z.literal("link-candidates"),
+      id,
+      minScore: z.number().min(0).max(1).optional(),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("link"),
       id,
       status: z.enum(["accepted", "rejected"]),
@@ -795,6 +838,7 @@ export type CommandResult = {
   snapshot: Snapshot;
   manifest?: ContextManifest;
   message?: string;
+  linkCandidates?: LinkCandidateListing;
 };
 export const localQuestionSchema = z
   .object({

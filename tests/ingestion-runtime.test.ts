@@ -342,7 +342,11 @@ test("runtime refresh saves scoped evidence, compiles supporting context, and ke
         );
         assert.equal(core.context(unrelated.id, "local").payload.text, "");
         assert.equal(store.receipts().length, 0);
-        assert.equal(store.judgments().length, 0);
+        // No model judgment without a gateway; only local lexical link-suggestion records exist.
+        assert.equal(
+          store.judgments().filter((j) => j.model !== "local-lexical").length,
+          0,
+        );
         assert.equal(core.snapshot().fixtureMode, false);
       },
     );

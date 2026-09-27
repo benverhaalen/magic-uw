@@ -1034,7 +1034,10 @@ export function createStore(path: string): Store {
         db.prepare(
           `INSERT INTO links (id, from_id, to_id, type, reason, status, input_hash, target_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(id) DO UPDATE SET reason = excluded.reason, input_hash = excluded.input_hash, target_hash = excluded.target_hash,
-            status = CASE WHEN links.status IN ('accepted', 'rejected') THEN links.status ELSE excluded.status END`,
+            status = CASE WHEN links.status = 'rejected' THEN links.status
+              WHEN links.status = 'accepted' AND links.input_hash = excluded.input_hash AND links.target_hash = excluded.target_hash
+                THEN links.status
+              ELSE excluded.status END`,
         ).run(
           link.id,
           link.fromId,

@@ -36,7 +36,9 @@ Deleting local data removes coursework/history, planning, cached documents, feed
 
 Only a complete successful scope can establish removal. Malformed records are isolated; restricted, unpublished, stale, empty, partial, and unavailable states remain distinct. Excluded courses remain visible with reasons and cannot enter enrichment or MCP output. An inaccessible course cannot be reopened by a local inclusion override.
 
-Exact URLs within one account/course connect supporting material; exact calendar assignment IDs connect independent date claims. Source changes invalidate stale links. User rejection persists. Fuzzy matching and general assignment-to-module inference remain future work: an empty assignment with no explicit relation is not silently linked to arbitrary course content.
+Exact URLs within one account/course connect supporting material; exact calendar assignment IDs connect independent date claims. Source changes invalidate stale links. User rejection persists.
+
+After each full sync, local lexical scoring proposes supporting material for assignments. It uses title/text overlap, name references, module co-location and date proximity within the same account and course. Suggestions are `proposed` links only; the student accepts or rejects them. A confirmation made on earlier evidence returns to proposed when either side changes. Thresholds are untuned parameters. Suggestions, even accepted ones, do not enter hosted AI or MCP context, which still follows exact links only. The pass is incremental and capped per sync; an empty or generic assignment abstains rather than linking to arbitrary content. There is no labeled evaluation and no measured precision or recall. General assignment-to-module inference remains future work.
 
 The deadline resolver separates due, lock, and event claims, preserves conflicts, and labels conservative planning dates. Prose extraction, literal-span validation, title-date inference, and the full authority hierarchy are not implemented. MCP answers are source passages with citations; they make no language-model call or claim to solve the question.
 
