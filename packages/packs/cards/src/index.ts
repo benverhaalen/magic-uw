@@ -111,6 +111,7 @@ export const cardsPack = definePack<GenerationInput, CardsOutput>({
   id: "cards",
   version: "v2",
   tier: "pass",
+  escalate: false, // items are checked one by one: failures are dropped, never escalated to the strong model
   system:
     "You write flashcards for a university student from their own course passages: term cards (a key term and its definition as the course states it) and cloze cards (a sentence from the passage and the key words to blank out). One idea per card; keep backs short. For a cloze card, copy the sentence exactly as the passage has it, quote that sentence (or a longer span containing it), and blank a key term, name, number or form: never a function word, never most of the sentence. Return only JSON matching the schema.",
   template: (i) => `${sharedRules(i, "cards")}\n\nWrite ${i.count} flashcards, mixing term and cloze cards.`,

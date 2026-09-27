@@ -1116,6 +1116,13 @@ export interface Store {
    * number of items removed. Not for failed or empty reads, which must never erase coursework.
    */
   removeSource(sourceId: string): number;
+  /**
+   * sync-cap. Ends one source's read after a sync: its progress phase becomes `phase` (never left
+   * "reading"). With `done`, an ok/partial source that did not finish is shown as read (ok and
+   * complete) and `done.diagnostic` is appended, so the data still records that the read was cut
+   * short. Resources are never touched.
+   */
+  settleSource?(sourceId: string, value: { phase: string; done?: { at: string; diagnostic: CaptureDiagnostic } }): void;
   resources(search?: string): Resource[];
   resource(id: string): Resource | undefined;
   /**
@@ -2493,6 +2500,19 @@ export interface SourceInvestigationResult {
   client: "claude" | "codex";
   egressReceiptIds?: string[];
 }
+/** owner: claude-chat. The chat session's answer: text and sources code checked, or a setup notice. */
+export type ClaudeChatOutcome =
+  | {
+      status: "answer";
+      text: string;
+      sources: { id: string; title: string; course: string; url: string | null }[];
+      tools: string[];
+      cards: { courseId: string; resourceIds: string[]; status: string; message: string } | null;
+      ms: number;
+      turn: number;
+      usage: { in: number; cached: number; out: number };
+    }
+  | { status: "setup"; reason: string };
 export interface AppBridge {
   /** One student-opened, read-only investigation. Operation ID permits Stop. */
   investigateAssignment?(request: { operationId: string; assignmentId: string }): Promise<SourceInvestigationResult>;
@@ -2500,6 +2520,14 @@ export interface AppBridge {
   /** Shared typed/voice read and navigation path; main owns the action restriction. */
   intentRun?(request: { operationId: string; text: string; context?: IntentCommand["context"] }): Promise<IntentCommandResult>;
   cancelIntent?(operationId: string): Promise<void>;
+  /** owner: claude-chat. A chat question for the persistent Claude Code session; text streams through `onChatDelta`. */
+  chatAsk?(request: { operationId: string; text: string }): Promise<ClaudeChatOutcome>;
+  cancelChat?(operationId: string): Promise<void>;
+  onChatDelta?(listener: (operationId: string, delta: { text?: string; tool?: string }) => void): () => void;
+  /** owner: claude-chat. Opens the student's Claude Code in a terminal on the app's tools (voice via /voice). */
+  launchAgent?(): Promise<{ status: "opened" } | { status: "setup"; reason: string }>;
+  /** owner: claude-chat. The agent's open_page and study tools navigate the window. */
+  onAgentNavigate?(listener: (target: { page: string; courseId?: string; accountScope?: string; resourceId?: string; action?: string }) => void): () => void;
   /** owner: accounts. Sign-in and purchase status; absent in builds without the bridge. */
   account?: AccountBridge;
   execute(command: ResultOnlyCommand): Promise<ResultOnlyCommandResult>;

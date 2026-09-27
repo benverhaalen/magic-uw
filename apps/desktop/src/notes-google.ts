@@ -1,6 +1,6 @@
 /**
  * owner: notes. Google Docs sync, main-process side: OAuth 2.0 for installed apps with PKCE and
- * a loopback redirect (no client secret; the client ID comes from MAGIC_GOOGLE_CLIENT_ID), the
+ * a loopback redirect (client ID from MAGIC_GOOGLE_CLIENT_ID; a Desktop client's secret, if any, from MAGIC_GOOGLE_CLIENT_SECRET), the
  * `drive.file` scope only, and a proxy that performs the worker's Drive requests. Tokens live in
  * the encrypted vault (Electron safeStorage) and never leave main; the worker sees only Drive
  * responses. Purge clears the vault, so it removes the token too.
@@ -51,6 +51,8 @@ export function checkedDriveUrl(value: string): string {
 
 export interface GoogleNotesAuthOptions {
   clientId: string | undefined;
+  /** Google "Desktop app" clients reject the code exchange without their (non-confidential) secret. From env, never committed. */
+  clientSecret?: string;
   vault: { get(key: string): Promise<string | undefined>; set(key: string, value: string): Promise<void>; deletePrefix(prefix: string): Promise<void> };
   openExternal(url: string): Promise<void>;
   fetch?: typeof fetch;
@@ -60,6 +62,7 @@ export function createGoogleNotesAuth(options: GoogleNotesAuthOptions) {
   const http = options.fetch ?? fetch;
   const now = options.now ?? Date.now;
   let pending: Promise<boolean> | null = null;
+  const secret = (): Record<string, string> => (options.clientSecret ? { client_secret: options.clientSecret } : {});
   async function read(): Promise<Saved | null> {
     const raw = await options.vault.get(VAULT_KEY);
     if (!raw) return null;
@@ -124,7 +127,7 @@ export function createGoogleNotesAuth(options: GoogleNotesAuthOptions) {
           options.openExternal(auth.href).catch(reject);
         });
       });
-      const token = await exchange({ client_id: clientId, code, code_verifier: verifier, redirect_uri: redirect, grant_type: "authorization_code" });
+      const token = await exchange({ client_id: clientId, ...secret(), code, code_verifier: verifier, redirect_uri: redirect, grant_type: "authorization_code" });
       if (!token.refresh_token) throw new Error("Google did not return a refresh token.");
       if (token.scope && !token.scope.split(" ").includes(GOOGLE_SCOPE)) throw new Error("Google did not grant the Drive file scope.");
       await options.vault.set(VAULT_KEY, JSON.stringify({ refresh: token.refresh_token, access: token.access_token, expiresAt: now() + token.expires_in * 1000 }));
@@ -137,7 +140,7 @@ export function createGoogleNotesAuth(options: GoogleNotesAuthOptions) {
     const current = await read();
     if (!current || !options.clientId) return null;
     if (current.access && current.expiresAt - 60_000 > now()) return current.access;
-    const token = await exchange({ client_id: options.clientId, refresh_token: current.refresh, grant_type: "refresh_token" });
+    const token = await exchange({ client_id: options.clientId, ...secret(), refresh_token: current.refresh, grant_type: "refresh_token" });
     await options.vault.set(VAULT_KEY, JSON.stringify({ ...current, access: token.access_token, expiresAt: now() + token.expires_in * 1000 }));
     return token.access_token;
   }

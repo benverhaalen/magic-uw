@@ -133,7 +133,7 @@ test("client tiles keep the fixed order and fill an omitted client as not instal
   const ordered = orderedClients([
     { id: "codex", installed: true, version: "0.156.1", profileReady: false, signedIn: false, isolated: true },
   ]);
-  assert.deepEqual(ordered.map((c) => c.id), ["claude", "codex", "gemini"]);
+  assert.deepEqual(ordered.map((c) => c.id), ["claude", "codex"]);
   assert.equal(ordered[0].installed, false);
   assert.equal(ordered[1].version, "0.156.1");
 });
@@ -146,7 +146,6 @@ test("the preview fixture reports its sample clients and signs in only after the
     [
       ["claude", true, "2.1.283"],
       ["codex", true, "0.156.1"],
-      ["gemini", false, undefined],
     ],
   );
   assert.equal((await clients.authStatus("claude")).signedIn, false);

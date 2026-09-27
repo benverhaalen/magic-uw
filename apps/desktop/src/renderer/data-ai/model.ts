@@ -6,11 +6,11 @@
 import type { ClientsBridge, Command, PrivacyPreferences } from "@magic/contracts";
 import { resetClientHealthCache } from "../ai-choice/answering";
 
-export type ShareKey = "shareCourseText" | "shareStudentWork" | "shareGrades" | "shareComments" | "shareCommunications";
-export const SHARE_KEYS: readonly ShareKey[] = ["shareCourseText", "shareStudentWork", "shareGrades", "shareComments", "shareCommunications"];
+export type ShareKey = "shareCourseText" | "shareStudentWork" | "shareGrades" | "shareComments" | "shareCommunications" | "sharePlanning" | "shareAudit";
+export const SHARE_KEYS: readonly ShareKey[] = ["shareCourseText", "shareStudentWork", "shareGrades", "shareComments", "shareCommunications", "sharePlanning", "shareAudit"];
 
 export interface ShareRow {
-  id: "materials" | "work" | "messages";
+  id: "materials" | "work" | "messages" | "degree";
   label: string;
   /** What is sent, to whom, and why it helps. */
   line: string;
@@ -36,11 +36,18 @@ export const SHARE_ROWS: readonly ShareRow[] = [
     line: "Announcements and email previews go to your AI and the shared labels service, so what's urgent shows first.",
     keys: ["shareCommunications"],
   },
+  // owner: claude-chat (decisions.md, 2026-09-27). Off by default; holds are never shared.
+  {
+    id: "degree",
+    label: "Degree plan and audit",
+    line: "Your degree audit (DARS), course history and planned courses go to your AI when you ask about what to take next.",
+    keys: ["sharePlanning", "shareAudit"],
+  },
 ];
 
 export const PLANNING_ROW = {
-  label: "Planning",
-  line: "Enrollment and your degree audit stay on this computer. They are never shared.",
+  label: "Holds",
+  line: "Holds on your account stay on this computer. They are never shared.",
 } as const;
 
 export const JEV_COPY = {

@@ -20,17 +20,11 @@ import {
   type AiChoice,
 } from "./answering";
 
-const HOSTED: readonly ClientId[] = ["claude", "codex", "gemini"];
+const HOSTED: readonly ClientId[] = ["claude", "codex"];
 
-/** Which choices the row shows: Gemini only while chosen, this computer only once found. */
-export function shownChoices(current: AiChoice, localFound: boolean): AiChoice[] {
-  return [
-    "claude",
-    "codex",
-    ...(current === "gemini" ? ["gemini" as const] : []),
-    ...(localFound || current === "local" ? ["local" as const] : []),
-    "off",
-  ];
+/** Which choices the row shows: Claude Code, Codex or Off. Gemini and a local model are not offered. */
+export function shownChoices(_current: AiChoice, _localFound: boolean): AiChoice[] {
+  return ["claude", "codex", "off"];
 }
 
 /** The one Advanced toggle: a separate sign-in (the app-owned profile) instead of the student's own. */

@@ -118,7 +118,8 @@ import type { IntentCommand, IntentCommandResult } from "@magic/contracts";
 import type { IntentHost } from "./intent/types";
 // end owner: intent
 export interface CoreOptions {
-  fixture: CaptureBatch;
+  /** The synthetic sample: one batch, or one batch per sample course. */
+  fixture: CaptureBatch | CaptureBatch[];
   courseExtractor?: {
     version?: string;
     extract(
@@ -869,14 +870,16 @@ export function createCore(store: Store, options: CoreOptions) {
           throw new Error(
             "Use a separate workspace for sample data. Your real sources are already connected.",
           );
-        const moved = rebaseFixture(
-          options.fixture,
-          options.now?.() ?? new Date(),
-          options.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
-        );
         store.bumpGeneration?.(); // fix/sync-events
-        store.ingest({ ...moved, observedAt: now() });
-        saved(options.fixture.source.id); // owner: T05b
+        for (const batch of Array.isArray(options.fixture) ? options.fixture : [options.fixture]) {
+          const moved = rebaseFixture(
+            batch,
+            options.now?.() ?? new Date(),
+            options.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+          );
+          store.ingest({ ...moved, observedAt: now() });
+          saved(batch.source.id); // owner: T05b
+        }
         linkExactEvidence(store);
         wake();
         message = "Loaded a synthetic sample course.";

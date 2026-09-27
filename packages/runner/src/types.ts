@@ -48,6 +48,8 @@ export interface RunRequest<T> {
   /** Code validates every output against this, whatever the provider promised. */
   schema: z.ZodType<T>;
   tier: Tier;
+  /** false: a failed check retries once at the same tier and never escalates to the strong model. */
+  escalate?: boolean;
   budget?: RunBudget;
   signal?: AbortSignal;
   lane?: Lane;

@@ -19,6 +19,8 @@ export interface RefreshOutcome {
   inventoryChanged?: boolean;
   /** fix/sync-events. From a manual check: courses it found that need a course read (new or re-included). */
   courses?: string[];
+  /** sync-cap. The run's time cap stopped this read: what was read is kept; it is not retried. */
+  capped?: boolean;
 }
 export interface RefreshRun {
   startedAt: string;
@@ -30,6 +32,8 @@ export interface RefreshRun {
   warmCourses?: string[];
   probes?: Array<"hot" | "content">;
   // end owner: T33
+  /** sync-cap. The run reached its wall-clock cap and ended there, keeping what it had read. */
+  capped?: boolean;
 }
 /** owner: T33. A per-course probe: courseId → signature (D37). */
 export interface CourseProbe {
@@ -76,6 +80,14 @@ export interface RefreshDependencies {
    * each. Returns the courses that need a course read (a course new to the inventory).
    */
   manual?(signal: AbortSignal): Promise<RefreshOutcome>;
+  /**
+   * sync-cap. A hard wall-clock cap on every run, in milliseconds. When it passes, no further
+   * request starts, what was read is kept, and the run finishes normally (baselines advance, so
+   * the next run probes instead of reading everything again).
+   */
+  capMs?: number;
+  /** sync-cap. Called as every run ends (capped, normal or failed), before `record`. */
+  settle?(capped: boolean): void;
 }
 /** fix/sync-events. What the per-course coordinator keeps between launches: hashes and times only. */
 export interface RefreshSnapshot {
@@ -183,6 +195,12 @@ export function movedCourses(
     .filter((c) => c !== "account" && baseline?.[c] !== current[c])
     .sort();
 }
+/** sync-cap. Runs one read; once the run's cap has passed it answers `fallback` instead. */
+type Step = <T>(call: () => Promise<T>, fallback: T) => Promise<T>;
+/** sync-cap. A probe the cap stopped: nothing seen, nothing to compare. */
+const cappedProbe = (): CourseProbe => ({ needsSignIn: false, courses: {}, complete: false });
+/** sync-cap. A read the cap stopped: kept as read (partial in the data), and not retried early. */
+const cappedRead = (): RefreshOutcome => ({ needsSignIn: false, complete: false, retryNeeded: false, capped: true });
 export function createRefreshCoordinator(deps: RefreshDependencies) {
   const now = deps.now ?? (() => new Date());
   const random = deps.random ?? Math.random;
@@ -298,6 +316,7 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
     feedsChanged: boolean,
     signal: AbortSignal,
     result: RefreshRun,
+    step: Step,
   ): Promise<void> {
     const probes: Array<"hot" | "content"> = [];
     result.probes = probes;
@@ -313,7 +332,7 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
       !contentBaseline ||
       date.getTime() - fullAt >= cadenceMinutes.backstop * 60_000;
     probes.push("hot");
-    const hot = await deps.hot!(signal);
+    const hot = await step(() => deps.hot!(signal), cappedProbe());
     if (hot.needsSignIn) {
       result.action = "feeds_only";
       result.needsSignIn = true;
@@ -328,7 +347,7 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
     if (contentDue) {
       probes.push("content");
       focusRequested = false;
-      content = comparableContent(await deps.content!(signal));
+      content = comparableContent(await step(() => deps.content!(signal), cappedProbe()));
       if (content.needsSignIn) {
         result.action = "feeds_only";
         result.needsSignIn = true;
@@ -337,7 +356,7 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
       contentAt = now().getTime();
     }
     if (needFull) {
-      const full = await deps.full(signal);
+      const full = await step(() => deps.full(signal), cappedRead());
       result.needsSignIn = full.needsSignIn;
       result.action = "refreshed";
       if (!full.needsSignIn) {
@@ -346,7 +365,7 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
         // The first connect knows no course before its read: probe once after it instead, so the
         // first background run doesn't warm-read every course again.
         if (!Object.keys(contentBaseline).length) {
-          const after = comparableContent(await deps.content!(signal));
+          const after = comparableContent(await step(() => deps.content!(signal), cappedProbe()));
           if (!after.needsSignIn) contentBaseline = after.courses;
           else {
             result.needsSignIn = true;
@@ -378,7 +397,7 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
     for (const [course, at] of retryAt)
       if (at <= date.getTime() || trigger === "manual") moved.add(course);
     if (trigger === "manual" && deps.manual) {
-      const checked = await deps.manual(signal);
+      const checked = await step(() => deps.manual!(signal), { needsSignIn: false, courses: [] });
       if (checked.needsSignIn) {
         result.action = "feeds_only";
         result.needsSignIn = true;
@@ -403,12 +422,12 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
     }
     const courses = [...moved].sort();
     result.warmCourses = courses;
-    const warm = await deps.warm!(courses, signal);
+    const warm = await step(() => deps.warm!(courses, signal), cappedRead());
     result.needsSignIn = warm.needsSignIn;
     result.action = "refreshed";
     if (warm.needsSignIn) return;
     if (warm.inventoryChanged) {
-      const full = await deps.full(signal);
+      const full = await step(() => deps.full(signal), cappedRead());
       result.needsSignIn = full.needsSignIn;
       // Unread: the baselines stay behind, so the next probe sees the same move again.
       if (full.needsSignIn || (full.complete === false && full.retryNeeded !== false)) return;
@@ -447,8 +466,23 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
     const allowed = (read: ReadClass) => !(away && cadenceTable[read].signedIn);
     // A present run (including a manual one) reads everything, so nothing is left to catch up.
     if (!away) heldWhileAway = false;
-    controller = new AbortController();
-    const signal = controller.signal;
+    const own = (controller = new AbortController());
+    // sync-cap: the run's hard wall-clock cap. Every read gets the capped signal; the cap stops new
+    // requests and in-flight ones, and each stopped step answers as "read what it could".
+    const cap = deps.capMs ? new AbortController() : undefined;
+    const capTimer = cap
+      ? setTimeout(() => cap.abort(new DOMException("Sync time cap reached", "TimeoutError")), deps.capMs)
+      : undefined;
+    const signal = cap ? AbortSignal.any([own.signal, cap.signal]) : own.signal;
+    const step: Step = async (call, fallback) => {
+      if (cap?.signal.aborted && !own.signal.aborted) return fallback;
+      try {
+        return await call();
+      } catch (error) {
+        if (cap?.signal.aborted && !own.signal.aborted) return fallback;
+        throw error;
+      }
+    };
     const result: RefreshRun = {
       startedAt: date.toISOString(),
       finishedAt: date.toISOString(),
@@ -465,7 +499,7 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
         try {
           feedsChanged = (await deps.feeds(signal)).changed;
         } catch {
-          signal.throwIfAborted();
+          own.signal.throwIfAborted(); // sync-cap: a capped feed read is not a cancellation
         }
       // owner: T30. Graph rides the same run, presence-gated like the Canvas reads.
       if (deps.graph) {
@@ -473,7 +507,7 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
           try {
             await deps.graph(signal, trigger);
           } catch {
-            signal.throwIfAborted();
+            own.signal.throwIfAborted();
           }
         else heldWhileAway = true;
       }
@@ -489,7 +523,7 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
         // owner: T33
         attemptedCanvas = true;
         try {
-          await perCourseCanvas(trigger, date, feedsChanged, signal, result);
+          await perCourseCanvas(trigger, date, feedsChanged, signal, result, step);
         } finally {
           persist(); // fix/sync-events
         }
@@ -497,7 +531,7 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
       } else {
         attemptedCanvas = true;
         const probe =
-          trigger === "manual" ? undefined : await deps.probe(signal);
+          trigger === "manual" ? undefined : await step(() => deps.probe(signal), { needsSignIn: false, signature });
         if (probe?.needsSignIn) {
           result.action = "feeds_only";
           result.needsSignIn = true;
@@ -507,7 +541,7 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
           !signature ||
           probe?.signature !== signature
         ) {
-          const full = await deps.full(signal);
+          const full = await step(() => deps.full(signal), cappedRead());
           result.needsSignIn = full.needsSignIn;
           result.action = "refreshed";
           signature =
@@ -522,15 +556,21 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
       else if (result.action === "refreshed") retryCanvasAt = 0;
       // Public sources have their own six-hour TTL even when Canvas hasn't changed.
       if (allowed("external"))
-        await deps.external(signal, trigger === "manual");
+        await step(() => deps.external(signal, trigger === "manual"), undefined);
       else heldWhileAway = true;
     } catch {
       // Errors and cancellation never become a successful empty read.
       result.action = "failed";
     } finally {
+      clearTimeout(capTimer);
+      if (cap?.signal.aborted && !own.signal.aborted) result.capped = true;
       result.finishedAt = now().toISOString();
       controller = undefined;
       schedule();
+      // sync-cap: every run ends its sources' reads (none is left "reading"), however it ended.
+      try {
+        deps.settle?.(result.capped === true);
+      } catch {}
       await deps.record(result);
     }
     return result;

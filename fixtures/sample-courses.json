@@ -1,0 +1,1679 @@
+[
+  {
+    "source": {
+      "id": "sample-math240",
+      "label": "MATH 240 · synthetic sample",
+      "kind": "fixture",
+      "accountScope": "synthetic",
+      "courseId": "math-240",
+      "scope": "assignments"
+    },
+    "observedAt": "2026-09-27T14:00:00Z",
+    "complete": true,
+    "status": "ok",
+    "resources": [
+      {
+        "courseId": "math-240",
+        "courseName": "MATH 240: Introduction to Discrete Mathematics",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "math240-course",
+        "kind": "course",
+        "title": "MATH 240: Introduction to Discrete Mathematics",
+        "url": "https://example.org/math240/home",
+        "text": "MATH 240 Introduction to Discrete Mathematics (synthetic sample course). Logic, proofs, induction, sets, functions, counting and graphs. Lectures Monday, Wednesday and Friday at 11:00 AM in Room 210 Sample Hall.",
+        "course": {
+          "courseCode": "MATH 240",
+          "termName": "Fall 2026",
+          "workflowState": "available",
+          "instructors": [
+            "Prof. Lena Marsh (fictional)"
+          ],
+          "selection": {
+            "score": 1,
+            "included": true,
+            "reasons": [
+              "Synthetic sample course"
+            ]
+          }
+        }
+      },
+      {
+        "courseId": "math-240",
+        "courseName": "MATH 240: Introduction to Discrete Mathematics",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "math240-g-ps",
+        "kind": "material",
+        "title": "Problem sets",
+        "url": "https://example.org/math240/assignments/groups/math240-g-ps",
+        "text": "",
+        "assignmentGroup": {
+          "weight": 30,
+          "position": 1
+        }
+      },
+      {
+        "courseId": "math-240",
+        "courseName": "MATH 240: Introduction to Discrete Mathematics",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "math240-g-quiz",
+        "kind": "material",
+        "title": "Quizzes",
+        "url": "https://example.org/math240/assignments/groups/math240-g-quiz",
+        "text": "",
+        "assignmentGroup": {
+          "weight": 15,
+          "position": 2
+        }
+      },
+      {
+        "courseId": "math-240",
+        "courseName": "MATH 240: Introduction to Discrete Mathematics",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "math240-g-mid1",
+        "kind": "material",
+        "title": "Midterm 1",
+        "url": "https://example.org/math240/assignments/groups/math240-g-mid1",
+        "text": "",
+        "assignmentGroup": {
+          "weight": 15,
+          "position": 3
+        }
+      },
+      {
+        "courseId": "math-240",
+        "courseName": "MATH 240: Introduction to Discrete Mathematics",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "math240-g-mid2",
+        "kind": "material",
+        "title": "Midterm 2",
+        "url": "https://example.org/math240/assignments/groups/math240-g-mid2",
+        "text": "",
+        "assignmentGroup": {
+          "weight": 15,
+          "position": 4
+        }
+      },
+      {
+        "courseId": "math-240",
+        "courseName": "MATH 240: Introduction to Discrete Mathematics",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "math240-g-final",
+        "kind": "material",
+        "title": "Final exam",
+        "url": "https://example.org/math240/assignments/groups/math240-g-final",
+        "text": "",
+        "assignmentGroup": {
+          "weight": 25,
+          "position": 5
+        }
+      },
+      {
+        "courseId": "math-240",
+        "courseName": "MATH 240: Introduction to Discrete Mathematics",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "syllabus",
+        "kind": "material",
+        "title": "Syllabus",
+        "url": "https://example.org/math240/materials/syllabus",
+        "text": "MATH 240 Introduction to Discrete Mathematics: Syllabus (synthetic sample)\nInstructor: Prof. Lena Marsh (fictional). Office hours Tuesday 2:00 to 3:30 PM in Room 318 Sample Hall.\nGrading: Problem sets 30%, Quizzes 15%, Midterm 1 15%, Midterm 2 15%, Final exam 25%.\nLetter grades: A 93 to 100, AB 88 to 92.9, B 83 to 87.9, BC 78 to 82.9, C 70 to 77.9, D 60 to 69.9, F below 60.\nQuiz 2 covers Lecture 5 and Lecture 6: propositional logic, predicates and quantifiers.\nMidterm 1 covers Lectures 5 through 8: logic, quantifiers, mathematical induction and strong induction.\nMidterm 1 is a 50-minute exam with short proofs and true or false questions. It is held in Room 210 Sample Hall.\nProblem sets are due Tuesdays at 11:59 PM on the course site. You may discuss problems with classmates, but you must write your own solutions.",
+        "contentType": "text/plain",
+        "updatedAt": "2026-09-21T13:00:00Z"
+      },
+      {
+        "courseId": "math-240",
+        "courseName": "MATH 240: Introduction to Discrete Mathematics",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "math240-l5",
+        "kind": "material",
+        "title": "Lecture 5 notes: Propositional logic",
+        "url": "https://example.org/math240/materials/math240-l5",
+        "text": "Lecture 5: Propositional logic\nPropositions\nA proposition is a declarative sentence that is either true or false, but not both. \"7 is prime\" is a proposition; \"Is 7 prime?\" is not.\nConnectives\nThe connectives are negation (not p), conjunction (p and q), disjunction (p or q), the conditional (if p then q) and the biconditional (p if and only if q).\nThe conditional p -> q is false only when p is true and q is false. When p is false, the conditional is vacuously true.\nConverse, inverse and contrapositive\nThe contrapositive of p -> q is not q -> not p, and it is logically equivalent to p -> q. The converse q -> p and the inverse not p -> not q are not equivalent to the original conditional.\nTruth tables and equivalence\nTwo compound propositions are logically equivalent when they have the same truth value in every row of their truth table. De Morgan's laws state that not (p and q) is equivalent to (not p) or (not q), and not (p or q) is equivalent to (not p) and (not q).\nA tautology is true in every row; a contradiction is false in every row.",
+        "contentType": "text/plain",
+        "updatedAt": "2026-09-14T17:10:00Z"
+      },
+      {
+        "courseId": "math-240",
+        "courseName": "MATH 240: Introduction to Discrete Mathematics",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "math240-l6",
+        "kind": "material",
+        "title": "Lecture 6 notes: Predicates and quantifiers",
+        "url": "https://example.org/math240/materials/math240-l6",
+        "text": "Lecture 6: Predicates and quantifiers\nPredicates\nA predicate P(x) becomes a proposition once a value from the domain is substituted for x. The domain must always be stated.\nThe universal quantifier\nThe statement \"for all x, P(x)\" is true when P(x) is true for every x in the domain. A single counterexample shows that a universal statement is false.\nThe existential quantifier\nThe statement \"there exists x such that P(x)\" is true when P(x) is true for at least one x in the domain.\nNegating quantifiers\nThe negation of \"for all x, P(x)\" is \"there exists x such that not P(x)\". The negation of \"there exists x such that P(x)\" is \"for all x, not P(x)\".\nNested quantifiers\nThe order of nested quantifiers matters. \"For every x there exists y with x + y = 0\" is true over the integers, but \"there exists y such that for every x, x + y = 0\" is false.",
+        "contentType": "text/plain",
+        "updatedAt": "2026-09-16T17:10:00Z"
+      },
+      {
+        "courseId": "math-240",
+        "courseName": "MATH 240: Introduction to Discrete Mathematics",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "math240-l7-slides",
+        "kind": "material",
+        "title": "Lecture 7 slides: Mathematical induction",
+        "url": "https://example.org/math240/materials/math240-l7-slides",
+        "text": "Lecture 7: Mathematical induction\nThe principle of induction\nTo prove that P(n) holds for every integer n >= 1, prove the base case P(1) and the inductive step: for every k >= 1, if P(k) is true then P(k + 1) is true.\nThe assumption that P(k) is true is called the inductive hypothesis. The inductive step must use it.\nWorked example: a sum formula\nClaim: 1 + 2 + ... + n = n(n + 1)/2 for every n >= 1. Base case: when n = 1 both sides equal 1. Inductive step: assume 1 + 2 + ... + k = k(k + 1)/2. Adding k + 1 to both sides gives k(k + 1)/2 + (k + 1) = (k + 1)(k + 2)/2, which is the formula for n = k + 1.\nWorked example: divisibility\nClaim: 3 divides n^3 - n for every n >= 0. Base case: 0^3 - 0 = 0 is divisible by 3. Inductive step: (k + 1)^3 - (k + 1) = (k^3 - k) + 3(k^2 + k), and both terms are divisible by 3.\nCommon mistakes\nForgetting the base case, assuming the statement you are trying to prove for k + 1, and proving the step only for one particular k are the three most common errors on induction proofs.",
+        "contentType": "text/plain",
+        "updatedAt": "2026-09-21T17:10:00Z"
+      },
+      {
+        "courseId": "math-240",
+        "courseName": "MATH 240: Introduction to Discrete Mathematics",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "math240-reading4",
+        "kind": "material",
+        "title": "Reading 4: Strong induction and well-ordering",
+        "url": "https://example.org/math240/materials/math240-reading4",
+        "text": "Reading 4: Strong induction and well-ordering\nStrong induction\nIn strong induction the inductive step assumes P(1), P(2), ..., P(k) are all true and proves P(k + 1). Strong induction is useful when the case k + 1 depends on a case smaller than k.\nExample: every integer n >= 2 is a product of primes. If k + 1 is prime we are done. Otherwise k + 1 = ab with 2 <= a, b <= k, and by the strong inductive hypothesis both a and b are products of primes.\nSeveral base cases\nWhen the inductive step reaches back more than one case, prove enough base cases to start it. To show every amount of postage of 12 cents or more can be formed from 4-cent and 5-cent stamps, check 12, 13, 14 and 15, then add a 4-cent stamp to the amount for k - 3.\nThe well-ordering principle\nEvery nonempty set of nonnegative integers has a least element. Well-ordering, ordinary induction and strong induction are equivalent: a proof written in one form can be rewritten in the others.\nChoosing a method\nUse ordinary induction when P(k + 1) follows from P(k) alone. Use strong induction when it follows from an earlier case, as in factorization or recurrences like the Fibonacci numbers.",
+        "contentType": "text/plain",
+        "updatedAt": "2026-09-23T14:00:00Z"
+      },
+      {
+        "courseId": "math-240",
+        "courseName": "MATH 240: Introduction to Discrete Mathematics",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "math240-l8",
+        "kind": "material",
+        "title": "Lecture 8 notes: Recursive definitions",
+        "url": "https://example.org/math240/materials/math240-l8",
+        "text": "Lecture 8: Recursive definitions\nRecursively defined sequences\nA sequence is defined recursively by giving its first terms and a rule for later terms from earlier ones. The Fibonacci numbers satisfy f(0) = 0, f(1) = 1 and f(n) = f(n - 1) + f(n - 2) for n >= 2.\nProving facts about recursive sequences\nFacts about a recursively defined sequence are usually proved by strong induction, because each term depends on the two terms before it. For example, f(n) < 2^n for every n >= 0.",
+        "contentType": "text/plain",
+        "updatedAt": "2026-09-25T17:10:00Z"
+      },
+      {
+        "courseId": "math-240",
+        "courseName": "MATH 240: Introduction to Discrete Mathematics",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-09-09T04:59:00Z",
+            "kind": "due",
+            "quote": "due_at: 2026-09-09T04:59:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": 20,
+        "submitted": true,
+        "externalId": "math240-ps1",
+        "kind": "assignment",
+        "assignmentGroupId": "math240-g-ps",
+        "title": "Problem Set 1: Propositions",
+        "url": "https://example.org/math240/assignments/math240-ps1",
+        "text": "Problem Set 1 covers propositions and connectives. Submit one PDF with your work.",
+        "dueAt": "2026-09-09T04:59:00Z",
+        "submissionTypes": [
+          "online_upload"
+        ],
+        "submission": {
+          "workflowState": "graded",
+          "submittedAt": "2026-09-09T01:15:00Z",
+          "score": 17
+        }
+      },
+      {
+        "courseId": "math-240",
+        "courseName": "MATH 240: Introduction to Discrete Mathematics",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-09-16T04:59:00Z",
+            "kind": "due",
+            "quote": "due_at: 2026-09-16T04:59:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": 20,
+        "submitted": true,
+        "externalId": "math240-ps2",
+        "kind": "assignment",
+        "assignmentGroupId": "math240-g-ps",
+        "title": "Problem Set 2: Truth tables",
+        "url": "https://example.org/math240/assignments/math240-ps2",
+        "text": "Problem Set 2 covers truth tables and logical equivalence. Submit one PDF with your work.",
+        "dueAt": "2026-09-16T04:59:00Z",
+        "submissionTypes": [
+          "online_upload"
+        ],
+        "submission": {
+          "workflowState": "graded",
+          "submittedAt": "2026-09-16T01:15:00Z",
+          "score": 19
+        }
+      },
+      {
+        "courseId": "math-240",
+        "courseName": "MATH 240: Introduction to Discrete Mathematics",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-09-23T04:59:00Z",
+            "kind": "due",
+            "quote": "due_at: 2026-09-23T04:59:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": 20,
+        "submitted": true,
+        "externalId": "math240-ps3",
+        "kind": "assignment",
+        "assignmentGroupId": "math240-g-ps",
+        "title": "Problem Set 3: Quantifiers",
+        "url": "https://example.org/math240/assignments/math240-ps3",
+        "text": "Problem Set 3 covers predicates, quantifiers and their negations. Submit one PDF with your work.",
+        "dueAt": "2026-09-23T04:59:00Z",
+        "submissionTypes": [
+          "online_upload"
+        ],
+        "submission": {
+          "workflowState": "graded",
+          "submittedAt": "2026-09-23T01:15:00Z",
+          "score": 16
+        }
+      },
+      {
+        "courseId": "math-240",
+        "courseName": "MATH 240: Introduction to Discrete Mathematics",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-09-18T16:00:00Z",
+            "kind": "due",
+            "quote": "due_at: 2026-09-18T16:00:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": 10,
+        "submitted": true,
+        "externalId": "math240-quiz1",
+        "kind": "assignment",
+        "assignmentGroupId": "math240-g-quiz",
+        "title": "Quiz 1: Propositions",
+        "url": "https://example.org/math240/assignments/math240-quiz1",
+        "text": "Quiz 1 covers propositions and connectives. Taken in class.",
+        "dueAt": "2026-09-18T16:00:00Z",
+        "submissionTypes": [
+          "on_paper"
+        ],
+        "submission": {
+          "workflowState": "graded",
+          "submittedAt": "2026-09-18T16:45:00Z",
+          "score": 9
+        }
+      },
+      {
+        "courseId": "math-240",
+        "courseName": "MATH 240: Introduction to Discrete Mathematics",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-09-30T04:59:00Z",
+            "kind": "due",
+            "quote": "due_at: 2026-09-30T04:59:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": 20,
+        "submitted": false,
+        "externalId": "math240-ps4",
+        "kind": "assignment",
+        "assignmentGroupId": "math240-g-ps",
+        "title": "Problem Set 4: Induction",
+        "url": "https://example.org/math240/assignments/math240-ps4",
+        "text": "Problem Set 4 practises mathematical induction and strong induction.\nBefore you start, read Lecture 7 slides: Mathematical induction and Reading 4: Strong induction and well-ordering.\n1. Prove by induction that 1 + 3 + 5 + ... + (2n - 1) = n^2 for every n >= 1.\n2. Prove that 6 divides n^3 - n for every integer n >= 0.\n3. Use strong induction to show that every amount of postage of 18 cents or more can be formed from 4-cent and 7-cent stamps.\n4. Prove that the Fibonacci numbers satisfy f(n) < 2^n for every n >= 0.\nSubmit one PDF with your typed or neatly handwritten proofs. State the base case and the inductive hypothesis in every proof.",
+        "dueAt": "2026-09-30T04:59:00Z",
+        "submissionTypes": [
+          "online_upload"
+        ],
+        "links": [
+          {
+            "url": "https://example.org/math240/materials/math240-l7-slides",
+            "text": "Lecture 7 slides: Mathematical induction"
+          },
+          {
+            "url": "https://example.org/math240/materials/math240-reading4",
+            "text": "Reading 4: Strong induction and well-ordering"
+          },
+          {
+            "url": "https://example.org/math240/materials/math240-l8",
+            "text": "Lecture 8 notes: Recursive definitions"
+          }
+        ],
+        "rubric": [
+          {
+            "id": "ps4-base",
+            "description": "Base cases",
+            "points": 4,
+            "longDescription": "Every proof states and checks the base case or cases it needs."
+          },
+          {
+            "id": "ps4-step",
+            "description": "Inductive step",
+            "points": 10,
+            "longDescription": "The inductive hypothesis is stated and used to reach the next case."
+          },
+          {
+            "id": "ps4-write",
+            "description": "Clear writing",
+            "points": 6,
+            "longDescription": "Each step follows from the one before it, in full sentences."
+          }
+        ]
+      },
+      {
+        "courseId": "math-240",
+        "courseName": "MATH 240: Introduction to Discrete Mathematics",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-10-05T16:00:00Z",
+            "kind": "due",
+            "quote": "due_at: 2026-10-05T16:00:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": 10,
+        "submitted": false,
+        "externalId": "math240-quiz2",
+        "kind": "assignment",
+        "assignmentGroupId": "math240-g-quiz",
+        "title": "Quiz 2: Logic and quantifiers",
+        "url": "https://example.org/math240/assignments/math240-quiz2",
+        "text": "Quiz 2 covers propositional logic, predicates and quantifiers from Lecture 5 and Lecture 6. 20 minutes, taken in class. Review Lecture 5 notes: Propositional logic and Lecture 6 notes: Predicates and quantifiers.",
+        "dueAt": "2026-10-05T16:00:00Z",
+        "submissionTypes": [
+          "on_paper"
+        ],
+        "links": [
+          {
+            "url": "https://example.org/math240/materials/math240-l5",
+            "text": "Lecture 5 notes: Propositional logic"
+          },
+          {
+            "url": "https://example.org/math240/materials/math240-l6",
+            "text": "Lecture 6 notes: Predicates and quantifiers"
+          }
+        ]
+      },
+      {
+        "courseId": "math-240",
+        "courseName": "MATH 240: Introduction to Discrete Mathematics",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-10-07T04:59:00Z",
+            "kind": "due",
+            "quote": "due_at: 2026-10-07T04:59:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": 20,
+        "submitted": false,
+        "externalId": "math240-ps5",
+        "kind": "assignment",
+        "assignmentGroupId": "math240-g-ps",
+        "title": "Problem Set 5: Recursion",
+        "url": "https://example.org/math240/assignments/math240-ps5",
+        "text": "Problem Set 5 covers recursive definitions and structural induction. Submit one PDF with your work.",
+        "dueAt": "2026-10-07T04:59:00Z",
+        "submissionTypes": [
+          "online_upload"
+        ]
+      },
+      {
+        "courseId": "math-240",
+        "courseName": "MATH 240: Introduction to Discrete Mathematics",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-10-14T16:00:00Z",
+            "kind": "due",
+            "quote": "due_at: 2026-10-14T16:00:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": 100,
+        "submitted": false,
+        "externalId": "math240-midterm1",
+        "kind": "assignment",
+        "assignmentGroupId": "math240-g-mid1",
+        "title": "Midterm 1",
+        "url": "https://example.org/math240/assignments/math240-midterm1",
+        "text": "Midterm 1 covers Lectures 5 through 8: logic, quantifiers, mathematical induction and strong induction. Taken in class in Room 210 Sample Hall. Bring a pencil; no calculators.",
+        "dueAt": "2026-10-14T16:00:00Z",
+        "submissionTypes": [
+          "on_paper"
+        ]
+      },
+      {
+        "courseId": "math-240",
+        "courseName": "MATH 240: Introduction to Discrete Mathematics",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-09-28T16:00:00Z",
+            "kind": "event",
+            "quote": "DTSTART: 2026-09-28T16:00:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": null,
+        "submitted": null,
+        "externalId": "math240-lec-2026-09-28",
+        "kind": "event",
+        "title": "MATH 240 · Lecture 9",
+        "url": "https://example.org/math240/calendar/math240-lec-2026-09-28",
+        "text": "",
+        "calendar": {
+          "uid": "math240-lec-2026-09-28@example.org",
+          "start": "2026-09-28T16:00:00Z",
+          "end": "2026-09-28T16:50:00Z",
+          "allDay": false,
+          "timezone": "America/Chicago",
+          "location": "Room 210 Sample Hall"
+        }
+      },
+      {
+        "courseId": "math-240",
+        "courseName": "MATH 240: Introduction to Discrete Mathematics",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-09-30T16:00:00Z",
+            "kind": "event",
+            "quote": "DTSTART: 2026-09-30T16:00:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": null,
+        "submitted": null,
+        "externalId": "math240-lec-2026-09-30",
+        "kind": "event",
+        "title": "MATH 240 · Lecture 10",
+        "url": "https://example.org/math240/calendar/math240-lec-2026-09-30",
+        "text": "",
+        "calendar": {
+          "uid": "math240-lec-2026-09-30@example.org",
+          "start": "2026-09-30T16:00:00Z",
+          "end": "2026-09-30T16:50:00Z",
+          "allDay": false,
+          "timezone": "America/Chicago",
+          "location": "Room 210 Sample Hall"
+        }
+      },
+      {
+        "courseId": "math-240",
+        "courseName": "MATH 240: Introduction to Discrete Mathematics",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-10-02T16:00:00Z",
+            "kind": "event",
+            "quote": "DTSTART: 2026-10-02T16:00:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": null,
+        "submitted": null,
+        "externalId": "math240-lec-2026-10-02",
+        "kind": "event",
+        "title": "MATH 240 · Lecture 11",
+        "url": "https://example.org/math240/calendar/math240-lec-2026-10-02",
+        "text": "",
+        "calendar": {
+          "uid": "math240-lec-2026-10-02@example.org",
+          "start": "2026-10-02T16:00:00Z",
+          "end": "2026-10-02T16:50:00Z",
+          "allDay": false,
+          "timezone": "America/Chicago",
+          "location": "Room 210 Sample Hall"
+        }
+      },
+      {
+        "courseId": "math-240",
+        "courseName": "MATH 240: Introduction to Discrete Mathematics",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-09-27T21:00:00Z",
+            "kind": "event",
+            "quote": "DTSTART: 2026-09-27T21:00:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": null,
+        "submitted": null,
+        "externalId": "math240-help-0927",
+        "kind": "event",
+        "title": "MATH 240 · Problem Set 4 help session",
+        "url": "https://example.org/math240/calendar/math240-help-0927",
+        "text": "",
+        "calendar": {
+          "uid": "math240-help-0927@example.org",
+          "start": "2026-09-27T21:00:00Z",
+          "end": "2026-09-27T22:00:00Z",
+          "allDay": false,
+          "timezone": "America/Chicago",
+          "location": "Room 318 Sample Hall"
+        }
+      },
+      {
+        "courseId": "math-240",
+        "courseName": "MATH 240: Introduction to Discrete Mathematics",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-09-29T19:00:00Z",
+            "kind": "event",
+            "quote": "DTSTART: 2026-09-29T19:00:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": null,
+        "submitted": null,
+        "externalId": "math240-oh-0929",
+        "kind": "event",
+        "title": "MATH 240 · Office hours",
+        "url": "https://example.org/math240/calendar/math240-oh-0929",
+        "text": "",
+        "calendar": {
+          "uid": "math240-oh-0929@example.org",
+          "start": "2026-09-29T19:00:00Z",
+          "end": "2026-09-29T20:30:00Z",
+          "allDay": false,
+          "timezone": "America/Chicago",
+          "location": "Room 318 Sample Hall"
+        }
+      },
+      {
+        "courseId": "math-240",
+        "courseName": "MATH 240: Introduction to Discrete Mathematics",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "math240-ann-oh",
+        "kind": "message",
+        "title": "Office hours before Problem Set 4",
+        "url": "https://example.org/math240/announcements/math240-ann-oh",
+        "text": "Office hours this week are moved to Tuesday from 2:00 to 3:30 PM in Room 318 Sample Hall, the afternoon Problem Set 4 is due. Bring the induction proofs you are unsure about.",
+        "createdAt": "2026-09-26T15:00:00Z",
+        "updatedAt": "2026-09-26T15:00:00Z"
+      }
+    ]
+  },
+  {
+    "source": {
+      "id": "sample-cs300",
+      "label": "COMPSCI 300 · synthetic sample",
+      "kind": "fixture",
+      "accountScope": "synthetic",
+      "courseId": "compsci-300",
+      "scope": "assignments"
+    },
+    "observedAt": "2026-09-27T14:00:00Z",
+    "complete": true,
+    "status": "ok",
+    "resources": [
+      {
+        "courseId": "compsci-300",
+        "courseName": "COMPSCI 300: Programming II",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "cs300-course",
+        "kind": "course",
+        "title": "COMPSCI 300: Programming II",
+        "url": "https://example.org/cs300/home",
+        "text": "COMPSCI 300 Programming II (synthetic sample course). Object-oriented design, data structures and testing in Java. Lectures Tuesday and Thursday at 1:00 PM.",
+        "course": {
+          "courseCode": "COMPSCI 300",
+          "termName": "Fall 2026",
+          "workflowState": "available",
+          "instructors": [
+            "Prof. Dev Okafor (fictional)"
+          ],
+          "selection": {
+            "score": 1,
+            "included": true,
+            "reasons": [
+              "Synthetic sample course"
+            ]
+          }
+        }
+      },
+      {
+        "courseId": "compsci-300",
+        "courseName": "COMPSCI 300: Programming II",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "cs300-g-proj",
+        "kind": "material",
+        "title": "Programming projects",
+        "url": "https://example.org/cs300/assignments/groups/cs300-g-proj",
+        "text": "",
+        "assignmentGroup": {
+          "weight": 40,
+          "position": 1
+        }
+      },
+      {
+        "courseId": "compsci-300",
+        "courseName": "COMPSCI 300: Programming II",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "cs300-g-lab",
+        "kind": "material",
+        "title": "Labs",
+        "url": "https://example.org/cs300/assignments/groups/cs300-g-lab",
+        "text": "",
+        "assignmentGroup": {
+          "weight": 15,
+          "position": 2
+        }
+      },
+      {
+        "courseId": "compsci-300",
+        "courseName": "COMPSCI 300: Programming II",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "cs300-g-quiz",
+        "kind": "material",
+        "title": "Quizzes",
+        "url": "https://example.org/cs300/assignments/groups/cs300-g-quiz",
+        "text": "",
+        "assignmentGroup": {
+          "weight": 10,
+          "position": 3
+        }
+      },
+      {
+        "courseId": "compsci-300",
+        "courseName": "COMPSCI 300: Programming II",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "cs300-g-mid",
+        "kind": "material",
+        "title": "Midterm",
+        "url": "https://example.org/cs300/assignments/groups/cs300-g-mid",
+        "text": "",
+        "assignmentGroup": {
+          "weight": 15,
+          "position": 4
+        }
+      },
+      {
+        "courseId": "compsci-300",
+        "courseName": "COMPSCI 300: Programming II",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "cs300-g-final",
+        "kind": "material",
+        "title": "Final exam",
+        "url": "https://example.org/cs300/assignments/groups/cs300-g-final",
+        "text": "",
+        "assignmentGroup": {
+          "weight": 20,
+          "position": 5
+        }
+      },
+      {
+        "courseId": "compsci-300",
+        "courseName": "COMPSCI 300: Programming II",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "syllabus",
+        "kind": "material",
+        "title": "Syllabus",
+        "url": "https://example.org/cs300/materials/syllabus",
+        "text": "COMPSCI 300 Programming II: Syllabus (synthetic sample)\nInstructor: Prof. Dev Okafor (fictional).\nGrading: Programming projects 40%, Labs 15%, Quizzes 10%, Midterm 15%, Final exam 20%.\nQuiz 3 covers Lecture 9 and Lecture 10: hash tables and collision resolution.\nProjects are individual work. You may ask course staff and AI tutors to explain concepts, but you must write your own code.",
+        "contentType": "text/plain",
+        "updatedAt": "2026-09-21T13:00:00Z"
+      },
+      {
+        "courseId": "compsci-300",
+        "courseName": "COMPSCI 300: Programming II",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "cs300-l9",
+        "kind": "material",
+        "title": "Lecture 9 notes: Hash tables",
+        "url": "https://example.org/cs300/materials/cs300-l9",
+        "text": "Lecture 9: Hash tables\nHashing\nA hash table stores key-value pairs in an array. A hash function maps each key to an index, and a good hash function spreads keys evenly across the array.\nLoad factor\nThe load factor is the number of stored entries divided by the array capacity. When the load factor passes a threshold such as 0.75, the table grows and every entry is rehashed into the larger array.\nExpected cost\nWith a good hash function and a bounded load factor, insert, lookup and remove take constant expected time.",
+        "contentType": "text/plain",
+        "updatedAt": "2026-09-22T19:15:00Z"
+      },
+      {
+        "courseId": "compsci-300",
+        "courseName": "COMPSCI 300: Programming II",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "cs300-l10",
+        "kind": "material",
+        "title": "Lecture 10 notes: Collision resolution",
+        "url": "https://example.org/cs300/materials/cs300-l10",
+        "text": "Lecture 10: Collision resolution\nChaining\nWith separate chaining, each array slot holds a list of the entries whose keys hash to that index.\nOpen addressing\nWith linear probing, a collision moves to the next slot until an empty one is found. Removing an entry leaves a marker so later lookups keep probing past it.",
+        "contentType": "text/plain",
+        "updatedAt": "2026-09-24T19:15:00Z"
+      },
+      {
+        "courseId": "compsci-300",
+        "courseName": "COMPSCI 300: Programming II",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "cs300-p2-spec",
+        "kind": "material",
+        "title": "P2 starter guide: HashTableMap",
+        "url": "https://example.org/cs300/materials/cs300-p2-spec",
+        "text": "The starter code gives the MapADT interface and a skeleton HashTableMap class. Implement put, get, remove, containsKey and size with separate chaining. Grow the table when the load factor reaches 0.75.",
+        "contentType": "text/plain",
+        "updatedAt": "2026-09-17T14:00:00Z"
+      },
+      {
+        "courseId": "compsci-300",
+        "courseName": "COMPSCI 300: Programming II",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-09-17T04:59:00Z",
+            "kind": "due",
+            "quote": "due_at: 2026-09-17T04:59:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": 10,
+        "submitted": true,
+        "externalId": "cs300-lab2",
+        "kind": "assignment",
+        "assignmentGroupId": "cs300-g-lab",
+        "title": "Lab 2: Exceptions",
+        "url": "https://example.org/cs300/assignments/cs300-lab2",
+        "text": "Lab 2 practises checked and unchecked exceptions. Submit Parser.java.",
+        "dueAt": "2026-09-17T04:59:00Z",
+        "submissionTypes": [
+          "online_upload"
+        ],
+        "submission": {
+          "workflowState": "graded",
+          "submittedAt": "2026-09-17T01:15:00Z",
+          "score": 9
+        }
+      },
+      {
+        "courseId": "compsci-300",
+        "courseName": "COMPSCI 300: Programming II",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-09-18T22:00:00Z",
+            "kind": "due",
+            "quote": "due_at: 2026-09-18T22:00:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": 10,
+        "submitted": true,
+        "externalId": "cs300-quiz2",
+        "kind": "assignment",
+        "assignmentGroupId": "cs300-g-quiz",
+        "title": "Quiz 2: Generics",
+        "url": "https://example.org/cs300/assignments/cs300-quiz2",
+        "text": "Quiz 2 covers generic classes and interfaces. 15 minutes, taken on the course site.",
+        "dueAt": "2026-09-18T22:00:00Z",
+        "submissionTypes": [
+          "online_quiz"
+        ],
+        "submission": {
+          "workflowState": "graded",
+          "submittedAt": "2026-09-18T21:40:00Z",
+          "score": 8
+        }
+      },
+      {
+        "courseId": "compsci-300",
+        "courseName": "COMPSCI 300: Programming II",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-09-24T04:59:00Z",
+            "kind": "due",
+            "quote": "due_at: 2026-09-24T04:59:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": 10,
+        "submitted": true,
+        "externalId": "cs300-lab3",
+        "kind": "assignment",
+        "assignmentGroupId": "cs300-g-lab",
+        "title": "Lab 3: Linked lists",
+        "url": "https://example.org/cs300/assignments/cs300-lab3",
+        "text": "Lab 3 practises singly linked lists. Submit LinkedList.java.",
+        "dueAt": "2026-09-24T04:59:00Z",
+        "submissionTypes": [
+          "online_upload"
+        ],
+        "submission": {
+          "workflowState": "graded",
+          "submittedAt": "2026-09-24T01:15:00Z",
+          "score": 10
+        }
+      },
+      {
+        "courseId": "compsci-300",
+        "courseName": "COMPSCI 300: Programming II",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-09-18T04:59:00Z",
+            "kind": "due",
+            "quote": "due_at: 2026-09-18T04:59:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": 50,
+        "submitted": true,
+        "externalId": "cs300-p1",
+        "kind": "assignment",
+        "assignmentGroupId": "cs300-g-proj",
+        "title": "Project 1: Inventory Tracker",
+        "url": "https://example.org/cs300/assignments/cs300-p1",
+        "text": "Submit your implementation and your test code.",
+        "dueAt": "2026-09-18T04:59:00Z",
+        "submissionTypes": [
+          "online_upload"
+        ],
+        "submission": {
+          "workflowState": "graded",
+          "submittedAt": "2026-09-18T03:40:00Z",
+          "score": 44
+        }
+      },
+      {
+        "courseId": "compsci-300",
+        "courseName": "COMPSCI 300: Programming II",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-10-01T04:59:00Z",
+            "kind": "due",
+            "quote": "due_at: 2026-10-01T04:59:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": 10,
+        "submitted": false,
+        "externalId": "cs300-lab4",
+        "kind": "assignment",
+        "assignmentGroupId": "cs300-g-lab",
+        "title": "Lab 4: Iterators",
+        "url": "https://example.org/cs300/assignments/cs300-lab4",
+        "text": "Lab 4 practises the Iterator interface. Implement an iterator for your linked list and submit LinkedListIterator.java.",
+        "dueAt": "2026-10-01T04:59:00Z",
+        "submissionTypes": [
+          "online_upload"
+        ]
+      },
+      {
+        "courseId": "compsci-300",
+        "courseName": "COMPSCI 300: Programming II",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-10-02T04:59:00Z",
+            "kind": "due",
+            "quote": "due_at: 2026-10-02T04:59:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": 50,
+        "submitted": false,
+        "externalId": "cs300-p2",
+        "kind": "assignment",
+        "assignmentGroupId": "cs300-g-proj",
+        "title": "Project 2: Hash Table Dictionary",
+        "url": "https://example.org/cs300/assignments/cs300-p2",
+        "text": "Project 2 builds a dictionary backed by your own hash table.\nSubmit a working prototype of your HashTableMap class and a one-page report on how the load factor changed your lookup times.\nInclude your JUnit tests for put, get, remove and resizing.\nUse the P2 starter guide: HashTableMap for the interface you must implement.",
+        "dueAt": "2026-10-02T04:59:00Z",
+        "submissionTypes": [
+          "online_upload"
+        ],
+        "links": [
+          {
+            "url": "https://example.org/cs300/materials/cs300-p2-spec",
+            "text": "P2 starter guide: HashTableMap"
+          },
+          {
+            "url": "https://example.org/cs300/materials/cs300-l9",
+            "text": "Lecture 9 notes: Hash tables"
+          }
+        ]
+      },
+      {
+        "courseId": "compsci-300",
+        "courseName": "COMPSCI 300: Programming II",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-10-02T22:00:00Z",
+            "kind": "due",
+            "quote": "due_at: 2026-10-02T22:00:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": 10,
+        "submitted": false,
+        "externalId": "cs300-quiz3",
+        "kind": "assignment",
+        "assignmentGroupId": "cs300-g-quiz",
+        "title": "Quiz 3: Hashing",
+        "url": "https://example.org/cs300/assignments/cs300-quiz3",
+        "text": "Quiz 3 covers hash tables and collision resolution. 15 minutes, taken on the course site.",
+        "dueAt": "2026-10-02T22:00:00Z",
+        "submissionTypes": [
+          "online_quiz"
+        ]
+      },
+      {
+        "courseId": "compsci-300",
+        "courseName": "COMPSCI 300: Programming II",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-09-29T18:00:00Z",
+            "kind": "event",
+            "quote": "DTSTART: 2026-09-29T18:00:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": null,
+        "submitted": null,
+        "externalId": "cs300-lec-2026-09-29",
+        "kind": "event",
+        "title": "COMPSCI 300 · Lecture 11",
+        "url": "https://example.org/cs300/calendar/cs300-lec-2026-09-29",
+        "text": "",
+        "calendar": {
+          "uid": "cs300-lec-2026-09-29@example.org",
+          "start": "2026-09-29T18:00:00Z",
+          "end": "2026-09-29T19:15:00Z",
+          "allDay": false,
+          "timezone": "America/Chicago",
+          "location": "Room 1240 Sample Center"
+        }
+      },
+      {
+        "courseId": "compsci-300",
+        "courseName": "COMPSCI 300: Programming II",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-10-01T18:00:00Z",
+            "kind": "event",
+            "quote": "DTSTART: 2026-10-01T18:00:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": null,
+        "submitted": null,
+        "externalId": "cs300-lec-2026-10-01",
+        "kind": "event",
+        "title": "COMPSCI 300 · Lecture 12",
+        "url": "https://example.org/cs300/calendar/cs300-lec-2026-10-01",
+        "text": "",
+        "calendar": {
+          "uid": "cs300-lec-2026-10-01@example.org",
+          "start": "2026-10-01T18:00:00Z",
+          "end": "2026-10-01T19:15:00Z",
+          "allDay": false,
+          "timezone": "America/Chicago",
+          "location": "Room 1240 Sample Center"
+        }
+      },
+      {
+        "courseId": "compsci-300",
+        "courseName": "COMPSCI 300: Programming II",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "cs300-ann-p2",
+        "kind": "message",
+        "title": "Project 2 tests posted",
+        "url": "https://example.org/cs300/announcements/cs300-ann-p2",
+        "text": "The Project 2 public tests are posted with the starter code. Run them before you submit; the hidden tests check resizing and remove.",
+        "createdAt": "2026-09-25T21:00:00Z",
+        "updatedAt": "2026-09-25T21:00:00Z"
+      }
+    ]
+  },
+  {
+    "source": {
+      "id": "sample-bio151",
+      "label": "BIOLOGY 151 · synthetic sample",
+      "kind": "fixture",
+      "accountScope": "synthetic",
+      "courseId": "biology-151",
+      "scope": "assignments"
+    },
+    "observedAt": "2026-09-27T14:00:00Z",
+    "complete": true,
+    "status": "ok",
+    "resources": [
+      {
+        "courseId": "biology-151",
+        "courseName": "BIOLOGY 151: Introductory Biology",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "bio151-course",
+        "kind": "course",
+        "title": "BIOLOGY 151: Introductory Biology",
+        "url": "https://example.org/bio151/home",
+        "text": "BIOLOGY 151 Introductory Biology (synthetic sample course). Cells, energy, genetics and evolution, with a weekly lab.",
+        "course": {
+          "courseCode": "BIOLOGY 151",
+          "termName": "Fall 2026",
+          "workflowState": "available",
+          "instructors": [
+            "Dr. Ana Reyes (fictional)"
+          ],
+          "selection": {
+            "score": 1,
+            "included": true,
+            "reasons": [
+              "Synthetic sample course"
+            ]
+          }
+        }
+      },
+      {
+        "courseId": "biology-151",
+        "courseName": "BIOLOGY 151: Introductory Biology",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "bio151-g-lab",
+        "kind": "material",
+        "title": "Lab reports",
+        "url": "https://example.org/bio151/assignments/groups/bio151-g-lab",
+        "text": "",
+        "assignmentGroup": {
+          "weight": 30,
+          "position": 1
+        }
+      },
+      {
+        "courseId": "biology-151",
+        "courseName": "BIOLOGY 151: Introductory Biology",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "bio151-g-quiz",
+        "kind": "material",
+        "title": "Quizzes and reading checks",
+        "url": "https://example.org/bio151/assignments/groups/bio151-g-quiz",
+        "text": "",
+        "assignmentGroup": {
+          "weight": 15,
+          "position": 2
+        }
+      },
+      {
+        "courseId": "biology-151",
+        "courseName": "BIOLOGY 151: Introductory Biology",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "bio151-g-exam",
+        "kind": "material",
+        "title": "Exams",
+        "url": "https://example.org/bio151/assignments/groups/bio151-g-exam",
+        "text": "",
+        "assignmentGroup": {
+          "weight": 55,
+          "position": 3
+        }
+      },
+      {
+        "courseId": "biology-151",
+        "courseName": "BIOLOGY 151: Introductory Biology",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "reading-1",
+        "kind": "material",
+        "title": "Reading: Enzymes and activation energy",
+        "url": "https://example.org/bio151/materials/reading-1",
+        "text": "Enzymes and activation energy\nEnzymes are proteins that speed up chemical reactions by lowering the activation energy. The substrate binds at the active site, and the enzyme is not used up by the reaction.\nTemperature and pH\nEach enzyme has an optimal temperature and pH. Above the optimum the enzyme denatures and its activity drops sharply.",
+        "contentType": "text/plain",
+        "updatedAt": "2026-09-20T13:00:00Z"
+      },
+      {
+        "courseId": "biology-151",
+        "courseName": "BIOLOGY 151: Introductory Biology",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "bio151-l8",
+        "kind": "material",
+        "title": "Lecture 8 notes: Cellular respiration",
+        "url": "https://example.org/bio151/materials/bio151-l8",
+        "text": "Lecture 8: Cellular respiration\nGlycolysis splits glucose into two pyruvate molecules in the cytoplasm and yields a small amount of ATP.\nThe citric acid cycle and oxidative phosphorylation take place in the mitochondria and produce most of the cell's ATP.",
+        "contentType": "text/plain",
+        "updatedAt": "2026-09-23T15:00:00Z"
+      },
+      {
+        "courseId": "biology-151",
+        "courseName": "BIOLOGY 151: Introductory Biology",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-09-17T13:00:00Z",
+            "kind": "due",
+            "quote": "due_at: 2026-09-17T13:00:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": 5,
+        "submitted": true,
+        "externalId": "bio151-prelab2",
+        "kind": "assignment",
+        "assignmentGroupId": "bio151-g-quiz",
+        "title": "Pre-lab quiz 2",
+        "url": "https://example.org/bio151/assignments/bio151-prelab2",
+        "text": "Pre-lab quiz 2 covers microscope use. Taken on the course site.",
+        "dueAt": "2026-09-17T13:00:00Z",
+        "submissionTypes": [
+          "online_quiz"
+        ],
+        "submission": {
+          "workflowState": "graded",
+          "submittedAt": "2026-09-17T01:30:00Z",
+          "score": 4
+        }
+      },
+      {
+        "courseId": "biology-151",
+        "courseName": "BIOLOGY 151: Introductory Biology",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-09-17T04:59:00Z",
+            "kind": "due",
+            "quote": "due_at: 2026-09-17T04:59:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": 30,
+        "submitted": true,
+        "externalId": "bio151-lab2",
+        "kind": "assignment",
+        "assignmentGroupId": "bio151-g-lab",
+        "title": "Lab report: Cell membranes",
+        "url": "https://example.org/bio151/assignments/bio151-lab2",
+        "text": "Write a lab report on the osmosis experiment from Lab 2. Submit a PDF of 2 to 3 pages.",
+        "dueAt": "2026-09-17T04:59:00Z",
+        "submissionTypes": [
+          "online_upload"
+        ],
+        "submission": {
+          "workflowState": "graded",
+          "submittedAt": "2026-09-17T03:10:00Z",
+          "score": 26
+        }
+      },
+      {
+        "courseId": "biology-151",
+        "courseName": "BIOLOGY 151: Introductory Biology",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-09-28T04:59:00Z",
+            "kind": "due",
+            "quote": "due_at: 2026-09-28T04:59:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": 5,
+        "submitted": false,
+        "externalId": "bio151-rc5",
+        "kind": "assignment",
+        "assignmentGroupId": "bio151-g-quiz",
+        "title": "Reading check 5: Cellular respiration",
+        "url": "https://example.org/bio151/assignments/bio151-rc5",
+        "text": "Reading check 5 covers Lecture 8 on cellular respiration. Five questions on the course site; it closes at 11:59 PM.",
+        "dueAt": "2026-09-28T04:59:00Z",
+        "submissionTypes": [
+          "online_quiz"
+        ]
+      },
+      {
+        "courseId": "biology-151",
+        "courseName": "BIOLOGY 151: Introductory Biology",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-09-24T13:00:00Z",
+            "kind": "due",
+            "quote": "due_at: 2026-09-24T13:00:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": 5,
+        "submitted": true,
+        "externalId": "bio151-prelab3",
+        "kind": "assignment",
+        "assignmentGroupId": "bio151-g-quiz",
+        "title": "Pre-lab quiz 3",
+        "url": "https://example.org/bio151/assignments/bio151-prelab3",
+        "text": "Pre-lab quiz 3 covers the enzyme lab safety and procedure. Taken on the course site.",
+        "dueAt": "2026-09-24T13:00:00Z",
+        "submissionTypes": [
+          "online_quiz"
+        ],
+        "submission": {
+          "workflowState": "graded",
+          "submittedAt": "2026-09-24T02:00:00Z",
+          "score": 5
+        }
+      },
+      {
+        "courseId": "biology-151",
+        "courseName": "BIOLOGY 151: Introductory Biology",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-10-01T04:59:00Z",
+            "kind": "due",
+            "quote": "due_at: 2026-10-01T04:59:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": 30,
+        "submitted": false,
+        "externalId": "essay-1",
+        "kind": "assignment",
+        "assignmentGroupId": "bio151-g-lab",
+        "title": "Lab report: Enzyme activity",
+        "url": "https://example.org/bio151/assignments/essay-1",
+        "text": "Write a lab report on how temperature changed catalase activity in Lab 3. Cite the enzyme reading in your discussion. Submit a PDF of 2 to 3 pages. AI may explain concepts, but must not write the submission.",
+        "dueAt": "2026-10-01T04:59:00Z",
+        "submissionTypes": [
+          "online_upload"
+        ],
+        "links": [
+          {
+            "url": "https://example.org/bio151/materials/reading-1",
+            "text": "Reading: Enzymes and activation energy"
+          }
+        ]
+      },
+      {
+        "courseId": "biology-151",
+        "courseName": "BIOLOGY 151: Introductory Biology",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-10-02T13:00:00Z",
+            "kind": "due",
+            "quote": "due_at: 2026-10-02T13:00:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": 5,
+        "submitted": false,
+        "externalId": "bio151-prelab4",
+        "kind": "assignment",
+        "assignmentGroupId": "bio151-g-quiz",
+        "title": "Pre-lab quiz 4",
+        "url": "https://example.org/bio151/assignments/bio151-prelab4",
+        "text": "Pre-lab quiz 4 covers the respiration lab procedure. Taken on the course site.",
+        "dueAt": "2026-10-02T13:00:00Z",
+        "submissionTypes": [
+          "online_quiz"
+        ]
+      },
+      {
+        "courseId": "biology-151",
+        "courseName": "BIOLOGY 151: Introductory Biology",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-10-09T00:15:00Z",
+            "kind": "due",
+            "quote": "due_at: 2026-10-09T00:15:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": 100,
+        "submitted": false,
+        "externalId": "bio151-exam1",
+        "kind": "assignment",
+        "assignmentGroupId": "bio151-g-exam",
+        "title": "Exam 1",
+        "url": "https://example.org/bio151/assignments/bio151-exam1",
+        "text": "Exam 1 covers cells, enzymes and cellular respiration. Taken in the evening exam room.",
+        "dueAt": "2026-10-09T00:15:00Z",
+        "submissionTypes": [
+          "on_paper"
+        ]
+      },
+      {
+        "courseId": "biology-151",
+        "courseName": "BIOLOGY 151: Introductory Biology",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [
+          {
+            "value": "2026-09-30T19:25:00Z",
+            "kind": "event",
+            "quote": "DTSTART: 2026-09-30T19:25:00Z",
+            "authority": "structured",
+            "scopeConfirmed": true
+          }
+        ],
+        "points": null,
+        "submitted": null,
+        "externalId": "bio151-lab-0930",
+        "kind": "event",
+        "title": "BIOLOGY 151 · Lab section",
+        "url": "https://example.org/bio151/calendar/bio151-lab-0930",
+        "text": "",
+        "calendar": {
+          "uid": "bio151-lab-0930@example.org",
+          "start": "2026-09-30T19:25:00Z",
+          "end": "2026-09-30T21:20:00Z",
+          "allDay": false,
+          "timezone": "America/Chicago",
+          "location": "Room 1117 Sample Labs"
+        }
+      },
+      {
+        "courseId": "biology-151",
+        "courseName": "BIOLOGY 151: Introductory Biology",
+        "policy": {
+          "mode": "coaching",
+          "evidence": "AI may explain concepts, quiz you and check your reasoning, but must not write work you submit."
+        },
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "externalId": "bio151-ann-lab",
+        "kind": "message",
+        "title": "Lab section moved this week",
+        "url": "https://example.org/bio151/announcements/bio151-ann-lab",
+        "text": "This week's lab section is moved to Room 1117 Sample Labs. Bring your lab notebook and closed-toe shoes.",
+        "createdAt": "2026-09-25T17:00:00Z",
+        "updatedAt": "2026-09-25T17:00:00Z"
+      }
+    ]
+  }
+]

@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>For developers · My Magic UW</title>
+    <meta name="description" content="How My Magic UW is built and measured: open-source architecture, benchmarks with their method and status, and how to run it." />
+    <!--#head-->
+    <style>
+      .dev { display: flex; flex-direction: column; gap: 28px; min-width: 0; }
+      .dev h3 { font-family: var(--serif); font-weight: var(--serif-weight); font-size: 26px; line-height: 1.15; color: var(--navy); margin: 0; }
+      .dev p, .dev li { font-size: 16px; line-height: 1.55; margin: 0; }
+      .dev ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+      .dev code { font-family: "Geist Mono", ui-monospace, monospace; font-size: 0.9em; }
+      .dev .source { font-size: 13px; color: var(--magic-ink-muted); }
+      .table-wrap { overflow-x: auto; border-radius: 16px; background: #fff; box-shadow: inset 0 0 0 1px var(--rule); }
+      .dev table { width: 100%; border-collapse: collapse; font-size: 15px; line-height: 1.4; min-width: 560px; }
+      .dev th, .dev td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--rule); }
+      .dev th { font-weight: 600; background: var(--paper); }
+      .dev tr:last-child td { border-bottom: 0; }
+      .miss { color: var(--cardinal); font-weight: 600; }
+      .flow { display: grid; gap: 10px; }
+      .flow-row { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; }
+      .node { background: #fff; border-radius: 14px; padding: 12px 16px; box-shadow: inset 0 0 0 1px var(--rule); flex: 1 1 150px; min-width: 0; }
+      .node b { display: block; font-size: 15px; }
+      .node span { font-size: 13.5px; color: var(--magic-ink-muted); line-height: 1.4; display: block; }
+      .node.key { box-shadow: inset 0 0 0 2px var(--cardinal); }
+      .to { align-self: center; color: var(--magic-ink-muted); font-size: 18px; }
+      .two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .tile { background: #fff; border-radius: 20px; padding: 22px 24px; display: flex; flex-direction: column; gap: 8px; }
+      pre.cmd { margin: 0; background: var(--magic-ink); color: #fff; border-radius: 14px; padding: 16px 18px; overflow-x: auto; font-family: "Geist Mono", ui-monospace, monospace; font-size: 14px; line-height: 1.6; }
+      @media (max-width: 900px) { .two { grid-template-columns: 1fr; } .to { transform: rotate(90deg); flex-basis: 100%; text-align: center; } }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <!--#header devs-->
+      <main class="rooms">
+        <section class="room bg-yellow page-hero" aria-labelledby="dev-title">
+          <div class="eyebrow">For developers</div>
+          <h1 class="display" id="dev-title">AI writes, code decides.</h1>
+          <p class="lede">
+            My Magic UW is open source under the MIT licence. This page shows how it is built,
+            what we measured, how we measured it, and what we have not measured yet. Every figure
+            comes from the repository's own <a href="https://github.com/benverhaalen/magic-uw/blob/main/docs/benchmarks.md">benchmark record</a>.
+          </p>
+          <div class="btn-row">
+            <a class="btn btn-blue" href="https://github.com/benverhaalen/magic-uw">View on GitHub</a>
+            <a class="btn btn-white" href="https://github.com/benverhaalen/magic-uw/blob/main/docs/README.md">Read the docs</a>
+          </div>
+        </section>
+
+        <section class="room bg-paper dev" aria-labelledby="arch-title">
+          <div class="stack">
+            <div class="eyebrow">Architecture</div>
+            <h2 class="title" id="arch-title">A desktop app with the database on your laptop.</h2>
+          </div>
+          <p>
+            An Electron app. The main process owns the app's own UW session; a utility-process
+            worker owns everything that touches your data. Your coursework stays in a local SQLite
+            store (<code>node:sqlite</code>).
+          </p>
+          <div class="flow" role="img" aria-label="Process diagram: renderer, preload, main process, utility-process worker.">
+            <div class="flow-row">
+              <div class="node"><b>Renderer</b><span>React interface</span></div>
+              <div class="to" aria-hidden="true">→</div>
+              <div class="node"><b>Preload</b><span>narrow bridge</span></div>
+              <div class="to" aria-hidden="true">→</div>
+              <div class="node"><b>Main</b><span>owns the UW session, answers the worker's fetches</span></div>
+              <div class="to" aria-hidden="true">→</div>
+              <div class="node key"><b>Worker</b><span>local SQLite store, ingestion, refresh, job queue, AI calls</span></div>
+            </div>
+          </div>
+          <div class="flow" role="img" aria-label="Package layers: contracts, domain, core, storage, connectors, then ai, runner and packs.">
+            <div class="flow-row">
+              <div class="node"><b>contracts</b><span>shared types</span></div>
+              <div class="to" aria-hidden="true">→</div>
+              <div class="node"><b>domain</b><span>course model</span></div>
+              <div class="to" aria-hidden="true">→</div>
+              <div class="node"><b>core</b><span>access, evidence, refresh, planning</span></div>
+              <div class="to" aria-hidden="true">→</div>
+              <div class="node"><b>storage</b><span>SQLite, FTS5 passages</span></div>
+              <div class="to" aria-hidden="true">→</div>
+              <div class="node"><b>connectors</b><span>Canvas, documents, calendar, GitLab</span></div>
+              <div class="to" aria-hidden="true">→</div>
+              <div class="node"><b>ai · runner · packs</b><span>Jev client, CLI runner, prompt packs</span></div>
+            </div>
+          </div>
+          <div class="two">
+            <div class="tile">
+              <h3>Code decides</h3>
+              <p>Dates, ids, permissions and quotes are exact facts, so code computes and checks them. A model's output never authorizes anything.</p>
+            </div>
+            <div class="tile">
+              <h3>Jev judges</h3>
+              <p>Jev is a typed judgment gateway: bounded questions code can't settle (for example, what kind of assignment this is), cached by input so the same question isn't asked twice.</p>
+            </div>
+            <div class="tile">
+              <h3>Your AI is the agent</h3>
+              <p>
+                The student's own Claude Code runs as a CLI with a warm session pool. It drives the
+                app through the app's own tools over the local database: read tools, page
+                navigation and "open in Canvas". Harness skills are fixed cheapest paths.
+              </p>
+            </div>
+            <div class="tile">
+              <h3>One checked call per pack</h3>
+              <p>A study pack is one model call whose output code checks: every stored quote verbatim, one correct answer per question. A failed check is replaced or dropped, not shown.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="room bg-sky dev" aria-labelledby="bench-title">
+          <div class="stack">
+            <div class="eyebrow">Measurements</div>
+            <h2 class="title" id="bench-title">What we measured, and what we didn't.</h2>
+          </div>
+          <p>
+            As of 2026-09-27. Timings are from one machine (Windows 11, Intel Core Ultra 9 275HX,
+            Node 24.14.1) and haven't been reproduced on a second. Missed targets are reported
+            alongside met ones. A "p95" from fewer than 20 runs is the maximum of those runs.
+          </p>
+
+          <h3>Backend at 5,000 synthetic resources</h3>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Measured</th><th>Before</th><th>After</th><th>Target</th><th>Result</th></tr></thead>
+            <tbody>
+              <tr><td>Ingest throughput</td><td>78 resources/s</td><td>1,431 resources/s</td><td>≥750</td><td>met</td></tr>
+              <tr><td>Search p50 / p95 (n=120)</td><td>56.0 / 197.4 ms</td><td>3.3 / 4.8 ms</td><td>≤5 / ≤15 ms</td><td>met</td></tr>
+              <tr><td>Database size per 1,000 resources</td><td>15.6 MB</td><td>10.3 MB</td><td>≤11 MB</td><td>met</td></tr>
+              <tr><td>Question recall@5, 52 planted questions</td><td>0.0</td><td>1.00 (52/52)</td><td>≥0.90</td><td>met</td></tr>
+              <tr><td>Correct "not found", 26 unanswerable</td><td>—</td><td>0.96</td><td>≥0.80</td><td>met</td></tr>
+              <tr><td>Purge ("Delete local data")</td><td>8.7 s</td><td>0.48 s, 0 rows left</td><td>≤1 s</td><td>met</td></tr>
+              <tr><td>Zero-change re-sync growth</td><td>—</td><td>+1.48%</td><td>≤1%</td><td class="miss">missed</td></tr>
+              <tr><td>Ingest slope, last batch vs first</td><td>—</td><td>2.97×</td><td>≤2×</td><td class="miss">missed</td></tr>
+            </tbody>
+          </table></div>
+          <p class="source">Harness <code>pnpm magic:perf --suite baseline</code>; before <code>91e39fa</code>, after <code>f365af7</code>, same machine. Planted questions were written by the builder. Source: docs/benchmarks.md §2.1.</p>
+
+          <h3>Sync, search and routing</h3>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Measured</th><th>How</th><th>Before</th><th>After</th></tr></thead>
+            <tbody>
+              <tr><td>Canvas first sync, 5 synthetic courses</td><td>replay, 150 ms latency model, median of 3</td><td>115 requests, 5.7 s</td><td>65 requests, 2.1 s</td></tr>
+              <tr><td>File acquisition, 300 synthetic files</td><td>replay, Files tab hidden, 60 ms latency</td><td>0/300 files with text</td><td>285/300 (15 scans marked for OCR)</td></tr>
+              <tr><td>MCP search at 5,000 resources</td><td>PR #19, n not stated</td><td>p50 6.3 s</td><td>about 0.28 s</td></tr>
+              <tr><td>Agenda <code>due</code> verb, 306 assignments</td><td>PR #24, n not stated</td><td>25–41 s</td><td>p50 / p95 576 / 580 ms</td></tr>
+              <tr><td>Command handled by code (0 tokens)</td><td>test, n=24</td><td>—</td><td>p50 1.1 ms, p95 3.2 ms, 0 billed calls</td></tr>
+              <tr><td>AI fallback after a code miss vs AI only</td><td>24 interleaved pairs, fake CLI at 800 ms</td><td>AI only p95 820 ms</td><td>fallback p95 819 ms (no added latency; gated in CI)</td></tr>
+              <tr><td>Fresh <code>claude -p</code> vs warm-session follow-up</td><td>build record §5.5</td><td>5.8–7.4 s, 11.3k fixed tokens</td><td>1.7–2.2 s, 2.8k fixed tokens</td></tr>
+              <tr><td>Jev calls, 100-assignment synthetic course</td><td>PR #14, code decides from submission types</td><td>100</td><td>50</td></tr>
+            </tbody>
+          </table></div>
+          <p class="source">Source: docs/benchmarks.md §2.2–§2.9. Live first sync after these changes: not measured (65 s on the operator's account before them; target ≤10 s).</p>
+
+          <h3>Quality: grounded answers and study items</h3>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Measured</th><th>How</th><th>Before</th><th>After</th></tr></thead>
+            <tbody>
+              <tr><td>Sentences contradicting their own cited quote shown to the student</td><td>live, student's Claude Code (<code>claude-sonnet-5</code>), 20 synthetic scenarios × 3; every sentence read by us</td><td>—</td><td>0/77 shown (1/80 written, caught)</td></tr>
+              <tr><td>Correct sentences wrongly replaced by their quote</td><td>same live run</td><td>15/60 answers (first fix)</td><td>2/60 answers (final fix)</td></tr>
+              <tr><td>Planted item defects caught</td><td>offline item eval, code metrics; 4 synthetic courses + local MIT OCW</td><td>43/62 (0.69), <span class="miss">missed</span></td><td>58/59 (0.98)</td></tr>
+              <tr><td>Correct items wrongly dropped</td><td>same</td><td>5/198</td><td>0/196</td></tr>
+              <tr><td>Stored quotes verbatim</td><td>same, code-checked</td><td>216/216</td><td>217/217</td></tr>
+              <tr><td>Repeat pack request at 0 tokens</td><td>same</td><td>38/38</td><td>38/38</td></tr>
+              <tr><td>Teaching text changed by name scrubbing; personal canaries leaked</td><td>742 texts incl. 730 OCW pages, 5-student roster</td><td>—</td><td>0 characters; 0/14 canaries</td></tr>
+            </tbody>
+          </table></div>
+          <p class="source">
+            Sources: docs/break-card.md (live, Wilson 95% intervals there); docs/benchmarks.md §3.1
+            (branch <code>feat/item-eval</code> at <code>3172c2a</code>, tested in isolation; offline items come
+            from a rule-based stand-in writer, so they measure the checks, not a model's writing) and §2.10
+            (branch <code>feat/privacy-hardening</code>, tested in isolation).
+          </p>
+
+          <h3>Against NotebookLM, ChatGPT or Claude Projects, and Quizlet</h3>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Comparison</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td>Grounded answer quality vs NotebookLM (Gemini Notebook)</td><td>not measured</td></tr>
+              <tr><td>Grounded answer quality vs ChatGPT or Claude Projects</td><td>not measured</td></tr>
+              <tr><td>Flashcard and quiz quality vs Quizlet</td><td>not measured</td></tr>
+              <tr><td>Time to first useful answer vs any of them</td><td>not measured</td></tr>
+              <tr><td>Item quality with a real model; grounded-ask citation pass rate; prompt-injection rate</td><td>not measured</td></tr>
+            </tbody>
+          </table></div>
+          <p class="source">The head-to-head protocol was fixed on 2026-09-26 before any competitor run; none has run yet, so we claim no win. What the docs do state from public sources: NotebookLM's citations are direct quotes that aren't independently checked, and it needs each source added by hand (docs/notes/competitive-comparison.md).</p>
+        </section>
+
+        <section class="room bg-paper dev" aria-labelledby="method-title">
+          <div class="stack">
+            <div class="eyebrow">Method</div>
+            <h2 class="title" id="method-title">How we measure and report.</h2>
+          </div>
+          <div class="two">
+            <div class="tile">
+              <h3>Fixed before the run</h3>
+              <ul>
+                <li>Thresholds are pre-registered; changing one after a run is a new, dated registration.</li>
+                <li>Case files are hashed (<code>evals/freeze.ts</code>); a changed, missing or extra file fails verification.</li>
+                <li>Before and after run the same harness on the same machine.</li>
+              </ul>
+            </div>
+            <div class="tile">
+              <h3>Checked, not graded by vibes</h3>
+              <ul>
+                <li>Metrics are code-checked where there's one right answer: verbatim quotes, one correct option, arithmetic re-done by code.</li>
+                <li>Comparisons use blind judges: system names shuffled, badges stripped, both orders rated. A model never judges its own family.</li>
+                <li>Rates are reported as k/n with Wilson 95% intervals.</li>
+              </ul>
+            </div>
+            <div class="tile">
+              <h3>Case sets</h3>
+              <ul>
+                <li>Synthetic courses and a synthetic university for Canvas replays.</li>
+                <li>Public MIT OpenCourseWare (6.006, 6.042J, 18.05), read locally and never committed.</li>
+                <li>Live figures from one student's own account are aggregates only, no course content.</li>
+              </ul>
+            </div>
+            <div class="tile">
+              <h3>Cost, latency and receipts</h3>
+              <ul>
+                <li>One warm-up run is discarded; percentiles are nearest-rank over the raw samples.</li>
+                <li>Adopting a change needs a 3× effect or a structural change, because run-to-run noise was about ±20%.</li>
+                <li>Token and request budgets are CI gates. Every AI request leaves a receipt of what was sent.</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section class="room bg-rose dev" aria-labelledby="better-title">
+          <div class="stack">
+            <div class="eyebrow">Why it's built this way</div>
+            <h2 class="title" id="better-title">Cheaper, checkable and private by default.</h2>
+          </div>
+          <div class="two">
+            <div class="tile">
+              <h3>Study time costs 0 tokens</h3>
+              <p>Packs are built once and cached by content; reviewing them is code. A repeat request with unchanged content made no model call in 38 of 38 cases.</p>
+            </div>
+            <div class="tile">
+              <h3>One checked call per pack</h3>
+              <p>No tool loops inside the app: one call, one schema, then code checks every quote, id and date before anything is stored.</p>
+            </div>
+            <div class="tile">
+              <h3>Quotes you can verify</h3>
+              <p>A grounded sentence cites a passage from your own materials, and code checks that the sentence says what the quote says.</p>
+            </div>
+            <div class="tile">
+              <h3>Your data stays yours</h3>
+              <p>A local store, consent per provider, and a receipt per request. "Delete local data" leaves no content row behind.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="room bg-navy dev" aria-labelledby="run-title">
+          <div class="stack">
+            <div class="eyebrow" style="color: var(--accent-on-dark)">Run it</div>
+            <h2 class="title" id="run-title">Clone it and build it.</h2>
+          </div>
+          <p>Node 24 and pnpm 10.29.2. Tests and the performance harness use synthetic data and never touch a real account.</p>
+          <pre class="cmd">git clone https://github.com/benverhaalen/magic-uw
+cd magic-uw
+pnpm install
+pnpm dev
+pnpm test
+pnpm magic:perf --suite baseline</pre>
+          <div class="btn-row">
+            <a class="btn btn-yellow" href="https://github.com/benverhaalen/magic-uw">GitHub repository</a>
+            <a class="btn btn-sky" href="https://github.com/benverhaalen/magic-uw/blob/main/docs/README.md">docs/README.md</a>
+            <a class="btn btn-sky" href="https://github.com/benverhaalen/magic-uw/blob/main/docs/benchmarks.md">docs/benchmarks.md</a>
+          </div>
+        </section>
+      </main>
+      <!--#footer-->
+    </div>
+    <script src="/assets/site.js" defer></script>
+  </body>
+</html>

@@ -157,7 +157,7 @@ export function createModelRunner(options: RunnerOptions): ModelRunner {
       }
       const jsonSchema = jsonSchemaOf(request.schema);
       const plan: Tier[] =
-        request.tier === "pass" ? ["pass", "pass", "strong"] : ["strong", "strong"];
+        request.tier === "pass" ? (request.escalate === false ? ["pass", "pass"] : ["pass", "pass", "strong"]) : ["strong", "strong"];
       let usage = zeroUsage();
       let errors: string[] = [];
       for (let i = 0; i < plan.length; i++) {

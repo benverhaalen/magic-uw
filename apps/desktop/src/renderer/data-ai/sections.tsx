@@ -25,18 +25,6 @@ export function uwStatus(snapshot: Pick<Snapshot, "sources">): "signed_in" | "si
   return canvas.some((source) => source.status === "needs_sign_in") ? "signed_out" : "signed_in";
 }
 
-function microsoftWords(status: OutlookStatus | null): { text: string; connect: string | null } {
-  if (!status) return { text: "Available in the desktop app", connect: null };
-  switch (status.outlook) {
-    case "connected": return { text: "Connected", connect: null };
-    case "not_set_up": return { text: "Needs setup", connect: null };
-    case "needs_uw_approval": return { text: "Waiting for UW to approve it for your account", connect: null };
-    case "expired": return { text: "Sign-in expired", connect: "Reconnect" };
-    case "error": return { text: "The last attempt failed", connect: "Try again" };
-    default: return { text: "Not connected", connect: "Connect" };
-  }
-}
-
 export function ConnectedAccounts({ snapshot, busy, run, onSignIn, mcp }: {
   snapshot: Snapshot;
   busy: boolean;
@@ -46,14 +34,11 @@ export function ConnectedAccounts({ snapshot, busy, run, onSignIn, mcp }: {
   mcp: ReactNode;
 }) {
   const uw = uwStatus(snapshot);
-  const [microsoft, setMicrosoft] = useState<OutlookStatus | null | "checking">("checking");
   const [google, setGoogle] = useState<"checking" | "connected" | "connect" | "needs_setup" | "working">("checking");
   const [googleNote, setGoogleNote] = useState("");
   useEffect(() => {
     let live = true;
     const bridge = magic();
-    if (bridge?.outlookStatus) bridge.outlookStatus().then((s) => { if (live) setMicrosoft(s); }).catch(() => { if (live) setMicrosoft(null); });
-    else setMicrosoft(null);
     bridge?.execute({ type: "notes", request: { op: "notes.sync.status" } })
       .then((result) => {
         if (!live) return;
@@ -65,10 +50,6 @@ export function ConnectedAccounts({ snapshot, busy, run, onSignIn, mcp }: {
       .catch(() => { if (live) setGoogle("needs_setup"); });
     return () => { live = false; };
   }, []);
-  const connectMicrosoft = async () => {
-    setMicrosoft("checking");
-    try { setMicrosoft((await magic()?.outlookConnect?.()) ?? null); } catch { setMicrosoft({ outlook: "error" } as OutlookStatus); }
-  };
   const connectGoogle = async () => {
     setGoogle("working");
     setGoogleNote("");
@@ -79,7 +60,6 @@ export function ConnectedAccounts({ snapshot, busy, run, onSignIn, mcp }: {
     setGoogle(/isn't configured/.test(message) ? "needs_setup" : "connect");
     setGoogleNote(message);
   };
-  const ms = microsoft === "checking" ? { text: "Checking…", connect: null } : microsoftWords(microsoft);
   const grants = (snapshot.mcpGrants ?? []).filter((grant) => grant.enabled);
   const agents = [...new Set(grants.map((grant) => ({ local: "an app on this computer", chatgpt: "ChatGPT", claude: "Claude", codex: "Codex", gemini: "Gemini", openrouter: "OpenRouter", jev: "shared labels" } as Record<string, string>)[grant.recipient] ?? grant.recipient))];
   return <section className="settings-section" id="privacy-accounts">
@@ -90,13 +70,11 @@ export function ConnectedAccounts({ snapshot, busy, run, onSignIn, mcp }: {
         {magic()?.signInUW ? <button type="button" className="subtle-button" data-focus-key="privacy-uw-sign-in" disabled={busy} onClick={() => void onSignIn()}>{uw === "not_connected" ? "Sign in" : "Sign in again"}</button> : null}
       </AccountRow>
       <RememberSignIn busy={busy} />
-      <AccountRow name="Microsoft 365" status={ms.text}>
-        {ms.connect ? <button type="button" className="subtle-button" disabled={busy} onClick={() => void connectMicrosoft()}>{ms.connect}</button> : null}
-      </AccountRow>
-      <AccountRow name="Google Drive" status={google === "checking" ? "Checking…" : google === "working" ? "Finish signing in with Google in your browser" : google === "connected" ? "Connected" : google === "needs_setup" ? "Needs setup" : "Not connected"}>
+      <AccountRow name="Google Drive" status={google === "checking" ? "Checking…" : google === "working" ? "Finish signing in with Google in your browser" : google === "connected" ? "Connected" : google === "needs_setup" ? "Needs setup: Google sign-in isn't configured in this build" : "Not connected"}>
         {google === "connect" ? <button type="button" className="subtle-button" disabled={busy} onClick={() => void connectGoogle()}>Connect</button> : null}
       </AccountRow>
       {googleNote ? <p className="small muted" role="status">{googleNote}</p> : null}
+      <AccountRow name="Microsoft 365: possibly coming soon" status="Not available yet" />
       <AccountRow name="Course bank for AI agents" status={grants.length ? `On for ${agents.join(", ")}` : "Off"} />
     </div>
     <details className="privacy-local-details">

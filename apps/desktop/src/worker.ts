@@ -12,7 +12,7 @@ import { createCore } from "@magic/core";
 import { captureBatchSchema, planningCaptureSchema, type PlanningCapture, type Resource } from "@magic/contracts";
 import { queryRequestSchema } from "@magic/contracts"; // owner: T15
 import type { MailTriageState, MessageTriageState } from "@magic/contracts"; // owner: notifications gateway relay
-import fixture from "../../../fixtures/course.json";
+import fixture from "../../../fixtures/sample-courses.json"; // the synthetic sample: one batch per invented course
 import { randomUUID } from "node:crypto";
 import { createLocalService } from "./local-service";
 import { createIngestion, ACQUISITION_APP } from "./ingestion";
@@ -90,10 +90,16 @@ async function geminiKey(): Promise<string | undefined> {
   const reply = (await hostRead("ai-key", { provider: "gemini" }, undefined, 10_000).catch(() => null)) as { key?: unknown } | null;
   return typeof reply?.key === "string" && reply.key ? reply.key : undefined;
 }
-/** The chosen client, and a cache key that changes with its mode so a switch rebuilds the runner. */
+/**
+ * The chosen client, and a cache key that changes with its mode so a switch rebuilds the runner.
+ * With no pick saved, Claude Code is the default; a saved pick (Codex, Gemini) always wins. An
+ * absent or signed-out Claude still answers "Connect your AI first" (the runner build fails), and
+ * every send stays gated by the student's consent and sharing settings.
+ */
 async function chosenClient(): Promise<{ id: ClientId; key: string } | null> {
   const { chosen } = await readClientSettings(generationUserData);
-  return chosen ? { id: chosen, key: `${chosen}:${await modeOf(chosen, generationUserData)}` } : null;
+  const id: ClientId = chosen ?? "claude";
+  return { id, key: `${id}:${await modeOf(id, generationUserData)}` };
 }
 let generationRuntime: { client: string; runner: ModelRunner } | null = null;
 async function generationRunner(): Promise<ModelRunner | null> {
@@ -204,6 +210,9 @@ import { notesActions } from "../../../packages/notes/src/actions";
 import { notesRequestSchema } from "@magic/contracts";
 import { createModelRunner, createSessionPool, type SessionPool } from "../../../packages/runner/src/index";
 import { askPack, classifyPack } from "../../../packages/packs/intent/src/index";
+import { createClaudeChat, prepareAgentTerminal } from "../../../packages/core/src/chat/index"; // owner: claude-chat
+import { createChatSession, CHAT_MODEL, RunnerError } from "../../../packages/runner/src/index"; // owner: claude-chat
+import { errorForState } from "./clients/health"; // owner: claude-chat
 // owner: voice-plan: `voice` is the planner's own Claude pool (below); null for a one-shot client.
 let intentRuntime: { client: string; runner: ModelRunner; pool: SessionPool | null; voice: { runner: ModelRunner; pool: SessionPool } | null } | null = null;
 async function intentRunner(): Promise<ModelRunner | null> {
@@ -289,6 +298,78 @@ async function voiceFocus(raw: unknown): Promise<void> {
   const outcome = await agentWarmup.focus(plannerWarmRequest(store, plannerOrigin(store, context), new Date())).catch(() => "failed" as const);
   if (context.courseId && (outcome === "warm" || outcome === "reused" || outcome === "per_request")) await intent.prewarm(context.courseId).catch(() => undefined);
 }
+// owner: claude-chat (decisions.md, 2026-09-27). The in-app chat: one persistent Claude Code session
+// on Opus 5.5, harnessed on this store through the app's read tools (served here, where the store is
+// keyed and receipts are written per read). The chosen client must be Claude Code in a healthy
+// state; anything else answers "setup" and the chat links to setup's Your AI step.
+const chatRuns = new Map<string, AbortController>();
+let chatClientKey: string | null = null;
+const claudeChat = createClaudeChat({
+  store,
+  session: async (endpoint) => {
+    const chosen = await chosenClient();
+    if (chosen?.id !== "claude") return null;
+    const run = await clientRunOptions("claude", { userData: generationUserData }, () => isolatedOptions("claude")).catch(() => null);
+    if (!run) return null;
+    const health = await run.check().catch(() => null);
+    if (!health || errorForState(health)) return null;
+    chatClientKey = chosen.key;
+    return createChatSession({ ...run.options, ...endpoint, model: CHAT_MODEL });
+  },
+  pack: (name, scope, signal) => generation.pack(name, scope, signal),
+  // The agent's app-control tools: main acts on the window; packs run here.
+  control: {
+    navigate: async (target) => (await hostRead("app-control", { op: "navigate", target }, undefined, 15_000))?.ok === true,
+    openExternal: async (url) => {
+      const reply = await hostRead("app-control", { op: "open", url }, undefined, 15_000);
+      if (reply?.ok !== true) throw new Error("The link could not be opened.");
+    },
+    pack: (name, scope) => generation.pack(name, scope, AbortSignal.timeout(180_000)),
+  },
+});
+// The voice agent: the student's own Claude Code in a terminal, on this endpoint (main launches it).
+async function agentTerminal(): Promise<unknown> {
+  const chosen = await chosenClient();
+  if (chosen?.id !== "claude") return { status: "setup", reason: "Choose Claude Code as Your AI first." };
+  const command = resolveClient("claude", { userData: generationUserData });
+  if (!command) return { status: "setup", reason: "Claude Code isn't installed." };
+  const endpoint = await claudeChat.agentEndpoint();
+  if (endpoint.status !== "ready") return endpoint;
+  const folder = join(generationUserData, "agent", `${Date.now().toString(36)}`);
+  const prepared = await prepareAgentTerminal({ folder, mcpConfig: endpoint.mcpConfig, context: endpoint.context, command });
+  return { status: "ready", folder, launcher: prepared.launcher };
+}
+async function claudeChatAsk(id: string, text: string): Promise<void> {
+  const abort = new AbortController();
+  chatRuns.set(id, abort);
+  try {
+    const chosen = await chosenClient();
+    if (chatClientKey && chosen?.key !== chatClientKey) {
+      claudeChat.reset();
+      chatClientKey = null;
+    }
+    const result = await claudeChat.ask(text, {
+      signal: abort.signal,
+      timeoutMs: 240_000,
+      onText: (chunk) => port.postMessage({ kind: "claude-chat-delta", id, text: chunk }),
+      onTool: (name) => port.postMessage({ kind: "claude-chat-tool", id, tool: name }),
+    });
+    port.postMessage({ kind: "claude-chat-response", id, result });
+  } catch (error) {
+    const kind = error instanceof RunnerError ? error.kind : null;
+    if (kind && ["not_installed", "not_signed_in", "plan_insufficient", "keychain_locked"].includes(kind))
+      port.postMessage({ kind: "claude-chat-response", id, result: { status: "setup", reason: (error as RunnerError).studentMessage } });
+    else
+      port.postMessage({
+        kind: "claude-chat-response",
+        id,
+        error: error instanceof RunnerError ? error.studentMessage : "Claude couldn't finish this answer. Try again.",
+      });
+  } finally {
+    chatRuns.delete(id);
+  }
+}
+// end owner: claude-chat
 const voicePlan = createVoicePlanWorker({
   post: (message) => port.postMessage(message),
   run: async (request, executor, signal) => {
@@ -336,10 +417,14 @@ const notesRemotes: { microsoft?: NotesRemote; google?: NotesRemote & { connect(
   : {};
 // Word online: the app folder through main's Graph proxy (T30). Connected once the student's
 // Microsoft sign-in granted Files.ReadWrite.AppFolder. graphHost is defined below; called later.
-notesRemotes.microsoft = microsoftRemote(
-  (request) => graphHost.transport(request),
-  async () => graphScopes.includes("Files.ReadWrite.AppFolder"),
-);
+// Not offered in this build: Google Drive is the only notes connection; the UI shows Microsoft 365
+// as "possibly coming soon". Flip this constant to offer Word/OneDrive sync again.
+const OFFER_MICROSOFT_NOTES = false;
+if (OFFER_MICROSOFT_NOTES)
+  notesRemotes.microsoft = microsoftRemote(
+    (request) => graphHost.transport(request),
+    async () => graphScopes.includes("Files.ReadWrite.AppFolder"),
+  );
 // Notes saved straight to a folder the student's own OneDrive, Google Drive or iCloud client
 // already syncs: zero setup, no sign-in (see packages/notes/src/local-drive.ts). The chosen
 // folder and each note's last-written hash live in a small JSON file beside the workspace db.
@@ -374,7 +459,7 @@ jobs.register(
 );
 // end owner: site-recipes
 const core = createCore(store, {
-  fixture: captureBatchSchema.parse(fixture),
+  fixture: fixture.map((batch) => captureBatchSchema.parse(batch)),
   planningPublicClient: publicClients.core, // owner: T06
   // owner: drain. Passages, links and facts and the course pass are reconciled in budgeted batches
   // (jobs/derive.ts), not queued per row; the registry keeps only kinds that need a queue.
@@ -730,6 +815,19 @@ changeWatch.unref();
 // end owner: stall-audit
 const commandAborts = new Map<string, AbortController>();
 port.on("message", async ({ data }: { data: any }) => {
+  // owner: claude-chat. A question, its Stop, the launch warm-up, and an end on any provider,
+  // privacy, inclusion or account change (main sends voice-agent-refresh for each; voice still gets it).
+  if (data.kind === "claude-chat" && typeof data.id === "string" && typeof data.text === "string" && data.text.length <= 4000)
+    return void claudeChatAsk(data.id, data.text);
+  if (data.kind === "claude-chat-cancel" && typeof data.id === "string") return void chatRuns.get(data.id)?.abort();
+  if (data.kind === "claude-chat-warm") return void claudeChat.warm().catch(() => false);
+  if (data.kind === "agent-terminal" && typeof data.id === "string")
+    return void agentTerminal().then(
+      (result) => port.postMessage({ kind: "response", id: data.id, result }),
+      () => port.postMessage({ kind: "response", id: data.id, error: "The Claude Code terminal couldn't be prepared." }),
+    );
+  if (data.kind === "voice-agent-refresh") claudeChat.reset();
+  // end owner: claude-chat
   if (voicePlan.handle(data)) return; // owner: voice-plan
   // owner: voice-plan: launch warm-up, a retry on voice activation, and teardown on a provider/account change.
   if (data.kind === "voice-agent-warm") return void (data.context ? voiceFocus(data.context) : agentWarmup.start());

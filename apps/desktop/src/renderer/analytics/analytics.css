@@ -33,6 +33,8 @@
   background: var(--chart-surface-quiet);
 }
 .course-analytics {
+  /* Contains the charts' screen-reader tables (.chart-sr); otherwise they stretch the window and it scrolls. */
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 16px;

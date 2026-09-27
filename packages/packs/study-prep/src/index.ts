@@ -283,6 +283,7 @@ export const studyPrepPack = definePack<PrepInput, StudyPrepOutput>({
   id: STUDY_PREP_PACK_ID,
   version: STUDY_PREP_PACK_VERSION,
   tier: "pass",
+  escalate: false, // items are checked one by one: failures are dropped, never escalated to the strong model
   system:
     "You write study material for a university student from their own course passages: study guides, practice questions, flashcards, practice problems, practice exams and outline coaching, as asked. Be accurate and concise, in plain words, faithful to how the course states things. Return only JSON matching the schema.",
   template: (i) => `${prepContext(i)}\n\n${prepAsk(i)}`,

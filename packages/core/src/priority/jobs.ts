@@ -66,7 +66,8 @@ function frameFor(store: AgendaStore, course: CourseRef, label: string, sample: 
     courseId: `${course.accountScope}:${course.courseId}`,
     course: scrub(label),
     skeleton: scrub([`Course: ${label}`, ...(lines.length ? ["Course profile:", ...lines] : [])].join("\n")),
-    policy: scrub(policy && policy.mode !== "unknown" ? `${policy.mode}: ${policy.evidence}` : ""),
+    // Only a course's own stated rule; the UW default adds nothing to ranking work.
+    policy: scrub(policy && policy.source === "course" && policy.mode !== "unknown" ? `${policy.mode}: ${policy.evidence}` : ""),
   };
 }
 

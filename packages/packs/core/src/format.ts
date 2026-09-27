@@ -32,6 +32,11 @@ export interface PackSpec<I, O> {
   version: string;
   /** Pass first everywhere (F5); the runner escalates on failed checks. */
   tier: Tier;
+  /**
+   * false: a failed check retries once on the pass tier and never escalates to the strong model. For
+   * item packs whose items code checks one by one: a failing item is dropped and the rest are kept.
+   */
+  escalate?: false;
   /** The pack's role text: the first, stable part of the prefix. */
   system: string;
   /** The question, rendered last (O8). */

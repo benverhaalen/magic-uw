@@ -1,6 +1,6 @@
 import { SHOW_DATE_CONFLICT_UI } from './date-conflict-policy';
 import { MagicGlyph } from '../../../../packages/ui/src/glyph';
-import { ItemSpaceHost, PrepFirstPrompt, StudyLearnPage, STUDY_LEARN_EVENT } from "./study-prep"; // owner: study-prep
+import { ItemSpaceHost, PrepFirstPrompt, StudyLearnPage, STUDY_LEARN_EVENT, openItemSpace } from "./study-prep"; // owner: study-prep
 import { CoursesViewHeader } from './courses/CoursesViewToggle';
 import { CoursesWorkList, type WorkReportResult } from './courses/CoursesWorkView';
 import { projectCourseWork, isCourseWorkActionCurrent, type CourseWorkRow } from './courses/course-work-model';
@@ -96,6 +96,7 @@ function ShellFeedback({ error, notice, view, onDismiss }: { error: string; noti
 }
 import { ResourceDetailHeader, ResourceProvenance } from "./ResourceDetailHeader";
 import { effectiveCoursePolicy } from "../../../../packages/domain/src/course-policy";
+import { UW_DEFAULT_AI_POLICY } from "../../../../packages/domain/src/uw-ai-policy";
 import { ResourceAssignment } from "./ResourceAssignment";
 import { ResourceEvent } from "./ResourceEvent";
 import { clearTaskWorkspaces } from "./task-workspace/model";
@@ -351,6 +352,8 @@ export function App() {
   const [consentPending, setConsentPending] = useState<PrivacyPreferences | null>(null);
   // owner: reconfigure. Set by "Re-run setup" (step 1) or a client's "Sign in" (the Your AI step).
   const [setupAt, setSetupAt] = useState<StepId | null>(null);
+  // Finishing setup re-renders now instead of waiting on a snapshot read that a running sync can stall.
+  const [, setSetupFinished] = useState(0);
   const privacyReturnFocus = useRef<string | null>(null);
   const consentReturnToPrivacy = useRef(false);
   useLayoutEffect(() => {
@@ -516,6 +519,29 @@ export function App() {
     else return false;
     return true;
   };
+  // owner: claude-chat. The student's Claude Code agent (a terminal, voice via its /voice) drives the
+  // window through the app's open_page and study tools; main has checked the page and ids.
+  const agentNavigate = useRef<(t: {page: string; courseId?: string; accountScope?: string; resourceId?: string; action?: string}) => void>(() => undefined);
+  agentNavigate.current = t => {
+    if (t.page === 'home') setView('today');
+    else if (t.page === 'course' && t.courseId) navigateFromIntent({view: 'course', courseId: t.courseId, accountScope: t.accountScope});
+    else if (t.page === 'item' && t.resourceId) navigation.navigate('resource', t.resourceId);
+    else if (t.page === 'prep' && t.resourceId && t.courseId) {
+      navigation.navigate('study');
+      const action = t.action === 'cards' || t.action === 'quiz' || t.action === 'guide' ? t.action : undefined;
+      openItemSpace({courseId: t.courseId, itemId: t.resourceId, ...(action ? {action} : {})});
+    }
+    else if (t.page === 'study') setView('study');
+    else if (t.page === 'calendar') setView('calendar');
+    else if (t.page === 'data-ai') setView('privacy');
+  };
+  useEffect(() => window.magic.onAgentNavigate?.(t => agentNavigate.current(t)), []);
+  const [agentNote, setAgentNote] = useState<string | null>(null);
+  const agentVoice = {
+    state: 'ready' as const,
+    onStart: () => { void window.magic.launchAgent?.().then(r => setAgentNote(r.status === 'opened' ? 'Claude Code opened in a terminal. Tap Space to talk (/voice).' : r.reason), (e: unknown) => setAgentNote(e instanceof Error ? e.message : 'Claude Code could not be opened.')); },
+  };
+  // end owner: claude-chat
   const desktopVoice = useDesktopVoice(chatAccountKey, () => {
     const origin = captureChatOrigin(), courses = scopeCourses(origin.scope);
     return {origin: {chat: origin, followUpId: view === 'chat' ? selectedId ?? undefined : undefined}, context: {view: origin.view, ...(courses.length === 1 ? {courseId: courses[0]!.key} : {}), ...(origin.scope.kind === 'item' ? {resourceId: origin.scope.item.id} : {})}};
@@ -544,6 +570,7 @@ export function App() {
         onLoadSample={() => run({ type: "fixture" })}
         onFinish={() => {
           setSetupAt(null); // owner: reconfigure
+          setSetupFinished((count) => count + 1);
           setView("today");
           void refresh();
         }}
@@ -566,7 +593,7 @@ export function App() {
         <ShellFeedback error={error} notice={notice} view={view} onDismiss={() => { setError(""); setNotice(""); }}/>
       </>}
       trailing={<NotificationsMenu feed={snapshot?.notifications} busy={busy} run={run} destinationOf={notificationTarget} onOpen={openNotification} onOpenSources={() => setView("sources")} onOpenPrivacy={() => navigation.navigate("privacy", null, null, undefined, snapshot?.privacy.mode === "local_only" ? undefined /* the mode choice at the top unlocks Jev */ : { focus: "privacy-jev", anchor: "privacy-models" })}/>}
-      launcher={snapshot ? <ConversationLauncher<ChatOrigin> key={chatAccountKey} voice={desktopVoice.voice} feedback={desktopVoice.feedback || undefined} here={{key:`${view}:${selectedId ?? ''}:${navigation.courseKey ?? ''}`,label:pageTitle}} captureOrigin={captureChatOrigin} mode={view === 'chat' && selectedId ? 'follow-up' : 'new-chat'} chatId={view === 'chat' ? selectedId ?? undefined : undefined} onSubmit={entry => {
+      launcher={snapshot ? <ConversationLauncher<ChatOrigin> key={chatAccountKey} voice={window.magic.launchAgent ? agentVoice /* owner: claude-chat: Talk to Claude (Claude Code /voice; audio goes to Anthropic, needs a Claude.ai sign-in) */ : desktopVoice.voice} feedback={(window.magic.launchAgent ? agentNote : desktopVoice.feedback) || undefined} here={{key:`${view}:${selectedId ?? ''}:${navigation.courseKey ?? ''}`,label:pageTitle}} captureOrigin={captureChatOrigin} mode={view === 'chat' && selectedId ? 'follow-up' : 'new-chat'} chatId={view === 'chat' ? selectedId ?? undefined : undefined} onSubmit={entry => {
         const invalid = chatPromptError(entry.prompt); if (invalid) return {accepted:false,message:invalid};
         if (entry.destination.kind === 'follow-up') {
           if (!continueChat(entry.destination.chatId, entry.prompt, entry.idempotencyKey)) return {accepted:false,message:'This chat is no longer open. Start a new chat.'};
@@ -619,7 +646,7 @@ export function App() {
             )}
           </>
         ) : view === "chat" ? (
-          <ChatPane onNavigate={navigateFromIntent} typeHueOf={typeHueOf} chatId={selectedId ?? ''} bridge={window.magic} resources={resources} sources={snapshot.sources} courses={courseCards.map(card => chatCourse(card))} now={new Date().toISOString()} Info={EvidenceInfo} onBack={() => navigation.canBack ? navigation.back() : setView('today')} onOpenSetup={target => setView(target === 'sources' ? 'sources' : 'privacy')}/>
+          <ChatPane onNavigate={navigateFromIntent} typeHueOf={typeHueOf} chatId={selectedId ?? ''} bridge={window.magic} resources={resources} sources={snapshot.sources} courses={courseCards.map(card => chatCourse(card))} now={new Date().toISOString()} Info={EvidenceInfo} onBack={() => navigation.canBack ? navigation.back() : setView('today')} onOpenSetup={target => target === 'sources' ? setView('sources') : setSetupAt('client') /* owner: claude-chat: setup's Your AI step */}/>
         ) : view === "resource" ? (
           selected ? <ResourceDetail key={selected.id} resource={selected} snapshot={snapshot} busy={busy} run={run} open={open} onClose={navigation.back} onSetup={() => openConsent()} onNotice={setNotice} />
             : <section className="initial-state"><h1 tabIndex={-1}>This item is no longer available.</h1><p>The saved item may have been removed or excluded. Your previous page is still available.</p><button className="button" onClick={navigation.back}>Go back</button></section>
@@ -902,12 +929,15 @@ function ResourceDetail({
     return Boolean(other && other.url === resource.url && other.title === resource.title);
   });
   const policyDetails = (
-<Disclosure label={`Course AI policy · ${effectivePolicy.mode}`} placeKey={`resource-policy:${resource.id}`}>
+<Disclosure label={`Course AI policy · ${effectivePolicy.source === "uw-default" ? "UW–Madison default" : effectivePolicy.mode}`} placeKey={`resource-policy:${resource.id}`}>
         {effectivePolicy.conflict && <p className="attention-text">Saved policy sources disagree. The more restrictive policy applies.</p>}
-        <p className="source-text">
-          {effectivePolicy.evidence ||
-            "No AI policy was found in the captured material. Coaching is the default."}
-        </p>
+        {effectivePolicy.source === "uw-default"
+          ? <p className="source-text">{UW_DEFAULT_AI_POLICY.notice}{" "}
+              <button className="link-button" onClick={() => open(UW_DEFAULT_AI_POLICY.source.url)}>UW–Madison AI guidelines</button></p>
+          : <p className="source-text">
+              {effectivePolicy.evidence ||
+                "No AI policy was found in the captured material. Coaching is the default."}
+            </p>}
         {courseProfile?.freshness !== undefined && courseProfile.freshness !== "current_capture" && <p className="small muted">Course policy sources are {courseProfile.freshness}. The effective saved policy applies here.</p>}
         {effectivePolicy.resourceIds.length > 0 && <ul className="evidence-list">{effectivePolicy.resourceIds.map(id => {
           const evidence = snapshot.resources.find(candidate => candidate.id === id);

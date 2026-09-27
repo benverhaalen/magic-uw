@@ -15,7 +15,7 @@ export interface AssignmentClickInvestigation {
   /** Magic's existing connected Claude Code or Codex backend, in its app-scoped no-tool mode. */
   backend: ModelBackend & { client: "claude" | "codex" };
   /** Existing per-client MCP/agent grant; the token is never sent to the backend. */
-  credentials?: Credentials;
+  grant?: Credentials;
   /** App click may supply its own fresh maySend/courseInclusion/category gate when no MCP token exists. */
   access?: () => { allowed(resource: Resource): boolean; scrubFor(resource: Resource): (text: string) => string };
   /** The Opus assignment-context producer; injected until its patch is in the integration baseline. */
@@ -31,8 +31,8 @@ export interface AssignmentClickInvestigation {
 export async function investigateAssignmentClick(input: AssignmentClickInvestigation): Promise<InvestigationResult> {
   const session = () => {
     if (input.access) return input.access();
-    if (!input.credentials) throw new Error("No authorized investigation access was supplied.");
-    return openSession(input.store, input.credentials, input.sessionOptions);
+    if (!input.grant) throw new Error("No authorized investigation access was supplied.");
+    return openSession(input.store, input.grant, input.sessionOptions);
   };
   const initial = session();
   const assignment = input.store.resource(input.assignmentId);
