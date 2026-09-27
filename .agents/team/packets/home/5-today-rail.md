@@ -1,10 +1,14 @@
 # Home handoff: Today rail ready for review
 
-Updated: September 26, 2026. Human owner: Sean. Agent: Claude Code (Opus 5.5). Branch: `sean/today-calendar-rail`, base `9302865`; open as [PR #2](https://github.com/benverhaalen/magic-uw/pull/2) (mergeable, not merged). Recipient: Ben, as Home owner. Status: implemented and tested with synthetic data; not validated on a live UW feed or with students.
+Updated: September 26, 2026 (evening). Human owner: Sean. Agent: Claude Code (Opus 5.5). Branch: `sean/today-calendar-rail`, merged with main at `973be53`, head `62de5c0`; open as [PR #2](https://github.com/benverhaalen/magic-uw/pull/2) (mergeable, not merged). Recipient: Ben, as Home owner. Status: implemented and tested with synthetic data; not validated on a live UW feed or with students.
 
 ## Scope
 
 The quiet right-hand Today rail on Home: due-today items, all-day and timed events with a current-time line, and suggested prep/work/exam-review blocks placed in free time. Students accept, skip, or edit a block from a hover toolbar; study blocks can be marked done. Assignment blocks cross out only when Canvas reports the submission. The synthetic sample course now moves onto the local today when loaded. Ownership split per Sean: **the rail is Sean's; building the designed Home screen is Ben's.**
+
+## Update: built to Ben's design docs
+
+Per Sean ("build based on bens design docs, agree to what he has"): suggestions now appear **on request**; normal rail content is commitments and accepted blocks. `projectWork(resources, now, timeZone)` in `@magic/domain` sorts open work once into overdue / dueToday / upcoming, and the rail reads it, so **Home's Upcoming should read `upcoming`** to keep one identity. Platform-review notes addressed: planned vs. suggested minutes separate, honest prep wording, per-source freshness and qualified empty states, clickable class blocks. New: published **Outlook calendar** meetings (Teams-labeled, location kept, communications category); bridge `setOutlookCalendar(url|null)` / `outlookCalendarStatus()`. `pnpm test:desktop` now passes (it had hard-coded a 2-item sample).
 
 ## Interfaces others will touch
 
@@ -24,6 +28,6 @@ Ben: review and merge PR #2 when convenient, then keep `TodayRail` in the new Ho
 
 ## Evidence
 
-287 automated tests, typecheck, and desktop build pass on the branch. A headless browser drove real mouse events through hover → accept → edit → skip and confirmed the saved plan in core; a synthetic Canvas re-import crossed out the accepted block. See [implementation status](../../../../docs/implementation-status.md#verification) on the branch.
+297 automated tests, typecheck, desktop build, and the hidden Electron check pass on the branch. A headless browser drove real mouse events through hover → accept → edit → skip and confirmed the saved plan in core; a synthetic Canvas re-import crossed out the accepted block. See [implementation status](../../../../docs/implementation-status.md#verification) on the branch.
 
 This packet is removed by the [release cleanup](../team/3-release-cleanup.md) before September 27, 11 a.m. Central; PR #2 remains the durable record.
