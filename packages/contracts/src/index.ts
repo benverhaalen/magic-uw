@@ -11,6 +11,10 @@ export * from "./notifications";
 import type { NotificationFeed, NotificationState } from "./notifications";
 // owner: T05b. The data builder's course core (schema v5) replaces the placeholder module.
 export * from "./course-core";
+// owner: notes
+export * from "./notes";
+import { notesRequestSchema, type NotesResult } from "./notes";
+// end owner: notes
 import type { GraphQuery, GraphResult } from "./course-core"; // owner: pipeline
 import type {
   CourseIntelligence,
@@ -561,7 +565,7 @@ export const captureBatchSchema = z
           "kaltura",
           "mail",
           "feed",
-          "notes", // owner: T30: OneNote and OneDrive through Graph
+          "notes", // owner: T30: OneNote and OneDrive through Graph; owner: notes: session notes (passages)
         ]),
         accountScope: id,
         courseId: id,
@@ -1725,6 +1729,9 @@ export const commandSchema = z.discriminatedUnion("type", [
     .object({ type: z.literal("learning"), request: learningRequestSchema })
     .strict(),
   // end owner: T05b
+  // owner: notes
+  z.object({ type: z.literal("notes"), request: notesRequestSchema }).strict(),
+  // end owner: notes
 ]);
 export type Command = z.infer<typeof commandSchema>;
 export type CommandResult = {
@@ -1739,6 +1746,7 @@ export type CommandResult = {
   pack?: unknown;
   workspace?: WorkspaceResult;
   // end owner: T05b
+  notes?: NotesResult; // owner: notes
   citations?: CitationResult[];
 };
 export const localQuestionSchema = z

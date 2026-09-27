@@ -58,6 +58,7 @@ const judgedHash = (r: Resource) => textHash(r.title, r.text);
 const JEV_TEXT_CHARS = 2000;
 const JEV_POLICY_CHARS = 500;
 import type { QueryRequest } from "@magic/contracts";
+import type { NotesRequest, NotesResult } from "@magic/contracts"; // owner: notes
 import type {
   Correction,
   LearningRequest,
@@ -85,6 +86,11 @@ export interface CoreSeams {
   pack?(pack: string, scope: PackScope, signal: AbortSignal): Promise<unknown>;
   /** ui_events (schema v5). */
   uiEvent?(value: UiEvent, at: string): void;
+  // owner: notes. Session notes (packages/notes): scaffolds, edits, fill and two-way sync.
+  notes?: {
+    handle(request: NotesRequest, signal: AbortSignal): Promise<NotesResult>;
+  };
+  // end owner: notes
 }
 export type { JobRegistry } from "./jobs/registry";
 // end owner: T05b
@@ -669,7 +675,7 @@ export function createCore(store: Store, options: CoreOptions) {
     const command = commandSchema.parse(raw);
     let message: string | undefined, manifest: ContextManifest | undefined;
     // owner: T05b
-    let seamResult: Partial<Pick<CommandResult, "learning" | "map" | "pack" | "workspace">> = {};
+    let seamResult: Partial<Pick<CommandResult, "learning" | "map" | "pack" | "workspace" | "notes">> = {};
     // end owner: T05b
     switch (command.type) {
       case "snapshot":
@@ -1009,6 +1015,17 @@ export function createCore(store: Store, options: CoreOptions) {
         };
         break;
       }
+      // owner: notes
+      case "notes": {
+        const notes = seams.notes;
+        seamResult = {
+          notes: notes
+            ? await seamCall((signal) => notes.handle(command.request, signal))
+            : { op: command.request.op, status: "not_built", message: "Notes aren't built yet." },
+        };
+        break;
+      }
+      // end owner: notes
       default: {
         // An unknown Command is a type error here (T05b).
         const unhandled: never = command;
