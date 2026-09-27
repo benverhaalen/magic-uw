@@ -37,6 +37,8 @@ export interface Store {
     caps: JudgmentCaps,
     now?: Date,
   ): Reservation;
+  /** Returns one reservation made at `reservedAt` (an upstream 429 spent nothing). */
+  refundJudgment(deviceId: string, reservedAt: Date): void;
 }
 
 function hashToken(token: string): string {
@@ -181,6 +183,18 @@ export function openStore(dbPath: string): Store {
         db.prepare("UPDATE devices SET disabled = 1 WHERE disabled = 0").run()
           .changes,
       );
+    },
+
+    refundJudgment(deviceId, reservedAt) {
+      const stmt = db.prepare(
+        "UPDATE counters SET count = count - 1 WHERE key = ? AND count > 0",
+      );
+      for (const key of [
+        `global:day:${dayWindow(reservedAt)}`,
+        `device:${deviceId}:day:${dayWindow(reservedAt)}`,
+        `device:${deviceId}:hour:${hourWindow(reservedAt)}`,
+      ])
+        stmt.run(key);
     },
 
     reserveJudgment(deviceId, caps, now = new Date()) {

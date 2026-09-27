@@ -17,6 +17,7 @@ import { judgmentRequestSchema } from "./schema";
 import { openStore, type Store } from "./store";
 import {
   createTypeSafeEvaluate,
+  UpstreamRateLimitError,
   validateAssignmentKindResult,
   type AssignmentKindResult,
   type Evaluate,
@@ -307,6 +308,7 @@ export function createGateway(options: GatewayOptions = {}): GatewayHandle {
       );
     }
 
+    const reservedAt = now();
     const reservation = store.reserveJudgment(
       device.id,
       {
@@ -314,7 +316,7 @@ export function createGateway(options: GatewayOptions = {}): GatewayHandle {
         deviceDailyLimit: limits.deviceDailyLimit,
         deviceHourlyLimit: limits.deviceHourlyLimit,
       },
-      now(),
+      reservedAt,
     );
     if (!reservation.ok) {
       // Reservation was never granted, so nothing was spent and the
@@ -341,7 +343,16 @@ export function createGateway(options: GatewayOptions = {}): GatewayHandle {
         result = validateAssignmentKindResult(
           await evaluate(parsed.data.state, controller.signal),
         );
-      } catch {
+      } catch (error) {
+        // An upstream 429 spent nothing: refund the reservation and pass the wait through.
+        if (error instanceof UpstreamRateLimitError) {
+          store.refundJudgment(device.id, reservedAt);
+          throw new RateLimitError(
+            "upstream_rate_limited",
+            "The judgment service is rate limited. Try again later.",
+            error.retryAfterSeconds,
+          );
+        }
         throw new HttpError(
           502,
           "upstream_error",
