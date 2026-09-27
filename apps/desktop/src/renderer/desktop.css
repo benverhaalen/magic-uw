@@ -29,9 +29,16 @@
 .desktop-profile-button { border: 0; background: none; color: inherit; padding: 5px 3px; border-radius: 6px; display: flex; align-items: center; gap: 10px; font-size: 12px; min-width: 0; flex: 1; }
 .desktop-avatar { display: grid; place-items: center; background: var(--magic-fill-avatar); color: var(--magic-ink-avatar); width: 32px; height: 32px; border-radius: 50%; font-size: 11px; flex: 0 0 32px; }
 .desktop-source-shortcut { background: none; color: inherit; border: 0; padding: 7px; }
-.is-collapsed .desktop-nav span,.is-collapsed .desktop-profile-button>span:last-child,.is-collapsed .desktop-source-shortcut { display: none; }
-.is-collapsed .desktop-sidebar { padding-top: 16px; }
-.is-collapsed .desktop-nav { justify-content: center; padding: 12px 8px; }
+/* Collapse keeps every row in place: the column narrows, labels fade (magic-motion-fade) and
+ * icons shift 3px to the 64px column's center. Width is the one layout property animated here. */
+.desktop-shell { transition: grid-template-columns var(--magic-motion-drawer) var(--magic-motion-ease-drawer); }
+.desktop-sidebar { overflow: clip; }
+.desktop-sidebar nav { overflow-x: hidden; }
+.desktop-nav span,.desktop-profile-button>span:last-child { white-space: nowrap; }
+.desktop-nav svg { transition: transform var(--magic-motion-drawer) var(--magic-motion-ease-drawer); }
+.is-collapsed .desktop-nav svg { transform: translateX(3px); }
+.desktop-expand svg { transition: transform var(--magic-motion-disclosure) var(--magic-motion-ease-out); }
+@media (prefers-reduced-motion: reduce) { .desktop-shell,.desktop-nav svg,.desktop-expand svg { transition: none; } }
 .desktop-sidebar button:focus-visible,.desktop-chrome button:focus-visible { outline-color: var(--magic-focus-on-shell); }
 .desktop-workspace { background: var(--magic-surface-workspace); border-radius: var(--magic-radius-workspace); min-width: 0; min-height: 0; overflow: auto; scrollbar-gutter: stable; }
 .desktop-workspace h1,.desktop-workspace h2 { font-family: var(--magic-font-editorial); font-weight: 500; letter-spacing: normal; }

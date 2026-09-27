@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { markAnchor } from './motion/anchor';
 
 // Lucide chevron-right, ISC; attribution in ../LICENSE.icons.
 function Chevron() {
@@ -90,6 +91,7 @@ export function NavigationPopover({ label, links }:
     element.style.width = `${width}px`;
     element.style.left = `${Math.max(12, Math.min(rect.left, innerWidth - width - 12))}px`;
     element.style.top = `${Math.max(12, Math.min(rect.bottom + 6, innerHeight - element.offsetHeight - 12))}px`;
+    markAnchor(element, trigger.current!);
   }
   useEffect(() => {
     if (!open) return;
@@ -104,7 +106,7 @@ export function NavigationPopover({ label, links }:
         if (element.matches(':popover-open')) element.hidePopover();
         else { element.showPopover(); place(); element.querySelector<HTMLAnchorElement>('a')?.focus(); }
       }}>{label}</button>
-    <div ref={panel} id={id} popover="auto" className="magic-ui-popover"
+    <div ref={panel} id={id} popover="auto" data-magic-motion="anchored" className="magic-ui-popover"
       onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); panel.current?.hidePopover(); trigger.current?.focus(); } }}
       onBlur={event => {
         if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget) && event.relatedTarget !== trigger.current) panel.current?.hidePopover();
