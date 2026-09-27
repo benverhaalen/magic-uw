@@ -6,7 +6,7 @@ Checked September 26, 2026 against the live site and Ben's opening-slide photos.
 
 Applied AI & Automation; DoIT's Badgers Building for Badgers; The Art of the Break. Teams select one track and up to two challenges. A team may receive a track award and two challenge awards. No separate overall grand prize was identified. [Tracks and awards](https://buildfest.project.wiscweb.wisc.edu/tracks-awards/)
 
-The published build window is Saturday September 26 at 11 AM to Sunday September 27 at 11 AM. Submit a repository, two-minute video, and required responses by Sunday 11 AM. Up to five finalists per track advance to live demos Sunday 1–3 PM. Challenges are judged asynchronously; winners are announced September 30. The Break challenge uses a one-page Break Card about an actual failure in the team's agent, frequency, mitigation attempts, and lessons. [Schedule](https://buildfest.project.wiscweb.wisc.edu/schedule-logistics/), [FAQ](https://buildfest.project.wiscweb.wisc.edu/faq-about-tel/)
+The published build window is Saturday September 26 at 11 AM to Sunday September 27 at 11 AM. Submit a repository, two-minute video, and required responses by Sunday 11 AM. Up to five finalists per track advance to live demos Sunday 1–3 PM. Challenges are judged asynchronously; winners are announced September 30. The Break challenge uses a one-page Break Card about an actual failure in the team's agent, frequency, mitigation attempts, and lessons. Ours: [Break card: checked quotes, unchecked sentences](break-card.md) ([public link](https://github.com/benverhaalen/magic-uw/blob/main/docs/break-card.md)). [Schedule](https://buildfest.project.wiscweb.wisc.edu/schedule-logistics/), [FAQ](https://buildfest.project.wiscweb.wisc.edu/faq-about-tel/)
 
 ## Opening slides and unresolved rules
 
@@ -32,4 +32,4 @@ The supplied detail that a DoIT judge previously owned degree audit is not verif
 
 Potentially useful conversations: Zekai Otles on campus access/pilot constraints, Christopher Mende on production AI, Shivansh Gupta on failure evaluation, Christopher Harrison on reliability. These are suggestions, not assigned visits.
 
-False assignment linking is one possible Break Card subject because it connects a model decision to a student consequence. It is not yet an observed failure or completed evaluation.
+Our submitted Break Card is [checked quotes, unchecked sentences](break-card.md) (B1–B4, fixed in [PR #59](https://github.com/benverhaalen/magic-uw/pull/59)): code checked that a cited quote was real, not that the sentence said what the quote says. Its rates come from synthetic cases, not a live model run. False assignment linking was an earlier candidate subject and was not used.
