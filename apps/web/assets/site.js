@@ -1,23 +1,43 @@
 // Small progressive enhancements. Every page reads correctly without this script.
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-// Assignment spaces: cursor moves to Homework 6, clicks, and the three windows open.
-const stage = document.querySelector(".stage");
-if (stage && !reduceMotion) {
-  const steps = [
-    [0, 900],
-    [1, 800],
-    [2, 350],
-    [3, 3400],
-  ];
-  let i = 0;
-  const next = () => {
-    const [step, wait] = steps[i];
-    stage.dataset.step = String(step);
-    i = (i + 1) % steps.length;
-    setTimeout(next, wait);
-  };
-  next();
+// Silent product loops. Each <video> ships with a poster and data-src sources only, so nothing
+// downloads until the clip nears the viewport; it plays while visible and pauses offscreen.
+// Reduced motion (or no IntersectionObserver) keeps the poster. The Pause button appears once a
+// clip actually plays, so a slot whose clip isn't there yet stays a still poster.
+const loops = [...document.querySelectorAll("[data-loop]")];
+if (loops.length && !reduceMotion && "IntersectionObserver" in window) {
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        const video = entry.target.querySelector("video");
+        if (!entry.isIntersecting) {
+          video.pause();
+          continue;
+        }
+        if (!video.dataset.loaded) {
+          video.dataset.loaded = "1";
+          for (const source of video.querySelectorAll("source[data-src]")) source.src = source.dataset.src;
+          video.load();
+        }
+        if (entry.target.dataset.paused !== "1") video.play().catch(() => {});
+      }
+    },
+    { rootMargin: "150px 0px" },
+  );
+  for (const loop of loops) {
+    const video = loop.querySelector("video");
+    const toggle = loop.querySelector("[data-loop-toggle]");
+    video.addEventListener("playing", () => (toggle.hidden = false), { once: true });
+    toggle.addEventListener("click", () => {
+      const pause = loop.dataset.paused !== "1";
+      loop.dataset.paused = pause ? "1" : "0";
+      toggle.textContent = pause ? "Play" : "Pause";
+      if (pause) video.pause();
+      else video.play().catch(() => {});
+    });
+    observer.observe(loop);
+  }
 }
 
 // Study notebook carousel arrows.

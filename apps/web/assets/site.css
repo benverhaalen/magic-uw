@@ -382,14 +382,27 @@ button {
   max-width: 480px;
 }
 .hero-art {
+  position: relative;
   display: flex;
   align-items: flex-end;
-  justify-content: center;
+  padding-bottom: 96px;
+}
+.hero-art .loop {
+  width: 100%;
 }
 .hero-art .wizard {
-  height: 500px;
+  position: absolute;
+  z-index: 2;
+  left: -36px;
+  bottom: -22px;
+  height: 200px;
   width: auto;
-  margin-bottom: -30px;
+}
+/* The About hero keeps its large standing wizard. */
+.about-hero .hero-art {
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 0;
 }
 
 /* Home: Know / Act / Practice */
@@ -420,31 +433,7 @@ button {
   color: #fff;
 }
 
-/* Home: product card (illustrative) */
-.today {
-  background: #fff;
-  border-radius: 24px;
-  padding: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  box-shadow: 0 20px 40px -20px rgba(41, 35, 31, 0.2);
-}
-.today-label {
-  font-family: var(--mono);
-  font-size: 13px;
-}
-.today-row {
-  border: 1px solid var(--rule);
-  border-radius: 14px;
-  padding: 14px 16px;
-}
-.today-row strong {
-  display: block;
-}
-.today-row span {
-  font-size: 14px;
-}
+/* Home: text beside a product loop */
 .split {
   display: grid;
   grid-template-columns: 1fr 1.2fr;
@@ -456,159 +445,122 @@ button {
   gap: 18px;
 }
 
-/* Home: assignment spaces demo */
-.spaces {
-  padding: 56px var(--pad-room);
-  display: flex;
-  flex-direction: column;
-  gap: 28px;
+/* Silent product loops. The poster shows until the clip is near the viewport; reduced motion
+   keeps the poster only (site.js). A clip that is not there yet leaves the poster in place. */
+.loop {
+  position: relative;
+  margin: 0;
+  border-radius: 24px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 24px 50px -24px rgba(41, 35, 31, 0.4);
+  aspect-ratio: 16 / 9;
 }
-.spaces-head {
+.loop video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.loop-toggle {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  min-height: 36px;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(41, 35, 31, 0.78);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+}
+.loop-toggle[hidden] {
+  display: none;
+}
+.loop-toggle:focus-visible {
+  outline: 3px solid #fff;
+  box-shadow: 0 0 0 6px var(--ink);
+  outline-offset: 0;
+}
+
+/* Home: feature rooms, text beside a loop; every other room puts the loop first. */
+.feature.split {
+  grid-template-columns: 1fr 1.25fr;
+}
+.feature.flip.split {
+  grid-template-columns: 1.25fr 1fr;
+}
+.feature.flip .loop {
+  order: -1;
+}
+.bg-navy .eyebrow {
+  color: var(--accent-on-dark);
+}
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+.tags li {
+  background: #fff;
+  color: var(--navy);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 15px;
+}
+.privacy .checks strong {
+  font-weight: 600;
+}
+.underline {
+  text-decoration: underline;
+}
+.feature .btn-row {
+  margin-top: 6px;
+}
+
+/* Home: measured proof, each figure with its label */
+.proof {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 32px 48px;
+  align-items: center;
+}
+.stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 24px 48px;
-  align-items: end;
-}
-.stage {
-  position: relative;
-  height: 420px;
-}
-.stage .today {
-  position: absolute;
-  left: 0;
-  top: 40px;
-  width: 340px;
-  padding: 20px;
-}
-.stage .today-row.pick {
-  transition: background 0.2s, color 0.2s, transform 0.15s;
-}
-.stage[data-step="2"] .today-row.pick,
-.stage[data-step="3"] .today-row.pick {
-  background: var(--blue-fill);
-  color: #fff;
-}
-.stage[data-step="2"] .today-row.pick {
-  transform: scale(0.98);
-}
-.win {
-  position: absolute;
-  background: #fff;
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: 0 24px 50px -20px rgba(41, 35, 31, 0.35);
-  opacity: 0;
-  transform: translateY(18px) scale(0.96);
-  transition: opacity 0.4s, transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-.stage[data-step="3"] .win {
-  opacity: 1;
-  transform: none;
-}
-.win-canvas {
-  left: 396px;
-  top: 0;
-  width: 352px;
-  height: 200px;
-}
-.win-book {
-  left: 396px;
-  top: 216px;
-  width: 352px;
-  height: 204px;
-  background: var(--magic-surface-raised);
-  transition-delay: 0.15s;
-}
-.win-tex {
-  left: 764px;
-  top: 0;
-  width: 348px;
-  height: 420px;
-  box-shadow: 0 24px 50px -20px rgba(41, 35, 31, 0.45);
-  transition-delay: 0.3s;
-}
-.tex {
+  gap: 16px;
+  list-style: none;
   margin: 0;
-  padding: 14px 16px 14px 0;
-  font-family: var(--mono);
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--ink);
-  counter-reset: line;
-  overflow: hidden;
-  white-space: pre;
+  padding: 0;
 }
-.tex-line {
-  display: block;
-  counter-increment: line;
-}
-.tex-line::before {
-  content: counter(line);
-  display: inline-block;
-  width: 36px;
-  padding-right: 12px;
-  text-align: right;
-  color: var(--magic-ink-muted);
-}
-.tex-cmd {
-  color: var(--cardinal);
-}
-.tex-comment {
-  color: var(--magic-ink-muted);
-  font-style: italic;
-}
-.win-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--rule);
-  font-size: 13px;
-  font-weight: 500;
-}
-.win-book .win-bar {
-  background: var(--magic-fill-tag-candidate);
-  border-bottom: 0;
-}
-.win-dot {
-  width: 14px;
-  height: 14px;
-  border-radius: 3px;
-  flex-shrink: 0;
-}
-.win-body {
-  padding: 20px 24px;
+.stat {
+  background: #fff;
+  border-radius: 28px;
+  padding: 28px 32px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  font-size: 14px;
-  line-height: 1.5;
 }
-.win-body strong {
-  font-size: 17px;
+.stat p {
+  margin: 0;
 }
-.win-book .win-body {
+.stat-figure {
   font-family: var(--serif);
-  font-size: 15px;
+  font-weight: var(--serif-weight);
+  font-size: clamp(44px, 5vw, 64px);
+  line-height: 1;
+  color: var(--cardinal);
 }
-.win-book .win-body strong {
-  font-weight: 500;
-  font-size: 19px;
-}
-.cursor {
-  position: absolute;
-  z-index: 5;
-  pointer-events: none;
-  left: 520px;
-  top: 380px;
-  transition: left 0.7s cubic-bezier(0.4, 0, 0.2, 1), top 0.7s cubic-bezier(0.4, 0, 0.2, 1), transform 0.15s;
-}
-.stage:not([data-step="0"]) .cursor {
-  left: 250px;
-  top: 190px;
-}
-.stage[data-step="2"] .cursor {
-  transform: scale(0.85);
+.stat-label {
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--magic-ink-muted);
 }
 
 /* Home: study notebook carousel */
@@ -691,13 +643,6 @@ button {
   margin: 0;
 }
 
-/* Home: AI providers */
-.ai {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 32px 48px;
-  align-items: center;
-}
 .chips {
   display: flex;
   flex-wrap: wrap;
@@ -719,10 +664,10 @@ button {
   width: 22px;
   height: 22px;
 }
-.ai .body {
-  width: 100%;
-  font-size: 17px;
-  margin-top: 10px;
+.chips-light .chip {
+  background: #fff;
+  font-size: 16px;
+  padding: 10px 18px;
 }
 
 /* Closing call to action */
@@ -1091,6 +1036,7 @@ button {
   margin-top: -8px;
 }
 .about-hero .hero-art .wizard {
+  position: static;
   height: 380px;
   margin-bottom: -24px;
 }
@@ -1457,36 +1403,11 @@ button {
 }
 
 /* Tablet and phone */
-@media (max-width: 1180px) {
-  .stage {
-    height: auto;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
-  }
-  .stage .today,
-  .win {
-    position: static;
-    width: auto;
-    height: auto;
-    opacity: 1;
-    transform: none;
-  }
-  .stage .today {
-    grid-row: span 2;
-  }
-  .win-tex {
-    grid-column: 1 / -1;
-  }
-  .cursor {
-    display: none;
-  }
-}
 @media (max-width: 900px) {
   .hero,
   .split,
-  .spaces-head,
-  .ai,
+  .proof,
+  .stats,
   .faq-body {
     grid-template-columns: 1fr;
   }
@@ -1497,17 +1418,25 @@ button {
   .hero-copy {
     padding-bottom: 0;
   }
+  .hero-art {
+    padding-bottom: 104px;
+  }
   .hero-art .wizard {
-    height: 300px;
+    height: 150px;
+    left: -8px;
+  }
+  .feature.split,
+  .feature.flip.split {
+    grid-template-columns: 1fr;
+  }
+  .feature.flip .loop {
+    order: 0;
   }
   .pillars {
     grid-template-columns: 1fr;
   }
   .split {
     gap: 32px;
-  }
-  .split .today {
-    order: 2;
   }
   .ask {
     position: static;
@@ -1627,12 +1556,6 @@ button {
     justify-content: space-between;
     gap: 6px 12px;
     font-size: 15px;
-  }
-  .stage {
-    grid-template-columns: 1fr;
-  }
-  .stage .today {
-    grid-row: auto;
   }
   :root {
     --radius-room: 28px;
