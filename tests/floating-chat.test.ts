@@ -181,8 +181,14 @@ test("wizard asset: small, layered, rigged at the shoulder, token colours only",
   assert.doesNotMatch(svg, /#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/, "no colour literals");
   assert.doesNotMatch(svg.slice(svg.indexOf("<style>") + 7, svg.indexOf("</style>")), /</, "no markup inside the inline style");
   const tokens = readTokens();
-  for (const [, name] of svg.matchAll(/var\((--magic-wizard-[a-z]+)\)/g))
-    assert.match(tokens, new RegExp(`${name}: light-dark\\(#[0-9a-f]{6}, #[0-9a-f]{6}\\);`), `${name} has light and dark values`);
+  // The hat and robe follow the student's accent (operator decision, September 27): they read
+  // --magic-wizard-outfit, which every accent block sets with light and dark values.
+  const outfit = new Set(["--magic-wizard-hat", "--magic-wizard-robe"]);
+  for (const [, name] of svg.matchAll(/var\((--magic-wizard-[a-z]+)\)/g)) {
+    if (outfit.has(name)) assert.match(tokens, new RegExp(`${name}: var\\(--magic-wizard-outfit\\);`), `${name} follows the accent`);
+    else assert.match(tokens, new RegExp(`${name}: light-dark\\(#[0-9a-f]{6}, #[0-9a-f]{6}\\);`), `${name} has light and dark values`);
+  }
+  assert.equal((tokens.match(/--magic-wizard-outfit: light-dark\(#[0-9a-f]{6}, #[0-9a-f]{6}\);/g) ?? []).length, 4, "every accent sets the wizard outfit");
 });
 
 test("floating chat styles use tokens only", () => {

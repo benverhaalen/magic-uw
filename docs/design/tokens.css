@@ -121,6 +121,7 @@
    an unknown or missing data-accent falls back to it. Any element may carry data-accent to preview
    an accent locally (onboarding swatches). Values and contrast: theming.md. */
 :root, [data-accent="blue"] {
+  --magic-wizard-outfit: light-dark(#78adf5, #486a98); /* wizard hat and robe: this accent's strong hue */
   --magic-fill-action: linear-gradient(110deg, light-dark(#a2c0eb, #3b5c8a), light-dark(#d8e6f8, #2d3e55));
   --magic-fill-action-hover: linear-gradient(110deg, light-dark(#91b4e5, #436799), light-dark(#c9dcf4, #354962));
   --magic-ink-action: light-dark(#233f65, #e4f0ff);
@@ -139,6 +140,7 @@
   --magic-fill-selection: var(--magic-fill-secondary-hover);
 }
 [data-accent="rose"] {
+  --magic-wizard-outfit: light-dark(#f08bb0, #925269); /* wizard hat and robe: this accent's strong hue */
   --magic-fill-action: linear-gradient(110deg, light-dark(#e5aac3, #824360), light-dark(#f7dce7, #513240));
   --magic-fill-action-hover: linear-gradient(110deg, light-dark(#de9ab8, #904c6c), light-dark(#f2cfdd, #5f3b4b));
   --magic-ink-action: light-dark(#5e2a43, #fee7f0);
@@ -152,6 +154,7 @@
   --magic-focus: light-dark(#a14d75, #e380ad);
 }
 [data-accent="coral"] {
+  --magic-wizard-outfit: light-dark(#f7866a, #9a5240); /* wizard hat and robe: this accent's strong hue */
   --magic-fill-action: linear-gradient(110deg, light-dark(#e7af9a, #844831), light-dark(#f7dfd5, #523529));
   --magic-fill-action-hover: linear-gradient(110deg, light-dark(#e1a087, #935239), light-dark(#f3d2c5, #603e31));
   --magic-ink-action: light-dark(#602f1b, #ffe9e1);
@@ -165,6 +168,7 @@
   --magic-focus: light-dark(#a55434, #e68863);
 }
 [data-accent="plum"] {
+  --magic-wizard-outfit: light-dark(#c197f2, #755a95); /* wizard hat and robe: this accent's strong hue */
   --magic-fill-action: linear-gradient(110deg, light-dark(#d3afde, #70497d), light-dark(#eedef3, #48354e));
   --magic-fill-action-hover: linear-gradient(110deg, light-dark(#caa0d7, #7e538b), light-dark(#e6d2ed, #543e5b));
   --magic-ink-action: light-dark(#502f5a, #f7e9fb);
@@ -221,8 +225,11 @@
    carries text; tests/floating-chat.test.ts checks the part contrasts (3:1 non-text) per theme. */
 :root {
   --magic-wizard-line: light-dark(#29231f, #15110e);
-  --magic-wizard-hat: light-dark(#c15842, #d2664d);
-  --magic-wizard-robe: light-dark(#6f8141, #82964f);
+  /* The outfit (hat and robe) follows the student's accent, like the website wizard's single
+     --wizard-robe variable: each accent block below sets --magic-wizard-outfit to its hue's strong
+     tint, which keeps 3:1 against the outline in both themes. */
+  --magic-wizard-hat: var(--magic-wizard-outfit);
+  --magic-wizard-robe: var(--magic-wizard-outfit);
   --magic-wizard-beard: light-dark(#e8d3b2, #dcc6a3);
   --magic-wizard-eye: light-dark(#f8f4ee, #ece6dc);
   --magic-wizard-nose: light-dark(#ce8c66, #d99a75);

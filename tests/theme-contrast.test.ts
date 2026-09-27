@@ -30,7 +30,9 @@ test("an accent changes only command, focus and selection roles, never status, i
   const allowed = new Set(["--magic-fill-action", "--magic-fill-action-hover", "--magic-ink-action", "--magic-line-action-candidate",
     "--magic-fill-secondary", "--magic-fill-secondary-hover", "--magic-ink-secondary", "--magic-fill-confirmation",
     "--magic-line-confirmation", "--magic-ink-confirmation", "--magic-focus", "--magic-fill-selection",
-    "--magic-fill-review", "--magic-fill-review-hover", "--magic-ink-review"]);
+    "--magic-fill-review", "--magic-fill-review-hover", "--magic-ink-review",
+    // The wizard's hat and robe follow the accent (operator decision, September 27).
+    "--magic-wizard-outfit", "--magic-wizard-hat", "--magic-wizard-robe"]);
   for (const accent of ACCENT_IDS) {
     const scope = tokenScope(css, accent);
     for (const theme of ["light", "dark"] as const)
