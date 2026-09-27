@@ -3,13 +3,12 @@
 // and a slow body. The live run of 2026-09-27 had 386 of 386 downloads fail as network_error:
 // main used `session.fetch(url, { redirect: "manual" })`, which in Electron 44.4.5 rejects every
 // redirect with "Redirect was cancelled" instead of returning the 3xx (read from the shipped
-// electron.exe's bundled lib, and run there against a local 302). `ElectronLikeRequest` below
-// follows that ClientRequest code path; `electronSessionFetch` follows its net.fetch wrapper.
+// electron.exe's bundled lib, and run there against a local 302). electron-session-fake.ts follows
+// that ClientRequest code path and its net.fetch wrapper.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { EventEmitter } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
-import { createServer, request as httpRequest, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -20,11 +19,10 @@ import {
   causeHeaders,
   fetchCanvasFile,
   retryTransientFile,
-  sessionHopFetch,
   throwIfCause,
   transientFileError,
-  type SessionMessage,
 } from "../packages/connectors/src/canvas-file-download";
+import { electronSessionFetch, electronSessionHop } from "./electron-session-fake";
 import { itemSchema, pageSchema } from "../packages/connectors/src/canvas-models";
 import { causeFromError } from "../packages/connectors/src/document-causes";
 import { MaterialReadError } from "../packages/connectors/src/network";
@@ -110,139 +108,8 @@ async function rig(): Promise<Rig> {
   };
 }
 
-/** The Electron 44.4.5 ClientRequest redirect handling, over node:http to the rig's servers. */
-class ElectronLikeRequest extends EventEmitter {
-  private aborted = false;
-  private request?: ReturnType<typeof httpRequest>;
-  private response?: IncomingMessage;
-  private followCallback?: () => void;
-  constructor(
-    private readonly r: Rig,
-    private readonly options: { url: string; redirect: "manual" | "follow"; credentials: "include" | "omit"; headers?: Record<string, string> },
-    private readonly jar: Map<string, string>,
-  ) {
-    super();
-  }
-  followRedirect() {
-    if (!this.followCallback) throw new Error("followRedirect() called, but was not waiting for a redirect");
-    this.followCallback();
-  }
-  end() {
-    this.start(this.options.url);
-  }
-  abort() {
-    if (!this.aborted) process.nextTick(() => this.emit("abort"));
-    this.aborted = true;
-    this.die();
-  }
-  private die(error?: Error) {
-    if (error) this.emit("error", error);
-    this.request?.destroy();
-    this.response?.destroy(error);
-  }
-  private start(url: string) {
-    const target = new URL(url);
-    const cookie = this.options.credentials === "include" ? this.jar.get(target.hostname) : undefined;
-    this.request = httpRequest(
-      {
-        host: "127.0.0.1",
-        port: this.r.port(target.hostname),
-        path: target.pathname + target.search,
-        headers: { ...this.options.headers, ...(cookie ? { cookie } : {}) },
-      },
-      (res) => {
-        if (this.aborted) return void res.destroy();
-        const status = res.statusCode ?? 0;
-        if (status >= 300 && status < 400 && res.headers.location) {
-          res.resume();
-          const next = new URL(res.headers.location, url).href;
-          if (this.options.redirect === "manual") {
-            // lib/browser/api/net-client-request.ts: an unfollowed manual redirect is cancelled.
-            let follow = false;
-            this.followCallback = () => (follow = true);
-            try {
-              this.emit("redirect", status, "GET", next, {});
-            } finally {
-              this.followCallback = undefined;
-              if (!follow && !this.aborted) this.die(new Error("Redirect was cancelled"));
-            }
-            if (follow) this.start(next);
-            return;
-          }
-          this.emit("redirect", status, "GET", next, {});
-          return this.start(next);
-        }
-        this.response = res;
-        this.emit("response", res);
-      },
-    );
-    this.request.on("error", (error) => {
-      if (!this.aborted) this.die(error);
-    });
-    this.request.end();
-  }
-}
-/** An Electron IncomingMessage's surface over node's (headers without undefined values). */
-function electronMessage(res: IncomingMessage): SessionMessage {
-  const headers: Record<string, string | string[]> = {};
-  for (const [name, value] of Object.entries(res.headers)) if (value !== undefined) headers[name] = value;
-  return {
-    statusCode: res.statusCode ?? 0,
-    headers,
-    on(event: "data" | "end" | "error", listener: ((chunk: Uint8Array) => void) | (() => void) | ((error: Error) => void)) {
-      res.on(event, listener);
-      return this;
-    },
-  };
-}
-/** Electron 44.4.5 net.fetch (lib/common/api/net-fetch.ts, fetchWithSession): it passes
- * `redirect` to the ClientRequest and listens only for "response" and "error". */
-function electronSessionFetch(r: Rig, jar: Map<string, string>) {
-  return (url: string, init: RequestInit) =>
-    new Promise<Response>((resolve, reject) => {
-      const request = new ElectronLikeRequest(
-        r,
-        { url, redirect: init.redirect === "manual" ? "manual" : "follow", credentials: "include" },
-        jar,
-      );
-      request.on("response", (res: IncomingMessage) => {
-        const message = electronMessage(res);
-        const body = new ReadableStream<Uint8Array>({
-          start(controller) {
-            message.on("data", (chunk) => controller.enqueue(chunk));
-            message.on("end", () => controller.close());
-            message.on("error", (error) => controller.error(error));
-          },
-        });
-        resolve(new Response(body, { status: message.statusCode }));
-      });
-      request.on("error", reject);
-      request.end();
-    });
-}
-/** The fix, as main wires it: net.request in the session, credentials included, redirect manual. */
-function sessionHop(r: Rig, jar: Map<string, string>) {
-  return sessionHopFetch((url, headers) => {
-    const request = new ElectronLikeRequest(r, { url, redirect: "manual", credentials: "include", headers }, jar);
-    const surface = {
-      on(
-        event: "redirect" | "response" | "error",
-        listener:
-          | ((statusCode: number, method: string, redirectUrl: string) => void)
-          | ((message: SessionMessage) => void)
-          | ((error: Error) => void),
-      ) {
-        if (event === "response")
-          request.on("response", (res: IncomingMessage) => (listener as (message: SessionMessage) => void)(electronMessage(res)));
-        else request.on(event, listener);
-        return surface;
-      },
-      abort: () => request.abort(),
-      end: () => request.end(),
-    };
-    return surface;
-  });
-}
+const electronSession = (r: Rig, cookies: Map<string, string>) => electronSessionFetch((host) => r.port(host), cookies);
+const sessionHop = (r: Rig, cookies: Map<string, string>) => electronSessionHop((host) => r.port(host), cookies);
 /** Main's cookie-less hop: Node's fetch (redirect "manual" works there), to the rig's servers. */
 function plain(r: Rig) {
   return (url: string, init: RequestInit) => {
@@ -270,7 +137,7 @@ test("reproduction: Electron's session.fetch with redirect manual fails every fi
   const r = await rig();
   try {
     const result = await throughMain(() =>
-      fetchCanvasFile(download("9"), { origin, session: electronSessionFetch(r, jar()), plain: plain(r) }),
+      fetchCanvasFile(download("9"), { origin, session: electronSession(r, jar()), plain: plain(r) }),
     );
     assert.ok("error" in result);
     assert.ok(result.error instanceof MaterialReadError);
