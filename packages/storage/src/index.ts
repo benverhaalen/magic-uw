@@ -202,7 +202,7 @@ export interface AtRestControl {
   setAtRestKey(key: Uint8Array | null): { sealed: number; ms: number; keyMatches: boolean };
   /** The v14 backup check of this open: deleted after it verified, or kept with the reason. */
   backupCheck(): BackupCheck | null;
-  atRestStats(): { sealed: number; opened: number; failed: number; keyed: boolean };
+  atRestStats(): { sealed: number; opened: number; failed: number; keyed: boolean; keyMatches: boolean };
 }
 // owner: platform-fix
 export interface ReceiptCount {
@@ -257,6 +257,7 @@ export function createStore(
   // mail or notes list read after the first skips the larger sealed payload's inflate, parse and
   // decryption (the read budget). Cleared with the key and on purge.
   const openedVersions = new Map<string, ReturnType<typeof decodePayload>>();
+  let atRestKeyMatches = true; // owner: privacy. False when the key differs from the stored key check.
   const readItem = (row: Row): ReturnType<typeof decodePayload> => {
     const id = `${String(row.id)}\u0000${Number(row.version)}`;
     const hit = openedVersions.get(id);
@@ -993,18 +994,27 @@ export function createStore(
     setAtRestKey(key) {
       atRest.setKey(key);
       openedVersions.clear();
+      atRestKeyMatches = true;
       if (!key || readOnly) return { sealed: 0, ms: 0, keyMatches: true };
       // Warm the session cache now (the key arrives at worker start), so the first list read the
       // student sees is not the one that pays for decryption.
       const warm = () => {
         for (const row of prepare(
-          "SELECT r.id, r.version, v.payload FROM resources r JOIN resource_versions v ON v.resource_id = r.id AND v.version = r.version WHERE r.deleted = 0",
+          // Only mail and notes sources hold sealed payloads; other rows would be decoded for nothing.
+          "SELECT r.id, r.version, v.payload FROM resources r JOIN sources s ON s.id = r.source_id JOIN resource_versions v ON v.resource_id = r.id AND v.version = r.version WHERE r.deleted = 0 AND s.kind IN ('mail', 'notes')",
         ).iterate() as Iterable<Row>)
           readItem(row);
       };
       const check = keyCheck(key);
       const stored = prepare("SELECT value FROM preferences WHERE key = 'privacy.keyCheck'").get();
       const keyMatches = !stored || String(stored.value) === check;
+      // A different key must not seal the pending plaintext rows: they would then open with
+      // neither key once the original key file returns.
+      atRestKeyMatches = keyMatches;
+      if (!keyMatches) {
+        warm();
+        return { sealed: 0, ms: 0, keyMatches };
+      }
       const state = prepare("SELECT value FROM preferences WHERE key = 'privacy.seal'").get();
       if (stored && state && String(state.value) === "done" && !atRest.unsealedWrites()) {
         warm();
@@ -1026,7 +1036,7 @@ export function createStore(
       warm();
       return { sealed, ms: performance.now() - started, keyMatches };
     },
-    atRestStats: () => ({ ...atRest.stats(), keyed: atRest.hasKey() }),
+    atRestStats: () => ({ ...atRest.stats(), keyed: atRest.hasKey(), keyMatches: atRestKeyMatches }),
     // end owner: privacy
     courseIntelligence() {
       return prepare(

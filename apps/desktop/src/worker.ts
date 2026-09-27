@@ -505,7 +505,11 @@ port.on("message", async ({ data }: { data: any }) => {
     secret?.fill(0);
     configurePseudonymKey(keys?.pseudonym ?? null);
     try {
-      store.setAtRestKey(keys?.atRest ?? null);
+      // A missing or different key leaves sealed records unopenable: say so (the planning snapshot
+      // counts them as unreadable, and the view shows it) instead of reading as clear.
+      const { keyMatches } = store.setAtRestKey(keys?.atRest ?? null);
+      if (!keys) process.stderr.write(logLine({ event: "privacy.key-unavailable" }));
+      else if (!keyMatches) process.stderr.write(logLine({ event: "privacy.key-mismatch" }));
     } catch (error) {
       process.stderr.write(logLine({ event: "privacy.seal-failed", error }));
     }

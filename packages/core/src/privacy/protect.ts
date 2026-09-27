@@ -88,14 +88,34 @@ function atSentenceStart(text: string, start: number) {
   return /(?:[.!?…:;]["'”’)\]]*\s+|\n[\s\-*•>]*|["“(]\s*)$/.test(text.slice(Math.max(0, start - 12), start));
 }
 
+const NOT_SURNAMES = new Set(
+  "monday tuesday wednesday thursday friday saturday sunday january february march april may june july august september october november december today tomorrow tonight i".split(" "),
+);
+/**
+ * "Will Drevo" when the roster has "Will Hart": a full roster name would have matched as one span,
+ * so a first name followed by another capitalized word can be a different person. Only in teaching
+ * material (personal text keeps every roster first name out), only when that word is not a weekday,
+ * month or everyday word, and not inside a run of capitalized words (a middle name, a Title Case
+ * subject or title), where the hit may still be the classmate.
+ */
+function differentSurnameFollows(text: string, start: number, end: number, rosterTokens: ReadonlySet<string>, cls: ContentClass) {
+  if (cls === "personal") return false;
+  const m = /^\s+(\p{Lu}[\p{Ll}'’-]+)(\s+\p{Lu})?/u.exec(text.slice(end, end + 60));
+  const next = m?.[1];
+  if (!next || rosterTokens.has(next) || m[2]) return false;
+  const word = next.toLocaleLowerCase();
+  if (NOT_SURNAMES.has(word) || COMMON_WORD_NAMES.has(word)) return false;
+  // A capitalized word just before the hit, mid-sentence, marks Title Case.
+  const prev = /(\p{Lu}[\p{L}'’-]*)\s+$/u.exec(text.slice(Math.max(0, start - 40), start));
+  if (prev && !atSentenceStart(text, start - prev[0].length)) return false;
+  return true;
+}
+
 /** A one-word name hit that is ordinary prose, not a person. */
-function falseNameHit(text: string, start: number, end: number, rosterTokens: ReadonlySet<string>): boolean {
+function falseNameHit(text: string, start: number, end: number, rosterTokens: ReadonlySet<string>, cls: ContentClass): boolean {
   const token = text.slice(start, end);
   if (/[\s,]/.test(token)) return false; // full names are never dropped
-  // "Will Drevo" when the roster has "Will Hart": a full roster name would have matched as one span,
-  // so a first name followed by another capitalized name word is a different person.
-  const next = /^\s+(\p{Lu}[\p{Ll}'’-]+)/u.exec(text.slice(end, end + 40))?.[1];
-  if (next && !rosterTokens.has(next)) return true;
+  if (differentSurnameFollows(text, start, end, rosterTokens, cls)) return true;
   const word = token.toLocaleLowerCase();
   if (!COMMON_WORD_NAMES.has(word)) return false;
   if (token === word) return true; // "will" matched through a one-word roster name
@@ -183,7 +203,7 @@ export function protectionCandidates(text: string, roster: EffectiveRoster, cls:
   for (const s of rosterSpans(text, roster)) {
     const original = text.slice(s.originalStart, s.originalEnd);
     if (s.kind === "student_name") {
-      if (!falseNameHit(text, s.originalStart, s.originalEnd, rosterWords(roster)))
+      if (!falseNameHit(text, s.originalStart, s.originalEnd, rosterWords(roster), cls))
         names.push({ kind: "student_name", key: s.placeholder.slice(1, -1), start: s.originalStart, end: s.originalEnd });
     } else if ((s.kind === "netid" || s.kind === "student_id") && ids.has(lower(original)))
       // A roster ID is replaced wherever it appears, with or without a context word.

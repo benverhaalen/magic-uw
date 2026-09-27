@@ -126,6 +126,38 @@ test("lazy migration: rows written before the key arrive are sealed on the first
   }
 });
 
+test("a different key is reported, never reads as clear, and a recapture restores the record", () => {
+  const dir = mkdtempSync(join(tmpdir(), "privacy-mismatch-"));
+  const file = join(dir, "db.sqlite");
+  let other: ReturnType<typeof createStore> | undefined;
+  try {
+    const store = createStore(file);
+    store.setAtRestKey(keyA);
+    seed(store);
+    store.close();
+    other = createStore(file);
+    assert.equal(other.setAtRestKey(keyB).keyMatches, false);
+    assert.equal(other.atRestStats().keyMatches, false, "the mismatch stays visible");
+    assert.equal(other.planningRecords().length, 0);
+    assert.equal(other.planningUnreadable(), 1, "the hidden record is counted, not dropped silently");
+    // Nothing still in plaintext is sealed under the wrong key; a same-content capture writes again.
+    const later = "2026-09-27T12:00:00Z";
+    other.ingestPlanning({
+      schemaVersion: 1, id: "primary", accountScope: "academic", source: "uw_enroll", scope: { kind: "degree_plan", key: "primary" },
+      sourceUrl: "https://enroll.wisc.edu/", observedAt: later, status: "complete", completeness: "complete", diagnostics: [],
+      records: [{ kind: "course_history", id: DARS, courseKey: "uw:266:101", termCode: "1264", grade: "AB", credits: 3, state: "completed", gpaEligible: null,
+        provenance: { scope: { kind: "degree_plan", key: "primary" }, sourceUrl: "https://enroll.wisc.edu/", observedAt: later } }],
+    });
+    assert.equal(other.planningRecords().length, 1, "the recapture is readable");
+    assert.equal(other.planningUnreadable(), 0);
+    other.setAtRestKey(null);
+    assert.equal(other.planningUnreadable(), 1, "without a key the sealed record is unreadable, and counted");
+  } finally {
+    other?.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("migration v14 is additive and idempotent from v9; receipts keep protection counts; purge destroys the key", () => {
   const dir = mkdtempSync(join(tmpdir(), "privacy-v14-"));
   const file = join(dir, "db.sqlite");

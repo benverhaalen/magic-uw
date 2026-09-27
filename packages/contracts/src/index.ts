@@ -1039,6 +1039,8 @@ export interface Store {
     ignored: boolean;
   };
   planningRecords(): StoredPlanningRecord[];
+  /** owner: privacy. Current planning records that cannot be opened (a lost or different at-rest key). */
+  planningUnreadable?(): number;
   planningSources(): PlanningSourceHealth[];
   close(): void;
   ingest(batch: unknown): IngestReport;
@@ -2029,6 +2031,8 @@ export interface PlanningSnapshot {
   records: StoredPlanningRecord[];
   sources: PlanningSourceHealth[];
   reconciliation?: import("./planning").AcademicReconciliation;
+  /** owner: privacy. Saved records this device cannot open; they are not shown, and the view must say so. */
+  unreadable?: number;
 }
 export interface PlanningComparison {
   termCode: string;

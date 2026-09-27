@@ -34,8 +34,9 @@ function Evidence({ record, snapshot, open }: { record: StoredPlanningRecord; sn
 
 export function PlanningAlerts({ snapshot, open, onPlanning }: Pick<Props, "snapshot" | "open"> & { onPlanning?: () => void }) {
   const alerts = rows(snapshot).filter((record) => record.kind === "hold" || (record.kind === "appointment" && (!record.endsAt || Date.parse(record.endsAt) >= Date.now())));
-  if (!alerts.length) return null;
+  if (!alerts.length && !snapshot.planning?.unreadable) return null;
   return <section className="planning-alerts" aria-label="Enrollment and holds">
+    {snapshot.planning?.unreadable ? <p role="status" className="evidence-note">{snapshot.planning.unreadable} saved planning record{snapshot.planning.unreadable === 1 ? "" : "s"} can’t be opened on this device (the encryption key changed). Refresh planning to read them again; until then this list is incomplete.</p> : null}
     <div className="planning-section-title"><h2>Enrollment & holds</h2>{onPlanning ? <button className="subtle-button" onClick={onPlanning}>My UW →</button> : null}</div>
     {alerts.map((record) => <article key={record.localId} className="planning-row">
       {record.kind === "hold" ? <><strong>{record.title}</strong><p>{record.description}</p><span className="badge">{record.blocksEnrollment === true ? "Blocks enrollment" : record.blocksEnrollment === false ? "Does not block enrollment" : "Enrollment impact unknown"}</span>{record.resolutionUrl ? <button className="subtle-button" onClick={() => open(record.resolutionUrl!)}>How to resolve ↗</button> : null}</> : record.kind === "appointment" ? <><strong>Enrollment window · {decodeUwTerm(record.termCode).label}</strong><p>{record.startsAt ? time(record.startsAt) : "Opening time unavailable"}{record.endsAt ? ` – ${time(record.endsAt)}` : ""}</p></> : null}
@@ -79,6 +80,7 @@ export function MyUw({ snapshot, busy, run, open, signIn, refresh }: Props) {
     </div></div>
     <div className="planning-content">
       <p className="muted">Planning stays on this device. My Magic UW reads school records; enrollment changes happen in UW’s own tools.</p>
+      {snapshot.planning?.unreadable ? <p role="status" className="evidence-note">{snapshot.planning.unreadable} saved planning record{snapshot.planning.unreadable === 1 ? "" : "s"} can’t be opened on this device (the encryption key changed). Refresh planning to read them again; until then this list is incomplete.</p> : null}
       {multipleAccounts ? <p role="status" className="evidence-note">Records from more than one student are saved. Personal planning is hidden to avoid mixing them. Clear local data in Data & AI before connecting a different student.</p> : null}
       {partial ? <div className="evidence-note"><p>{!privateSources.length ? "Your student record and degree audit haven’t been connected here yet." : "Some planning information is incomplete or needs refresh. Source notes below show what is available."}</p>
         {window.magic.signInUW ? <div className="inline-actions">{!connected("connection:myuw-session") ? <button className="button" disabled={busy} onClick={() => signIn("myuw")}>Sign in to My UW</button> : null}{!connected("connection:student-info") ? <button className="button" disabled={busy} onClick={() => signIn("enroll")}>Sign in to Course Search & Enroll</button> : null}</div> : <p className="small muted">UW sign-in is available in the desktop app.</p>}

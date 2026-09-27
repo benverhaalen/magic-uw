@@ -95,9 +95,12 @@ export function planningRepository(db: DatabaseSync, prepare: Prepare = (sql) =>
     const seen = new Set<string>();
     if (writable) for (const record of valid) {
       const localId = digest([sourceId, record.kind, record.id]); seen.add(localId);
-      const old = prepare("SELECT version,content_hash,deleted FROM planning_records WHERE local_id=?").get(localId);
+      const old = prepare("SELECT r.version,r.content_hash,r.deleted,v.payload FROM planning_records r LEFT JOIN planning_versions v ON v.local_id=r.local_id AND v.version=r.version WHERE r.local_id=?").get(localId);
       const hash = digest({ ...record, provenance: { ...record.provenance, observedAt: undefined } });
-      const version = Number(old?.version ?? 0) + (old?.content_hash !== hash || old?.deleted ? 1 : 0);
+      // owner: privacy. A current version that no longer opens (a lost or different key) is written
+      // again, so a new capture restores the record instead of leaving it hidden.
+      const unreadable = !!old && (old.payload == null || !openVersion(String(old.payload)));
+      const version = Number(old?.version ?? 0) + (old?.content_hash !== hash || old?.deleted || unreadable ? 1 : 0);
       if (!old || version !== Number(old.version)) {
         prepare("INSERT INTO planning_versions(local_id,version,payload) VALUES(?,?,?)").run(localId, version, sealJson(record, PLANNING_VERSION_AAD));
       }
@@ -122,6 +125,13 @@ export function planningRepository(db: DatabaseSync, prepare: Prepare = (sql) =>
     planningSource(id: string): PlanningSourceHealth | undefined {
       const row = prepare("SELECT payload FROM planning_sources WHERE id=?").get(id);
       return row ? JSON.parse(String(row.payload)) : undefined;
+    },
+    /** owner: privacy. Current records whose sealed value cannot be opened (a lost or different key). */
+    planningUnreadable(): number {
+      let n = 0;
+      for (const r of prepare("SELECT v.payload FROM planning_records r JOIN planning_versions v ON v.local_id=r.local_id AND v.version=r.version WHERE r.deleted=0").iterate())
+        if (!openVersion(String(r.payload))) n++;
+      return n;
     },
     planningRecords(): StoredPlanningRecord[] {
       return prepare(`SELECT r.*, v.payload FROM planning_records r JOIN planning_versions v ON v.local_id=r.local_id AND v.version=r.version ORDER BY r.local_id`).all().flatMap((r) => {

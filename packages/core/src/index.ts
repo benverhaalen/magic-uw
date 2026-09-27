@@ -222,6 +222,7 @@ export function createCore(store: Store, options: CoreOptions) {
         records: store.planningRecords(),
         sources: store.planningSources(),
         reconciliation: reconcileAcademicRecords(store, now()),
+        unreadable: store.planningUnreadable?.() ?? 0, // owner: privacy
       },
       resources,
       sources,

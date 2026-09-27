@@ -84,7 +84,9 @@ export function intentProtection(store: Store, enabled = true): IntentProtection
     if (!enabled) return value;
     let out = prefixes.get(value);
     if (out === undefined) {
-      out = protectText(value, roster(), prefixSession, "teaching").text;
+      // Prefix placeholders get their own namespace ([STUDENT_P1]): the request's session also numbers
+      // from 1, and its restore must never map a prefix placeholder to a request original.
+      out = protectText(value, roster(), prefixSession, "teaching").text.replace(/\[([A-Z_]+)_(\d+)\]/g, "[$1_P$2]");
       if (prefixes.size >= 16) prefixes.delete(prefixes.keys().next().value!);
       prefixes.set(value, out);
     }

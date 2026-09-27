@@ -126,3 +126,19 @@ test("a classmate's first name inside another person's full name is kept", () =>
   assert.match(protectText("Ask Will Hart or Will about the lab.", roster, s, "teaching").text, /^Ask \[STUDENT_\d+\] or \[STUDENT_\d+\] about/);
   store.close();
 });
+
+test("a roster first name before a capitalized non-surname stays protected", () => {
+  const store = createStore(":memory:");
+  store.recordAutoIdentity({ accountScope: "a", courseId: "c", authors: ["Maria Garcia"] });
+  const roster = rosterFor(store, "c", "a");
+  const s = pseudonymSession("t");
+  for (const cls of ["teaching", "personal"] as const) {
+    assert.match(protectText("I worked with Maria Tuesday on it.", roster, s, cls).text, /^I worked with \[STUDENT_\d+\] Tuesday on it\.$/, cls);
+    const middle = protectText("Maria Elena Garcia posted her draft.", roster, s, cls).text;
+    assert.ok(!/Maria|Garcia/.test(middle), `${cls}: ${middle}`);
+    assert.ok(!/Maria/.test(protectText("Re: Project Maria Draft Review", roster, s, cls).text), cls);
+  }
+  // Personal text never keeps a roster first name on the different-surname rule.
+  assert.ok(!/Maria/.test(protectText("Talked to Maria Lopez today.", roster, s, "personal").text));
+  store.close();
+});
