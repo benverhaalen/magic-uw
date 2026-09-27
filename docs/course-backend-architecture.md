@@ -1,6 +1,6 @@
 # My Magic UW course backend: architecture
 
-**Status:** verified against `origin/main` at `699e386` (2026-09-27) and the open pull requests on `benverhaalen/magic-uw` (#1, #3, #4, #5, #25, #27, #31, #33).
+**Status:** verified against `origin/main` at `699e386` (2026-09-27) and the open pull requests on `benverhaalen/magic-uw` (#1, #3, #4, #5, #25, #27, #31; #33 merged after this check and changes only notifications).
 **Scope:** this document holds the technical facts: processes, data flow, storage, the agent runtime, privacy, jobs, freshness, and what each design choice measurably changed. The platform, open-source and business view is [the academic data platform](academic-data-platform.md). Product surfaces are in [the product direction](magic-canvas-direction.md). The build specification is [the course-backend plan folder](plans/2026-09-26-course-backend/) ([spec](plans/2026-09-26-course-backend/spec.md), [plan](plans/2026-09-26-course-backend/plan.md), [tasks](plans/2026-09-26-course-backend/tasks.md), [execution](plans/2026-09-26-course-backend/execution.md)); where this summary and the plan folder differ, the plan folder wins. Benchmarks are consolidated in [benchmarks](benchmarks.md); the per-lane test and measurement record is [the build record](course-backend-build-record.md).
 
 ## 1. Summary
