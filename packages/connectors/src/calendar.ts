@@ -8,7 +8,12 @@ import {
   OUTLOOK_CALENDAR_COURSE_ID,
 } from "@magic/contracts";
 import { contentHash } from "./external.ts";
-import { MaterialReadError, publicUrl, type PublicClient } from "./network.ts";
+import {
+  MaterialReadError,
+  publicUrl,
+  type FeedValidators,
+  type PublicClient,
+} from "./network.ts";
 
 export interface CalendarConnectorOptions {
   /** Capability from the encrypted vault. Never placed in a record, diagnostic, or source id. */
@@ -299,12 +304,35 @@ const MAX_OCCURRENCES = 400;
 // Feed-wide bound on expanded meetings, so a huge feed cannot produce hundreds of thousands of records.
 const MAX_EXPANDED_TOTAL = 3000;
 export const OUTLOOK_CALENDAR_URL = "https://outlook.office.com/calendar/view/day";
+/**
+ * owner: T30. Where a student publishes their Outlook calendar (the ICS fallback when UW blocks
+ * the Microsoft sign-in): Outlook on the web → Settings → Calendar → Shared calendars → Publish
+ * a calendar. The frontend opens `url` in an app window; the student copies the ICS link.
+ */
+export function calendarPublishGuide(): { url: string; steps: string[] } {
+  return {
+    url: "https://outlook.office.com/calendar/options/calendar/SharedCalendars",
+    steps: [
+      "Under Publish a calendar, choose your Calendar and Can view all details.",
+      "Select Publish.",
+      "Copy the ICS link and paste it into Magic Canvas.",
+    ],
+  };
+}
 /** The student's own published Outlook calendar: meetings and appointments, not coursework. */
 export function outlookCalendarConnector(options: {
   feedUrl: string;
   accountScope: string;
   client: PublicClient;
   now?: () => Date;
+  /**
+   * owner: T30. The previous answer's ETag / Last-Modified. With them the read is conditional;
+   * a 304 yields no batch at all (no parse, no store work).
+   */
+  validators?: {
+    get(): FeedValidators | undefined;
+    set(value: FeedValidators): void;
+  };
 }): Connector {
   const source: CaptureBatch["source"] = {
     id: `calendar:outlook:${contentHash(options.accountScope).slice(0, 16)}`,
@@ -320,8 +348,24 @@ export function outlookCalendarConnector(options: {
       const observedAt = (options.now ?? (() => new Date()))().toISOString();
       const started = Date.now();
       try {
-        if (!options.client.outlookFeed) throw new MaterialReadError("invalid_feed");
-        const text = await options.client.outlookFeed(options.feedUrl, signal);
+        let text: string;
+        if (options.validators && options.client.outlookFeedIfChanged) {
+          // owner: T30: conditional read; unchanged means no work at all.
+          const read = await options.client.outlookFeedIfChanged(
+            options.feedUrl,
+            options.validators.get() ?? {},
+            signal,
+          );
+          if (read.notModified) return;
+          text = read.text;
+          options.validators.set({
+            ...(read.etag ? { etag: read.etag } : {}),
+            ...(read.lastModified ? { lastModified: read.lastModified } : {}),
+          });
+        } else {
+          if (!options.client.outlookFeed) throw new MaterialReadError("invalid_feed");
+          text = await options.client.outlookFeed(options.feedUrl, signal);
+        }
         const { resources, diagnostics } = await parseCalendar(text, {
           // Outlook links never reach Canvas; no assignment matching applies.
           canvasOrigin: "https://outlook.office.com",

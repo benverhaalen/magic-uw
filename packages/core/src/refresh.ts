@@ -47,6 +47,12 @@ export interface RefreshDependencies {
   content?(signal: AbortSignal): Promise<CourseProbe>;
   warm?(courseIds: string[], signal: AbortSignal): Promise<RefreshOutcome>;
   // end owner: T33
+  /**
+   * owner: T30. Microsoft Graph delta (mail, calendar, notes) through the app's own Microsoft
+   * sign-in. Runs on every run it is allowed on (the hot tick's 5 minutes); a check with nothing
+   * new costs one request per stream. Its failure never stops the Canvas reads.
+   */
+  graph?(signal: AbortSignal, trigger: "manual" | "background"): Promise<void>;
 }
 /**
  * The cadence table: which background read classes carry the student's signed-in session.
@@ -56,7 +62,7 @@ export interface RefreshDependencies {
  * My UW and Enroll have no background step today (student-triggered only); a background
  * step for them enters this table with `signedIn: true`.
  */
-export type ReadClass = "feeds" | "canvas" | "external";
+export type ReadClass = "feeds" | "canvas" | "external" | "mail";
 export const cadenceTable: Readonly<
   Record<ReadClass, { signedIn: boolean; reads: string }>
 > = {
@@ -68,6 +74,11 @@ export const cadenceTable: Readonly<
   },
   // Public course sites share this step with UW GitLab, which uses the session.
   external: { signedIn: true, reads: "UW GitLab and public course sites" },
+  // owner: T30: token-based, but it reads the student's own mailbox, so it waits for presence too.
+  mail: {
+    signedIn: true,
+    reads: "Microsoft Graph mail, calendar, OneNote and OneDrive delta (the app's own sign-in)",
+  },
 };
 /**
  * owner: T33. The cadences, in minutes (spec A4, plan D37). One scheduler runs them all:
@@ -302,6 +313,16 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
         } catch {
           signal.throwIfAborted();
         }
+      // owner: T30. Graph rides the same run, presence-gated like the Canvas reads.
+      if (deps.graph) {
+        if (allowed("mail"))
+          try {
+            await deps.graph(signal, trigger);
+          } catch {
+            signal.throwIfAborted();
+          }
+        else heldWhileAway = true;
+      }
       if (trigger === "background" && date.getTime() < retryCanvasAt) {
         result.action = "feeds_only";
         result.needsSignIn = true;
