@@ -17,6 +17,7 @@ import { GUIDE_PACKS } from "./packs";
 import { reviewAny, type ConceptMapDoc, type DropCode, type GuideDoc, type GuideDrop, type ReviewStats } from "./review";
 import { personalize, type ConceptMapView, type GuideView, type PersonalSignals } from "./personalize";
 import { selectGuideInputs, type GuideSelection, type GuideStore } from "./inputs";
+import { changedSources, putLatest, readLatest, withoutChangedSpans, type SourceChange } from "./latest";
 import type { GuideInput, GuideKind } from "./schema";
 
 export type GuideRunStatus = "done" | "needs_student" | "blocked" | "paused" | "failed" | "no_client" | "empty";
@@ -85,8 +86,25 @@ export async function generateGuide(
   const pack = GUIDE_PACKS[kind] as PackSpec<GuideInput, unknown>;
   const receiptIds: string[] = [];
   const base = { ...empty(kind, "done", "", sel.courseRef), receiptIds };
-  const finish = (artifact: { id: string; output: unknown; usage: GuideRunResult["tokens"] }, cached: boolean): GuideRunResult => {
+  const cacheKey = packCacheKey(pack, buildPrompt(pack, sel.frame, sel.input, sel.passages).systemPrompt, sel.input, sel.passages);
+  const finish = (artifact: { id: string; output: unknown; usage: GuideRunResult["tokens"]; createdAt?: string }, cached: boolean): GuideRunResult => {
     const r = reviewed(kind, sel, artifact.output);
+    // The scope's latest guide: served marked stale if its material changes, until regenerated.
+    const byId = new Map(sel.resources.map((x) => [x.id, x]));
+    putLatest(store.learning, sel.courseRef, scope, {
+      v: 1,
+      kind,
+      cacheKey,
+      artifactId: artifact.id,
+      createdAt: artifact.createdAt ?? at(),
+      doc: r.doc,
+      drops: r.drops,
+      sources: [...new Set(sel.resourceOf.values())].flatMap((id) => {
+        const x = byId.get(id);
+        return x ? [{ resourceId: id, contentHash: x.contentHash, title: x.title }] : [];
+      }),
+      scopeResources: sel.resources.map((x) => x.id),
+    });
     return {
       ...base,
       message: `Your ${NOUN[kind]} is ready${r.drops.length ? `; ${r.drops.length} parts were dropped by the checks` : ""}.`,
@@ -103,8 +121,6 @@ export async function generateGuide(
   // Study-time rule: a cache hit is served without the runner, so it costs 0 tokens.
   const hit = readPackArtifact(deps.artifacts, pack, sel.frame, sel.input, sel.passages);
   if (hit) {
-    const prompt = buildPrompt(pack, sel.frame, sel.input, sel.passages);
-    const cacheKey = packCacheKey(pack, prompt.systemPrompt, sel.input, sel.passages);
     deps.ledger.append({ at: at(), pack: pack.id, packVersion: pack.version, courseId: sel.frame.courseId, cacheKey, outcome: "cache_hit", usage: { in: 0, cached: 0, out: 0 } });
     return finish(hit, true);
   }
@@ -205,19 +221,61 @@ export function personalSignals(store: GuideStore, courseRef: string, at: Date, 
 }
 
 export type GuideViewResult =
-  | { op: "guide.view"; status: "ready"; pack: GuideKind; courseRef: string; artifactId: string; view: GuideView | ConceptMapView; drops: GuideDrop[]; modelCalls: 0 }
+  | {
+      op: "guide.view";
+      /** ready: made from the current material. stale: the last guide for this scope, made before its material changed. */
+      status: "ready" | "stale";
+      pack: GuideKind;
+      courseRef: string;
+      artifactId: string;
+      stale: boolean;
+      changedSources: SourceChange[];
+      view: GuideView | ConceptMapView;
+      drops: GuideDrop[];
+      modelCalls: 0;
+    }
   | { op: "guide.view"; status: "missing" | "empty" | "blocked"; pack: GuideKind; courseRef: string | null; message: string; modelCalls: 0 };
 
-/** `guide.view`: the personalised view of a cached guide. Takes no runner, so it cannot call a model. */
+/**
+ * `guide.view`: the personalised view of a cached guide. Takes no runner, so it cannot call a
+ * model. When the material changed, the scope's last guide is served marked stale, listing the
+ * changed sources; a new one is made only when the student asks (the pack command).
+ */
 export function guideView(deps: Pick<GuideDeps, "store" | "artifacts" | "now">, kind: GuideKind, scope: PackScope): GuideViewResult {
   const picked = selectGuideInputs(deps.store, kind, scope);
   if (!picked.ok) return { op: "guide.view", status: picked.status, pack: kind, courseRef: picked.courseRef, message: picked.message, modelCalls: 0 };
   const sel = picked.selection;
-  const hit = readPackArtifact(deps.artifacts, GUIDE_PACKS[kind] as PackSpec<GuideInput, unknown>, sel.frame, sel.input, sel.passages);
-  if (!hit)
-    return { op: "guide.view", status: "missing", pack: kind, courseRef: sel.courseRef, message: `There's no ${NOUN[kind]} for the current material yet. Generate one first.`, modelCalls: 0 };
-  const r = reviewed(kind, sel, hit.output);
+  const at = (deps.now ?? (() => new Date()))();
   const used = [...new Set(sel.resourceOf.values())];
-  const signals = personalSignals(deps.store, sel.courseRef, (deps.now ?? (() => new Date()))(), used);
-  return { op: "guide.view", status: "ready", pack: kind, courseRef: sel.courseRef, artifactId: hit.id, view: personalize(r.doc, signals), drops: r.drops, modelCalls: 0 };
+  const hit = readPackArtifact(deps.artifacts, GUIDE_PACKS[kind] as PackSpec<GuideInput, unknown>, sel.frame, sel.input, sel.passages);
+  if (hit) {
+    const r = reviewed(kind, sel, hit.output);
+    const signals = personalSignals(deps.store, sel.courseRef, at, used);
+    return { op: "guide.view", status: "ready", pack: kind, courseRef: sel.courseRef, artifactId: hit.id, stale: false, changedSources: [], view: personalize(r.doc, signals), drops: r.drops, modelCalls: 0 };
+  }
+  const latest = readLatest(deps.store.learning, kind, sel.courseRef, scope);
+  if (!latest)
+    return { op: "guide.view", status: "missing", pack: kind, courseRef: sel.courseRef, message: `There's no ${NOUN[kind]} for this material yet. Generate one first.`, modelCalls: 0 };
+  const changes = changedSources(
+    latest,
+    (id) => {
+      const r = deps.store.resource(id);
+      return r && { contentHash: r.contentHash, title: r.title, deleted: r.deleted };
+    },
+    sel.resources.map((r) => ({ id: r.id, title: r.title })),
+  );
+  const changed = new Set(changes.filter((c) => c.change !== "added").map((c) => c.resourceId));
+  const signals = personalSignals(deps.store, sel.courseRef, at, latest.sources.map((s) => s.resourceId).filter((id) => !changed.has(id)));
+  return {
+    op: "guide.view",
+    status: "stale",
+    pack: kind,
+    courseRef: sel.courseRef,
+    artifactId: latest.artifactId,
+    stale: true,
+    changedSources: changes,
+    view: personalize(withoutChangedSpans(latest.doc, changed), signals),
+    drops: latest.drops,
+    modelCalls: 0,
+  };
 }

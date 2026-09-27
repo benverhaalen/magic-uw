@@ -8,3 +8,4 @@ export * from "./packs";
 export * from "./inputs";
 export * from "./personalize";
 export * from "./run";
+export * from "./latest";

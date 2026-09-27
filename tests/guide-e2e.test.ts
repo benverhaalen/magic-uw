@@ -196,6 +196,8 @@ test("guide-view personalises at 0 model calls; new attempts change the view, no
     if (first.status !== "ready") return;
     assert.equal(first.op, "guide.view");
     assert.equal(first.modelCalls, 0);
+    const ready = g.core.query({ view: "guide", courseId: "SYN101", kind: "guide", moduleId: "m1" });
+    assert.ok(ready.view === "guide" && ready.status === "ready" && ready.artifactId === first.artifactId && ready.stale === false);
     const v1 = first.view as GuideView;
     assert.deepEqual(v1.sections.map((s) => s.mark), ["untested", "untested", "untested"]);
     assert.deepEqual(v1.confusions, []);
@@ -238,7 +240,7 @@ test("concept map and an assessment timeline: edges need a quote; dates need a c
     const map = await g.pack<GuideRunResult>("conceptmap");
     assert.equal(map.status, "done", map.message);
     assert.deepEqual(map.counts.droppedBy, { edge: 1 });
-    const mv = (await g.pack<GuideViewResult>("conceptmap-view")) as Extract<GuideViewResult, { status: "ready" }>;
+    const mv = (await g.pack<GuideViewResult>("conceptmap-view")) as Extract<GuideViewResult, { view: unknown }>;
     assert.equal((mv.view as ConceptMapView).nodes.length, 2);
 
     g.store.putAssessment({ id: "mid", sourceId: "materials", resourceId: null, kind: "midterm", title: "Midterm", date: "2026-10-14", weight: 20, format: null, origin: "syllabus" }, "2090-01-01T00:00:00.000Z");
@@ -251,7 +253,22 @@ test("concept map and an assessment timeline: edges need a quote; dates need a c
     // The key covers the inputs' content: changed material is a miss (never a stale view); the pack version is in the key too.
     assert.equal((await g.pack<GuideViewResult>("guide-view")).status, "ready");
     g.store.ingest(batch([input("reading", { text: `${TEXT} A deque allows insertion at both ends.` }), input("other", { module: { id: "m2" }, text: "Graphs have vertices and edges connecting them." })], "2090-02-01T00:00:00.000Z"));
-    assert.equal((await g.pack<GuideViewResult>("guide-view")).status, "missing");
+    // Changed material: the last guide is served marked stale, listing what changed; no model call, no regeneration.
+    const calls = await g.calls();
+    const stale = (await g.pack<GuideViewResult>("guide-view")) as Extract<GuideViewResult, { view: unknown }>;
+    assert.equal(stale.status, "stale");
+    assert.equal(stale.stale, true);
+    assert.deepEqual(stale.changedSources.map((c) => [c.title, c.change]), [["Synthetic reading", "changed"]]);
+    const staleGuide = stale.view as GuideView;
+    assert.ok(staleGuide.sections.every((s) => s.blocks.every((b) => b.source.start === null)), "offsets into changed material are dropped; quotes stay");
+    assert.ok(staleGuide.sections.some((s) => s.blocks.some((b) => b.source.quote === Q.stack)));
+    // The core query (guide.view) gives the same answer at 0 tokens.
+    const q = g.core.query({ view: "guide", courseId: "SYN101", kind: "guide", moduleId: "m1" });
+    assert.equal(q.view, "guide");
+    if (q.view !== "guide") return;
+    assert.deepEqual([q.op, q.status, q.stale, q.modelCalls, q.changedSources.length], ["guide.view", "stale", true, 0, 1]);
+    assert.equal(g.core.query({ view: "guide", courseId: "SYN101", kind: "faq", moduleId: "m1" }).view === "guide" && (g.core.query({ view: "guide", courseId: "SYN101", kind: "faq", moduleId: "m1" }) as { status: string }).status, "missing");
+    assert.equal(await g.calls(), calls, "serving stale called no model");
   } finally {
     g.store.close();
   }
