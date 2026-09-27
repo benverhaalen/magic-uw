@@ -136,6 +136,56 @@ function buildRequestBody(state: AssignmentState) {
   };
 }
 
+/**
+ * One POST to TypeSafe with the gateway's fixed transport rules: pinned endpoint, no redirects,
+ * no retries, a timeout covering headers AND the whole (size-capped) body, and caller abort.
+ * Any failure becomes an UpstreamError that carries no upstream content, headers or credential.
+ */
+export async function callTypeSafe(
+  apiKey: string,
+  timeoutMs: number,
+  fetcher: typeof fetch,
+  body: unknown,
+  callerSignal?: AbortSignal,
+): Promise<unknown> {
+  const controller = new AbortController();
+  const signal = callerSignal
+    ? AbortSignal.any([callerSignal, controller.signal])
+    : controller.signal;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetcher(TYPESAFE_ENDPOINT, {
+      method: "POST",
+      redirect: "error",
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal,
+    });
+    if (response.status === 429) {
+      await response.body?.cancel();
+      throw new UpstreamRateLimitError(
+        retryAfterSeconds(response.headers.get("retry-after")),
+      );
+    }
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new UpstreamError("Judgment upstream returned an error status.");
+    }
+    return await readResponse(response);
+  } catch (error) {
+    // A rate limit keeps its wait (and spends nothing); every other failure is content-free.
+    if (error instanceof UpstreamRateLimitError) throw error;
+    throw new UpstreamError("Judgment upstream request failed.");
+  } finally {
+    // Covers headers AND all response-body reads. Awaiting completion (rather
+    // than Promise.race) keeps the gateway's concurrency slot until fetch stops.
+    clearTimeout(timer);
+  }
+}
+
 /** Native fetch avoids implicit SDK retries. fetcher is an in-process test seam only. */
 export function createTypeSafeEvaluate(
   apiKey: string,
@@ -144,33 +194,15 @@ export function createTypeSafeEvaluate(
 ): Evaluate {
   if (!apiKey.trim()) throw new Error("A TypeSafe API key is required.");
   return async (state, callerSignal) => {
-    const controller = new AbortController();
-    const signal = callerSignal
-      ? AbortSignal.any([callerSignal, controller.signal])
-      : controller.signal;
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const raw = await callTypeSafe(
+      apiKey,
+      timeoutMs,
+      fetcher,
+      buildRequestBody(state),
+      callerSignal,
+    );
     try {
-      const response = await fetcher(TYPESAFE_ENDPOINT, {
-        method: "POST",
-        redirect: "error",
-        headers: {
-          authorization: `Bearer ${apiKey}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(buildRequestBody(state)),
-        signal,
-      });
-      if (response.status === 429) {
-        await response.body?.cancel();
-        throw new UpstreamRateLimitError(retryAfterSeconds(response.headers.get("retry-after")));
-      }
-      if (!response.ok) {
-        await response.body?.cancel();
-        throw new UpstreamError("Judgment upstream returned an error status.");
-      }
-      const parsed = upstreamResponseSchema.safeParse(
-        await readResponse(response),
-      );
+      const parsed = upstreamResponseSchema.safeParse(raw);
       if (!parsed.success)
         throw new UpstreamError(
           "Judgment upstream returned an unexpected shape.",
@@ -184,10 +216,6 @@ export function createTypeSafeEvaluate(
     } catch (error) {
       if (error instanceof UpstreamRateLimitError) throw error;
       throw new UpstreamError("Judgment upstream request failed.");
-    } finally {
-      // Covers headers AND all response-body reads. Awaiting completion (rather
-      // than Promise.race) keeps the gateway's concurrency slot until fetch stops.
-      clearTimeout(timer);
     }
   };
 }

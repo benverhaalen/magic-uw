@@ -39,6 +39,15 @@ const clients: ClientsBridge = {
   prepare: (id) => ipcRenderer.invoke("magic:clients-prepare", id),
   authStatus: (id) => ipcRenderer.invoke("magic:clients-auth", id),
   choose: (id) => ipcRenderer.invoke("magic:clients-choose", id),
+  // owner: client-health (D50)
+  health: (id, mode) => ipcRenderer.invoke("magic:clients-health", id, mode),
+  setMode: (id, mode) => ipcRenderer.invoke("magic:clients-set-mode", id, mode),
+  geminiKey: {
+    status: () => ipcRenderer.invoke("magic:clients-gemini-key", "status"),
+    save: (key) => ipcRenderer.invoke("magic:clients-gemini-key", "save", key),
+    remove: () => ipcRenderer.invoke("magic:clients-gemini-key", "remove"),
+  },
+  // end owner: client-health
   terminal: {
     open: (id, purpose) => ipcRenderer.invoke("magic:terminal-open", id, purpose),
     write: (sessionId, data) => void ipcRenderer.invoke("magic:terminal-write", sessionId, data).catch(ignore),
