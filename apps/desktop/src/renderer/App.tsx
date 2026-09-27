@@ -381,8 +381,8 @@ export function App() {
     );
   // end owner: T81
   return (
-    <DesktopShell view={view} title={view === "resource" ? selected?.title ?? "Saved item" : ({today:"Home", courses:"Courses", myuw:"My UW", calendar:"Calendar", sources:"Connected sources", privacy:"Data & AI", consent:"Agreements"} as Partial<Record<View,string>>)[view] ?? "Workspace"}
-      courses={courseCards} selectedCourseKey={navigation.courseKey} sample={snapshot?.fixtureMode ?? false} busy={busy}
+    <DesktopShell view={view} title={view === "resource" ? selected?.title ?? "Saved item" : view === "courses" && coursePage ? coursePage.code || coursePage.courseName : ({today:"Home", courses:"Courses", myuw:"My UW", calendar:"Calendar", sources:"Connected sources", privacy:"Data & AI", consent:"Agreements"} as Partial<Record<View,string>>)[view] ?? "Workspace"}
+      courses={courseCards} selectedCourseKey={navigation.courseKey} sample={snapshot?.fixtureMode ?? false} busy={busy && signInStage === "idle"}
       canBack={navigation.canBack} canForward={navigation.canForward} onBack={navigation.back} onForward={navigation.forward}
       onNavigate={setView} onCourse={key => navigation.navigate("courses", null, key)}
       status={<>
