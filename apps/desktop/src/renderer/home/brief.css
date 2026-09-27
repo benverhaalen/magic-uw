@@ -1,0 +1,8 @@
+/* Daily Brief additions only; passage/action geometry stays in desktop.css (174px action column). */
+/* Heading row: the coverage info control sits beside the title without changing its type. */
+.home-briefing > .briefing-heading { display: flex; align-items: baseline; gap: 6px; margin: 0 0 17px; }
+.home-briefing > .briefing-heading > h1 { margin: 0; }
+/* Status text for aria-describedby; the visible detail is the passage's info control. */
+.briefing-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* Past-due summary closes the brief, after any handled summaries. */
+.home-briefing > .briefing-passage--quiet { order: 3; }

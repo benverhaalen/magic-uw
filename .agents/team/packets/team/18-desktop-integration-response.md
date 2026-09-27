@@ -25,3 +25,13 @@ Nate's StudyPrep backend, renderer and mounts are now merged from main, retainin
 Latest user requirement: generated outputs, relevant videos and their inline citations belong in the saved conversation, with per-activity persistence, not one transient viewer reset on reopening. The private assembly is adapting the landed implementation; no second Study surface is accepted.
 
 Publication reconciliation also includes main `4734a5c`: Sean’s first-sync responsiveness, abort and account/term checks. Combined full build and five focused access/Study boundary checks pass. No pending feature branch was preemptively merged.
+
+## Published populated runtime and current overlap
+
+Both main and the integration branch published `5f79bb0`; actual same-profile startup on September 27 at 12:19 UTC succeeded without renderer errors. Main `15e9133` is included. The earlier “processes absent/launch pending” text above is historical. Actual browser split placement and Close remain unverified; local Whisper capability does not prove human mic capture.
+
+Current renderer work is the Daily Brief relevance projection and temporary date-conflict display suppression, composing around Nate's `HomeStudyCard`/Study mounts and the existing workspace `openTask` entry. No source dates are changed. Original deadline/enrollment owners are rechecking Today 14 versus six, missing Class 8 time and CS540 admission; raw Participation is not a submission workflow. See the current data findings. Study producing actions remain temporarily held pending the lead's exact-account/source/policy overlay; Nate's backend ownership and current Ask facts/previous exchange/claim validation are preserved.
+
+### Brief consumer checkpoint · September 27, 12:42 UTC
+
+Driver owns Home/DailyBrief and temporary date-notice display changes; producer date/evidence semantics are preserved. Current enrollment eligibility reuses shared `verifiedCanvasEnrollment` before selection. Full build, 23 Brief tests and seven copied-profile native checks pass. QA fixtures with sealed planning payloads must carry the matching wrapped `privacy-key.enc`; omission produces unavailable records and is not evidence that live enrollment is absent. No key or private source capture is committed. Voice streaming is next; Study producer hold remains until the trusted overlay lands.

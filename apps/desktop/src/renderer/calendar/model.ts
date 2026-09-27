@@ -2,6 +2,7 @@ import type { DayPlanEntry, Link, PersonalCalendarEvent } from '@magic/contracts
 import { buildTodayRail, type RailResource, type RailSuggestion } from '@magic/domain';
 
 import { projectScheduleResources, schedulePlanning, scheduleRailResources, type ScheduleResource } from '../schedule-projection';
+import { SHOW_DATE_CONFLICT_UI } from '../date-conflict-policy';
 
 // Reuse the formatter across month cells; constructing it per event/day makes dense months stall.
 const formatters = new Map<string, Intl.DateTimeFormat>();
@@ -83,9 +84,9 @@ export function canonicalCalendarResources(resources: CalendarResource[], links:
 }
 export function calendarItemLabel(item: CalendarItem, compact = false): string {
   if (!compact || (item.kind !== 'deadline' && (item.kind !== 'exam' || !item.precision))) return item.detail;
-  if (item.needsReview) return 'Review date';
-  if (item.conflict) return 'Dates disagree';
-  return `${item.personal ? 'Your date' : 'Due'} · ${item.precision === 'day' ? 'time not provided' : clock(item.startMin)}${item.sourceLabel ? ` · ${item.sourceLabel.toLowerCase()}` : ''}`;
+  if (SHOW_DATE_CONFLICT_UI && item.needsReview) return 'Review date';
+  if (SHOW_DATE_CONFLICT_UI && item.conflict) return 'Dates disagree';
+  return `${item.personal ? 'Your date' : item.conflict ? 'Planning date' : 'Due'} · ${item.precision === 'day' ? 'time not provided' : clock(item.startMin)}${item.sourceLabel ? ` · ${item.sourceLabel.toLowerCase()}` : ''}`;
 }
 export function calendarItems(resources: CalendarResource[], plan: DayPlanEntry[], date: string, timeZone: string, links: Link[] = []): CalendarItem[] {
   const result: CalendarItem[] = [];
@@ -98,7 +99,7 @@ export function calendarItems(resources: CalendarResource[], plan: DayPlanEntry[
       if (due?.date === date) result.push({ ...base, key: `deadline:${r.id}`, kind: r.kindLabel === 'exam' || r.submissionTypes?.includes('online_quiz') ? 'exam' : 'deadline', allDay: true,
         startMin: due.minute ?? 0, endMin: due.minute ?? 0, precision: due.precision, personal: due.personal,
         feedOnly: r.scheduleDeadline?.feedOnly, sourceLabel: r.scheduleDeadline?.sourceLabel, needsReview: due.needsReview, conflict: due.conflict, submitted: r.submitted === true,
-        detail: `${due.conflict ? 'Dates disagree · planning for' : due.personal ? 'Your planning date ·' : 'Due'} ${due.minute === null ? 'time not provided' : clock(due.minute)}${r.scheduleDeadline?.feedOnly ? ' · calendar feed · assignment details not captured' : r.scheduleDeadline?.sourceLabel ? ` · ${r.scheduleDeadline.sourceLabel.toLowerCase()}` : ''}${due.needsReview ? ' · review date again' : ''}${r.submitted === true ? ' · submitted' : ''}` });
+        detail: `${SHOW_DATE_CONFLICT_UI && due.conflict ? 'Dates disagree · planning for' : due.personal ? 'Your planning date ·' : due.conflict ? 'Planning date ·' : 'Due'} ${due.minute === null ? 'time not provided' : clock(due.minute)}${r.scheduleDeadline?.feedOnly ? ' · calendar feed · assignment details not captured' : r.scheduleDeadline?.sourceLabel ? ` · ${r.scheduleDeadline.sourceLabel.toLowerCase()}` : ''}${SHOW_DATE_CONFLICT_UI && due.needsReview ? ' · review date again' : ''}${r.submitted === true ? ' · submitted' : ''}` });
       continue;
     }
     if (r.kind !== 'event') continue;

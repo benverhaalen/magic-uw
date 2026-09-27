@@ -6,6 +6,7 @@ import { InlineTime, presentationLabel } from '../../../../packages/ui/src/inlin
 import { projectCourseLabel } from '../../../../packages/domain/src/course-label';
 import { Glyph } from './DesktopShell';
 import type { DeadlineReviewResource } from './DeadlineReview';
+import { SHOW_DATE_CONFLICT_UI } from './date-conflict-policy';
 import './resource-detail-header.css';
 
 const sourceStates: Record<SourceHealth['status'], string> = {
@@ -56,10 +57,10 @@ export function ResourceDetailHeader({ resource, snapshot, open, changedWhileRea
     </div>
     <div className="resource-heading__meta">
     <dl className="resource-heading__facts">
-      {view.showDeadline && <div><dt>{view.selected ? 'Your planning date' : resource.kind === 'event' ? 'When' : 'Due'}</dt><dd>
+      {view.showDeadline && <div><dt>{view.selected ? 'Your planning date' : resource.deadline.conflict && !SHOW_DATE_CONFLICT_UI ? 'Planning date' : resource.kind === 'event' ? 'When' : 'Due'}</dt><dd>
         {view.selected ? <><InlineTime dateTime={view.selected.value} parts={[view.selected.precision === 'day'
           ? new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/Chicago' }).format(new Date(view.selected.value))
-          : dateText(view.selected.value)]} />{resource.deadline.conflict && <small className="resource-heading__source-conflict">Source dates disagree</small>}</> : resource.deadline.conflict ? <strong className="attention-text">Dates disagree</strong> : resource.deadline.dueAt
+          : dateText(view.selected.value)]} />{SHOW_DATE_CONFLICT_UI && resource.deadline.conflict && <small className="resource-heading__source-conflict">Source dates disagree</small>}</> : resource.deadline.conflict ? SHOW_DATE_CONFLICT_UI ? <strong className="attention-text">Dates disagree</strong> : resource.deadline.planningAt ? <InlineTime dateTime={resource.deadline.planningAt} parts={[dateText(resource.deadline.planningAt)]}/> : 'Planning date unavailable' : resource.deadline.dueAt
           ? <InlineTime dateTime={resource.deadline.dueAt} parts={[dateText(resource.deadline.dueAt)]} /> : 'No confirmed due date'}
       </dd></div>}
       {resource.kind === 'assignment' && resource.points !== null && <div><dt>Points</dt><dd>{resource.points}</dd></div>}
@@ -67,7 +68,7 @@ export function ResourceDetailHeader({ resource, snapshot, open, changedWhileRea
       {resource.kind === 'material' && resource.moduleItem?.type && <div><dt>Format</dt><dd>{materialFormats[resource.moduleItem.type] ?? resource.moduleItem.type}</dd></div>}
       {resource.kind !== 'assignment' && resource.completed && <div><dt>Your report</dt><dd>Marked complete locally</dd></div>}
     </dl>
-    {deadlineReview}
+    {SHOW_DATE_CONFLICT_UI && deadlineReview}
     <p className="resource-heading__freshness">
       {view.freshness && <span>{view.freshness}</span>}
       <EvidenceInfo label="Saved source freshness">

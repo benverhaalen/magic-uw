@@ -5,6 +5,7 @@ import { Action } from "../../../../../packages/ui/src";
 import { deadlineSurface, deadlineEmphasis, type AssignmentTypeHue } from "../../../../../packages/ui/src/deadline-emphasis";
 import type { ResourceView } from "@magic/contracts";
 import { localTime } from "@magic/domain";
+import { SHOW_DATE_CONFLICT_UI } from '../date-conflict-policy';
 import { answerIsStale, chatItem, coverageBlocker, coverageLine, dueParts, permittedCourses, safeWebLink, scopeCourses, scopeLabel, spanLabel, when, type ChatItem } from "./model";
 import {
   answerLocally, choose, chooseCourse, continueChat, currentScope, drive, getChat, goneOrigin, openSource, retry, searchAll, setCourse, setNarrowed, stop, subscribe,
@@ -184,7 +185,7 @@ function Due({ r, now, Info, resources, typeHueOf }: { r: ResultOf<"due">; now: 
           <span className="magic-chat-due-course">{row.courseCode ?? row.courseLabel}{row.kindLabel ? <span>{row.kindLabel}</span> : null}{row.submitted ? <span>Submitted in Canvas</span> : null}</span>
           <span className="magic-chat-due-title">{row.title}</span>
         </span>
-        <span className="magic-chat-due-when"><strong>{resource?.deadline.conflict ? "Dates disagree" : row.pastDue ? `Past due · ${when.day}` : when.day}</strong>{resource?.deadline.conflict ? "Review dates" : when.time}</span>
+        <span className="magic-chat-due-when"><strong>{resource?.deadline.conflict ? SHOW_DATE_CONFLICT_UI ? "Dates disagree" : `Planning date · ${when.day}` : row.pastDue ? `Past due · ${when.day}` : when.day}</strong>{resource?.deadline.conflict && SHOW_DATE_CONFLICT_UI ? "Review dates" : when.time}</span>
         <Icon name="chevron" />
       </a></li>;
     })}</ul> : null}
