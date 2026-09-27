@@ -210,6 +210,9 @@ import { notesActions } from "../../../packages/notes/src/actions";
 import { notesRequestSchema } from "@magic/contracts";
 import { createModelRunner, createSessionPool, type SessionPool } from "../../../packages/runner/src/index";
 import { askPack, classifyPack } from "../../../packages/packs/intent/src/index";
+import { createClaudeChat } from "../../../packages/core/src/chat/index"; // owner: claude-chat
+import { createChatSession, CHAT_MODEL, RunnerError } from "../../../packages/runner/src/index"; // owner: claude-chat
+import { errorForState } from "./clients/health"; // owner: claude-chat
 // owner: voice-plan: `voice` is the planner's own Claude pool (below); null for a one-shot client.
 let intentRuntime: { client: string; runner: ModelRunner; pool: SessionPool | null; voice: { runner: ModelRunner; pool: SessionPool } | null } | null = null;
 async function intentRunner(): Promise<ModelRunner | null> {
@@ -295,6 +298,57 @@ async function voiceFocus(raw: unknown): Promise<void> {
   const outcome = await agentWarmup.focus(plannerWarmRequest(store, plannerOrigin(store, context), new Date())).catch(() => "failed" as const);
   if (context.courseId && (outcome === "warm" || outcome === "reused" || outcome === "per_request")) await intent.prewarm(context.courseId).catch(() => undefined);
 }
+// owner: claude-chat (decisions.md, 2026-09-27). The in-app chat: one persistent Claude Code session
+// on Opus 5.5, harnessed on this store through the app's read tools (served here, where the store is
+// keyed and receipts are written per read). The chosen client must be Claude Code in a healthy
+// state; anything else answers "setup" and the chat links to setup's Your AI step.
+const chatRuns = new Map<string, AbortController>();
+let chatClientKey: string | null = null;
+const claudeChat = createClaudeChat({
+  store,
+  session: async (endpoint) => {
+    const chosen = await chosenClient();
+    if (chosen?.id !== "claude") return null;
+    const run = await clientRunOptions("claude", { userData: generationUserData }, () => isolatedOptions("claude")).catch(() => null);
+    if (!run) return null;
+    const health = await run.check().catch(() => null);
+    if (!health || errorForState(health)) return null;
+    chatClientKey = chosen.key;
+    return createChatSession({ ...run.options, ...endpoint, model: CHAT_MODEL });
+  },
+  pack: (name, scope, signal) => generation.pack(name, scope, signal),
+});
+async function claudeChatAsk(id: string, text: string): Promise<void> {
+  const abort = new AbortController();
+  chatRuns.set(id, abort);
+  try {
+    const chosen = await chosenClient();
+    if (chatClientKey && chosen?.key !== chatClientKey) {
+      claudeChat.reset();
+      chatClientKey = null;
+    }
+    const result = await claudeChat.ask(text, {
+      signal: abort.signal,
+      timeoutMs: 240_000,
+      onText: (chunk) => port.postMessage({ kind: "claude-chat-delta", id, text: chunk }),
+      onTool: (name) => port.postMessage({ kind: "claude-chat-tool", id, tool: name }),
+    });
+    port.postMessage({ kind: "claude-chat-response", id, result });
+  } catch (error) {
+    const kind = error instanceof RunnerError ? error.kind : null;
+    if (kind && ["not_installed", "not_signed_in", "plan_insufficient", "keychain_locked"].includes(kind))
+      port.postMessage({ kind: "claude-chat-response", id, result: { status: "setup", reason: (error as RunnerError).studentMessage } });
+    else
+      port.postMessage({
+        kind: "claude-chat-response",
+        id,
+        error: error instanceof RunnerError ? error.studentMessage : "Claude couldn't finish this answer. Try again.",
+      });
+  } finally {
+    chatRuns.delete(id);
+  }
+}
+// end owner: claude-chat
 const voicePlan = createVoicePlanWorker({
   post: (message) => port.postMessage(message),
   run: async (request, executor, signal) => {
@@ -736,6 +790,14 @@ changeWatch.unref();
 // end owner: stall-audit
 const commandAborts = new Map<string, AbortController>();
 port.on("message", async ({ data }: { data: any }) => {
+  // owner: claude-chat. A question, its Stop, the launch warm-up, and an end on any provider,
+  // privacy, inclusion or account change (main sends voice-agent-refresh for each; voice still gets it).
+  if (data.kind === "claude-chat" && typeof data.id === "string" && typeof data.text === "string" && data.text.length <= 4000)
+    return void claudeChatAsk(data.id, data.text);
+  if (data.kind === "claude-chat-cancel" && typeof data.id === "string") return void chatRuns.get(data.id)?.abort();
+  if (data.kind === "claude-chat-warm") return void claudeChat.warm().catch(() => false);
+  if (data.kind === "voice-agent-refresh") claudeChat.reset();
+  // end owner: claude-chat
   if (voicePlan.handle(data)) return; // owner: voice-plan
   // owner: voice-plan: launch warm-up, a retry on voice activation, and teardown on a provider/account change.
   if (data.kind === "voice-agent-warm") return void (data.context ? voiceFocus(data.context) : agentWarmup.start());

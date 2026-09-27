@@ -1325,6 +1325,47 @@ app
       try { return await dispatchInteractive(value.text, value.context ?? {}, { operationId: r.operationId, signal: controller.signal, current: () => !controller.signal.aborted && authority === voiceAuthority }); }
       finally { if (interactiveCalls.get(r.operationId) === controller) interactiveCalls.delete(r.operationId); }
     });
+    // owner: claude-chat. A chat question goes to the worker's persistent Claude session; its text
+    // streams back as `magic:chat-delta` to the asking window, and the answer resolves the invoke.
+    const chatCalls = new Map<string, { resolve(value: unknown): void; reject(error: Error): void; sender: Electron.WebContents; timer: NodeJS.Timeout }>();
+    worker.on("message", (message: any) => {
+      if (typeof message?.id !== "string") return;
+      const c = chatCalls.get(message.id);
+      if (!c) return;
+      if (message.kind === "claude-chat-delta" && typeof message.text === "string") {
+        if (!c.sender.isDestroyed()) c.sender.send("magic:chat-delta", message.id, { text: message.text });
+      } else if (message.kind === "claude-chat-tool" && typeof message.tool === "string") {
+        if (!c.sender.isDestroyed()) c.sender.send("magic:chat-delta", message.id, { tool: message.tool });
+      } else if (message.kind === "claude-chat-response") {
+        clearTimeout(c.timer);
+        chatCalls.delete(message.id);
+        if (message.error) c.reject(new Error(String(message.error)));
+        else c.resolve(message.result);
+      }
+    });
+    ipcMain.handle("magic:chat-ask", async (event, request: unknown) => {
+      validateSender(event);
+      const r = request as { operationId?: unknown; text?: unknown } | null;
+      if (!r || typeof r.operationId !== "string" || !/^[a-zA-Z0-9_-]{1,100}$/.test(r.operationId)) throw new Error("Invalid request identity.");
+      if (typeof r.text !== "string" || !r.text.trim() || r.text.length > 2000) throw new Error("Write a message of up to 2,000 characters.");
+      if (chatCalls.has(r.operationId)) throw new Error("This request is already running.");
+      await ready;
+      const id = r.operationId;
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          chatCalls.delete(id);
+          worker.postMessage({ kind: "claude-chat-cancel", id });
+          reject(new Error("Claude took too long to answer. Try again."));
+        }, 250_000);
+        chatCalls.set(id, { resolve, reject, sender: event.sender, timer });
+        worker.postMessage({ kind: "claude-chat", id, text: r.text });
+      });
+    });
+    ipcMain.handle("magic:chat-cancel", (event, operationId: unknown) => {
+      validateSender(event);
+      if (typeof operationId === "string") worker.postMessage({ kind: "claude-chat-cancel", id: operationId });
+    });
+    // end owner: claude-chat
     ipcMain.handle("magic:intent-cancel", (event, operationId: unknown) => {
       validateSender(event);
       if (typeof operationId === 'string') interactiveCalls.get(operationId)?.abort();
@@ -2323,6 +2364,7 @@ app
     await window.loadURL(rendererURL);
     await ready;
     worker.postMessage({ kind: "voice-agent-warm" }); // owner: voice-plan: after first paint, before any voice; no microphone
+    worker.postMessage({ kind: "claude-chat-warm" }); // owner: claude-chat: the chat's session starts now (0 tokens)
     powerMonitor.on("suspend", () => worker.postMessage({ kind: "suspend" }));
     powerMonitor.on("resume", () => {
       worker.postMessage({ kind: "resume" });

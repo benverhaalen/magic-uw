@@ -83,6 +83,19 @@ const bridge: AppBridge = {
   stopAssignmentInvestigation: operationId => ipcRenderer.invoke("magic:source-investigate-stop", operationId),
   intentRun: request => ipcRenderer.invoke("magic:intent-run", request),
   cancelIntent: operationId => ipcRenderer.invoke("magic:intent-cancel", operationId),
+  // owner: claude-chat
+  chatAsk: request => ipcRenderer.invoke("magic:chat-ask", request),
+  cancelChat: operationId => ipcRenderer.invoke("magic:chat-cancel", operationId),
+  onChatDelta(listener) {
+    const forward = (_event: unknown, id: unknown, delta: unknown) => {
+      if (typeof id !== "string" || !delta || typeof delta !== "object") return;
+      const d = delta as { text?: unknown; tool?: unknown };
+      listener(id, { ...(typeof d.text === "string" ? { text: d.text } : {}), ...(typeof d.tool === "string" ? { tool: d.tool } : {}) });
+    };
+    ipcRenderer.on("magic:chat-delta", forward);
+    return () => void ipcRenderer.removeListener("magic:chat-delta", forward);
+  },
+  // end owner: claude-chat
   execute: (command) => ipcRenderer.invoke("magic:execute", command),
   // owner: stall-audit. The workspace changed (at most once a second); the window re-reads then.
   onChanged(listener) {

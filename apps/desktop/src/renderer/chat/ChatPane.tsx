@@ -119,6 +119,8 @@ export function ChatPane(props: ChatPaneProps) {
 interface ViewProps { chat: Chat; x: Exchange; runtime: ChatRuntime; onOpenSetup: ChatPaneProps["onOpenSetup"]; Info?: ChatInfo }
 function ExchangeView({ chat, x, runtime, onOpenSetup, Info }: ViewProps) {
   const busy = chat.exchanges.some((e) => e.state === "running");
+  // owner: claude-chat: the streamed answer shows as it arrives, with Stop.
+  if (x.state === "running" && x.result?.kind === "claude") return <ClaudeAnswer r={x.result} onStop={() => stop(chat, x, runtime.bridge)} />;
   if (x.state === "queued" || x.state === "running") {
     const text = x.step === "ask" && x.target ? `Answering from ${x.target.title} on this device`
       : x.step === "answer" ? "Answering from your saved course materials"
@@ -140,6 +142,7 @@ function ExchangeView({ chat, x, runtime, onOpenSetup, Info }: ViewProps) {
   const r = x.result;
   if (!r) return null;
   if (r.kind === "note") return <p className="magic-chat-prose">{r.text}</p>;
+  if (r.kind === "claude") return <ClaudeAnswer r={r} />; // owner: claude-chat
   if (r.kind === "opened") return <p className="magic-chat-prose">Opened {r.item.title} in your browser. Opening it does not mark anything done.</p>;
   if (r.kind === "due") return <Due r={r} now={runtime.now} Info={Info} resources={runtime.resources} typeHueOf={(runtime as ChatPaneProps).typeHueOf} />;
   // Course-posted videos tied to the cited sources only; see media/course-video.ts.
@@ -165,6 +168,25 @@ function ExchangeView({ chat, x, runtime, onOpenSetup, Info }: ViewProps) {
 }
 
 type ResultOf<K extends NonNullable<Exchange["result"]>["kind"]> = Extract<NonNullable<Exchange["result"]>, { kind: K }>;
+
+// owner: claude-chat. Claude's answer as plain paragraphs, the saved items it cited (checked by code),
+// what it read, and the cards the app made when asked.
+function ClaudeAnswer({ r, onStop }: { r: ResultOf<"claude">; onStop?: () => void }) {
+  const reads = r.tools.length ? `Read your saved coursework ${r.tools.length} time${r.tools.length === 1 ? "" : "s"}` : null;
+  return <div className="magic-chat-body">
+    {r.text ? <p className="magic-chat-prose" style={{ whiteSpace: "pre-wrap" }}>{r.text}</p> : null}
+    {r.streaming ? <p className="magic-chat-pending" role="status"><span className="magic-chat-dot" aria-hidden="true" />{r.text ? "Claude is answering" : reads ? `${reads}…` : "Claude is looking through your courses"}
+      {onStop ? <button className="magic-chat-text" onClick={onStop}>Stop</button> : null}</p> : null}
+    {r.cards ? <p className={r.cards.status === "refused" ? "magic-chat-warning" : "magic-chat-meta"}>{r.cards.message}</p> : null}
+    {r.sources.length ? <div>
+      <p className="magic-chat-meta">Sources</p>
+      <ul className="magic-chat-choices">{r.sources.map((s) => <li key={s.id}>
+        <a href={itemHref(s.id)} data-focus-key={`chat-source-${s.id}`}><span><span className="magic-chat-choice-title">{s.title}</span> <span className="magic-chat-meta">{s.course}</span></span><Icon name="chevron" /></a>
+      </li>)}</ul>
+    </div> : null}
+    {!r.streaming && reads ? <p className="magic-chat-meta">{reads}{r.ms ? ` · ${(r.ms / 1000).toFixed(1)} s` : ""}</p> : null}
+  </div>;
+}
 
 function Due({ r, now, Info, resources, typeHueOf }: { r: ResultOf<"due">; now: string; Info?: ChatInfo; resources: ResourceView[]; typeHueOf?: ChatPaneProps["typeHueOf"] }) {
   const span = spanLabel(r.span);

@@ -58,3 +58,4 @@ export { killTree } from "./process"; // owner: client-detection
 export { runStudyToolLoop, courseSearch, StudyToolError, type StudyToolRequest, type StudyToolResult, type StudyToolReceipt, type StudyToolGrant, type StudyToolAction } from "./study-retrieval";
 export { runSourceInvestigator, searchInvestigation, InvestigationError, type InvestigationRequest, type InvestigationResult, type InvestigationAction, type InvestigationContext, type InvestigationGrant, type InvestigationCitation, type InvestigationReceipt, type ExternalReadPort } from "./source-investigator";
 export { investigateAssignmentClick, type AssignmentClickInvestigation } from "./source-investigator-adapter";
+export { createChatSession, chatSessionArgs, chatStreamCheck, CHAT_MODEL, type ChatSession, type ChatSessionOptions, type ChatTurn, type ChatAsk } from "./chat-session"; // owner: claude-chat

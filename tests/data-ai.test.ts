@@ -78,7 +78,11 @@ test("what you share: each row writes the same preferences the earlier page wrot
     ["Course materials", ["shareCourseText"]],
     ["Your work and grades", ["shareStudentWork", "shareGrades", "shareComments"]],
     ["Course messages", ["shareCommunications"]],
+    // Operator decision 2026-09-27 (decisions.md): the in-app Claude chat may read the degree audit when this is on.
+    ["Degree plan and audit", ["sharePlanning", "shareAudit"]],
   ]);
+  assert.deepEqual(sharePatch(cloud, row("degree"), true), { sharePlanning: true, shareAudit: true });
+  assert.equal(shareOn(cloud, row("degree")), false, "off by default");
   assert.deepEqual(sharePatch(cloud, row("materials"), true), { shareCourseText: true });
   assert.deepEqual(sharePatch(cloud, row("work"), false), { shareStudentWork: false, shareGrades: false, shareComments: false });
   assert.deepEqual(sharePatch(cloud, row("messages"), true), { shareCommunications: true });
@@ -91,7 +95,7 @@ test("what you share: each row writes the same preferences the earlier page wrot
   assert.equal(next.shareCommunications, true);
   for (const key of ["shareCourseText", "shareGrades", "shareStudentWork", "shareComments", "jevEnabled"] as const) assert.equal(next[key], false, key);
   assert.equal(next.hostedProvider, "none");
-  assert.deepEqual(shareNothingPatch(), { shareCourseText: false, shareStudentWork: false, shareGrades: false, shareComments: false, shareCommunications: false });
+  assert.deepEqual(shareNothingPatch(), { shareCourseText: false, shareStudentWork: false, shareGrades: false, shareComments: false, shareCommunications: false, sharePlanning: false, shareAudit: false });
   assert.match(PLANNING_ROW.line, /never shared/);
   const app = read("apps/desktop/src/renderer/App.tsx");
   assert.match(app, /onChange=\{\(checked\) => void update\(sharePatch\(value, row, checked\)\)\}/, "rows save through the consent-checking update");
