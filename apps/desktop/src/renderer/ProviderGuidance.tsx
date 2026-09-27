@@ -54,7 +54,7 @@ export function ProviderGuidance({
       <h2>Hosted provider controls</h2>
       <p>
         A hosted service receives the context you send and applies its own data
-        rules. Magic Canvas settings do not change your provider account
+        rules. My Magic UW settings do not change your provider account
         settings. ChatGPT, Claude, and Gemini connections are not available in
         this build.
       </p>

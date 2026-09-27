@@ -31,7 +31,7 @@ async function main() {
 }
 void main().catch(() => {
   process.stderr.write(
-    "Magic Canvas MCP could not open its local connection. Reconnect from Data & AI.\n",
+    "My Magic UW MCP could not open its local connection. Reconnect from Data & AI.\n",
   );
   process.exitCode = 1;
 });

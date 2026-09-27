@@ -13,7 +13,7 @@ import "./consent.css";
 
 /** Exact texts (tasks.md T06; the UW note as revised by the lead for T05e). */
 export const canvasDisclosure =
-  "Magic Canvas reads your courses the way you would by opening them. Canvas can record these as page views, and reading a module item can satisfy a \"must view\" requirement. Magic Canvas never submits, posts, enrolls or marks anything complete.";
+  "My Magic UW reads your courses the way you would by opening them. Canvas can record these as page views, and reading a module item can satisfy a \"must view\" requirement. My Magic UW never submits, posts, enrolls or marks anything complete.";
 export const uwSessionNote =
   "You sign in on UW's own page. If you choose Remember my sign-in, your NetID sign-in is saved encrypted on this computer only.";
 
@@ -173,7 +173,7 @@ export function ConsentSetup({
     );
 
   const heading = setup
-    ? "Before Magic Canvas connects"
+    ? "Before My Magic UW connects"
     : `Share with ${missing
         .filter((r) => r !== "uw")
         .map((r) => recipientLabels[r])
@@ -243,7 +243,7 @@ export function ConsentSetup({
           />
           <span>
             {setup
-              ? "I agree: Magic Canvas may read UW with my sign-in, and share what I allow with the recipients above."
+              ? "I agree: My Magic UW may read UW with my sign-in, and share what I allow with the recipients above."
               : "I agree to share what I allow with this recipient."}
           </span>
         </label>
