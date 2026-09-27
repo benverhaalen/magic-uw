@@ -234,7 +234,7 @@ export function createStore(
   // chmods, migrates, backs up (VACUUM INTO) or rebuilds anything; a write fails in SQLite itself.
   const readOnly = options.readOnly === true;
   if (readOnly && (!file || !existsSync(path)))
-    throw new ReaderSchemaError("There is no local database to read yet. Open Magic Canvas once first.");
+    throw new ReaderSchemaError("There is no local database to read yet. Open My Magic UW once first.");
   if (file && !readOnly) mkdirSync(dirname(resolve(path)), { recursive: true, mode: 0o700 });
   const db = new DatabaseSync(path, readOnly ? { readOnly: true } : {});
   if (file && !readOnly) chmodSync(path, 0o600);
@@ -255,14 +255,14 @@ export function createStore(
   if (schemaVersion > SCHEMA_VERSION) {
     db.close();
     throw new Error(
-      "This database was created by a newer Magic Canvas version.",
+      "This database was created by a newer My Magic UW version.",
     );
   }
   // owner: platform-fix
   if (readOnly && schemaVersion < SCHEMA_VERSION) {
     db.close();
     throw new ReaderSchemaError(
-      "The local database needs updating before the course bank can read it. Open Magic Canvas once, then try again.",
+      "The local database needs updating before the course bank can read it. Open My Magic UW once, then try again.",
     );
   }
   // end owner: platform-fix
@@ -485,7 +485,7 @@ export function createStore(
     try {
       from = readVersion(); // another process may have migrated since the first read
       if (from > SCHEMA_VERSION)
-        throw new Error("This database was created by a newer Magic Canvas version.");
+        throw new Error("This database was created by a newer My Magic UW version.");
       for (const [version, step] of steps) if (version > from) step();
       if (db.prepare("PRAGMA foreign_key_check").all().length)
         throw new Error("The migration left foreign-key violations.");

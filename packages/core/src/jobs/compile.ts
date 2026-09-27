@@ -6,10 +6,7 @@
  */
 import type { CourseJob } from "../../../contracts/src/course-core";
 import { compileCourse, isPipelineStore } from "../graph/index";
-import { stubHandler, type JobHandler } from "./registry";
-
-/** Kept for the default (stub) registry. */
-export const compileJob = stubHandler("compile.course", "course", "T21");
+import type { JobHandler } from "./registry";
 
 export const compileCourseJob: JobHandler = {
   kind: "compile.course",

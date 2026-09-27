@@ -132,7 +132,7 @@ export function applyConsent(
   store.setConsent(change, at);
   if (change.action === "revoke")
     return change.recipient === "uw"
-      ? "Agreement withdrawn. Magic Canvas will not contact UW until you agree again. Saved coursework stays on this device."
+      ? "Agreement withdrawn. My Magic UW will not contact UW until you agree again. Saved coursework stays on this device."
       : "Agreement withdrawn. Nothing more is sent to this service; data already sent cannot be retracted.";
   return change.recipient === "uw"
     ? "Agreement saved. You can now sign in to UW."

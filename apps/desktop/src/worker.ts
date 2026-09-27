@@ -10,10 +10,10 @@ import { queryRequestSchema } from "@magic/contracts"; // owner: T15
 import fixture from "../../../fixtures/course.json";
 import { randomUUID } from "node:crypto";
 import { createLocalService } from "./local-service";
-import { createIngestion } from "./ingestion";
+import { createIngestion, ACQUISITION_APP } from "./ingestion";
 import { createLearningRouter, type StudyContext } from "../../../packages/learning/src/router";
 import { createStudyContextResolver } from "./learning-context";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import {
   createLocalDocumentExtractor,
   createLocalOcrAdapter,
@@ -23,7 +23,6 @@ import { pullPublicSubjects, pullPublicTerms } from "../../../packages/connector
 import type { UwPlanningSyncResult } from "../../../packages/connectors/src/uw-planning-sync";
 // owner: pipeline
 import { pipelineJobRegistry } from "../../../packages/core/src/jobs/default-registry";
-import { createPipelineLoop } from "../../../packages/core/src/jobs/pipeline";
 import { agenda, courseGraph, createPipelineReferences, references } from "../../../packages/core/src/graph/index";
 import { graphQuerySchema } from "../../../packages/contracts/src/course-core";
 // end owner: pipeline
@@ -219,17 +218,11 @@ const {
   MAGIC_TESSERACT_PATH: tesseractPath,
   MAGIC_TESSDATA_DIRECTORY: tessdataDirectory,
 } = process.env;
-const extractor = createLocalDocumentExtractor(
+const tesseract =
   pdftoppmPath && tesseractPath && tessdataDirectory
-    ? {
-        ocr: createLocalOcrAdapter({
-          pdftoppmPath,
-          tesseractPath,
-          tessdataDirectory,
-        }),
-      }
-    : {},
-);
+    ? createLocalOcrAdapter({ pdftoppmPath, tesseractPath, tessdataDirectory })
+    : undefined; // owner: acquisition: also the background OCR's fallback
+const extractor = createLocalDocumentExtractor(tesseract ? { ocr: tesseract } : {});
 // owner: T30. Microsoft Graph through main's proxy: this process never sees a token. Main says
 // which scopes the student granted; the delta links live in main's encrypted vault.
 let graphScopes: string[] = [];
@@ -265,11 +258,15 @@ const ingestion = createIngestion(store, {
   graph: graphHost, // owner: T30
   secrets: (operation, key, value) =>
     hostRead("source-secret", { operation, key, value }),
+  // owner: acquisition: main's session file route and the extraction threads exist here.
+  acquisition: ACQUISITION_APP,
+  ...(tesseract ? { ocr: tesseract } : {}),
+  extractWorkerScript: join(__dirname, "extract-worker.cjs"),
 });
-// owner: pipeline. The material pipeline's drain: code-only jobs (passages, links and facts, the
-// course pass) in bounded idle slices. A sync aborts the slice between jobs and wakes it when done;
-// presence sets the slice size. Nothing here calls Jev or a model, and planning is never queued.
-const pipeline = createPipelineLoop({ store, registry: core.jobs });
+// owner: drain. The app's one job drain is core's pipeline loop: every job kind (passages, links
+// and facts, the course pass, Jev's enrich.resource) in bounded idle slices. A sync aborts the
+// slice between jobs and nothing is leased until it ends; presence sets the slice size.
+const pipeline = core.pipeline;
 const syncTick = ingestion.tick;
 ingestion.tick = (trigger) => {
   pipeline.syncStarted();

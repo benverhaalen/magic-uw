@@ -17,7 +17,15 @@ import type { CaptureBatch, PlanningCapture, ResourceInput } from "@magic/contra
 import { LIFE_COURSE_ID } from "../packages/contracts/src/course-core";
 import { LEARNING_TABLES } from "../packages/storage/src/learning";
 import { createDrain } from "../packages/core/src/drain";
-import { enqueuePassages, PASSAGES_JOB_KIND, passagesHandler } from "../packages/core/src/jobs/passages";
+// The dead `passages.build` handler is gone (one drain, WP1); these storage tests queue the live
+// text-keyed passages kind directly and rebuild through the store.
+const PASSAGES_JOB_KIND = "passages.resource";
+const enqueuePassages = (
+  store: { enqueueSubject(job: { kind: string; subjectKind: "resource"; subjectId: string; inputHash: string }, now: string): boolean },
+  resourceId: string,
+  inputHash: string,
+  now: string,
+) => store.enqueueSubject({ kind: PASSAGES_JOB_KIND, subjectKind: "resource", subjectId: resourceId, inputHash }, now);
 
 // Synthetic data only.
 const t = (seconds: number) => new Date(Date.UTC(2099, 0, 1, 0, 0, seconds)).toISOString();
@@ -327,7 +335,7 @@ test("a database newer than this schema is refused and left alone", () => {
     const db = new DatabaseSync(file);
     db.exec(`PRAGMA user_version = ${SCHEMA_VERSION + 1}`);
     db.close();
-    assert.throws(() => createStore(file), /newer Magic Canvas version/);
+    assert.throws(() => createStore(file), /newer My Magic UW version/);
     const again = new DatabaseSync(file, { readOnly: true });
     assert.equal(again.prepare("PRAGMA user_version").get()!.user_version, SCHEMA_VERSION + 1);
     again.close();
@@ -501,9 +509,9 @@ test("the drain serves only its registered kinds, never spins, and a failing han
       store,
       now,
       handlers: {
-        [PASSAGES_JOB_KIND]: (job, ctx) => {
+        [PASSAGES_JOB_KIND]: (job) => {
           rebuilt++;
-          return passagesHandler(store)(job, ctx);
+          store.rebuildPassages(job.subjectId);
         },
         flaky: () => {
           flakyCalls++;
