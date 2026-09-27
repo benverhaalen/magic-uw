@@ -622,19 +622,29 @@ export function courseCoreRepository(
         const source = versionText(m.resourceId);
         if (!source) return { ok: false, errors: ["The resource is missing or deleted."] };
         if (source.textHash !== m.textHash) return { ok: false, errors: ["The text changed; re-run the analyzer."] };
-        const text = source.item.text;
-        const errors = m.facts.flatMap((f, i) =>
-          f.end <= f.start || f.end > text.length ? [`facts[${i}]: offsets outside the text.`] : [],
-        );
+        // v9: offsets cut the text, the title, or (structure) the stored quote itself.
+        const base = (f: (typeof m.facts)[number]) =>
+          f.basis === "title" ? source.item.title : f.basis === "structure" ? (f.quote ?? "") : source.item.text;
+        const errors = m.facts.flatMap((f, i) => {
+          const within = base(f);
+          if (f.end <= f.start || f.end > within.length) return [`facts[${i}]: offsets outside the ${f.basis ?? "text"}.`];
+          if (f.quote !== undefined && f.basis !== "structure" && within.slice(f.start, f.end) !== f.quote)
+            return [`facts[${i}]: the quote does not match its offsets.`];
+          return [];
+        });
         if (errors.length) return { ok: false, errors };
         prepare("DELETE FROM material_facts WHERE resource_id = ? AND analyzer_version = ?").run(
           m.resourceId,
           m.analyzerVersion,
         );
         const insert = prepare(
-          `INSERT INTO material_facts (resource_id,text_hash,kind,start,"end",value,analyzer_version) VALUES (?,?,?,?,?,?,?)`,
+          `INSERT INTO material_facts (resource_id,text_hash,kind,start,"end",value,analyzer_version,basis,quote) VALUES (?,?,?,?,?,?,?,?,?)`,
         );
-        for (const f of m.facts) insert.run(m.resourceId, m.textHash, f.kind, f.start, f.end, f.value, m.analyzerVersion);
+        for (const f of m.facts)
+          insert.run(
+            m.resourceId, m.textHash, f.kind, f.start, f.end, f.value, m.analyzerVersion,
+            f.basis ?? "text", f.quote ?? base(f).slice(f.start, f.end),
+          );
         return { ok: true };
       });
     },
@@ -653,6 +663,8 @@ export function courseCoreRepository(
         end: Number(r.end),
         value: String(r.value),
         analyzerVersion: String(r.analyzer_version),
+        basis: (r.basis ?? "text") as MaterialFact["basis"],
+        quote: str(r.quote),
       }));
     },
 
