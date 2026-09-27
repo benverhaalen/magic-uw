@@ -35,7 +35,8 @@ function batch(overrides: { discussion?: string } = {}): CaptureBatch {
         url: "https://example.org/hist/e2",
         text: assignmentText,
         policy: { mode: "coaching", evidence: "AI may explain; Maya Chen's draft is not shared." },
-        submission: { comments: [{ text: "Nice start", authorName: "Sam Rivera" }, { text: "See rubric", authorName: "Elena Ruiz" }] },
+        parts: [{section: "Sam Rivera notes", text: "Maya Chen", start:0, end:9}],
+        submission: { grade: "Sam Rivera reviewed", comments: [{ text: "Nice start", authorName: "Sam Rivera" }, { text: "See rubric", authorName: "Elena Ruiz" }] },
       },
     ],
   });
@@ -324,10 +325,10 @@ test("MCP output is scrubbed, keeps teacher names, and its citations resolve to 
   store.ingest({ ...b, source: { ...b.source, kind: "canvas", accountScope: "acct" } });
   store.recordAutoIdentity({ accountScope: "acct", self: { names: ["Avery Quinlan"], emails: [], netIds: ["aquinlan"], studentIds: [] } });
   store.setIdentityRoster(roster);
-  store.setPrivacy({ ...defaultPrivacy, mode: "selective_cloud", hostedProvider: "claude", shareCourseText: true, shareComments: true, shareCommunications: true });
+  store.setPrivacy({ ...defaultPrivacy, mode: "selective_cloud", hostedProvider: "claude", shareCourseText: true, shareComments: true, shareGrades: true, shareCommunications: true });
   store.setMcpGrant({
     id: "claude-desktop", label: "Claude", recipient: "claude", enabled: true,
-    courses: [{ accountScope: "acct", courseId: course }], categories: ["course_text", "comments", "communications"],
+    courses: [{ accountScope: "acct", courseId: course }], categories: ["course_text", "grades", "comments", "communications"],
     tokenHash: createHash("sha256").update(token).digest("hex"),
   });
   store.setConsent!({ action: "grant", recipient: "claude", disclosureVersion: "setup-2026-09-26" }, "2026-09-26T12:00:00Z");

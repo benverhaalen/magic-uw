@@ -169,7 +169,7 @@ export function createMcpService(
         parts: r.parts?.slice(0, 40).map((p) => ({
           page: p.page,
           slide: p.slide,
-          section: p.section,
+          section: p.section ? s(p.section) : undefined,
           offsetBasis: "original_source" as const,
           start: p.start,
           end: p.end,
@@ -184,7 +184,7 @@ export function createMcpService(
           ? {
               grade: {
                 score: r.submission.score,
-                grade: r.submission.grade,
+                grade: typeof r.submission.grade === "string" ? s(r.submission.grade) : r.submission.grade,
                 late: r.submission.late,
                 missing: r.submission.missing,
                 excused: r.submission.excused,
@@ -194,7 +194,7 @@ export function createMcpService(
         ...(permitted("comments") && r.submission
           ? {
               comments: r.submission.comments?.map((c) => ({
-                ...c,
+                createdAt: c.createdAt,
                 text: s(c.text),
                 ...(c.authorName ? { authorName: s(c.authorName) } : {}),
               })),
