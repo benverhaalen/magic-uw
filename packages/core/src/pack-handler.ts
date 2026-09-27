@@ -410,7 +410,7 @@ export function createPackHandler(deps: PackHandlerDeps) {
 
   async function execute<O>(
     pack: PackSpec<GenerationInput, O>,
-    toDrafts: (output: O) => Draft[],
+    toDrafts: (output: O, passages?: readonly Passage[]) => Draft[],
     name: GenerationPackName,
     scope: PackScope,
     s: Scoped,
@@ -442,7 +442,9 @@ export function createPackHandler(deps: PackHandlerDeps) {
     const frozen = new Map(passages.map((p) => [p.sourceId, {
       original: p.text, result: scrubber.text(p.text, s.courseId, passageClass(p.sourceId)),
     }]));
-    const draftsOf = (output: O) => toDrafts(output).slice(0, input.count).map((d) => {
+    // The passages as the model saw them: an abbreviated quote is restored against these.
+    const seen = [...frozen].map(([sourceId, f]) => ({ sourceId, text: f.result.text }));
+    const draftsOf = (output: O) => toDrafts(output, seen).slice(0, input.count).map((d) => {
       const p = frozen.get(d.sourceId);
       const start = p?.result.text.indexOf(d.quote) ?? -1;
       if (!p || !d.quote || start < 0 || p.result.text.indexOf(d.quote, start + 1) >= 0)

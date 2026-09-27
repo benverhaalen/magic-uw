@@ -3,7 +3,7 @@
  * to. The model writes; code decides: a draft is only a proposal until the pack handler grounds
  * its quote, maps its topics and runs the learning engines' checked-item pipeline (N06).
  */
-import type { CheckContext, PackCheck } from "../../core/src/index";
+import type { CheckContext, PackCheck, Passage } from "../../core/src/index";
 
 export type DraftKind = "mc" | "tf" | "numeric" | "cloze" | "card";
 export type DraftBloom = "remember" | "understand" | "apply" | "analyse" | "evaluate";
@@ -51,6 +51,37 @@ export interface Draft {
 
 const collapse = (text: string) => text.replace(/\s+/g, " ").trim();
 
+/** An expanded quote longer than this is not a quote. */
+export const MAX_QUOTE_SPAN = 600;
+const ELLIPSIS = /\s*(?:…|\.\.\.)\s*/;
+const words = (s: string) => new RegExp(s.trim().split(/\s+/).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+"), "g");
+/**
+ * Output-token saving: a long quote may come back as its first and last words around an ellipsis
+ * ("A collision happens when … the same bucket."). Code restores the exact span from the passage
+ * the item cites: the first place the opening words occur that the closing words follow within
+ * MAX_QUOTE_SPAN. The result is the passage's own text, checked verbatim like any quote; a full
+ * quote, or one that doesn't expand, is returned unchanged and checked as before.
+ */
+export function expandQuote(passage: string, quote: string): string {
+  const q = quote.trim();
+  if (!q || collapse(passage).includes(collapse(q))) return quote;
+  const parts = q.split(ELLIPSIS);
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return quote;
+  const head = words(parts[0]);
+  const tail = words(parts[1]);
+  for (const h of passage.matchAll(head)) {
+    tail.lastIndex = h.index + h[0].length;
+    const t = tail.exec(passage);
+    if (t && t.index + t[0].length - h.index <= MAX_QUOTE_SPAN) return passage.slice(h.index, t.index + t[0].length);
+  }
+  return quote;
+}
+/** The quote an item cites, expanded against its passage when one is given. */
+export function citedQuote(passages: readonly Passage[] | undefined, sourceId: string, quote: string): string {
+  const p = passages?.find((x) => x.sourceId === sourceId);
+  return p ? expandQuote(p.text, quote) : quote;
+}
+
 /** The per-draft code checks that don't need the store: structure, then the quote against the passages sent. */
 export function draftErrors(d: Draft, context: CheckContext): string[] {
   const errors: string[] = [];
@@ -67,9 +98,9 @@ export function draftErrors(d: Draft, context: CheckContext): string[] {
  * needs_student). A batch is retried only when fewer than half its items survive the code
  * checks; otherwise the bad items are dropped one by one, each with its reason, by the handler.
  */
-export function batchCheck<O>(drafts: (output: O) => Draft[]): PackCheck<GenerationInput, O> {
+export function batchCheck<O>(drafts: (output: O, passages?: readonly Passage[]) => Draft[]): PackCheck<GenerationInput, O> {
   return (output, input, context) => {
-    const all = drafts(output).slice(0, input.count);
+    const all = drafts(output, context.passages).slice(0, input.count);
     if (!all.length) return ["no items were returned"];
     const failed = all
       .map((d) => ({ d, errors: draftErrors(d, context) }))
@@ -129,6 +160,8 @@ export function sharedRules(input: GenerationInput, pack?: "quiz" | "cards"): st
     input.focus.length ? `Only write about these topics:\n${list(input.focus)}` : "",
     mix ? `Subject profile (${input.subject}): ${mix}` : "",
     "Rules: every item cites exactly one passage by its id in `sourceId` and copies a `quote` of 12 to 400 characters from that passage, character for character, that supports the answer. Spread the items across the passages rather than drawing several from one. Tag each item with 1 to 3 short topic labels, the first being the main one, and one section. Never write about anything the passages don't state.",
+    // Quiz and cards restore an abbreviated quote from the passage in code (expandQuote); other packs don't.
+    pack ? "To save space, a quote longer than 12 words may be written as its first 5 words, then …, then its last 5 words, each copied exactly; the app restores the full quote from the passage." : "",
   ]
     .filter(Boolean)
     .join("\n\n");
