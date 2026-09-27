@@ -1,17 +1,20 @@
+import { projectScheduleResources, type ScheduleAlias } from './schedule-projection';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { Command, DayPlanEntry, ResourceView, SourceHealth } from '@magic/contracts';
+import type { Command, DayPlanEntry, ResourceView, SourceHealth, Link } from '@magic/contracts';
 import { calendarCoverageDetail, projectCalendarCoverage, layoutLanes, localTime, planEntry, type RailSuggestion } from '@magic/domain';
 import { Action } from '../../../../packages/ui/src';
 import { EvidenceInfo } from '../../../../packages/ui/src/evidence-info';
 import { monthVisibleItemCount } from './calendar/month-fit';
 import '../../../../packages/ui/src/evidence-info.css';
-import { calendarItems, clock, dayLabel, requestedSuggestions, shiftPeriod, visibleDates, type CalendarItem, type CalendarState } from './calendar/model';
+import { calendarItems, calendarItemLabel, clock, dayLabel, requestedSuggestions, shiftPeriod, visibleDates, type CalendarItem, type CalendarState } from './calendar/model';
 import './calendar/calendar.css';
 
 export type { CalendarState } from './calendar/model';
 export interface CalendarPageProps {
   resources: ResourceView[];
   sources: SourceHealth[];
+  links?: Link[];
+  aliases?: ScheduleAlias[];
   plan: DayPlanEntry[];
   state?: CalendarState;
   onStateChange?: (state: CalendarState) => void;
@@ -28,7 +31,7 @@ function Chevron({ next = false }: { next?: boolean }) {
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={next ? 'm9 18 6-6-6-6' : 'm15 18-6-6 6-6'} /></svg>;
 }
 const focusId = (date: string, key: string) => `calendar-item-${encodeURIComponent(date + ':' + key)}`;
-export function CalendarPage({ resources, sources, plan, state, onStateChange, onSelect, onPlan, timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone, now: fixedNow, restoreFocusId, formatCourseLabel = (_id, name) => name }: CalendarPageProps) {
+export function CalendarPage({ resources, sources, links = [], aliases = [], plan, state, onStateChange, onSelect, onPlan, timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone, now: fixedNow, restoreFocusId, formatCourseLabel = (_id, name) => name }: CalendarPageProps) {
   const [liveNow, setLiveNow] = useState(() => new Date().toISOString());
   const now = fixedNow ?? liveNow, today = localTime(now, timeZone).date;
   const [internal, setInternal] = useState<CalendarState>(() => ({ view: 'week', date: today, scrollTop: 0 }));
@@ -50,7 +53,7 @@ export function CalendarPage({ resources, sources, plan, state, onStateChange, o
   useEffect(() => { if (fixedNow) return; const id = setInterval(() => setLiveNow(new Date().toISOString()), 60000); return () => clearInterval(id); }, [fixedNow]);
   const update = (next: CalendarState) => { currentRef.current = next; setInternal(next); onStateChange?.(next); };
   const navigate = (patch: Partial<CalendarState>) => { setDetailDate(null); setRequestDate(null); setSelectedPlan(null); setError(null); setNotice(''); update({ ...currentRef.current, scrollTop: 0, detailDate: undefined, selectedPlanKey: undefined, ...patch }); };
-  const scopedResources = useMemo(() => { const byId = new Map(sources.map(s => [s.id, s])); return resources.map(r => ({ ...r, accountScope: byId.get(r.sourceId)?.accountScope, sourceScope: byId.get(r.sourceId)?.scope })); }, [resources, sources]);
+  const scopedResources = useMemo(() => { const byId = new Map(sources.map(s => [s.id, s])); return projectScheduleResources(resources.map(r => ({ ...r, accountScope: byId.get(r.sourceId)?.accountScope, sourceScope: byId.get(r.sourceId)?.scope })), links, aliases); }, [resources, sources, links, aliases]);
   const dates = useMemo(() => visibleDates(current.date, current.view), [current.date, current.view]);
   useLayoutEffect(() => {
     const grid = monthGrid.current;
@@ -68,13 +71,13 @@ export function CalendarPage({ resources, sources, plan, state, onStateChange, o
     observer.observe(grid.firstElementChild!);
     return () => observer.disconnect();
   }, [current.view, dates.length]);
-  const days = useMemo(() => dates.map(date => ({ date, items: calendarItems(scopedResources, plan, date, timeZone) })), [dates, scopedResources, plan, timeZone]);
+  const days = useMemo(() => dates.map(date => ({ date, items: calendarItems(scopedResources, plan, date, timeZone, links) })), [dates, scopedResources, plan, timeZone, links]);
   const timed = days.flatMap(day => day.items.filter(x => !x.allDay));
   const startHour = Math.max(0, Math.min(8, ...timed.map(x => Math.floor(x.startMin / 60))));
   const endHour = Math.min(24, Math.max(18, ...timed.map(x => Math.ceil(x.endMin / 60))));
   const hours = Array.from({ length: endHour - startHour + 1 }, (_, i) => startHour + i);
   useLayoutEffect(() => { if (scroll.current) scroll.current.scrollTop = currentRef.current.scrollTop; }, [current.date, current.view]);
-  useLayoutEffect(() => { if (current.selectedPlanKey) { const entry = plan.find(p => p.key === current.selectedPlanKey && p.status === 'accepted'); if (entry) setSelectedPlan(calendarItems(scopedResources, plan, entry.date, timeZone).find(i => i.entry?.key === entry.key) ?? null); } }, []);
+  useLayoutEffect(() => { if (current.selectedPlanKey) { const entry = plan.find(p => p.key === current.selectedPlanKey && p.status === 'accepted'); if (entry) setSelectedPlan(calendarItems(scopedResources, plan, entry.date, timeZone, links).find(i => i.entry?.key === entry.key) ?? null); } }, []);
   useLayoutEffect(() => {
     if (!detailDate || !dayPanel.current) return;
     dayPanel.current.showPopover();
@@ -88,7 +91,7 @@ export function CalendarPage({ resources, sources, plan, state, onStateChange, o
     restoredFocus.current = restoreFocusId;
     target.focus({ preventScroll: true });
     if (dayPanel.current?.contains(target)) target.scrollIntoView({ block: 'nearest' });
-  }, [restoreFocusId, detailDate, selectedPlan]);
+  }, [restoreFocusId, detailDate, selectedPlan, monthSize]);
   const suggestions = requestDate ? requestedSuggestions(scopedResources, plan, requestDate, now, timeZone) : null;
   const coverage = useMemo(() => projectCalendarCoverage(sources, resources, now), [sources, resources, now]);
   function open(item: CalendarItem, date: string) {
@@ -97,15 +100,15 @@ export function CalendarPage({ resources, sources, plan, state, onStateChange, o
   }
   async function save(command: Command, key: string, success: string) {
     if (pendingRef.current) return false;
-    pendingRef.current = true; setPending(key); setError(null);
+    pendingRef.current = true; setPending(key); setError(null); setNotice('');
     try { await onPlan(command); if (mounted.current) setNotice(success); return true; }
-    catch { if (mounted.current) setError('Your change could not be saved. Nothing is confirmed yet. Try again.'); return false; }
+    catch { if (mounted.current) setError('Could not confirm the change. Try again.'); return false; }
     finally { pendingRef.current = false; if (mounted.current) setPending(null); }
   }
   async function accept(s: RailSuggestion) {
     if (!requestDate) return;
     const fresh = requestedSuggestions(scopedResources, plan, requestDate, fixedNow ?? new Date().toISOString(), timeZone).suggestions.find(x => x.id === s.id && x.startMin === s.startMin && x.endMin === s.endMin);
-    if (!fresh) { setError('The schedule changed. Review the refreshed suggestions before adding a block.'); return; }
+    if (!fresh) { setError('Schedule changed. Review these suggestions.'); return; }
     if (await save({ type: 'day-plan', entry: planEntry(fresh, requestDate, 'accepted') }, s.id, 'Study time added to your calendar.')) document.getElementById('calendar-review-close')?.focus();
   }
   function closeDay(restoreTrigger = true) {
@@ -118,8 +121,8 @@ export function CalendarPage({ resources, sources, plan, state, onStateChange, o
   function dayDisclosure(date: string, count: number) {
     return <button id={`calendar-more-${date}`} className="mc-calendar-more" aria-expanded={detailDate === date} aria-controls="calendar-day-panel" aria-haspopup="dialog" aria-label={`View all ${count} items for ${dayLabel(date, { weekday: 'long', month: 'long', day: 'numeric' })}`} onClick={() => { setDetailDate(date); setRequestDate(null); setSelectedPlan(null); }}>{current.view === 'month' ? 'All' : 'View all'} {count}</button>;
   }
-  const detailItems = detailDate ? calendarItems(scopedResources, plan, detailDate, timeZone) : [];
-  const eventButton = (item: CalendarItem, date: string, compact = false) => <button key={item.key} id={focusId(date, item.key)} className={`mc-calendar-event mc-calendar-event--${item.kind}${compact ? ' mc-calendar-event--compact' : ''}${item.submitted ? ' mc-calendar-event--submitted' : ''}`} onClick={() => open(item, date)} title={`${item.title} · ${item.courseName} · ${item.detail}`}><span className="mc-calendar-event-title">{item.title}</span><span className="mc-calendar-event-detail">{compact && current.view === 'month' ? item.allDay && item.kind !== 'deadline' ? 'All day' : `${item.kind === 'deadline' ? 'Due ' : ''}${clock(item.startMin)}` : item.detail}</span><span className="mc-calendar-event-course">{formatCourseLabel(item.resourceId, item.courseName)}</span></button>;
+  const detailItems = detailDate ? calendarItems(scopedResources, plan, detailDate, timeZone, links) : [];
+  const eventButton = (item: CalendarItem, date: string, compact = false) => <button key={item.key} id={focusId(date, item.key)} className={`mc-calendar-event mc-calendar-event--${item.kind}${compact ? ' mc-calendar-event--compact' : ''}${item.submitted ? ' mc-calendar-event--submitted' : ''}`} onClick={() => open(item, date)} title={`${item.title} · ${item.courseName} · ${item.detail}`}><span className="mc-calendar-event-title">{item.title}</span><span className="mc-calendar-event-detail">{item.kind === 'deadline' ? calendarItemLabel(item, compact) : compact && current.view === 'month' ? item.allDay ? 'All day' : clock(item.startMin) : item.detail}</span><span className="mc-calendar-event-course">{formatCourseLabel(item.resourceId, item.courseName)}</span></button>;
   const label = current.view === 'month' ? dayLabel(current.date, { month: 'long', year: 'numeric' }) : `${dayLabel(dates[0], { month: 'long', day: 'numeric' })}–${dayLabel(dates[6], { ...(dates[0].slice(0, 7) !== dates[6].slice(0, 7) ? { month: 'short' as const } : {}), day: 'numeric' })}`;
   return <section className="mc-calendar" aria-label="Calendar">
     <header className="mc-calendar-toolbar">
@@ -140,7 +143,10 @@ export function CalendarPage({ resources, sources, plan, state, onStateChange, o
       <div className="mc-calendar-review-heading"><h3>{requestDate ? `Study time · ${dayLabel(requestDate, { weekday: 'short', month: 'short', day: 'numeric' })}` : selectedPlan!.title}</h3><button id="calendar-review-close" className="mc-calendar-control" onClick={() => { setRequestDate(null); setSelectedPlan(null); setError(null); requestButton.current?.focus(); }}>Close</button></div>
       {requestDate && <><p>Suggestions use captured deadlines and open time. Review before adding; nothing is scheduled automatically.</p><label className="mc-calendar-date-label">Find time on <input type="date" value={requestDate} onChange={e => { if (/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)) { setRequestDate(e.target.value); setError(null); } }} /></label>{suggestions!.unavailable ? <p>{suggestions!.unavailable}</p> : suggestions!.suggestions.length === 0 ? <p>No suitable blocks found in the available schedule for this day. Your calendar has not changed.</p> : suggestions!.suggestions.map(s => <article className="mc-calendar-suggestion" key={s.id}><div><strong>{s.title}</strong><span>{clock(s.startMin)}–{clock(s.endMin)} · {formatCourseLabel(s.resourceId, s.courseName)}</span><p>{s.reason}</p></div><Action disabled={pending !== null} pending={pending === s.id} onClick={() => accept(s)}>Add to calendar</Action></article>)}</>}
       {selectedPlan?.entry && <><p>{selectedPlan.detail} · {formatCourseLabel(selectedPlan.resourceId, selectedPlan.courseName)}</p><div className="mc-calendar-plan-actions"><button id="calendar-open-study" className="mc-calendar-control" onClick={() => onSelect(selectedPlan.resourceId, { ...currentRef.current, selectedPlanKey: selectedPlan.entry!.key, detailDate: undefined }, 'calendar-open-study')}>Open study material</button><Action disabled={pending !== null} pending={pending === selectedPlan.key} onClick={async () => { const entry = selectedPlan.entry!; if (await save({ type: 'day-plan-remove', key: entry.key, date: entry.date }, selectedPlan.key, 'Study block removed.')) { setRemovedEntry(entry); setSelectedPlan(null); requestButton.current?.focus(); } }}>Remove from calendar</Action></div></>}
-      {error && <p role="alert">{error}</p>}
+      <div className="mc-calendar-action-feedback">
+        <span className="mc-calendar-feedback-reserve" aria-hidden="true">Schedule changed. Review these suggestions.</span>
+        <span role={error ? 'alert' : 'status'}>{error ?? (pending ? 'Saving…' : '')}</span>
+      </div>
     </section>}
     <div className="mc-calendar-feedback" role="status">{notice}{removedEntry && <button className="mc-calendar-control" disabled={pending !== null} onClick={async () => { if (await save({ type: 'day-plan', entry: removedEntry }, removedEntry.key, 'Study block restored.')) setRemovedEntry(null); }}>Undo removal</button>}{error && !requestDate && !selectedPlan && <span role="alert">{error}</span>}</div>
     <div className={`mc-calendar-scroll${current.view === 'month' ? ' mc-calendar-scroll--month' : ''}`} ref={scroll} onScroll={e => { const next = { ...currentRef.current, scrollTop: e.currentTarget.scrollTop }; currentRef.current = next; setInternal(next); onStateChange?.(next); }}>

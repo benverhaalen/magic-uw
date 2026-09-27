@@ -1,3 +1,9 @@
+export * from "./course-work";
+import type { CourseWorkAdmission } from "./course-work";
+import { personalWorkChangeSchema, type PersonalWorkChange, type PersonalWorkDescriptor, type PersonalWorkState, type PersonalWorkEvent } from "./personal-work";
+export * from "./personal-work";
+import { personalDeadlineChangeSchema, type PersonalDeadlineChange, type PersonalDeadlineEvent, type PersonalDeadlineProjection, type PersonalDeadlineSource } from "./personal-deadlines";
+export * from "./personal-deadlines";
 import { z } from "zod";
 import { personalReportChangeSchema, type PersonalReportChange, type PersonalReportState, type PersonalReportEvent } from "./personal-reports";
 export * from "./personal-reports";
@@ -1079,6 +1085,14 @@ export interface Store {
   /** Consent seams (T06 implements): read-only records, and the only writer. */
   consents?(): ConsentRecord[];
   setConsent?(change: ConsentChange, at: string): void;
+  personalDeadlineChoices(): PersonalDeadlineEvent[];
+  setPersonalDeadlineChoice(change: PersonalDeadlineChange, currentSource: () => PersonalDeadlineSource): PersonalDeadlineEvent;
+  /** Internal synchronous read projection. supplied resources must be the full saved store read; writes always revalidate. */
+  personalWorkSnapshot(requests: readonly {canonicalResourceId: string; contributorIds?: readonly string[]}[], resources?: readonly Resource[]): {descriptors: PersonalWorkDescriptor[]; reports: PersonalWorkState[]};
+  describePersonalWork(canonicalResourceId: string, contributorIds?: readonly string[]): PersonalWorkDescriptor | undefined;
+  personalWorkReports(): PersonalWorkState[];
+  personalWorkHistory(issueId: string, limit?: number): PersonalWorkEvent[];
+  setPersonalWork(change: PersonalWorkChange): PersonalWorkState;
   personalReports(): PersonalReportState[];
   personalReportHistory(issueId: string, limit?: number): PersonalReportEvent[];
   setPersonalReport(change: PersonalReportChange): PersonalReportState;
@@ -1126,12 +1140,16 @@ export interface ContextManifest {
   citationProjections?: { resourceId: string; contentHash: string; field: "text"; projectionId: string }[];
 }
 export interface ResourceView extends Resource {
+  personalWork?: PersonalWorkDescriptor;
+  /** Local user choice for planning; raw source deadline and conflict are preserved. */
+  personalDeadline?: PersonalDeadlineProjection;
   /** Exact local evidence contributors used by the canonical deadline resolver. */
   deadlineContributors?: Array<{ resourceId: string; contentHash: string }>;
   deadline: DeadlineResolution;
   kindLabel: string | null;
 }
 export interface Snapshot {
+  courseWorkAdmission?: CourseWorkAdmission;
   courseIntelligence?: CourseIntelligenceView[];
   planning?: PlanningSnapshot;
   resources: ResourceView[];
@@ -1152,6 +1170,7 @@ export interface Snapshot {
   consents?: ConsentRecord[];
   dayPlan?: DayPlanEntry[];
   /** Local display only; excluded from AI/MCP contexts. Latest choice per issue, not the journal. */
+  personalWorkReports?: PersonalWorkState[];
   personalReports?: PersonalReportState[];
   notifications?: NotificationFeed;
   gitlabLinks?: GitlabLink[];
@@ -1757,6 +1776,8 @@ export const commandSchema = z.discriminatedUnion("type", [
       date: z.iso.date(),
     })
     .strict(),
+  z.object({ type: z.literal("personal-deadline"), value: personalDeadlineChangeSchema }).strict(),
+  z.object({ type: z.literal("personal-work"), value: personalWorkChangeSchema }).strict(),
   z.object({ type: z.literal("personal-report"), value: personalReportChangeSchema }).strict(),
   z
     .object({
@@ -1904,6 +1925,7 @@ export interface WorkLaunchReceipt {
   notes: string[];
 }
 export type CommandResult = {
+  personalWorkReceipt?: PersonalWorkState;
   workSet?: WorkSet;
   planningComparison?: PlanningComparison;
   planningGrades?: PlanningGradeSummary;

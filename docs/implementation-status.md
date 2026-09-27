@@ -1,6 +1,6 @@
 # Implementation status
 
-Updated September 26, 2026. This describes the code and observed checks, not completion of the broader [product](product.md). The [ingestion](ingestion-upgrade.md) and [planning](planning-upgrade.md) handoffs cover scopes, bounds, evidence, and primary references.
+Backend sections retain their dated evidence below. For the current desktop frontend, start with the [desktop handoff](design-handoff.md) on the single published branch `codex/desktop-design-integration`. That entry distinguishes source integration, published revision and demonstrated runtime; a finished leaf is not an available app feature. This describes the code and observed checks, not completion of the broader [product](product.md). The [ingestion](ingestion-upgrade.md) and [planning](planning-upgrade.md) handoffs cover scopes, bounds, evidence, and primary references.
 
 Historical provider snapshot, predating the main `780aaed` backend integration; use the [backend execution record](plans/2026-09-26-course-backend/execution.md) for newer runtime/client/onboarding task status. The later September 26 [pricing/provider decision](decisions.md#pricing-and-ai-access-resolution--september-26) adopts a $5 one-time license and the student's paid AI plan/key. This is product direction only: no checkout, license enforcement, paid CLI inference adapters, or OpenRouter route has been added. The existing local adapter and hosted-sharing-off default remain the actual implementation. Accepted OpenRouter-funded Jev and provider-consent/context-receipt/first-sensitive-preview behavior are also pending; current privacy flags and MCP grants do not implement the full new flow.
 
@@ -56,7 +56,7 @@ Outlook calendar events are classed as communications, so hosted sharing, Jev, a
 
 Deleting local data removes coursework/history, planning, day-plan decisions, cached documents, feed secrets, app-owned UW sessions and their HTTP caches, MCP access files and the MCP receipt log. Clearing only the UW session retains coursework. Neither action removes UW records, provider-retained data, or OS backups. Reading may cause access logs, viewed status, or must-view completion on the source system. The app provides no submit, post, enroll, or explicit completion command to UW.
 
-Personal briefing reports have a typed local command and SQLite persistence for “I’ve handled this” and Undo, scoped to semantic issue, account and exact source version. They preserve history and reopen when source evidence changes; they never alter Canvas submission, generic completion, or learning evidence. Only the latest display state enters snapshots; history stays local and all reports are excluded from AI/MCP context and cleared by local-data purge. Storage/core tests cover restart, stale views, duplicate retry, access boundaries and privacy. Desktop Home binding and complete interaction verification remain integration work. See [the report contract](design/personal-reports.md).
+Personal briefing reports have a typed local command and SQLite persistence for “I’ve handled this” and Undo, scoped to semantic issue, account and exact source version. They preserve history and reopen when source evidence changes; they never alter Canvas submission, generic completion, or learning evidence. Only the latest display state enters snapshots; history stays local and all reports are excluded from AI/MCP context and cleared by local-data purge. Storage/core tests cover restart, stale views, duplicate retry, access boundaries and privacy. Desktop Home binding is integrated on `codex/desktop-design-integration`; persisted handled/Undo has native evidence. The latest compact presentation and recovery changes require their own revision-specific verification in the [desktop handoff](design-handoff.md). See [the report contract](design/personal-reports.md).
 
 ## Evidence and context
 
@@ -105,9 +105,9 @@ Windows behavior, signed distribution, production gateway deployment, provider-a
 
 See [engineering principles](engineering-principles.md) for the wider selection and reference method.
 
-## Current visual exploration
+## Desktop frontend and historical visual studies
 
-The [Home direction](home-design-direction.md) records Ben's settled interface requirements and current card alternatives. Separate local HTML mocks demonstrate visual hierarchy, typography, navigation and selected mock routes. They have not been integrated into the Electron renderer; live launch bundles, audio generation, briefing refresh, and context-aware model chat remain unproven by this visual work. Private screenshots and course captures are not committed.
+The [desktop handoff](design-handoff.md) is the current frontend entry. The actual Electron renderer includes Home, Courses, My UW, Sources, Calendar and shared components; current source also binds the message pill to full-pane text chat. Native chat evidence establishes submit, route, rendering and Back, not a completed model answer. Real microphone input, voice transport, external computer control and floating Stop are unfinished. Home Study still opens linked saved material; the requested goal-based learning journey and safe output integration remain pending. Older HTML studies establish visual exploration only. The [Home direction](home-design-direction.md) holds accepted requirements. Private screenshots and course captures are not committed.
 
 ### Selective backend integration — September 26
 

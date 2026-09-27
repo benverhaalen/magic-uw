@@ -1,3 +1,5 @@
+import { personalPlanningAt } from "@magic/contracts";
+import { personalDeadlineSource, personalDeadlineProjection } from "./personal-deadlines";
 /**
  * Scoped queries instead of full snapshots (T15, backend optimization O1).
  *
@@ -40,6 +42,7 @@ export function resourceViews(store: Store, list: Resource[]): ResourceView[] {
   const permitted = (resource: Resource) => !resource.deleted && included(resource) && sources.get(resource.sourceId)?.status !== "inaccessible";
   const evidence = evidenceFor(store, permitted);
   const judgments = store.judgments();
+  const personalDates = store.personalDeadlineChoices();
   return list
     .map((r) => {
       // store.judgments() holds only judgments whose input (content or text hash) is current,
@@ -58,18 +61,22 @@ export function resourceViews(store: Store, list: Resource[]): ResourceView[] {
         (parsed.data.probabilities[parsed.data.kind] ?? 0) >= 0.9
           ? parsed.data.kind.replaceAll("_", " ")
           : null);
+      const deadline = permitted(r) ? resolveDeadline(evidence.deadlines(r), evidence.unresolvedDeadlines(r)) : resolveDeadline([]);
+      const deadlineContributors = evidence.contributors(r).map(source => ({ resourceId: source.id, contentHash: source.contentHash }));
       return {
         ...r,
-        deadline: permitted(r) ? resolveDeadline(evidence.deadlines(r), evidence.unresolvedDeadlines(r)) : resolveDeadline([]),
-        deadlineContributors: evidence.contributors(r).map(source => ({ resourceId: source.id, contentHash: source.contentHash })),
+        deadline,
+        deadlineContributors,
+        ...(permitted(r) && sources.get(r.sourceId) ? { personalDeadline: personalDeadlineProjection(
+          personalDeadlineSource(r, sources.get(r.sourceId)!.accountScope, deadline, deadlineContributors), personalDates) } : {}),
         kindLabel: label,
       };
     })
     .sort(
       (a, b) =>
         Number(a.completed) - Number(b.completed) ||
-        (a.deadline.planningAt ?? "9999").localeCompare(
-          b.deadline.planningAt ?? "9999",
+        (personalPlanningAt(a) ?? "9999").localeCompare(
+          personalPlanningAt(b) ?? "9999",
         ) ||
         a.title.localeCompare(b.title),
     );

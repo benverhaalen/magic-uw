@@ -80,3 +80,29 @@
 .home-study-action:active { box-shadow:var(--magic-fb-card-press); transition-duration:0s; }
 .home-work-details:active { background-color:rgba(255,255,255,.42); transition-duration:0s; }
 .home-today .rail-allday--home:active { box-shadow:inset 0 0 0 999px var(--magic-fb-press-overlay); transition-duration:0s; }
+
+/* Native grouped-work disclosure keeps DOM semantics and reverses from its current height.
+ * Unsupported browsers retain the usable native details fallback. */
+@supports (interpolate-size: allow-keywords) and selector(details::details-content) {
+  .home-group-more::details-content {
+    interpolate-size: allow-keywords;
+    block-size: 0;
+    overflow: clip;
+    opacity: 0;
+    transition: block-size var(--magic-motion-disclosure) var(--magic-motion-ease-out),
+      opacity var(--magic-motion-disclosure) var(--magic-motion-ease-out),
+      content-visibility var(--magic-motion-disclosure) allow-discrete;
+  }
+  .home-group-more[open]::details-content { block-size: auto; opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-group-more::details-content,
+  .home-group-more>summary svg, .home-more>summary svg,
+  .home-today .rail-more>summary::before { transition: none; }
+}
+
+/* HomeMotion owns the complete persisted-state layout change. Disable the partial inner
+ * collapse so its measurement sees the final layout, not an intermediate grid height. */
+.home-reading[data-home-motion] .magic-handled-briefing__body,
+.home-reading[data-home-motion] .magic-handled-briefing__action { transition: none; }
+.home-reading[data-home-motion] .home-upcoming > .home-work-list { overflow-clip-margin: 4px; }

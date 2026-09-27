@@ -19,12 +19,14 @@ import "./courses-index.css";
  */
 export function CoursesIndex({
   cards,
+  showHeader = true,
   now,
   typeHueOf,
   onOpen,
   onSources,
 }: {
   cards: CourseCard[];
+  showHeader?: boolean;
   /** Snapshot time; bins and "Today"/"Tomorrow" use the device time zone, as Home does. */
   now: string;
   /** The app-wide type-hue mapper, so an assignment keeps one hue on Home, Calendar and here. */
@@ -46,7 +48,7 @@ export function CoursesIndex({
   const today = localTime(now, timeZone).date;
   return (
     <div className="courses-index">
-      <header className="ci-header">
+      {showHeader && <header className="ci-header">
         <h1 tabIndex={-1}>{term ?? "Courses"}</h1>
         {cards.length && coverage.length ? (
           <EvidenceInfo label="How current these courses are">
@@ -57,7 +59,7 @@ export function CoursesIndex({
             ))}
           </EvidenceInfo>
         ) : null}
-      </header>
+      </header>}
       {cards.length ? (
         <ul className="ci-grid" data-count={cards.length}>
           {cards.map((card) => (

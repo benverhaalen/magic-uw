@@ -1,6 +1,7 @@
-import type { DayPlanEntry } from '@magic/contracts';
-import { buildTodayRail, resolveDeadline, type RailResource, type RailSuggestion } from '@magic/domain';
+import type { DayPlanEntry, Link } from '@magic/contracts';
+import { buildTodayRail, type RailResource, type RailSuggestion } from '@magic/domain';
 
+import { projectScheduleResources, schedulePlanning, scheduleRailResources, type ScheduleResource } from '../schedule-projection';
 
 // Reuse the formatter across month cells; constructing it per event/day makes dense months stall.
 const formatters = new Map<string, Intl.DateTimeFormat>();
@@ -17,12 +18,12 @@ function localTime(iso: string, timeZone: string): { date: string; min: number }
 
 export type CalendarView = 'week' | 'month';
 export interface CalendarState { view: CalendarView; date: string; scrollTop: number; detailDate?: string; selectedPlanKey?: string }
-export type CalendarResource = RailResource & { workflowState?: string | null; accountScope?: string; sourceScope?: string; capturedAt?: string };
+export type CalendarResource = RailResource & ScheduleResource & { workflowState?: string | null; accountScope?: string; sourceScope?: string; capturedAt?: string };
 export interface CalendarItem {
   key: string; resourceId: string; title: string; courseName: string;
   kind: 'event' | 'deadline' | 'study'; startMin: number; endMin: number;
   allDay: boolean; detail: string; conflict?: boolean; submitted?: boolean;
-  entry?: DayPlanEntry;
+  entry?: DayPlanEntry; precision?: 'day' | 'minute'; personal?: boolean; feedOnly?: boolean; sourceLabel?: string; needsReview?: boolean;
 }
 export function addDays(date: string, amount: number): string {
   const value = new Date(`${date}T12:00:00Z`); value.setUTCDate(value.getUTCDate() + amount);
@@ -64,40 +65,31 @@ export function dayLabel(date: string, options: Intl.DateTimeFormatOptions): str
   return new Intl.DateTimeFormat('en-US', { ...options, timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`));
 }
 /** Same source object may be captured through todo and assignments. Preserve evidence, prefer the direct record for navigation. */
-export function canonicalCalendarResources(resources: CalendarResource[]): CalendarResource[] {
-  const groups = new Map<string, CalendarResource[]>(), others: CalendarResource[] = [];
-  for (const r of resources) {
-    if (r.kind !== 'assignment' || !r.accountScope || !r.externalId || r.deleted) { others.push(r); continue; }
-    const key = JSON.stringify([r.accountScope, r.courseId, r.externalId]);
-    const group = groups.get(key) ?? []; group.push(r); groups.set(key, group);
-  }
-  for (const group of groups.values()) {
-    group.sort((a, b) => Number(b.sourceScope === 'assignments') - Number(a.sourceScope === 'assignments') || (b.capturedAt ?? '').localeCompare(a.capturedAt ?? ''));
-    const primary = group[0];
-    others.push({ ...primary, deadline: resolveDeadline(group.flatMap(r => r.deadline.claims)) });
-  }
-  return others;
+export function canonicalCalendarResources(resources: CalendarResource[], links: Link[] = []): CalendarResource[] {
+  return projectScheduleResources(resources, links);
 }
-export function calendarItems(resources: CalendarResource[], plan: DayPlanEntry[], date: string, timeZone: string): CalendarItem[] {
+export function calendarItemLabel(item: CalendarItem, compact = false): string {
+  if (!compact || item.kind !== 'deadline') return item.detail;
+  if (item.needsReview) return 'Review date';
+  if (item.conflict) return 'Dates disagree';
+  return `${item.personal ? 'Your date' : 'Due'} · ${item.precision === 'day' ? 'time not provided' : clock(item.startMin)}${item.sourceLabel ? ` · ${item.sourceLabel.toLowerCase()}` : ''}`;
+}
+export function calendarItems(resources: CalendarResource[], plan: DayPlanEntry[], date: string, timeZone: string, links: Link[] = []): CalendarItem[] {
   const result: CalendarItem[] = [];
-  const canonical = canonicalCalendarResources(resources);
-  const assignments = new Map(canonical.filter(r => r.kind === 'assignment' && !r.deleted && r.accountScope).map(r => [`${r.accountScope}:${r.courseId}:${r.externalId}`, r]));
+  const canonical = canonicalCalendarResources(resources, links);
   for (const r of canonical) {
     if (r.deleted || r.workflowState === 'CANCELLED') continue;
     const base = { resourceId: r.id, title: r.title, courseName: r.courseName };
-    if (r.kind === 'assignment' && r.deadline.planningAt) {
-      const due = localTime(r.deadline.planningAt, timeZone);
-      if (due.date === date) result.push({ ...base, key: `deadline:${r.id}`, kind: 'deadline', allDay: true, startMin: due.min, endMin: due.min, detail: `Due ${clock(due.min)}${r.deadline.conflict ? ' · dates disagree' : ''}${r.submitted === true ? ' · submitted' : ''}`, conflict: r.deadline.conflict, submitted: r.submitted === true });
+    if (r.kind === 'assignment' || r.scheduleDeadline) {
+      const due = schedulePlanning(r, timeZone);
+      if (due?.date === date) result.push({ ...base, key: `deadline:${r.id}`, kind: 'deadline', allDay: true,
+        startMin: due.minute ?? 0, endMin: due.minute ?? 0, precision: due.precision, personal: due.personal,
+        feedOnly: r.scheduleDeadline?.feedOnly, sourceLabel: r.scheduleDeadline?.sourceLabel, needsReview: due.needsReview, conflict: due.conflict, submitted: r.submitted === true,
+        detail: `${due.conflict ? 'Dates disagree · planning for' : due.personal ? 'Your planning date ·' : 'Due'} ${due.minute === null ? 'time not provided' : clock(due.minute)}${r.scheduleDeadline?.feedOnly ? ' · calendar feed · assignment details not captured' : r.scheduleDeadline?.sourceLabel ? ` · ${r.scheduleDeadline.sourceLabel.toLowerCase()}` : ''}${due.needsReview ? ' · review date again' : ''}${r.submitted === true ? ' · submitted' : ''}` });
+      continue;
     }
     if (r.kind !== 'event') continue;
     const c = r.calendar;
-    const assignmentId = c?.assignmentExternalId ?? (r.sourceScope === 'calendar_feed' ? /^event-assignment-(\d+)$/.exec(c?.uid ?? '')?.[1] : undefined);
-    const linkedAssignment = r.accountScope && assignmentId ? assignments.get(`${r.accountScope}:${r.courseId}:${assignmentId}`) : undefined;
-    if (linkedAssignment?.deadline.planningAt && c) {
-      const due = localTime(linkedAssignment.deadline.planningAt, timeZone);
-      const sameDate = c.allDay ? c.start.slice(0, 10) === due.date : Date.parse(c.start) === Date.parse(linkedAssignment.deadline.planningAt);
-      if (sameDate) continue; // Keep conflicting dates visible as separate source evidence.
-    }
     const start = c?.start ?? r.deadline.claims.find(x => x.kind === 'event')?.value;
     if (!start) continue;
     if (c?.allDay) {
@@ -128,6 +120,6 @@ export function requestedSuggestions(resources: CalendarResource[], plan: DayPla
   if (end.getTime() - start.getTime() !== 86400000) return { suggestions: [], unavailable: 'This day includes a clock change. Choose another day for a study suggestion.' };
   const at = date === today ? now : start.toISOString();
   const occupied = calendarItems(resources, plan, date, timeZone).filter(x => !x.allDay);
-  const suggestions = buildTodayRail(canonicalCalendarResources(resources), at, timeZone, plan).suggestions.filter(s => s.state === 'suggested' && !occupied.some(x => s.startMin < x.endMin && s.endMin > x.startMin));
+  const suggestions = buildTodayRail(scheduleRailResources(canonicalCalendarResources(resources)), at, timeZone, plan).suggestions.filter(s => s.state === 'suggested' && !occupied.some(x => s.startMin < x.endMin && s.endMin > x.startMin));
   return { suggestions };
 }

@@ -15,7 +15,7 @@ Follow-up:
 | ID | Finding | Status |
 | --- | --- | --- |
 | [FDB-001](#fdb-001-assignment-grade-share-lacks-account-and-capture-coverage-boundaries) | Assignment grade share lacks account and capture-coverage boundaries | Reproduced with synthetic inputs |
-| [FDB-002](#fdb-002-sign-in-bridge-discards-the-cancelled-outcome) | Sign-in bridge discards the cancelled outcome | Backend outcome built and tested in isolation (`feat/client-health`); App.tsx consumer open |
+| [FDB-002](#fdb-002-sign-in-bridge-discards-the-cancelled-outcome) | Sign-in bridge discards the cancelled outcome | Typed backend outcome and App consumer integrated; live authentication remains separately verified |
 | [FDB-003](#fdb-003-generation-pack-scope-cannot-select-the-requesting-account) | Generation pack scope cannot select the requesting account | Code-inspected; generation not run |
 | [FDB-004](#fdb-004-student-record-freshness-uses-a-term-length-horizon) | Student-record freshness uses a term-length horizon | Code-inspected; live hold changes not reproduced |
 

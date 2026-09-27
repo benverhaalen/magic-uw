@@ -1,3 +1,5 @@
+import { personalWorkAdmission, personalWorkCheckable } from "./personal-work-admission";
+import { personalWorkRepository } from "./personal-work";
 import { createHash, randomUUID } from "node:crypto";
 import {
   chmodSync,
@@ -24,6 +26,7 @@ import { NOTES_V11 } from "./notes-v11"; // owner: notes
 import { createSqlNotesStore, type SqlNotesStore } from "../../notes/src/sql-store"; // owner: notes
 import { decodePayload, encodePayload } from "./payload";
 import { personalReportRepository } from "./personal-reports";
+import { personalDeadlineRepository } from "./personal-deadlines";
 import {
   LIFE_COURSE_ID,
   subjectJobSchema,
@@ -813,7 +816,7 @@ export function createStore(
       "INSERT INTO preferences VALUES ('dayPlan', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
     ).run(JSON.stringify(kept));
   }
-  const personalReports = personalReportRepository(prepare, transaction, (id) => {
+  const personalEvidenceResource = (id: string) => {
     const row = resourceRow(id);
     if (!row || row.deleted) return undefined;
     const resource = readResource(row);
@@ -834,7 +837,55 @@ export function createStore(
     if (selectedTerm && course && selectedTerm !== course.termName && selectedTerm !== course.termId) return undefined;
     if (override ? !override.included : course?.selection?.included === false) return undefined;
     return { contentHash: resource.contentHash, accountScope };
-  }, clock);
+  };
+  const personalReports = personalReportRepository(prepare, transaction, personalEvidenceResource, clock);
+  const personalDeadlines = personalDeadlineRepository(prepare, transaction, personalEvidenceResource, clock);
+  const personalWorkReports = personalWorkRepository(prepare, transaction, (id) => {
+    const row = resourceRow(id);
+    if (!row || row.deleted) return undefined;
+    const resource = readResource(row);
+    const source = prepare("SELECT account_scope,status FROM sources WHERE id=?").get(resource.sourceId) as Row | undefined;
+    if (!source || source.status === "inaccessible") return undefined;
+    const accountScope = String(source.account_scope);
+    const override = prepare("SELECT included FROM course_overrides WHERE account_scope=? AND course_id=?")
+      .get(accountScope, resource.courseId) as Row | undefined;
+    const courses = prepare(`SELECT r.*,v.payload FROM resources r JOIN sources s ON s.id=r.source_id
+      JOIN resource_versions v ON v.resource_id=r.id AND v.version=r.version
+      WHERE s.account_scope=? AND s.course_id=? AND s.scope='course' AND s.status!='inaccessible' AND r.deleted=0`)
+      .all(accountScope, resource.courseId) as Row[];
+    const course = courses.map(readResource).find(r => r.kind === "course")?.course;
+    if (course?.accessRestricted || (course?.accessState && course.accessState !== "open") ||
+        course?.selection?.reasons.some(reason => /absent|no longer|not returned/i.test(reason))) return undefined;
+    const settings = prepare("SELECT value FROM preferences WHERE key='ingestion'").get() as Row | undefined;
+    const selectedTerm = settings ? ingestionSettingsSchema.parse(JSON.parse(String(settings.value))).selectedTerm : null;
+    if (selectedTerm && course && selectedTerm !== course.termName && selectedTerm !== course.termId) return undefined;
+    if (override ? !override.included : course?.selection?.included === false) return undefined;
+    // Work checkoff requires known course membership. No orphan-source fallback.
+    if (!course || source.status === "inaccessible") return undefined;
+    const requirement = resource.moduleItem?.completionRequirement;
+    const directlyAssigned = resource.kind === "material" && (prepare(`SELECT r.*,v.payload FROM resources r JOIN sources s ON s.id=r.source_id
+      JOIN resource_versions v ON v.resource_id=r.id AND v.version=r.version
+      WHERE r.deleted=0 AND s.account_scope=? AND s.status!='inaccessible'`)
+      .all(accountScope) as Row[]).map(readResource).some(r => r.kind === "assignment" && r.courseId === resource.courseId && r.links?.some(link => (typeof link === "string" ? link : link.url) === resource.url));
+    const explicitPrep = resource.kind === "material" && (!!requirement || directlyAssigned);
+    return { resource, accountScope, termKey: course.termId ?? course.termName ?? "unknown-term",
+      checkable: personalWorkCheckable(resource, !!explicitPrep) };
+  }, clock, (savedResources) => {
+    // One bounded read index per snapshot. Core passes its full current store read to avoid decoding twice.
+    const resources = savedResources ?? (prepare(`SELECT r.*,v.payload FROM resources r
+      JOIN resource_versions v ON v.resource_id=r.id AND v.version=r.version WHERE r.deleted=0`).all() as Row[]).map(readResource);
+    const sources = (prepare("SELECT id,account_scope,course_id,scope,status FROM sources").all() as Row[]).map(row => ({
+      id: String(row.id), accountScope: String(row.account_scope), courseId: String(row.course_id),
+      scope: String(row.scope), status: row.status as SourceHealth["status"],
+    }));
+    const overrides = (prepare("SELECT account_scope,course_id,included FROM course_overrides").all() as Row[]).map(row => ({
+      accountScope: String(row.account_scope), courseId: String(row.course_id), included: Boolean(row.included),
+    }));
+    const settings = prepare("SELECT value FROM preferences WHERE key='ingestion'").get() as Row | undefined;
+    const selectedTerm = settings ? ingestionSettingsSchema.parse(JSON.parse(String(settings.value))).selectedTerm : null;
+    return personalWorkAdmission(resources, sources, overrides, selectedTerm);
+  });
+
   // Manual GitLab links live beside the day plan in preferences, so Delete local data clears them.
   const GITLAB_LINKS_MAX = 200;
   function readGitlabLinks(): GitlabLink[] {
@@ -968,6 +1019,8 @@ export function createStore(
   // end owner: platform-fix
   const api: LocalStore = {
     ...personalReports,
+    ...personalDeadlines,
+    ...personalWorkReports,
     learning,
     notes, // owner: notes
     courseIntelligence() {
