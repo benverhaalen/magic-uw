@@ -1,3 +1,4 @@
+import { canvasFileId } from "./canvas-references";
 /**
  * The course space inventory (plan D32, spec A5) and its access check (D41).
  *
@@ -20,6 +21,7 @@ import {
   canvasNextPage,
   type CanvasHttp,
 } from "./canvas-http";
+import { readCanvasModules, moduleItemsHash, type CanvasModuleRun } from "./canvas-modules";
 import { canvasId, hashCanvas, itemSchema, moduleSchema } from "./canvas-models";
 import { isLoginHtml } from "./external";
 import { MaterialReadError, type PublicClient } from "./network";
@@ -41,6 +43,7 @@ export type SpaceFoundIn =
   | "body";
 /** D41: the stored access state of one space. */
 export type SpaceAccessState =
+  | "unknown"
   | "readable"
   | "needs-uw-signin"
   | "needs-own-login"
@@ -105,7 +108,7 @@ export const externalToolSchema = z.object({
   course_navigation: z.unknown().optional(),
 });
 export const moduleWithItemsSchema = moduleSchema.extend({
-  items: z.array(itemSchema).max(2000).optional(),
+  items: z.array(itemSchema).max(2000).nullable().optional(),
   items_url: z.string().max(4000).optional(),
 });
 export type CanvasTab = z.infer<typeof tabSchema>;
@@ -128,26 +131,7 @@ export function spaceUrl(input: string, base?: string): string | undefined {
  * on modules or module items). Order-independent; moves when an item is added, removed,
  * retitled, re-pointed or re-dated.
  */
-export function moduleItemsHash(modules: CanvasModuleWithItems[]): string {
-  const rows = modules.flatMap((module) =>
-    module.items
-      ? module.items.map((item) =>
-          [
-            module.id,
-            item.id,
-            item.type,
-            item.title,
-            item.content_id ?? "",
-            item.page_url ?? "",
-            item.external_url ?? "",
-            item.content_details?.due_at ?? "",
-            item.content_details?.points_possible ?? "",
-          ].join("\u001f"),
-        )
-      : [[module.id, "items_count", module.items_count ?? ""].join("\u001f")],
-  );
-  return hashCanvas(rows.sort().join("\n"));
-}
+export { moduleItemsHash } from "./canvas-modules";
 
 const internalTabs: Record<string, { kind: SpaceKind; scope: string }> = {
   home: { kind: "canvas_tab", scope: "course" },
@@ -176,7 +160,7 @@ export interface InventoryParts {
   /** Stored resources of this course (syllabus, pages, assignments, announcements, discussions). */
   resources: Pick<Resource, "externalId" | "kind" | "url" | "links" | "title" | "text" | "deleted" | "document">[];
 }
-const pending: SpaceAccess = { state: "readable", checkedAt: null, action: "none" };
+const pending: SpaceAccess = { state: "unknown", checkedAt: null, action: "none" };
 /** Builds the inventory from what Canvas returned. Pure; the access state is set by the check. */
 export function buildInventory(parts: InventoryParts): CourseSpace[] {
   const { origin, courseId } = parts;
@@ -364,7 +348,7 @@ export function buildInventory(parts: InventoryParts): CourseSpace[] {
           continue;
         }
         const own = new RegExp(`^/courses/${courseId}/(pages|files|assignments|quizzes|discussion_topics)/[^/]+$`).exec(path);
-        const file = /^\/files\/\d+$/.test(path);
+        const file = canvasFileId(url, `https://${canvasHost}`, courseId) !== undefined;
         if (!own && !file) continue;
         const kinds: Record<string, SpaceKind> = {
           pages: "canvas_page",
@@ -405,7 +389,8 @@ async function list<T>(
     if (!Array.isArray(response.data)) throw new CanvasFailure("partial", "expected_array");
     for (const row of response.data) {
       const parsed = schema.safeParse(row);
-      if (parsed.success) items.push(parsed.data);
+      if (!parsed.success) throw new CanvasFailure("partial", "invalid_list_row");
+      items.push(parsed.data);
     }
     next = canvasNextPage(response.link, next, initial, http.origin);
   }
@@ -430,6 +415,7 @@ export async function readCanvasInventory(
   course: { id: string },
   resources: InventoryParts["resources"],
   signal?: AbortSignal,
+  moduleRun?: CanvasModuleRun,
 ): Promise<InventoryRead> {
   const prefix = `${http.origin}/api/v1/courses/${course.id}`;
   const failures: Record<string, string> = {};
@@ -443,36 +429,21 @@ export async function readCanvasInventory(
       return [];
     }
   }
-  const [tabs, tools, modules] = await Promise.all([
+  const [tabs, tools, acquisition] = await Promise.all([
     attempt("tabs", () => list(http, `${prefix}/tabs`, tabSchema, signal)),
     attempt("external_tools", () =>
       list(http, `${prefix}/external_tools?per_page=100`, externalToolSchema, signal),
     ),
-    attempt("modules", () =>
-      list(
-        http,
-        `${prefix}/modules?per_page=100&include[]=items&include[]=content_details`,
-        moduleWithItemsSchema,
-        signal,
-      ),
-    ),
+    readCanvasModules(http, course.id, signal, moduleRun),
   ]);
-  // Canvas omits `items` for a module with many items; read those modules' items directly.
-  for (const module of modules) {
-    if (module.items || http.needsSignIn) continue;
-    module.items = await attempt(`module:${module.id}`, () =>
-      list(
-        http,
-        `${prefix}/modules/${module.id}/items?per_page=100&include[]=content_details`,
-        itemSchema,
-        signal,
-      ),
-    );
-  }
+  if (!acquisition.listComplete) failures.modules = acquisition.diagnostics.join(",") || acquisition.status;
+  for (const entry of acquisition.modules)
+    if (!entry.complete) failures[`module:${entry.module.id}`] = entry.diagnostics.join(",");
+  const modules = acquisition.modules.map(entry => ({ ...entry.module, items: entry.items }));
   return {
     spaces: buildInventory({ origin: http.origin, courseId: course.id, tabs, tools, modules, resources }),
     status: http.needsSignIn ? "needs_sign_in" : Object.keys(failures).length ? "partial" : "ok",
-    ...(failures.modules ? {} : { moduleHash: moduleItemsHash(modules) }),
+    ...(acquisition.complete ? { moduleHash: moduleItemsHash(modules) } : {}),
     failures,
   };
 }
@@ -490,7 +461,7 @@ export interface AccessDeps {
   /** One GET with no credentials: the worker's public client, redirects not followed. */
   public?: AccessTransport;
   /** A Canvas space's state from what the Canvas reader already knows (no request). */
-  canvas(space: CourseSpace): Pick<SpaceAccess, "state" | "reason">;
+  canvas(space: CourseSpace): Pick<SpaceAccess, "state" | "reason"> & Partial<Pick<SpaceAccess, "checkedAt">>;
   now(): Date;
   signal?: AbortSignal;
   /** Which spaces to (re)check; the rest keep their state. Default: all. */
@@ -499,7 +470,7 @@ export interface AccessDeps {
 }
 function actionFor(space: CourseSpace, state: SpaceAccessState): SpaceAction {
   const rule = classifyHost(space.host).rule;
-  if (state === "readable" || state === "blocked") return "none";
+  if (state === "unknown" || state === "readable" || state === "blocked") return "none";
   // Honorlock gets no button: its launch starts proctoring (the host table marks it unopenable).
   if (space.route === "lti_launch" || space.route === "own_login")
     return space.kind === "proctoring" || rule.openable === false
@@ -561,7 +532,7 @@ export async function checkSpaceAccess(
       const space = queue[index++];
       if (!space) return;
       deps.signal?.throwIfAborted();
-      let decided = staticAccess(space);
+      let decided: (Pick<SpaceAccess, "state" | "reason"> & Partial<Pick<SpaceAccess, "checkedAt">>) | undefined = staticAccess(space);
       if (!decided && space.route === "canvas_session") decided = deps.canvas(space);
       if (!decided) {
         const rule = classifyHost(space.host).rule;
@@ -581,7 +552,7 @@ export async function checkSpaceAccess(
       space.access = {
         state: decided.state,
         ...(decided.reason ? { reason: decided.reason } : {}),
-        checkedAt: deps.now().toISOString(),
+        checkedAt: decided.checkedAt !== undefined ? decided.checkedAt : decided.state === "unknown" ? null : deps.now().toISOString(),
         action: actionFor(space, decided.state),
       };
     }
@@ -645,6 +616,7 @@ export function accessSummary(spaces: CourseSpace[]): CourseAccessSummary[] {
   const order: SpaceAccessState[] = ["needs-uw-signin", "needs-own-login", "link-only", "blocked"];
   return [...byCourse.entries()].map(([courseId, list]) => {
     const counts: Record<SpaceAccessState, number> = {
+      unknown: 0,
       readable: 0,
       "needs-uw-signin": 0,
       "needs-own-login": 0,
@@ -659,7 +631,7 @@ export function accessSummary(spaces: CourseSpace[]): CourseAccessSummary[] {
         ? `${counts.blocked} source${counts.blocked === 1 ? "" : "s"} couldn't be read`
         : null;
     const actions = list
-      .filter((space) => space.access.state !== "readable")
+      .filter((space) => space.access.state !== "readable" && space.access.state !== "unknown")
       .sort(
         (a, b) =>
           order.indexOf(a.access.state) - order.indexOf(b.access.state) ||

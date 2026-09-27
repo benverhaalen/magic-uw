@@ -57,6 +57,10 @@ export interface RunRequest<T> {
   context?: AskContext;
   /** Code checks beyond the schema: each string is one failed check, fed back on retry. */
   check?: (output: T) => string[];
+  /** Final synchronous egress boundary, after headers and retry feedback. */
+  beforeCall?: (call: BackendCall) => BackendCall;
+  /** Revalidate evidence/permissions after the provider await. */
+  afterCall?: () => void;
   /** Also receives this run's ledger rows, after the runner-level sink. */
   ledger?: LedgerSink;
 }

@@ -506,3 +506,14 @@ test("desktop client and gateway interoperate end to end over loopback", async (
     assert.deepEqual(triage.calls, [STATE]);
   });
 });
+
+test("an assignment-only test gateway keeps the triage route closed instead of answering", async () => {
+  await withGateway({ triage: undefined }, async ({ baseUrl }) => {
+    const token = await enroll(baseUrl);
+    const res = await post(baseUrl, "message.triage.v1", token, { state: STATE });
+    assert.equal(res.status, 502);
+    const body = (await res.json()) as Record<string, unknown>;
+    assert.equal(body.error, "upstream_error");
+    assert.ok(!("kind" in body));
+  });
+});

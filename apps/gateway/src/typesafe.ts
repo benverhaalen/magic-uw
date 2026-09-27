@@ -24,6 +24,18 @@ export type Evaluate = (
 
 /** Messages deliberately omit all upstream content, headers and credentials. */
 export class UpstreamError extends Error {}
+/** The upstream said 429: the caller passes it through with Retry-After and refunds the attempt. */
+export class UpstreamRateLimitError extends UpstreamError {
+  constructor(readonly retryAfterSeconds: number) {
+    super("Judgment upstream is rate limited.");
+  }
+}
+/** Retry-After as delta-seconds or an HTTP date; clamped to 1 s .. 1 day, 60 s when absent or invalid. */
+export function retryAfterSeconds(header: string | null, now = Date.now()): number {
+  const value = header?.trim() ?? "";
+  const seconds = /^\d+$/.test(value) ? Number(value) : value ? Math.ceil((Date.parse(value) - now) / 1000) : NaN;
+  return Number.isFinite(seconds) ? Math.min(86_400, Math.max(1, seconds)) : 60;
+}
 
 const probabilitiesSchema = z
   .record(z.enum(KINDS), z.number().finite().min(0).max(1))
@@ -152,12 +164,20 @@ export async function callTypeSafe(
       body: JSON.stringify(body),
       signal,
     });
+    if (response.status === 429) {
+      await response.body?.cancel();
+      throw new UpstreamRateLimitError(
+        retryAfterSeconds(response.headers.get("retry-after")),
+      );
+    }
     if (!response.ok) {
       await response.body?.cancel();
       throw new UpstreamError("Judgment upstream returned an error status.");
     }
     return await readResponse(response);
-  } catch {
+  } catch (error) {
+    // A rate limit keeps its wait (and spends nothing); every other failure is content-free.
+    if (error instanceof UpstreamRateLimitError) throw error;
     throw new UpstreamError("Judgment upstream request failed.");
   } finally {
     // Covers headers AND all response-body reads. Awaiting completion (rather
@@ -193,7 +213,8 @@ export function createTypeSafeEvaluate(
         model: parsed.data.model,
         questionVersion: ASSIGNMENT_KIND_QUESTION_VERSION,
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof UpstreamRateLimitError) throw error;
       throw new UpstreamError("Judgment upstream request failed.");
     }
   };

@@ -17,7 +17,7 @@ import {
   type Store,
 } from "@magic/contracts";
 import { buildNotifications, maySend } from "@magic/domain";
-import type { JudgmentGateway } from "@magic/ai";
+import { JudgmentBudgetError, type JudgmentGateway } from "@magic/ai";
 import { courseInclusion } from "./access";
 import { resourceViews } from "./queries";
 
@@ -235,6 +235,10 @@ export function createNotifications(store: Store, deps: NotificationDeps) {
       } catch (error) {
         if (deps.closed() || deps.generation() !== version) return;
         receipt("failed");
+        if (error instanceof JudgmentBudgetError) {
+          pausedUntil = nowMs() + error.retryAfterMs;
+          return;
+        }
         const text = error instanceof Error ? error.message : "";
         if (/budget|limit|try later/i.test(text)) {
           pausedUntil = nowMs() + PAUSE_AFTER_LIMIT_MS;

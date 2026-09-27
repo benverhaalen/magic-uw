@@ -391,12 +391,8 @@ test("the global daily budget is enforced atomically and durably across a restar
 
 test("createGateway fails closed when no API key or evaluate override is given", () => {
   assert.throws(() => createGateway({ dbPath: ":memory:" }));
-  // Each judgment needs a real credential or an explicit test override; one override
-  // never makes the other route start without a key.
-  assert.throws(
-    () => createGateway({ dbPath: ":memory:", evaluate: fakeEvaluate().fn }),
-    /triage/,
-  );
+  // An assignment-only test override starts, but its triage route stays closed per call
+  // (covered in message-triage.test.ts); it never answers without a key.
   assert.throws(
     () =>
       createGateway({

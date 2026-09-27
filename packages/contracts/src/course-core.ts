@@ -4,7 +4,7 @@
  * Every row is keyed to `sources(id) ON DELETE CASCADE`, directly or through `resources`.
  */
 import { z } from "zod";
-import type { Job, ResourceChange } from "./index";
+import type { Job, Resource, ResourceChange } from "./index";
 
 /** Life sources (mail, feeds) use this course ID, since `sources.course_id` is NOT NULL. */
 export const LIFE_COURSE_ID = "_life";
@@ -208,7 +208,7 @@ export interface MapLink extends MapLinkInput {
 // ---------- Inventory and access (D32, D40, D41) ----------
 export const spaceRoutes = ["api", "public", "uw-session", "canvas-session", "own-login", "lti"] as const;
 export const readStates = ["found", "read", "needs-signin", "blocked", "failed", "skipped"] as const;
-export const accessStates = ["readable", "needs-uw-signin", "needs-own-login", "link-only", "blocked"] as const;
+export const accessStates = ["unknown", "readable", "needs-uw-signin", "needs-own-login", "link-only", "blocked"] as const;
 export type AccessState = (typeof accessStates)[number];
 export const courseSpaceSchema = z
   .object({
@@ -228,7 +228,7 @@ export const courseSpaceSchema = z
     recipeId: idText.nullable(),
     accessState: z.enum(accessStates),
     accessReason: z.string().max(1000).nullable(),
-    checkedAt: instant,
+    checkedAt: instant.nullable(),
     /** D40: `link` is a click-to-open card; its content is never stored. */
     storeOrLink: z.enum(["store", "link"]),
   })
@@ -331,14 +331,37 @@ export interface CourseBrief extends CourseBriefInput {
   prefixHash: string;
   createdAt: string;
 }
-export const materialFactKinds = ["term", "definition", "formula", "example", "code"] as const;
+export const materialFactKinds = [
+  "term", "definition", "formula", "example", "code",
+  // v9 (the material pipeline): code-first categorisation, each with its quote.
+  "role", "module", "session", "date", "covers", "needs_judgment",
+] as const;
+/**
+ * Where a fact's offsets point (v9). `text`: the resource's text. `title`: its title.
+ * `structure`: a structured Canvas field (module name, content type, group); the offsets cut the
+ * stored quote itself, which code read from that field.
+ */
+export const factBases = ["text", "title", "structure"] as const;
+export type FactBasis = (typeof factBases)[number];
 export const materialFactsSchema = z
   .object({
     resourceId: idText,
     textHash: text(256),
     analyzerVersion: text(200),
     facts: z
-      .array(z.object({ kind: z.enum(materialFactKinds), start: offset, end: offset, value: text(4000) }).strict())
+      .array(
+        z
+          .object({
+            kind: z.enum(materialFactKinds),
+            start: offset,
+            end: offset,
+            value: text(4000),
+            basis: z.enum(factBases).optional(),
+            /** Required for `structure`; stored for every basis so a reader needs no second read. */
+            quote: z.string().min(1).max(2000).optional(),
+          })
+          .strict(),
+      )
       .max(5000),
   })
   .strict();
@@ -352,6 +375,8 @@ export interface MaterialFact {
   end: number;
   value: string;
   analyzerVersion: string;
+  basis: FactBasis;
+  quote: string | null;
 }
 
 // ---------- AI runs, use and UI events ----------
@@ -416,6 +441,68 @@ export const lifeItemSchema = z
   .strict();
 export type LifeItem = z.infer<typeof lifeItemSchema>;
 
+// ---------- The course graph (v9, the material pipeline) ----------
+/** `covers`: a material whose covers fact names this assessment (quoted facts rank above structural ones). */
+export const referenceStrengths = ["direct", "named", "module", "syllabus", "covers"] as const;
+export type ReferenceStrength = (typeof referenceStrengths)[number];
+export const referenceKinds = [
+  "page", "file", "assignment", "quiz", "discussion", "module", "syllabus", "announcement", "external", "unresolved",
+] as const;
+export type ReferenceKind = (typeof referenceKinds)[number];
+/** Host classes (the space host table's kinds, plus `canvas` and `other`). */
+export const externalTreatments = ["store", "link"] as const;
+export const externalRefSchema = z
+  .object({
+    sourceId: idText,
+    /** Origin plus path; query and fragment dropped, so one record per page. */
+    url: z.url({ protocol: /^https?$/ }).max(4000),
+    title: z.string().max(500).nullable(),
+    hostClass: text(100),
+    treatment: z.enum(externalTreatments),
+    foundInResourceId: idText.nullable(),
+  })
+  .strict();
+export type ExternalRefInput = z.infer<typeof externalRefSchema>;
+export interface ExternalRef extends ExternalRefInput {
+  id: string;
+  accountScope: string;
+  courseId: string;
+  host: string;
+  firstSeen: string;
+  lastSeen: string;
+  /**
+   * Read at query time from sync's persisted `course_spaces` (same course and URL), never stored
+   * here: the space's ID and its observed access state. Null when sync hasn't recorded the URL.
+   */
+  spaceId: string | null;
+  accessState: AccessState | null;
+}
+/** One outgoing reference in a resource's body: a link, or a course file or page named in it. */
+export const resourceRefSchema = z
+  .object({
+    toResourceId: idText.nullable(),
+    externalRefId: idText.nullable(),
+    /** The normalised URL, or the name as written. */
+    target: text(4000),
+    kind: z.enum(referenceKinds),
+    strength: z.enum(["direct", "named"]),
+    reason: text(500),
+  })
+  .strict();
+export type ResourceRefInput = z.infer<typeof resourceRefSchema>;
+export interface ResourceRef extends ResourceRefInput {
+  fromResourceId: string;
+  ord: number;
+  /** The source resource's content hash when written; current while it matches. */
+  inputHash: string;
+}
+export interface GraphCounts {
+  resourceId: string;
+  passages: number;
+  facts: number;
+  refs: number;
+}
+
 export type WriteResult = { ok: true } | { ok: false; errors: string[] };
 export type ChangeWithSeq = ResourceChange & { seq: number };
 
@@ -469,3 +556,112 @@ export interface CourseCoreStore {
   /** The pre-migration backup kept beside the database, if any (purge deletes it). */
   migrationBackup(): string | null;
 }
+
+/** Store methods added by schema v9 (the material pipeline; implemented in packages/storage). */
+export interface GraphStore {
+  /** A source's live resources, decoded (the save hook reads one source, not the workspace). */
+  sourceResources(sourceId: string): Resource[];
+  /** A course's live resources with their source's scope (`module-items:<id>`, `page:<hash>`...). */
+  courseResources(course: CourseRef): (Resource & { scope: string })[];
+  /** A hash over the course's live resource IDs and content hashes; changes on any change. */
+  courseInventoryHash(course: CourseRef): string;
+  /** The live resource's current text hash (the key material facts are checked against). */
+  resourceTextHash(resourceId: string): string | undefined;
+  /** Replaces the resource's outgoing references; refused when its content hash is stale. */
+  putResourceRefs(fromResourceId: string, inputHash: string, refs: ResourceRefInput[]): WriteResult;
+  /** Current references (the source's content hash still matches). */
+  resourceRefs(fromResourceId: string): ResourceRef[];
+  /** Upserts by (course, url): first seen is kept, last seen and title move forward. */
+  putExternalRef(value: ExternalRefInput, at: string): string;
+  externalRefs(course: CourseRef): ExternalRef[];
+  /** Current `covers` facts whose value is one of these assessment resource IDs (live materials only). */
+  coveringFacts(assessmentIds: readonly string[]): MaterialFact[];
+  /** Per live resource of the course: passage, current fact and current reference counts. */
+  graphCounts(course: CourseRef): GraphCounts[];
+}
+
+// ---------- Graph queries (the material pipeline): reads only, over IPC as `magic:graph` ----------
+export interface Reference {
+  resourceId: string | null;
+  externalUrl: string | null;
+  kind: ReferenceKind;
+  title: string;
+  reason: string;
+  strength: ReferenceStrength;
+  weight: number;
+}
+export type AgendaGroup = "overdue" | "today" | "week" | "later";
+export interface AgendaEntry {
+  key: string;
+  kind: "assignment" | "quiz" | "exam" | "event" | "class";
+  title: string;
+  accountScope: string;
+  courseId: string;
+  courseName: string;
+  /** ISO instant; an all-day item is placed at its local midnight. */
+  at: string;
+  allDay: boolean;
+  dateKind: "due" | "closes" | "starts";
+  group: AgendaGroup;
+  /** The source scope the date came from (the most authoritative copy with a date). */
+  authority: string;
+  resourceIds: string[];
+  submitted: boolean | null;
+  references: Reference[];
+}
+export interface Agenda {
+  date: string;
+  tz: string;
+  from: string;
+  to: string;
+  entries: AgendaEntry[];
+  groups: Record<AgendaGroup, AgendaEntry[]>;
+}
+export interface CourseGraph {
+  course: CourseRef;
+  modules: {
+    id: string;
+    title: string;
+    position: number;
+    items: { itemId: string; title: string; type: string; resourceId: string | null; externalUrl: string | null; passages: number; role: string | null }[];
+  }[];
+  resources: { total: number; materials: number; withText: number; passages: number; byType: Record<string, number> };
+  assessments: { resourceId: string; title: string; type: string; dueAt: string | null; role: string | null }[];
+  references: { direct: number; named: number; external: number; unresolved: number; externalRecords: number };
+  coverage: {
+    /** Materials with text but no passage of their current version. */
+    withoutPassages: string[];
+    /** Materials without a role fact (not yet analysed, or left for judgment). */
+    withoutRole: string[];
+    needsJudgment: string[];
+    assignmentsWithoutReferences: string[];
+    unresolvedLinks: { fromResourceId: string; target: string; kind: string }[];
+  };
+}
+export const graphQuerySchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("references"), assignmentId: idText }).strict(),
+  z
+    .object({
+      type: z.literal("agenda"),
+      date: z.iso.date(),
+      tz: z.string().min(1).max(100).refine((tz) => {
+        try {
+          new Intl.DateTimeFormat("en-US", { timeZone: tz });
+          return true;
+        } catch {
+          return false;
+        }
+      }, "Unknown time zone."),
+      days: z.number().int().min(1).max(60).optional(),
+    })
+    .strict(),
+  z.object({ type: z.literal("courseGraph"), accountScope: idText, courseId: idText }).strict(),
+]);
+export type GraphQuery = z.infer<typeof graphQuerySchema>;
+export type GraphResult<Q extends GraphQuery = GraphQuery> = Q extends { type: "references" }
+  ? Reference[]
+  : Q extends { type: "agenda" }
+    ? Agenda
+    : Q extends { type: "courseGraph" }
+      ? CourseGraph
+      : never;

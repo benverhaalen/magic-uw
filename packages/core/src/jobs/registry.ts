@@ -8,6 +8,7 @@
  * can't fill the queue with work nothing will do.
  */
 import type { Job, Resource, Store } from "@magic/contracts";
+import { courseOfSource, isPipelineStore } from "../graph/course-index";
 
 export type JobSubjectKind = "resource" | "course" | "assessment";
 export interface JobContext {
@@ -93,14 +94,38 @@ export function enqueueOnSave(
   registry: JobRegistry,
   sourceId: string,
   now: string,
+  /** Courses already enqueued in this pass (the backfill), so each course hashes once. */
+  coursesDone?: Set<string>,
 ): number {
   if (!registry.readyKinds().length) return 0;
   let calls = 0;
-  for (const resource of store.resources()) {
-    if (resource.sourceId !== sourceId || resource.deleted) continue;
+  // The pipeline store reads one source's resources; a plain store falls back to the full list.
+  const graph = isPipelineStore(store) ? store : undefined;
+  const saved = graph
+    ? graph.sourceResources(sourceId)
+    : store.resources().filter((r) => r.sourceId === sourceId && !r.deleted);
+  for (const resource of saved) {
     for (const kind of registry.forSave(resource)) {
       store.enqueue(kind, resource.id, resource.contentHash, now);
       calls++;
+    }
+  }
+  // Course kinds (the course pass): one job per course at its inventory hash, only for a source
+  // that belongs to a course (not the account-level lists).
+  const courseKinds = registry.readyKinds().filter((k) => registry.get(k)!.subject === "course");
+  if (graph && courseKinds.length && saved.length) {
+    const course = courseOfSource(graph, sourceId);
+    const key = course && `${course.accountScope}:${course.courseId}`;
+    if (course && key && !coursesDone?.has(key) && saved.some((r) => r.courseId === course.courseId)) {
+      coursesDone?.add(key);
+      const inputHash = graph.courseInventoryHash(course);
+      for (const kind of courseKinds) {
+        graph.enqueueSubject(
+          { kind, subjectKind: "course", subjectId: `${course.accountScope}:${course.courseId}`, inputHash, sourceId },
+          now,
+        );
+        calls++;
+      }
     }
   }
   return calls;

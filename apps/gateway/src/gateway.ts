@@ -17,6 +17,8 @@ import { judgmentRequestSchema } from "./schema";
 import { openStore, type Store } from "./store";
 import {
   createTypeSafeEvaluate,
+  UpstreamError,
+  UpstreamRateLimitError,
   validateAssignmentKindResult,
   type AssignmentKindResult,
   type Evaluate,
@@ -113,7 +115,13 @@ export function createGateway(options: GatewayOptions = {}): GatewayHandle {
     createDefaultEvaluate(options.apiKey, limits.requestTimeoutMs);
   const triage: Triage =
     options.triage ??
-    createDefaultTriage(options.apiKey, limits.requestTimeoutMs);
+    (options.evaluate && !options.apiKey?.trim()
+      ? // A test gateway that overrides only the assignment judgment: the triage route stays
+        // closed (every call fails as an upstream error) rather than answering without a key.
+        async () => {
+          throw new UpstreamError("Judgment upstream is not configured.");
+        }
+      : createDefaultTriage(options.apiKey, limits.requestTimeoutMs));
 
   const store: Store = openStore(dbPath);
   const activeByDevice = new Map<string, number>();
@@ -372,6 +380,7 @@ export function createGateway(options: GatewayOptions = {}): GatewayHandle {
       );
     }
 
+    const reservedAt = now();
     const reservation = store.reserveJudgment(
       device.id,
       {
@@ -379,7 +388,7 @@ export function createGateway(options: GatewayOptions = {}): GatewayHandle {
         deviceDailyLimit: limits.deviceDailyLimit,
         deviceHourlyLimit: limits.deviceHourlyLimit,
       },
-      now(),
+      reservedAt,
     );
     if (!reservation.ok) {
       // Reservation was never granted, so nothing was spent and the
@@ -404,7 +413,16 @@ export function createGateway(options: GatewayOptions = {}): GatewayHandle {
         // upstream failure here still bounds spend rather than being retried
         // for free.
         result = await run(state, controller.signal);
-      } catch {
+      } catch (error) {
+        // An upstream 429 spent nothing: refund the reservation and pass the wait through.
+        if (error instanceof UpstreamRateLimitError) {
+          store.refundJudgment(device.id, reservedAt);
+          throw new RateLimitError(
+            "upstream_rate_limited",
+            "The judgment service is rate limited. Try again later.",
+            error.retryAfterSeconds,
+          );
+        }
         throw new HttpError(
           502,
           "upstream_error",

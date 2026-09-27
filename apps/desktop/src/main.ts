@@ -1,3 +1,4 @@
+import { judgmentFailure } from "./judgment-errors";
 import {
   app,
   BrowserWindow,
@@ -26,6 +27,13 @@ import {
 } from "../../../packages/connectors/src/network";
 import { checkedSpaceProbeUrl } from "../../../packages/connectors/src/space-hosts"; // owner: T05b
 import { clearSignOutSecrets, createSecretVault } from "./secrets";
+// owner: T30. Outlook through the app's own Microsoft sign-in (Graph); the token stays in main.
+import { createOutlook, readOutlookConfig } from "./outlook";
+import { electronAuthWindow } from "./outlook-window";
+import { checkedGraphUrl } from "../../../packages/connectors/src/graph";
+import { OUTLOOK_MAIL_COURSE_ID, OUTLOOK_CALENDAR_COURSE_ID, type OutlookStatus } from "@magic/contracts";
+// end owner: T30
+import { MadgradesHttp, madgradesRequestSchema } from "../../../packages/connectors/src/madgrades";
 import sampleFixture from "../../../fixtures/course.json";
 // owner: T05c
 import { Tray, Menu, nativeImage } from "electron";
@@ -53,6 +61,7 @@ import {
   planningCaptureSchema,
   localQuestionSchema,
   queryRequestSchema, // owner: T15
+  graphQuerySchema, // owner: pipeline
   type CommandResult,
 } from "@magic/contracts";
 const headless = process.env.MAGIC_HEADLESS === "1";
@@ -171,7 +180,44 @@ app
       encrypt: (value) => safeStorage.encryptString(value),
       decrypt: (value) => safeStorage.decryptString(Buffer.from(value)),
     });
+    // The Madgrades token stays in the main-process vault; the workspace sends only fixed request shapes.
+    const madgradesHttp = new MadgradesHttp({
+      fetch: (url, init) => fetch(url, init),
+      token: () => vault.get("madgrades:token"),
+    });
     const sourceReads = new Map<string, AbortController>();
+    // owner: T30. Outlook (Graph). No client ID configured: "not set up" and no network call.
+    const outlookFiles = {
+      async read(path: string) {
+        try {
+          return await readFile(path);
+        } catch {
+          return null;
+        }
+      },
+      async write(path: string, value: Buffer | string) {
+        await writeFile(path, value, { mode: 0o600 });
+      },
+      async remove(path: string) {
+        await rm(path, { force: true });
+      },
+    };
+    const outlook = createOutlook({
+      config: await readOutlookConfig(process.env, async () =>
+        (await outlookFiles.read(join(data, "outlook-settings.json")))?.toString("utf8") ?? null,
+      ),
+      cachePath: join(data, "outlook-token-cache.enc"),
+      statePath: join(data, "outlook-state.json"),
+      encryptor: {
+        available: () => safeStorage.isEncryptionAvailable(),
+        encrypt: (value) => safeStorage.encryptString(value),
+        decrypt: (value) => safeStorage.decryptString(value),
+      },
+      files: outlookFiles,
+      window: electronAuthWindow({ parent: () => window, headless }),
+      consented: () => consentGate("source-fetch"),
+    });
+    // end owner: T30
     studentSession.setPermissionRequestHandler((_wc, _permission, callback) =>
       callback(false),
     );
@@ -303,6 +349,33 @@ app
         }
         return;
       }
+      // owner: T30. The worker's Graph delta links and watermarks, in the encrypted vault.
+      if (message.kind === "graph-state") {
+        try {
+          const { operation, key, value } = message.payload ?? {};
+          if (typeof key !== "string" || !/^graph:(?:delta|at):[a-z0-9:_-]{1,120}$/i.test(key)) throw new Error();
+          let result: unknown;
+          if (operation === "get") result = (await vault.get(key)) || undefined;
+          else if (operation === "set") {
+            if (value === null) await vault.set(key, "");
+            else if (typeof value === "string" && key.startsWith("graph:delta:")) await vault.set(key, checkedGraphUrl(value));
+            else if (typeof value === "string" && Number.isFinite(Date.parse(value)) && value.length <= 40)
+              await vault.set(key, value);
+            else throw new Error();
+          } else throw new Error();
+          worker.postMessage({ kind: "source-response", id: message.id, result });
+        } catch {
+          worker.postMessage({ kind: "source-response", id: message.id, error: true });
+        }
+        return;
+      }
+      if (message.kind === "graph-synced") {
+        const { at, failures } = message.payload ?? {};
+        if (typeof at === "string" && failures && typeof failures === "object")
+          void outlook.recordSync(at, failures as Record<string, string>).catch(() => {});
+        return;
+      }
+      // end owner: T30
       if (message.kind === "planning-public-read") {
         if (!(await consentGate("planning-public-read"))) {
           worker.postMessage({ kind: "source-response", id: message.id, error: true });
@@ -315,6 +388,25 @@ app
           const request = message.payload?.request;
           if (planningClears > 0 || !["public-search", "enrollment-packages"].includes(request?.kind)) throw new Error("Unsupported planning read");
           const result = await planningHttp.read(request, controller.signal);
+          controller.signal.throwIfAborted();
+          worker.postMessage({ kind: "source-response", id: message.id, result });
+        } catch {
+          worker.postMessage({ kind: "source-response", id: message.id, error: true });
+        } finally { planningReads.delete(message.id); sourceReads.delete(message.id); }
+        return;
+      }
+      if (message.kind === "madgrades-read") {
+        if (!(await consentGate("planning-public-read"))) {
+          worker.postMessage({ kind: "source-response", id: message.id, error: true });
+          return;
+        }
+        const controller = new AbortController();
+        sourceReads.set(message.id, controller);
+        planningReads.add(message.id);
+        try {
+          const request = madgradesRequestSchema.parse(message.payload?.request);
+          if (planningClears > 0) throw new Error("Madgrades read cancelled");
+          const result = await madgradesHttp.read(request, controller.signal);
           controller.signal.throwIfAborted();
           worker.postMessage({ kind: "source-response", id: message.id, result });
         } catch {
@@ -354,6 +446,23 @@ app
         }
         const controller = new AbortController();
         sourceReads.set(message.id, controller);
+        // owner: T30. Graph: main's proxy attaches the token; the worker gets status, headers, body.
+        if (message.payload?.service === "graph") {
+          try {
+            const result = await outlook.graphProxy(
+              message.payload,
+              AbortSignal.any([controller.signal, AbortSignal.timeout(120_000)]),
+            );
+            trialLog({ event: "fetch", service: "graph", status: result.status, bytes: result.body.length });
+            worker.postMessage({ kind: "source-response", id: message.id, result });
+          } catch {
+            worker.postMessage({ kind: "source-response", id: message.id, error: true });
+          } finally {
+            sourceReads.delete(message.id);
+          }
+          return;
+        }
+        // end owner: T30
         try {
           const { service, url } = message.payload;
           let target: string;
@@ -407,11 +516,7 @@ app
             // owner: T05b. D41's access check: one plain GET to a UW single-sign-on host the host
             // table allows (Kaltura, UW GitLab); never a launch, redirects not followed.
             target = checkedSpaceProbeUrl(url);
-          } else if (service === "graph") {
-            // owner: T30. Graph proxy stub: refused until E1 passes and T30 builds the proxy.
-            throw new Error();
-            // end owner: T30
-          } else throw new Error();
+          } else throw new Error(); // owner: T30: "graph" is answered above, by outlook.graphProxy
           const signal = AbortSignal.any([
             controller.signal,
             AbortSignal.timeout(30_000),
@@ -429,7 +534,7 @@ app
               Accept:
                 service === "kaltura" || service === "space"
                   ? "text/html"
-                  : "application/json",
+                  : service === "canvas" ? "application/json+canvas-string-ids" : "application/json",
             },
             signal,
           });
@@ -533,11 +638,11 @@ app
             result = await gateway.triage(message.state, controller.signal);
           }
           worker.postMessage({ kind: "evaluation", id: message.id, result });
-        } catch {
+        } catch (error) {
           worker.postMessage({
             kind: "evaluation",
             id: message.id,
-            error: true,
+            ...judgmentFailure(error),
           });
         } finally {
           evaluations.delete(message.id);
@@ -557,6 +662,13 @@ app
     async function execute(command: unknown): Promise<CommandResult> {
       const parsed = commandSchema.parse(command);
       await ready;
+      if (parsed.type === "madgrades-token") {
+        // Stored only in the OS-protected vault; the workspace, records, and logs never receive it.
+        if (parsed.token === null) await vault.deletePrefix("madgrades:");
+        else await vault.set("madgrades:token", parsed.token);
+        const result = await execute({ type: "snapshot" });
+        return { ...result, message: parsed.token === null ? "Madgrades token removed from this device." : "Madgrades token saved on this device." };
+      }
       if (parsed.type === "purge") {
         sync?.abort();
         cancelPlanning();
@@ -596,6 +708,7 @@ app
       });
       // A withdrawn agreement also stops reads already in flight.
       if (hadUw && !consentGateAllows("source-fetch", consentRecords)) {
+        void disconnectGraph().catch(() => {}); // owner: T30: withdrawing uw disconnects Outlook
         sync?.abort();
         cancelPlanning();
         signIn?.close();
@@ -616,6 +729,90 @@ app
     const consentRefused =
       "Finish the setup step before My Magic UW connects to UW.";
     // end owner: T06
+    // owner: T30. Outlook: the worker learns only the granted scopes; tokens never cross.
+    async function postGraphScopes() {
+      const current = await outlook.state();
+      worker.postMessage({
+        kind: "graph-scopes",
+        scopes: outlook.configured() && current.state === "connected" ? current.scopes : [],
+      });
+    }
+    function workerQuery(request: unknown): Promise<any> {
+      const id = randomUUID();
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          calls.delete(id);
+          reject(new Error("Local workspace request timed out."));
+        }, 30000);
+        calls.set(id, { resolve: resolve as (value: CommandResult) => void, reject, timer });
+        worker.postMessage({ kind: "query", id, query: request });
+      });
+    }
+    async function outlookStatus(): Promise<OutlookStatus> {
+      let counts = { messages: 0, events: 0 };
+      try {
+        const summary = await workerQuery({ view: "summary" });
+        const byCourse = (id: string) =>
+          (summary.courses as { courseId: string; resources: number }[])
+            .filter((c) => c.courseId === id)
+            .reduce((n, c) => n + c.resources, 0);
+        counts = { messages: byCourse(OUTLOOK_MAIL_COURSE_ID), events: byCourse(OUTLOOK_CALENDAR_COURSE_ID) };
+      } catch {
+        /* counts stay zero */
+      }
+      return outlook.status(counts, Boolean(await vault.get("calendar:outlook")));
+    }
+    async function disconnectGraph() {
+      await outlook.disconnect();
+      await vault.deletePrefix("graph:");
+      await postGraphScopes();
+      await execute({ type: "outlook-disconnect-graph" });
+    }
+    /** Launch and after a confirmed UW sign-in: silent; Microsoft's window at most once on its own. */
+    async function outlookSilent(allowVisible: boolean) {
+      if (!outlook.configured()) return;
+      try {
+        await outlook.connectSilently({ allowVisible });
+      } catch {
+        /* the status reports it; nothing retries in a loop */
+      }
+      await postGraphScopes();
+    }
+    ipcMain.handle("magic:outlook-connect", async (event) => {
+      validateSender(event);
+      if (!(await consentGate("source-fetch"))) throw new Error(consentRefused);
+      await outlook.connect().catch(() => undefined);
+      await postGraphScopes();
+      return outlookStatus();
+    });
+    ipcMain.handle("magic:outlook-status", async (event) => {
+      validateSender(event);
+      return outlookStatus();
+    });
+    ipcMain.handle("magic:outlook-disconnect-graph", async (event) => {
+      validateSender(event);
+      await disconnectGraph();
+      return outlookStatus();
+    });
+    ipcMain.handle("magic:outlook-mail-body", async (event, id: unknown) => {
+      validateSender(event);
+      if (typeof id !== "string" || id.length > 256) throw new Error("Invalid message.");
+      if (!(await consentGate("source-fetch"))) throw new Error(consentRefused);
+      const answer = await workerQuery({ view: "resource", id });
+      const messageId = answer?.resource?.mail?.messageId;
+      if (typeof messageId !== "string") throw new Error("This isn't an Outlook message.");
+      return outlook.mailBody(messageId);
+    });
+    ipcMain.handle("magic:calendar-propose-event", async (event, input: unknown) => {
+      validateSender(event);
+      return outlook.proposeEvent(input);
+    });
+    ipcMain.handle("magic:calendar-create-event", async (event, proposalId: unknown) => {
+      validateSender(event);
+      if (!(await consentGate("source-fetch"))) throw new Error(consentRefused);
+      return outlook.createEvent(proposalId);
+    });
+    // end owner: T30
     // owner: T40. Onboarding detection (apps/desktop/src/onboarding.ts): the installed CLIs,
     // their own auth status, and the engine choice (Claude Code → Codex → a stored key → Ollama).
     // Runs only when asked; reads no credential file, sends no course data, never prompts.
@@ -751,6 +948,8 @@ app
         if (purging) {
           for (const c of sourceReads.values()) c.abort();
           await vault.clear();
+          await outlook.disconnect().catch(() => {}); // owner: T30: tokens and state
+          void postGraphScopes(); // owner: T30
           clientsRuntime?.terminal.closeAll(); // owner: T80
           await Promise.all([
             rm(join(data, "clients"), { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }), // owner: T80
@@ -864,6 +1063,23 @@ app
       });
     });
     // end owner: T15
+    // owner: pipeline. Graph reads (references, agenda, a course's graph): sender-checked, parsed
+    // here and again in the worker, answered on the same response channel as queries.
+    ipcMain.handle("magic:graph", async (event, request) => {
+      validateSender(event);
+      const parsed = graphQuerySchema.parse(request);
+      await ready;
+      const id = randomUUID();
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          calls.delete(id);
+          reject(new Error("Local workspace request timed out."));
+        }, 30000);
+        calls.set(id, { resolve, reject, timer });
+        worker.postMessage({ kind: "graph", id, query: parsed });
+      });
+    });
+    // end owner: pipeline
     // owner: T05b. Link cards (D40): the default browser, https only.
     ipcMain.handle("magic:open-link", async (event, url) => {
       validateSender(event);
@@ -1008,7 +1224,7 @@ app
               method: "GET",
               credentials: "include",
               redirect: "manual",
-              headers: { Accept: "application/json" },
+              headers: { Accept: "application/json+canvas-string-ids" },
               signal: AbortSignal.timeout(10000),
             },
           );
@@ -1038,6 +1254,7 @@ app
               if (!gitlab) {
                 worker.postMessage({ kind: "reconnected" });
                 await rememberSignIn();
+                void outlookSilent(true); // owner: T30: UW single sign-on is live now
               }
               trialLog({ event: "signin.confirmed", service: requestedService ?? "canvas" });
               if (!login.isDestroyed()) login.close();
@@ -1253,6 +1470,8 @@ app
         await gitlabSession.clearCache();
         // Every saved calendar link goes, Outlook's included; its meetings are removed too.
         await clearSignOutSecrets(vault);
+        await outlook.signOut().catch(() => {}); // owner: T30: the Microsoft tokens go too
+        await postGraphScopes(); // owner: T30
         await execute({ type: "outlook-disconnect" });
         await resetPlanningScope();
         if (signOutEpoch !== planningEpoch) return;
@@ -1373,6 +1592,7 @@ app
     app.on("activate", showWorkspace);
     applyKeepSignedIn();
     void checkSessionAtLaunch();
+    void postGraphScopes().then(() => outlookSilent(false)); // owner: T30: launch: silent only
     // end owner: T05c
     app.on("before-quit", (event) => {
       if (quitting) return;
