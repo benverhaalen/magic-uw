@@ -46,6 +46,8 @@ export interface PoolOptions {
   fallback: ModelBackend;
   models?: Partial<Record<Tier, string>>;
   env?: Record<string, string>;
+  /** owner: client-health. Appended after the session argv (instant mode's `--safe-mode`, D50). */
+  extraArgs?: readonly string[];
   /** History size that triggers rotation to a spare (S7 decides; the review starts near 40k). */
   rotateAtTokens?: number;
   /** Live processes, spares included (S8 decides; the review starts at 3). */
@@ -297,7 +299,7 @@ export function createSessionPool(options: PoolOptions): SessionPool {
       prefixHash,
       model,
       options.command,
-      claudeSessionArgs({ schemaJson, prefixPath, model }),
+      [...claudeSessionArgs({ schemaJson, prefixPath, model }), ...(options.extraArgs ?? [])],
       options.workDir,
       env,
       now(),

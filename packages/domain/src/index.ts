@@ -10,6 +10,7 @@ import type {
 export * from "./today-rail";
 export * from "./work";
 export * from "./changes";
+export * from "./notifications";
 import { zonedDate } from "./deadline-extraction";
 export * from "./deadline-extraction";
 

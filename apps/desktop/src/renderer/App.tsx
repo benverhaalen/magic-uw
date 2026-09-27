@@ -13,12 +13,14 @@ import { LocalAiPanel } from "./LocalAiPanel";
 import { LearningPanel } from "./LearningPanel";
 import { ProviderGuidance } from "./ProviderGuidance";
 import { IngestionControls, McpConnections } from "./IngestionControls";
+import { WorkspaceTools } from "./backend"; // owner: ui-wiring: backend wiring previews
 // owner: T06
 import { ConsentSetup, hasUwConsent, missingConsents } from "./consent/ConsentSetup";
 // owner: T81
 import { Onboarding, needsFirstRunSetup } from "./onboarding";
 import { CourseSpaceDetails } from "./CourseSpaceDetails";
 import { TodayRail } from "./TodayRail";
+import { NotificationsMenu } from "./NotificationsMenu";
 
 type View =
   | "today"
@@ -31,7 +33,8 @@ type View =
   | "notebook"
   | "practice"
   | "insights"
-  | "settings";
+  | "settings"
+  | "tools"; // owner: ui-wiring: the "Workspace tools" previews
 // owner: T05b. Route slots, each rendering nothing until its task fills it: the notebook (T43),
 // practice and insights (P17), settings (T40) and the workspace command bar (D40).
 function NotebookSlot(_: { snapshot: Snapshot | null }) {
@@ -402,6 +405,16 @@ export function App() {
               ) : null}
             </button>
           ))}
+          {/* owner: ui-wiring. Backend wiring previews until the designed screens replace them. */}
+          <button
+            className={`nav-button ${view === "tools" ? "active" : ""}`}
+            aria-current={view === "tools" ? "page" : undefined}
+            onClick={() => setView("tools")}
+          >
+            <Icon name="file" />
+            Workspace tools
+          </button>
+          {/* end owner: ui-wiring */}
         </nav>
         <div className="sidebar-bottom">
           <div className="storage-label">
@@ -440,6 +453,15 @@ export function App() {
             ) : (
               <span className="muted">Local workspace</span>
             )}
+            <NotificationsMenu
+              feed={snapshot?.notifications}
+              busy={busy}
+              run={run}
+              canOpenResource={(id) => resources.some((resource) => resource.id === id)}
+              onOpenResource={(id) => { setQuery(""); setSelectedId(id); setView("today"); }}
+              onOpenSources={() => setView("sources")}
+              onOpenPrivacy={() => setView("privacy")}
+            />
           </div>
         </header>
         <div className="feedback-region">
@@ -672,6 +694,8 @@ export function App() {
           <InsightsSlot snapshot={snapshot} />
         ) : view === "settings" ? (
           <SettingsSlot snapshot={snapshot} />
+        ) : /* owner: ui-wiring */ view === "tools" ? (
+          <WorkspaceTools snapshot={snapshot} />
         ) : /* end owner: T05b */ view === "sources" ? (
           <Sources
             snapshot={snapshot}
