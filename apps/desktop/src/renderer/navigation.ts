@@ -1,0 +1,61 @@
+import { useLayoutEffect, useRef, useState } from 'react';
+import type { CalendarState } from './calendar/model';
+import { pageDirection, playPageEnter, type PageDirection } from '../../../../packages/ui/src/motion';
+export type DesktopView = 'today' | 'courses' | 'myuw' | 'calendar' | 'resource' | 'sources' | 'privacy' | 'consent' | 'notebook' | 'practice' | 'insights' | 'settings' | 'tools';
+type Place = { homeTodayCount?: number; homeUpcomingCount?: number; calendarState?: CalendarState; calendarFocus?: string; view: DesktopView; resourceId: string | null; courseKey: string | null; disclosures: Record<string, boolean>; scroll: number; focus: string | null; anchor: string | null; offset: number };
+const initial: Place = { view: 'today', resourceId: null, courseKey: null, disclosures: {}, scroll: 0, focus: null, anchor: null, offset: 0 };
+/** Hierarchy depth for motion direction only: sections 0, a course or settings page 1, an item 2. */
+const depth = (place: Place) => place.view === 'resource' ? 2 : place.view === 'courses' ? (place.courseKey ? 1 : 0) : ['today', 'myuw', 'calendar'].includes(place.view) ? 0 : 1;
+export const resourceHref = (id: string) => `#resource/${encodeURIComponent(id)}`;
+export function useDesktopNavigation() {
+  const [stack, setStack] = useState<Place[]>([initial]);
+  const [index, setIndex] = useState(0);
+  const pending = useRef<Place | null>(null);
+  const direction = useRef<PageDirection>('lateral');
+  const current = stack[index]!;
+  function capture(): Place {
+    const pane = document.querySelector<HTMLElement>('.desktop-workspace');
+    const active = document.activeElement as HTMLElement | null;
+    const focus = active?.getAttribute('data-focus-key') ?? (active?.closest('a')?.getAttribute('href') ?? null);
+    const anchors = Array.from(pane?.querySelectorAll<HTMLElement>('[data-place-anchor]') ?? []);
+    const top = pane?.getBoundingClientRect().top ?? 0;
+    const anchor = anchors.find(node => node.getBoundingClientRect().bottom > top);
+    const disclosures = Object.fromEntries(Array.from(pane?.querySelectorAll<HTMLDetailsElement>('details[data-place-disclosure]') ?? []).map(node => [node.dataset.placeDisclosure!, node.open]));
+    return { ...current, disclosures, scroll: pane?.scrollTop ?? 0, focus, anchor: anchor?.dataset.placeAnchor ?? null, offset: anchor ? anchor.getBoundingClientRect().top - top : 0 };
+  }
+  function navigate(view: DesktopView, resourceId: string | null = null, courseKey: string | null = view === 'resource' ? current.courseKey : null, origin?: Partial<Place>) {
+    if (current.view === view && current.resourceId === resourceId && current.courseKey === courseKey) return;
+    const next = { ...initial, view, resourceId, courseKey };
+    const saved = stack.slice(0, index + 1); saved[index] = { ...capture(), ...origin };
+    direction.current = pageDirection(depth(current), depth(next), 'push');
+    pending.current = next; setStack([...saved, next]); setIndex(saved.length);
+  }
+  function travel(delta: number) {
+    const nextIndex = index + delta;
+    if (nextIndex < 0 || nextIndex >= stack.length) return;
+    const saved = [...stack]; saved[index] = capture();
+    direction.current = delta < 0 ? 'back' : 'forward';
+    pending.current = saved[nextIndex]!; setStack(saved); setIndex(nextIndex);
+  }
+  useLayoutEffect(() => {
+    const place = pending.current; if (!place) return;
+    pending.current = null;
+    const pane = document.querySelector<HTMLElement>('.desktop-workspace');
+    if (!pane) return;
+    for (const node of Array.from(pane.querySelectorAll<HTMLDetailsElement>('details[data-place-disclosure]'))) {
+      const open = place.disclosures[node.dataset.placeDisclosure!]; if (open !== undefined) node.open = open;
+    }
+    const anchor = Array.from(pane.querySelectorAll<HTMLElement>('[data-place-anchor]')).find(node => node.dataset.placeAnchor === place.anchor);
+    pane.scrollTop = anchor ? pane.scrollTop + anchor.getBoundingClientRect().top - pane.getBoundingClientRect().top - place.offset : place.scroll;
+    const focus = (place.calendarFocus ? document.getElementById(place.calendarFocus) : null) ?? (place.focus ? Array.from(document.querySelectorAll<HTMLElement>('[data-focus-key], a[href]')).find(node => node.dataset.focusKey === place.focus || node.getAttribute('href') === place.focus) : null);
+    (focus ?? pane.querySelector<HTMLElement>('h1, h2'))?.focus({ preventScroll: true });
+    // Scroll, disclosures and focus are already the destination's; only then does it appear.
+    playPageEnter(pane, direction.current);
+  }, [index, current.view, current.resourceId, current.courseKey]);
+  function updateCalendar(calendarState: CalendarState) {
+    setStack(previous => previous.map((place, i) => i === index ? { ...place, calendarState } : place));
+  }
+  return { homeTodayCount: current.homeTodayCount ?? 3, updateHomeTodayCount: (homeTodayCount: number) => setStack(previous => previous.map((place, i) => i === index ? { ...place, homeTodayCount } : place)), homeUpcomingCount: current.homeUpcomingCount ?? 3, updateHomeUpcomingCount: (homeUpcomingCount: number) => setStack(previous => previous.map((place, i) => i === index ? { ...place, homeUpcomingCount } : place)), calendarState: current.calendarState, calendarFocus: current.calendarFocus, updateCalendar,
+    openCalendarResource: (id: string, calendarState: CalendarState, calendarFocus: string) => navigate('resource', id, null, { calendarState, calendarFocus }),
+    view: current.view, selectedId: current.resourceId, courseKey: current.courseKey, navigate, back: () => travel(-1), forward: () => travel(1), canBack: index > 0, canForward: index < stack.length - 1 };
+}

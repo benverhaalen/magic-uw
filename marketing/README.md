@@ -17,12 +17,12 @@ Website page directions and the wizard logo pack, exported from the design tool 
 
 ## Viewing
 
-The pages load `support.js` and relative images, so serve the folder over HTTP rather than opening files directly:
+The pages load `support.js`, relative images and the repository's bundled Lora Medium (`../packages/ui/assets/fonts`, SIL OFL), so serve the repository root over HTTP rather than opening files directly:
 
 ```bash
-python3 -m http.server 4178 --directory marketing
+python3 -m http.server 4178
 ```
 
-Then open `http://localhost:4178/Website%20Directions.dc.html`. Fonts and provider icons load from Google Fonts and public icon CDNs.
+Then open `http://localhost:4178/marketing/Website%20Directions.dc.html`. Display text uses Lora Medium at weight 500 (September 27; it replaced Fredoka, Young Serif, Instrument Serif and Newsreader). DM Sans, DM Mono and provider icons still load from Google Fonts and public icon CDNs. SVG logos and raster images are unchanged; screenshots in `uploads/` show the earlier faces.
 
 Pricing and AI-access copy must match [the current pricing decision](../docs/decisions.md#pricing-and-ai-access-resolution--september-26) before publishing. **Open:** `Pricing.dc.html` shows a $10 license; the recorded decision is $5 one-time.

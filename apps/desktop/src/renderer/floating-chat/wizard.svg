@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 114" data-state="idle" role="img" aria-label="My Magic UW wizard">
+<style>
+/* My Magic UW wizard rig. Canonical source: apps/desktop/src/renderer/floating-chat/wizard.svg,
+   traced from marketing/uploads/Wizard_logo.jpg. Colours are the --magic-wizard-* design tokens
+   (docs/design/tokens.css, light and dark); a page using this file must load those tokens.
+   States: set data-state on the root svg element (idle, hover, listening, thinking, answered,
+   error); rig.ts plays the one-shots. Each part has its own transform origin. No less-than signs
+   in this block: inline SVG parses style content as markup. */
+svg{--line:var(--magic-wizard-line);--hat:var(--magic-wizard-hat);--robe:var(--magic-wizard-robe);--beard:var(--magic-wizard-beard);--eye:var(--magic-wizard-eye);--nose:var(--magic-wizard-nose);--wand:var(--magic-wizard-wand);--spark:var(--magic-wizard-spark);overflow:visible}
+.robe{fill:var(--robe)}.hat{fill:var(--hat)}.beard{fill:var(--beard)}.eye{fill:var(--eye)}.ink{fill:var(--line)}.nose{fill:var(--nose)}.spark{fill:var(--spark)}.none{fill:none}.wo{stroke:var(--line)}.t{stroke-width:2.4}.tm{stroke-width:2.6}.tt{stroke-width:.9}.wd{stroke:var(--wand)}
+.o{stroke:var(--line);stroke-width:3;stroke-linejoin:round;stroke-linecap:round}
+#wizard,#head,#hat,#eyes,#arm,#sparkles,.s,#glow{transform-box:fill-box}
+#wizard{transform-origin:50% 100%}
+#head{transform-origin:50% 85%}
+#hat{transform-origin:50% 100%;animation:bob 5.2s ease-in-out infinite}
+#eyes{transform-origin:50% 50%;animation:blink 6.4s linear infinite}
+#arm{transform-origin:0 100%;transition:transform .24s cubic-bezier(.23,1,.32,1)}
+#sparkles{transform-origin:50% 50%}
+.s{transform-origin:50% 50%;opacity:0;fill:var(--spark);stroke:var(--line);stroke-width:1;stroke-linejoin:round}
+#glow{transform-origin:50% 50%;opacity:0}
+@keyframes bob{0%,100%{transform:none}50%{transform:translateY(-1.4px) rotate(-2deg)}}
+@keyframes blink{0%,94%,100%{transform:none}96%{transform:scaleY(.1)}}
+@keyframes wave{0%,100%{transform:rotate(0)}25%{transform:rotate(-25deg)}50%{transform:rotate(10deg)}75%{transform:rotate(-20deg)}}
+@keyframes spark{0%{opacity:0;transform:scale(0)}40%{opacity:1;transform:scale(1.15)}100%{opacity:0;transform:scale(.4)}}
+@keyframes orbit{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{opacity:.25;transform:scale(.8)}50%{opacity:.75;transform:scale(1.2)}}
+[data-state=hover] #arm{animation:wave 1.1s ease-in-out;will-change:transform}
+[data-state=hover] .s{animation:spark .6s ease-out .22s both}
+[data-state=hover] .s:nth-child(2){animation-delay:.3s}
+[data-state=hover] .s:nth-child(3){animation-delay:.38s}
+[data-state=hover] .s:nth-child(4){animation-delay:.46s}
+[data-state=listening] #glow{animation:pulse 1.8s ease-in-out infinite}
+[data-state=listening][data-level] #glow{animation:none;opacity:calc(.3 + var(--level,0) * .7);transform:scale(calc(.8 + var(--level,0) * .6));transition:opacity 80ms,transform 80ms}
+[data-state=thinking] #arm{transform:rotate(-16deg)}
+[data-state=thinking] #sparkles{animation:orbit 3s linear infinite;will-change:transform}
+[data-state=thinking] .s{opacity:.9;transform:scale(.85)}
+:is([data-state=hover],[data-state=listening],[data-state=thinking],[data-state=answered],[data-state=error],[data-settling]) #hat,:is([data-state=hover],[data-state=answered],[data-state=error],[data-settling]) #eyes{animation:none}
+[data-paused] *{animation-play-state:paused!important}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+<g id="wizard">
+<path id="robe" class="o robe" d="M29 80Q44 73 59 80L65 110H23Z"/>
+<g id="arm-left"><path class="o none" d="M28 87 16 90"/><circle class="o eye t" cx="13" cy="90" r="4.6"/></g>
+<g id="head">
+<path id="hat" class="o hat" d="M43.5 3C46 13 51 29 56 43H31C36 29 41 13 43.5 3Z"/>
+<path id="beard" class="o beard" d="M29 64C29 80 35 96 44.5 97 54 96 60 80 60 64Z"/>
+<g id="eyes"><circle class="o eye" cx="33" cy="51" r="11.5"/><circle class="o eye" cx="56" cy="51" r="11.5"/><circle class="ink" cx="34.8" cy="51.5" r="3"/><circle class="ink" cx="54.2" cy="51.5" r="3"/></g>
+<path id="moustache" class="o beard tm" d="M44.5 63C38 60 26 58 19 61 16 62.5 17 67 21 67 29 68 38 68 44.5 66 51 68 60 68 68 67 72 67 73 62.5 70 61 63 58 51 60 44.5 63Z"/>
+<circle id="nose" class="o nose t" cx="44.5" cy="60.5" r="4.2"/>
+</g>
+<g id="arm">
+<path class="o none" d="M60 86 74.5 81"/>
+<path class="wo" stroke-width="4.4" stroke-linecap="round" d="M77 80 87.5 58.5"/>
+<path class="wd" stroke-width="2.6" stroke-linecap="round" d="M77 80 87.5 58.5"/>
+<circle id="glow" class="spark" cx="88" cy="56" r="7.5"/>
+<path id="wand-tip" class="o spark tt" d="M88 48.5 90.6 53.4 95.5 56 90.6 58.6 88 63.5 85.4 58.6 80.5 56 85.4 53.4Z"/>
+<circle class="o eye t" cx="76.5" cy="80.5" r="4.4"/>
+<g id="sparkles">
+<path class="s" d="M88 39.8 89.3 42.7 92.2 44 89.3 45.3 88 48.2 86.7 45.3 83.8 44 86.7 42.7Z"/>
+<path class="s" d="M100 52.6 101 55 103.4 56 101 57 100 59.4 99 57 96.6 56 99 55Z"/>
+<path class="s" d="M88 64.2 89.1 66.9 91.8 68 89.1 69.1 88 71.8 86.9 69.1 84.2 68 86.9 66.9Z"/>
+<path class="s" d="M76 53 76.9 55.1 79 56 76.9 56.9 76 59 75.1 56.9 73 56 75.1 55.1Z"/>
+</g>
+</g>
+</g>
+</svg>

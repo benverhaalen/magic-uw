@@ -23,10 +23,12 @@ import {
 import { maySend, resolveDeadline } from "@magic/domain";
 import type { JudgmentGateway } from "@magic/ai";
 import { contentCategories, courseIncluded, courseInclusion } from "./access";
-import { evidenceFor } from "./evidence";
+import { evidenceFor, linkExactEvidence } from "./evidence";
 import { readOnce } from "./graph/read-once";
 import { rebaseFixture } from "./fixture-dates";
 export { rebaseFixture } from "./fixture-dates";
+import { buildWorkSet } from "./work-set";
+export { buildWorkSet, launchWorkSet, materializeCopy, safeWebLink, selectWorkRetry, MAX_WORK_ITEMS, type WorkLaunchHost } from "./work-set";
 import { clearOutgoingProjections } from "./identity";
 // owner: privacy: the protection pass on the context manifest, its projection and citations.
 import { classOf, type ContentClass, clearProtectedProjections, protectedPayloadScrubber, protectedProjection, protectionCounts, validateProtectedCitations } from "./privacy/protect";
@@ -205,8 +207,17 @@ export function createCore(store: Store, options: CoreOptions) {
   function snapshot(search?: string): Snapshot {
     // owner: T15. The full snapshot stays for debugging; views use scoped queries (queries.ts).
     // Unsearched, the list is every resource: the views' evidence reuses it (one full read).
+    // The renderer never reads captured raw HTML or document parts; on a real term they were ~75%
+    // of every command's payload (78 MB of 110 MB), which stalled first paint. Bodies stay in the
+    // store for MCP, context and scoped queries (queries.ts), which remain the long-term path.
     const listed = store.resources(search);
-    const resources = resourceViews(store, listed, search?.trim() ? undefined : listed);
+    const resources = resourceViews(store, listed, search?.trim() ? undefined : listed).map((view) => {
+      const { rawHtml: _html, parts: _parts, ...rest } = view as typeof view & {
+        rawHtml?: unknown;
+        parts?: unknown;
+      };
+      return rest as typeof view;
+    });
     const sources = store.sources();
     // owner: course-facts. A course waiting on a queued or running `course.facts` job is pending.
     const factsQueued = new Set(
@@ -256,9 +267,10 @@ export function createCore(store: Store, options: CoreOptions) {
       // owner: T06: the renderer routes on these and main's consent gate mirrors them.
       consents: store.consents?.() ?? [],
       dayPlan: store.dayPlan(),
+      gitlabLinks: store.gitlabLinks(),
+      personalReports: store.personalReports(),
       // Unsearched snapshots already hold every live view; the feed reuses them.
       notifications: notifications.feed(search ? undefined : resources),
-      gitlabLinks: store.gitlabLinks(),
     };
   }
   function context(
@@ -394,6 +406,9 @@ export function createCore(store: Store, options: CoreOptions) {
   async function extractCourses() {
     if (!options.courseExtractor || closed) return;
     for (const profile of store.courseIntelligence()) {
+      // Let interactive IPC run between profiles; reuse access lookup within this synchronous batch.
+      await new Promise<void>(resolve => setImmediate(resolve));
+      if (closed) return;
       const key = `${profile.id}:${profile.inputHash}:${options.courseExtractor.version ?? "v1"}`;
       if (
         options.courseExtractor.version &&
@@ -411,15 +426,16 @@ export function createCore(store: Store, options: CoreOptions) {
         continue;
       const attemptedAt = now();
       semanticAttempts.set(key, { status: "running", attemptedAt });
+      const included = courseInclusion(store);
       const resources = profile.dependencies
         .map((d) => store.resource(d.resourceId))
         .filter(
           (r): r is Resource =>
             !!r &&
             !r.deleted &&
-            courseIncluded(store, r) &&
             !r.gitlab &&
-            (r.externalId === "syllabus" || r.kind === "assignment"),
+            (r.externalId === "syllabus" || r.kind === "assignment") &&
+            included(r),
         );
       if (!resources.length) {
         semanticAttempts.set(key, { status: "unavailable", attemptedAt });
@@ -498,7 +514,9 @@ export function createCore(store: Store, options: CoreOptions) {
       return;
     }
     wakePending = false;
-    // Course messages and mail have their own category gate (communications); see notifications.ts.
+    // owner: notifications. Message and mail triage are not queued jobs: they run on wake before
+    // course extraction, as they did at the head of the old drain, behind their own
+    // communications gate, receipts and generation checks (notifications.ts).
     working = (options.gateway ? notifications.triage() : Promise.resolve())
       .then(extractCourses)
       .finally(() => {
@@ -509,11 +527,11 @@ export function createCore(store: Store, options: CoreOptions) {
   function interrupt() {
     generation++;
     active?.abort();
-    notifications.abort();
     // owner: drain: cancel in-flight job sends and stop the running slice between jobs.
     cancel.abort();
     cancel = new AbortController();
     pipeline.interrupt();
+    notifications.abort();
     for (const read of planningReads) read.abort();
     for (const call of seamCalls) call.abort(); // owner: T05b
   }
@@ -635,6 +653,8 @@ export function createCore(store: Store, options: CoreOptions) {
       case "import": {
         store.ingest(command.batch);
         saved(command.batch.source.id); // owner: T05b
+        // Same exact-link pass as live ingestion, so imported captures keep their evidence links.
+        linkExactEvidence(store);
         wake();
         message = "Capture imported locally.";
         break;
@@ -753,6 +773,8 @@ export function createCore(store: Store, options: CoreOptions) {
         }
         break;
       }
+      case "work-set":
+        return { snapshot: snapshot(), workSet: buildWorkSet(store, command.id) };
       case "planning-compare":
         return {
           snapshot: snapshot(),
@@ -807,10 +829,14 @@ export function createCore(store: Store, options: CoreOptions) {
         );
         store.ingest({ ...moved, observedAt: now() });
         saved(options.fixture.source.id); // owner: T05b
+        linkExactEvidence(store);
         wake();
         message = "Loaded a synthetic sample course.";
         break;
       }
+      case "personal-report":
+        store.setPersonalReport(command.value);
+        break;
       case "complete":
         store.setCompleted(command.id, command.completed);
         break;
@@ -896,12 +922,6 @@ export function createCore(store: Store, options: CoreOptions) {
       case "day-plan-remove":
         store.removeDayPlanEntry(command.key, command.date);
         break;
-      case "notifications-read":
-        notifications.read(command.ids);
-        break;
-      case "notification-dismiss":
-        notifications.dismiss(command.id);
-        break;
       case "gitlab-link": {
         const projectPath = gitlabProjectFromUrl(command.url.trim());
         if (!projectPath)
@@ -920,6 +940,12 @@ export function createCore(store: Store, options: CoreOptions) {
       case "gitlab-unlink":
         store.removeGitlabLink(command.accountScope, command.courseId, command.projectPath);
         message = "GitLab project unlinked. Work already saved from it stays until the next refresh.";
+        break;
+      case "notifications-read":
+        notifications.read(command.ids);
+        break;
+      case "notification-dismiss":
+        notifications.dismiss(command.id);
         break;
       case "outlook-disconnect": {
         // Only the student's Outlook calendar; coursework and other feeds are never touched here.

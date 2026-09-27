@@ -1,85 +1,238 @@
+/* Theme: light is the default. Dark applies for data-theme="dark", or when no explicit
+   light choice is set and the OS prefers dark (the "system" preference). Every colour token
+   carries light-dark(<light>, <dark>); color-scheme selects the branch. Light literals are the
+   accepted v3 values, unchanged. See theming.md. */
+:root { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme: dark; } }
+
 /*
- * Magic Canvas visual seed v2 — September 26, 2026.
+ * Magic Canvas visual seed v3 — September 26, 2026.
  * Small semantic values extracted from the final cohesive Home mock.
  * Reference/provenance: visual-baseline.md. No app integration performed.
- * v2 adds candidate status/disabled roles and explicit contrast caveats.
+ * v3 calibrates shell stops against the original Home pixels; still a candidate.
  * This is not a fully approved universal theme. Candidate border/tag values
  * preserve the current reference while local refinements remain open.
- * No font files are provided: "Cooper Light" names the mock's private
- * Cooper Light BT face alias. Fallbacks are usable, not accepted matches.
+ * Editorial face: supplied Lora Medium at its true weight 500, bundled with
+ * its OFL in packages/ui/assets/fonts and declared in packages/ui/src/fonts.css
+ * (September 27; replaced the former private editorial face). Geist is not
+ * bundled. Fallbacks are usable, not accepted matches.
  * Map/import in a later implementation task; keep one-off geometry local.
  */
 :root {
-  --magic-font-editorial: "Cooper Light", Georgia, serif;
+  --magic-font-editorial: "Lora", Georgia, serif;
   --magic-font-interface: Geist, system-ui, sans-serif;
   --magic-tracking: normal;
-  --magic-type-identity: 19px;
-  --magic-type-page-title: 18px;
-  --magic-type-section: 21px;
-  --magic-type-work-title: 19px;
-  --magic-type-study-title: 18px;
-  --magic-type-prose: 16px;
+  --magic-type-identity: 1.1875rem;
+  --magic-type-page-title: 1.125rem;
+  --magic-type-section: 1.3125rem;
+  --magic-type-work-title: 1.1875rem;
+  --magic-type-study-title: 1.125rem;
+  --magic-type-prose: 1rem;
   --magic-leading-prose: 1.72;
 
-  --magic-surface-workspace: #faf8f4;
-  --magic-surface-raised: #fffdf9;
-  --magic-surface-quiet: #f8f4ee;
-  --magic-ink: #29231f;
-  --magic-ink-prose: #3a342f;
-  --magic-ink-muted: #746d66;
-  --magic-ink-link: #325c90;
-  /* Brightest raw shell stop with this ink is 3.43:1. Do not assume
+  --magic-surface-workspace: light-dark(#faf8f4, #1a1713);
+  --magic-surface-raised: light-dark(#fffdf9, #26221e);
+  --magic-surface-quiet: light-dark(#f8f4ee, #201d19);
+  --magic-ink: light-dark(#29231f, #eee9e1);
+  --magic-ink-prose: light-dark(#3a342f, #dbd5cd);
+  --magic-ink-muted: light-dark(#746d66, #afa8a0);
+  --magic-ink-link: light-dark(#325c90, #91bef7);
+  /* Updated stops require composed contrast checks. Do not assume
      small text passes on the highlight: measure composed locations and
      darken/confine highlight beneath text when needed; preserve Home anchor. */
   --magic-ink-on-shell: #fff4ed;
   --magic-ink-on-shell-secondary: #ffe9dd;
-  --magic-fill-shell: radial-gradient(ellipse 95% 78% at 8% 10%, #d3643d 0%, transparent 57%), linear-gradient(155deg, #ae412e 0%, #913128 45%, #6e2824 100%);
-  --magic-fill-shell-selected: #6f251d73;
-  --magic-fill-shell-hover: #6f251d66;
+  --magic-fill-shell:
+    radial-gradient(ellipse 95% 78% at 8% 10%, light-dark(#b1573d, #75321e) 0%, transparent 57%),
+    linear-gradient(155deg, light-dark(#a14e38, #6a2c1b) 0%, light-dark(#873a2f, #581f17) 45%, light-dark(#78332d, #4d1a17) 100%);
+  --magic-fill-shell-selected: light-dark(#6f251d73, #2c080580);
+  --magic-fill-shell-hover: light-dark(#6f251d66, #2c08055c);
 
-  --magic-fill-review: linear-gradient(110deg, #a2c0eb, #d8e6f8);
-  --magic-fill-review-hover: linear-gradient(110deg, #91b4e5, #c9dcf4);
-  --magic-ink-review: #233f65;
-  --magic-fill-confirmation: #eef3fa;
-  --magic-ink-confirmation: #516378;
+  /* General command roles; review remains an alias for existing consumers. */
+  --magic-fill-review: var(--magic-fill-action);
+  --magic-fill-review-hover: var(--magic-fill-action-hover);
+  --magic-ink-review: var(--magic-ink-action);
+  --magic-fill-backdrop: light-dark(#29231f40, #08050499);
 
   /* Paired identity fills/inks; not error/success or course-index semantics. */
-  --magic-fill-identity-rose: linear-gradient(100deg, #eaa3bd, #f7dfe9);
-  --magic-ink-identity-rose: #55253c;
-  --magic-fill-identity-blue: linear-gradient(100deg, #8db8ed, #d8e6f8);
-  --magic-ink-identity-blue: #223f69;
-  --magic-fill-identity-coral: linear-gradient(100deg, #f4a17f, #fae0d1);
-  --magic-ink-identity-coral: #572b1b;
-  --magic-fill-study: linear-gradient(115deg, #f1cc78, #f5e0aa);
-  --magic-fill-study-secondary: linear-gradient(115deg, #ecd18f, #f3e4bc);
-  --magic-ink-study: #574424;
-  --magic-fill-schedule-event: #f4e5b8;
-  --magic-ink-schedule-event: #604a18;
-  --magic-accent-current-time: #c15842;
+  --magic-fill-identity-rose: linear-gradient(100deg, light-dark(#eaa3bd, #7c3e57), light-dark(#f7dfe9, #4a2e3b));
+  --magic-ink-identity-rose: light-dark(#55253c, #fcdfea);
+  --magic-fill-identity-blue: linear-gradient(100deg, light-dark(#8db8ed, #325783), light-dark(#d8e6f8, #2a394d));
+  --magic-ink-identity-blue: light-dark(#223f69, #dce9fc);
+  --magic-fill-identity-coral: linear-gradient(100deg, light-dark(#f4a17f, #86472c), light-dark(#fae0d1, #503322));
+  --magic-ink-identity-coral: light-dark(#572b1b, #fde1d5);
+  --magic-fill-study: linear-gradient(115deg, light-dark(#f1cc78, #8a6017), light-dark(#f5e0aa, #5e461e));
+  --magic-fill-study-secondary: linear-gradient(115deg, light-dark(#ecd18f, #7b5921), light-dark(#f3e4bc, #584423));
+  --magic-ink-study: light-dark(#574424, #fdecd1);
+  --magic-fill-schedule-event: light-dark(#f4e5b8, #543e1a);
+  --magic-ink-schedule-event: light-dark(#604a18, #fce5bf);
+  --magic-accent-current-time: light-dark(#c15842, #e9745c);
 
   --magic-radius-workspace: 13px;
   --magic-radius-control: 8px;
   --magic-radius-card: 8px;
-  --magic-line-quiet: #dfd7ce;
-  /* Use a 2px offset onto the ivory surface for filled-control focus;
-     this blue against the darkest review fill alone is below 3:1. */
-  --magic-focus: #3c70ac;
+  --magic-line-quiet: light-dark(#dfd7ce, #39342f);
   --magic-focus-on-shell: #fff0df;
   --magic-icon-stroke-seed: 1.65;
 
   /* Candidate status pairs: distinct text/symbol required, not hue alone.
      Not demonstrated by the historical Home reference. */
-  --magic-fill-status-warning-candidate: #fff0cc;
-  --magic-ink-status-warning-candidate: #684714;
-  --magic-fill-status-error-candidate: #f9e7e5;
-  --magic-ink-status-error-candidate: #7b2927;
-  --magic-ink-disabled-candidate: #77716b;
+  --magic-fill-status-warning-candidate: light-dark(#fff0cc, #3f2d10);
+  --magic-ink-status-warning-candidate: light-dark(#684714, #fad596);
+  --magic-fill-status-error-candidate: light-dark(#f9e7e5, #462220);
+  --magic-ink-status-error-candidate: light-dark(#7b2927, #fbbbb5);
+  --magic-ink-disabled-candidate: light-dark(#77716b, #857f79);
+
+  /* New component roles: candidates demonstrated in the isolated lab, not
+     previously approved Home treatments. Keep paired values together. */
+  --magic-ink-muted-strong: light-dark(#655e57, #c1b9b1);
+  --magic-line-field: light-dark(#97897d, #8a7e73);
+  --magic-fill-disabled: light-dark(#eeeae4, #2c2a26);
+  --magic-fill-avatar: light-dark(#e8d3b2, #6b573b);
+  --magic-ink-avatar: light-dark(#63432e, #f7eddc);
+  --magic-fill-pressed-overlay: light-dark(#29231f12, #0000002e);
+  --magic-ink-disabled: var(--magic-ink-disabled-candidate);
+  --magic-ink-feedback: light-dark(#425440, #aed3a9);
+  --magic-ink-error: var(--magic-ink-status-error-candidate);
+  --magic-radius-field: 6px;
+  --magic-radius-overlay: var(--magic-radius-workspace);
+  --magic-type-control: 0.875rem;
+  --magic-type-compact-control: 0.8125rem;
+  --magic-type-label: 0.6875rem;
+  --magic-type-meta: 0.75rem;
+  --magic-glyph-control: 16px;
+  --magic-glyph-navigation: 16px;
+  --magic-glyph-trailing: 14px;
+  --magic-glyph-inline: 12px;
+  --magic-shadow-overlay: 0 20px 70px light-dark(#29231f28, #00000080);
+  --magic-shadow-popover: 0 8px 30px light-dark(#29231f20, #00000066);
 
   /* Pending local comparison; do not generalize to all components. */
-  --magic-line-action-candidate: #adc5e3;
-  --magic-line-tag-candidate: #ded3c6;
-  --magic-fill-tag-candidate: #ece3d9;
-  --magic-ink-tag-candidate: #51463c;
+  --magic-line-tag-candidate: light-dark(#ded3c6, #494138);
+  --magic-fill-tag-candidate: light-dark(#ece3d9, #362f28);
+  --magic-ink-tag-candidate: light-dark(#51463c, #ddd2c7);
   --magic-radius-tag-candidate: 5px;
-  --magic-fill-link-candidate: linear-gradient(transparent 48%, #e3ecf7 48%);
+  --magic-fill-link-candidate: linear-gradient(transparent 48%, light-dark(#e3ecf7, #24374c) 48%);
+}
+
+/* Accent: the student's chosen colour for commands, focus and selection only. It never changes
+   surfaces, identity, study, schedule or status roles. Default "blue" is the accepted Home blue;
+   an unknown or missing data-accent falls back to it. Any element may carry data-accent to preview
+   an accent locally (onboarding swatches). Values and contrast: theming.md. */
+:root, [data-accent="blue"] {
+  --magic-wizard-outfit: light-dark(#78adf5, #486a98); /* wizard hat and robe: this accent's strong hue */
+  --magic-fill-action: linear-gradient(110deg, light-dark(#a2c0eb, #3b5c8a), light-dark(#d8e6f8, #2d3e55));
+  --magic-fill-action-hover: linear-gradient(110deg, light-dark(#91b4e5, #436799), light-dark(#c9dcf4, #354962));
+  --magic-ink-action: light-dark(#233f65, #e4f0ff);
+  --magic-fill-confirmation: light-dark(#eef3fa, #202730);
+  --magic-line-confirmation: light-dark(#7894b44d, #6b839e66);
+  --magic-ink-confirmation: light-dark(#516378, #afc3db);
+  /* Use a 2px offset onto the ivory surface for filled-control focus;
+     this blue against the darkest review fill alone is below 3:1. */
+  --magic-focus: light-dark(#3c70ac, #6ca8ee);
+  --magic-fill-secondary: light-dark(#e4edf9, #253142);
+  --magic-fill-secondary-hover: light-dark(#d5e3f5, #2b3b52);
+  --magic-ink-secondary: var(--magic-ink-link);
+  /* Pending local comparison, like the tag candidates. */
+  --magic-line-action-candidate: light-dark(#adc5e3, #4b6585);
+  /* Text selection and highlight. */
+  --magic-fill-selection: var(--magic-fill-secondary-hover);
+}
+[data-accent="rose"] {
+  --magic-wizard-outfit: light-dark(#f08bb0, #925269); /* wizard hat and robe: this accent's strong hue */
+  --magic-fill-action: linear-gradient(110deg, light-dark(#e5aac3, #824360), light-dark(#f7dce7, #513240));
+  --magic-fill-action-hover: linear-gradient(110deg, light-dark(#de9ab8, #904c6c), light-dark(#f2cfdd, #5f3b4b));
+  --magic-ink-action: light-dark(#5e2a43, #fee7f0);
+  --magic-line-action-candidate: light-dark(#e0b4c6, #815367);
+  --magic-fill-secondary: light-dark(#f8e7ed, #402832);
+  --magic-fill-secondary-hover: light-dark(#f4d9e4, #4f303d);
+  --magic-ink-secondary: light-dark(#873f61, #ef9fc2);
+  --magic-fill-confirmation: light-dark(#f9eff3, #2f2228);
+  --magic-line-confirmation: light-dark(#b082954d, #9b738466);
+  --magic-ink-confirmation: light-dark(#765764, #d9b6c4);
+  --magic-focus: light-dark(#a14d75, #e380ad);
+}
+[data-accent="coral"] {
+  --magic-wizard-outfit: light-dark(#f7866a, #9a5240); /* wizard hat and robe: this accent's strong hue */
+  --magic-fill-action: linear-gradient(110deg, light-dark(#e7af9a, #844831), light-dark(#f7dfd5, #523529));
+  --magic-fill-action-hover: linear-gradient(110deg, light-dark(#e1a087, #935239), light-dark(#f3d2c5, #603e31));
+  --magic-ink-action: light-dark(#602f1b, #ffe9e1);
+  --magic-line-action-candidate: light-dark(#e1b8a8, #825747);
+  --magic-fill-secondary: light-dark(#f9e8e2, #402a22);
+  --magic-fill-secondary-hover: light-dark(#f4dcd2, #503227);
+  --magic-ink-secondary: light-dark(#894529, #f2a588);
+  --magic-fill-confirmation: light-dark(#faf0ec, #30231e);
+  --magic-line-confirmation: light-dark(#b286754d, #9c766866);
+  --magic-ink-confirmation: light-dark(#765a4f, #dab9ac);
+  --magic-focus: light-dark(#a55434, #e68863);
+}
+[data-accent="plum"] {
+  --magic-wizard-outfit: light-dark(#c197f2, #755a95); /* wizard hat and robe: this accent's strong hue */
+  --magic-fill-action: linear-gradient(110deg, light-dark(#d3afde, #70497d), light-dark(#eedef3, #48354e));
+  --magic-fill-action-hover: linear-gradient(110deg, light-dark(#caa0d7, #7e538b), light-dark(#e6d2ed, #543e5b));
+  --magic-ink-action: light-dark(#502f5a, #f7e9fb);
+  --magic-line-action-candidate: light-dark(#d2b8da, #73577c);
+  --magic-fill-secondary: light-dark(#f2e8f5, #392a3d);
+  --magic-fill-secondary-hover: light-dark(#ebdbf0, #45324b);
+  --magic-ink-secondary: light-dark(#734681, #d7a5e6);
+  --magic-fill-confirmation: light-dark(#f6f0f8, #2b232e);
+  --magic-line-confirmation: light-dark(#a286ab4d, #8e769666);
+  --magic-ink-confirmation: light-dark(#6c5a72, #cdb8d4);
+  --magic-focus: light-dark(#8b559b, #c789da);
+}
+
+/* Component tints (proposal, September 27 theming): fills that recent components set locally with
+   no shared role yet. Light values are the components' exact current literals; dark derived. */
+:root {
+  /* Course/assignment-type hues read by deadline-emphasis.css (its reserved --magic-hue-* seam). */
+  --magic-hue-rose-strong: light-dark(#f08bb0, #925269); --magic-hue-rose-pale: light-dark(#fcdce8, #3c262e); --magic-hue-rose-ink: light-dark(#5a1a38, #ffe7ef);
+  --magic-hue-coral-strong: light-dark(#f7866a, #9a5240); --magic-hue-coral-pale: light-dark(#fedcd1, #3d2722); --magic-hue-coral-ink: light-dark(#5e2112, #ffe9e3);
+  --magic-hue-orange-strong: light-dark(#f9a444, #915b1c); --magic-hue-orange-pale: light-dark(#ffe7c6, #3a2a1b); --magic-hue-orange-ink: light-dark(#5b3306, #fdebda);
+  --magic-hue-yellow-strong: light-dark(#f6d24a, #7d6700); --magic-hue-yellow-pale: light-dark(#fdf2c2, #342e19); --magic-hue-yellow-ink: light-dark(#4d3c04, #f5efd8);
+  --magic-hue-lime-strong: light-dark(#b4dc55, #5c7322); --magic-hue-lime-pale: light-dark(#eef8cf, #2a311d); --magic-hue-lime-ink: light-dark(#324610, #eaf2dd);
+  --magic-hue-green-strong: light-dark(#6ed49a, #377854); --magic-hue-green-pale: light-dark(#d5f4e1, #1f3327); --magic-hue-green-ink: light-dark(#11472a, #dff5e6);
+  --magic-hue-teal-strong: light-dark(#55cbc3, #2a7772); --magic-hue-teal-pale: light-dark(#d2f3f0, #173431); --magic-hue-teal-ink: light-dark(#0c4643, #d9f5f2);
+  --magic-hue-blue-strong: light-dark(#78adf5, #486a98); --magic-hue-blue-pale: light-dark(#dbe8fd, #222f3f); --magic-hue-blue-ink: light-dark(#1a3a6c, #e4f0ff);
+  --magic-hue-indigo-strong: light-dark(#959ff7, #5d639c); --magic-hue-indigo-pale: light-dark(#e3e6fe, #292c3f); --magic-hue-indigo-ink: light-dark(#262c78, #eaedff);
+  --magic-hue-purple-strong: light-dark(#c197f2, #755a95); --magic-hue-purple-pale: light-dark(#f0e4fd, #32293c); --magic-hue-purple-ink: light-dark(#44206f, #f3eaff);
+  --magic-hue-magenta-strong: light-dark(#ea86da, #8e4f84); --magic-hue-magenta-pale: light-dark(#fbdff6, #392735); --magic-hue-magenta-ink: light-dark(#5a1852, #fce7f7);
+  --magic-hue-neutral-strong: light-dark(#e4d9cc, #615950); --magic-hue-neutral-pale: light-dark(#f5f0e9, #2e2b26); --magic-hue-neutral-ink: light-dark(#3a322b, #f0eae3);
+  /* Calendar event fills (paired inks: schedule-event, identity-coral, action). */
+  --magic-fill-calendar-event: linear-gradient(120deg, light-dark(#f3d391, #7a5617), light-dark(#efdcae, #5c4622));
+  --magic-fill-calendar-deadline: linear-gradient(120deg, light-dark(#f0b4a3, #7b4434), light-dark(#f4c8b6, #633d2c));
+  --magic-fill-calendar-study: linear-gradient(120deg, light-dark(#b3d3ef, #31597a), light-dark(#d0e1f2, #304b61));
+  /* Flat row tints and row actions (Sources); ink comes from the paired identity/study ink. */
+  --magic-fill-tint-coral: light-dark(#fbe8dd, #3a261b); --magic-fill-tint-coral-action: light-dark(#f4b194, #7f4d30);
+  --magic-fill-tint-blue: light-dark(#e5eefa, #212c3a); --magic-fill-tint-blue-action: light-dark(#a9c7ee, #3f5c82);
+  --magic-fill-tint-rose: light-dark(#f8e5ed, #39242e); --magic-fill-tint-rose-action: light-dark(#eeb3c9, #7c4761);
+  --magic-fill-tint-amber: light-dark(#f8ecce, #352917); --magic-fill-tint-amber-action: light-dark(#f0cd7c, #805b1e);
+  /* Today marker: white on --magic-accent-current-time measured 4.42:1 (below AA for its 20px
+     regular date), so text sits on this one-step-darker fill; the current-time line keeps its value. */
+  --magic-fill-today-marker: light-dark(#b64e39, #e9745c);
+  --magic-ink-today-marker: light-dark(#ffffff, #1a1713);
+  /* Base colour for small component shadows (mixed with transparency at the call site). */
+  --magic-shadow-color: light-dark(#29231f, #000000);
+}
+
+/* Wizard illustration (accepted September 27, floating chat; see decision-record.md): the character's own palette, traced
+   from marketing/uploads/Wizard_logo.jpg and read by floating-chat/wizard.svg. Light values are the
+   nearest existing token value to each measured logo colour (line: ink #29231f vs #221715; hat:
+   accent-current-time vs #bf4842; beard: fill-avatar vs #e2d4bb; eye: surface-quiet vs #f4f0e9;
+   wand: ink-avatar; spark: the study fill's first stop), or the measured colour where no token is
+   near (robe #6f8141, nose #ce8c66). Own values, not aliases, so a role change never repaints the
+   character. Dark values keep the figure distinct on the darker launcher disc. No wizard colour
+   carries text; tests/floating-chat.test.ts checks the part contrasts (3:1 non-text) per theme. */
+:root {
+  --magic-wizard-line: light-dark(#29231f, #15110e);
+  /* The outfit (hat and robe) follows the student's accent, like the website wizard's single
+     --wizard-robe variable: each accent block below sets --magic-wizard-outfit to its hue's strong
+     tint, which keeps 3:1 against the outline in both themes. */
+  --magic-wizard-hat: var(--magic-wizard-outfit);
+  --magic-wizard-robe: var(--magic-wizard-outfit);
+  --magic-wizard-beard: light-dark(#e8d3b2, #dcc6a3);
+  --magic-wizard-eye: light-dark(#f8f4ee, #ece6dc);
+  --magic-wizard-nose: light-dark(#ce8c66, #d99a75);
+  --magic-wizard-wand: light-dark(#63432e, #8b6647);
+  --magic-wizard-spark: light-dark(#f1cc78, #f6d88f);
 }

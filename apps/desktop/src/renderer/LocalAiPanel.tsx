@@ -181,7 +181,7 @@ export function LocalAiPanel({
                   font: "inherit",
                   padding: 10,
                   marginBottom: 10,
-                  border: "1px solid #dededb",
+                  border: "1px solid var(--magic-line-field)",
                   borderRadius: 6,
                 }}
               />

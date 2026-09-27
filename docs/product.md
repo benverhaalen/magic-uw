@@ -75,7 +75,7 @@ Scheduling ideas include prep anchored to real classes, review after lectures, p
 
 ## Visual direction
 
-Current direction: warm ivory content, an ember/red gradient sidebar with a thin wrapping frame, compact native Mac/Codex-like controls, and deliberately colored action cards. Exact supplied Cooper Light BT is used selectively in private mocks, with readable Geist prose and controls at normal tracking. Vibrant card mechanisms are under comparison. This supersedes the earlier little-color/no-serif preference. The [canonical visual direction](home-design-direction.md) records the constraints and open choices.
+Current direction: warm ivory content, an ember/red gradient sidebar with a thin wrapping frame, compact native Mac/Codex-like controls, and deliberately colored action cards. Supplied Lora Medium (500; replaced Cooper Light BT on September 27) is used selectively for identity and editorial titles, with readable Geist prose and controls at normal tracking. Vibrant card mechanisms are under comparison. This supersedes the earlier little-color/no-serif preference. The [canonical visual direction](home-design-direction.md) records the constraints and open choices.
 
 For concept images, use inspected reference folders as inputs, repair bad downloads, prompt minimally around the task and essential constraints, and iterate with Ben's feedback. For implementation, inspect hierarchy, navigation, density, feedback, failure recovery, accessibility, and responsiveness in the rendered journey. Raise clutter and complexity instead of accumulating every reference pattern. The [reference guide](reference-driven-design.md) records the exact method and what each reference contributes.
 

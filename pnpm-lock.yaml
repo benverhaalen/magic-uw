@@ -211,6 +211,12 @@ importers:
         specifier: workspace:*
         version: link:../contracts
 
+  packages/ui:
+    dependencies:
+      react:
+        specifier: ^19.0.0
+        version: 19.3.0
+
 packages:
 
   '@azure/msal-common@16.14.1':

@@ -24,7 +24,7 @@
 .onb-wordmark {
   font-family: var(--magic-font-editorial);
   font-size: var(--magic-type-identity);
-  font-weight: 400;
+  font-weight: 500;
   color: var(--magic-accent-frame-ink);
 }
 .onb-bar-end {
@@ -93,7 +93,7 @@
 }
 .onb-title {
   font-family: var(--magic-font-editorial);
-  font-weight: 400;
+  font-weight: 500;
   font-size: 26px;
   line-height: 1.2;
   letter-spacing: var(--magic-tracking);
@@ -453,7 +453,7 @@
 }
 .onb-counts strong {
   font-family: var(--magic-font-editorial);
-  font-weight: 400;
+  font-weight: 500;
   font-size: var(--magic-type-section);
   color: var(--magic-ink);
 }
@@ -572,4 +572,82 @@
   font-size: 14px;
   color: var(--magic-ink-muted);
   padding: 6px 0 10px;
+}
+/* Agreement step: uses the window's width instead of one long column (operator, September 27).
+   Left: what reading UW means and the one decision; right: who receives what, as cards.
+   The disclosure texts are T06's exact wording; only their arrangement changes here. */
+.onb-column.onb-column-wide {
+  width: min(1080px, 100%);
+}
+.onb-column-wide .onb-lede,
+.onb-column-wide .onb-affiliation {
+  max-width: 70ch;
+}
+.onb-consent .consent-embedded {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  grid-template-areas:
+    "head   head"
+    "uw     who"
+    "agree  who"
+    "sample who";
+  grid-template-rows: auto auto auto 1fr;
+  column-gap: 36px;
+  align-items: start;
+}
+.onb-consent .consent-embedded > .page-heading { grid-area: head; }
+.onb-consent .consent-embedded > .consent-uw { grid-area: uw; }
+.onb-consent .consent-embedded > .consent-who { grid-area: who; border-top: 0; padding-top: 0; }
+.onb-consent .consent-embedded > .consent-agree { grid-area: agree; }
+.onb-consent .consent-embedded > .consent-sample { grid-area: sample; }
+.onb-consent .consent-uw .consent-disclosure {
+  max-width: none;
+}
+.onb-consent .consent-who h2 {
+  margin: 0 0 12px;
+}
+.onb-consent .consent-recipients {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  max-width: none;
+}
+.onb-consent .consent-recipient {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: var(--magic-radius-card);
+  background: var(--magic-surface-raised);
+  box-shadow: inset 0 0 0 1px var(--magic-line-quiet);
+}
+.onb-consent .consent-recipient dt {
+  font-size: 13px;
+  color: var(--magic-ink);
+}
+.onb-consent .consent-recipient dd {
+  font-size: 13px;
+  line-height: 1.5;
+}
+.onb-consent .consent-who > p.small {
+  margin: 12px 0 0;
+}
+.onb-consent .consent-agree {
+  position: sticky;
+  bottom: 0;
+  background: var(--magic-surface-workspace);
+}
+@media (max-width: 900px) {
+  .onb-consent .consent-embedded {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "head" "uw" "who" "agree" "sample";
+  }
+  .onb-consent .consent-embedded > .consent-who {
+    border-top: 1px solid var(--magic-line-quiet);
+    padding-top: 20px;
+  }
+}
+@media (max-width: 560px) {
+  .onb-consent .consent-recipients {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

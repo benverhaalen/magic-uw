@@ -236,7 +236,7 @@ export function Onboarding(props: OnboardingProps) {
         </span>
       </header>
       <main className="onb-surface">
-        <div className="onb-column">
+        <div className={`onb-column${step === "consent" && !hasCurrentConsent(snapshot.consents, "uw") ? " onb-column-wide" : ""}`}>
           <ol className="onb-steps" aria-label="Setup progress">
             {steps.map((entry, position) => (
               <li
@@ -412,10 +412,16 @@ function UwStep({
         session on this computer.
       </p>
       <div className={`onb-connection${confirmed ? " ok" : ""}`} role="status" aria-live="polite">
-        {signing ? (
+        {signing && !confirmed ? (
           <>
             <Spinner />
             <span>Finish signing in on UW's page.</span>
+          </>
+        ) : signing ? (
+          // Signed in; the first read is still running. Continue is already available.
+          <>
+            <Icon name="check" className="onb-ok" />
+            <span>Signed in to UW. Reading your course list…</span>
           </>
         ) : outcome ? (
           <>
@@ -1124,7 +1130,7 @@ function AppearanceStep({ heading, onBack, onNext }: { heading: Heading; onBack:
         </div>
       </fieldset>
       <p className="onb-note">
-        Your choice is saved now. The accent colours the window frame; dark mode arrives with the My Magic UW design system.
+        Your choice is saved and applies now. The accent colours the window frame and your buttons.
       </p>
       <Actions onBack={onBack}>
         <button className="onb-primary" onClick={onNext}>

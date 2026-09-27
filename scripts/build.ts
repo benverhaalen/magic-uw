@@ -1,11 +1,14 @@
 import { build } from "esbuild";
 import { build as viteBuild } from "vite";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 // owner: T05e. The Remember my sign-in build switch (plan D39): a UW-licensed build runs
 // `MAGIC_REMEMBER_SIGNIN=off pnpm build`. The value is baked into the bundle, so an environment
 // variable at run time can't turn the feature back on.
 const rememberSignIn = process.env.MAGIC_REMEMBER_SIGNIN === "off" ? "off" : "on";
+import { copyFile, readFile, readdir } from "node:fs/promises";
+const fonts = "packages/ui/assets/fonts";
+const lora = await readFile(join(fonts, "Lora-Medium.ttf"));
 await build({
   entryPoints: [
     "apps/desktop/src/main.ts",
@@ -44,6 +47,20 @@ await viteBuild({
   build: { outDir: "dist/renderer", emptyOutDir: true },
   logLevel: "warn",
 });
+// Vite emits the CSS-referenced Lora file; ship its OFL beside it.
+const rendererAssets = "apps/desktop/dist/renderer/assets";
+const emitted = (await readdir(rendererAssets)).filter((name) =>
+  /^Lora-Medium.*\.ttf$/.test(name),
+);
+if (emitted.length !== 1)
+  throw new Error(`Expected one emitted Lora font, found ${emitted.length}.`);
+if (!lora.equals(await readFile(join(rendererAssets, emitted[0]))))
+  throw new Error("Emitted desktop Lora font differs from the supplied file.");
+await copyFile(join(fonts, "Lora-OFL.txt"), join(rendererAssets, "Lora-OFL.txt"));
+const geistFiles = (await readdir(rendererAssets)).filter(name => /^Geist-Variable.*\.woff2$/.test(name));
+if (geistFiles.length !== 1 || !(await readFile(join(fonts, "Geist-Variable.woff2"))).equals(await readFile(join(rendererAssets, geistFiles[0]))))
+  throw new Error("Emitted desktop Geist font differs from the supplied file.");
+await copyFile(join(fonts, "Geist-OFL.txt"), join(rendererAssets, "Geist-OFL.txt"));
 execFileSync(process.execPath, ["scripts/build-web.mjs"], { stdio: "inherit" });
 console.log(
   "Built desktop main, isolated preload, local worker, renderer, and informational website.",

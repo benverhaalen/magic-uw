@@ -442,6 +442,7 @@ export function itemResource(
   raw: z.infer<typeof itemSchema>,
   course: CanvasCourse,
   origin: string,
+  moduleId?: string,
 ): ResourceInput {
   const content = raw.content_details,
     externalUrl = safeCanvasEvidenceUrl(raw.external_url, origin);
@@ -469,6 +470,7 @@ export function itemResource(
       position: raw.position,
       externalUrl,
       pageUrl: raw.page_url,
+      moduleId: raw.module_id ?? moduleId,
       contentId: raw.content_id,
       dueAt: content?.due_at,
       points: content?.points_possible,

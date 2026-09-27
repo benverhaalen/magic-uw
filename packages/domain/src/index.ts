@@ -9,6 +9,7 @@ import type {
 } from "@magic/contracts";
 export * from "./today-rail";
 export * from "./work";
+export * from "./course-label";
 export * from "./changes";
 export * from "./notifications";
 import { zonedDate } from "./deadline-extraction";

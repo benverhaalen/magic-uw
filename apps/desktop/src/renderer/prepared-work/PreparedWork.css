@@ -1,0 +1,52 @@
+/* Prepared work leaf. Canonical tokens only; page geometry stays local.
+   One region, alternate states: study amber while ready/verifying, confirmation blue after a real handoff. */
+.magic-prepared { padding:1.1rem 1.25rem 1rem; border-radius:var(--magic-radius-card); background:var(--magic-fill-study); color:var(--magic-ink-study); }
+.magic-prepared.is-return { background:var(--magic-fill-confirmation); box-shadow:inset 0 0 0 1px var(--magic-line-confirmation); color:var(--magic-ink); }
+.magic-prepared .magic-start-work__note, .magic-prepared small { color:inherit; opacity:.86; }
+.magic-prepared__head { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:.75rem; align-items:start; margin-bottom:.85rem; }
+.magic-prepared__badge { display:grid; place-items:center; width:32px; height:32px; border-radius:50%; border:1.5px solid currentColor; }
+.magic-prepared .magic-prepared__head h3 { margin:0 0 .15rem; font-size:var(--magic-type-section); line-height:1.3; }
+.magic-prepared__head [role=status] p { margin:0; }
+.magic-prepared__lede { font-size:.95rem; line-height:1.5; }
+.magic-prepared__icon { flex:none; width:16px; height:16px; }
+.magic-prepared__list { list-style:none; margin:0 0 .75rem; padding:0 .9rem; display:grid; border-radius:var(--magic-radius-card); background:var(--magic-surface-raised); color:var(--magic-ink); }
+.magic-prepared__row { display:grid; grid-template-columns:28px minmax(0,1fr) auto; gap:.75rem; align-items:start; padding:.7rem 0; }
+.magic-prepared__row + .magic-prepared__row { border-top:1px solid var(--magic-line-quiet); }
+.magic-prepared__list small { color:var(--magic-ink-muted); opacity:1; }
+.magic-prepared__kind { display:grid; place-items:center; width:28px; height:28px; border-radius:var(--magic-radius-control); background:var(--magic-fill-secondary); color:var(--magic-ink-action); }
+.magic-prepared__what { display:grid; gap:.15rem; min-width:0; }
+.magic-prepared__title { font-size:.975rem; line-height:1.4; color:var(--magic-ink); overflow-wrap:anywhere; }
+.magic-prepared__state { display:flex; flex-direction:column; align-items:flex-end; gap:.25rem; max-width:16rem; text-align:right; }
+.magic-prepared__status { display:inline-flex; align-items:center; gap:.35rem; font-size:.8125rem; line-height:1.4; color:var(--magic-ink-muted); }
+.magic-prepared__status.is-sent { color:var(--magic-ink-feedback); }
+.magic-prepared__status.is-attention { color:var(--magic-ink-status-warning-candidate); background:var(--magic-fill-status-warning-candidate); border-radius:var(--magic-radius-field); padding:.2rem .5rem; text-align:left; }
+.magic-prepared__state .magic-ui-action { min-height:30px; padding:2px 6px; display:inline-flex; align-items:center; gap:.3rem; }
+.magic-prepared__actions { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; margin:.25rem 0 .5rem; }
+.magic-prepared__actions .magic-ui-action, .magic-prepared__recover .magic-ui-action { display:inline-flex; align-items:center; gap:.4rem; }
+.magic-prepared__outcome { display:flex; flex-wrap:wrap; align-items:flex-start; justify-content:space-between; gap:.25rem .75rem; margin-top:.75rem; padding:.75rem .9rem; border-radius:var(--magic-radius-card); background:var(--magic-surface-quiet); font-size:.9rem; line-height:1.5; }
+.magic-prepared__outcome > [role=status] { flex:1 1 18rem; min-width:0; }
+.magic-prepared__outcome p { margin:0; }
+.magic-prepared__outcome p + p { margin-top:.35rem; }
+.magic-prepared__outcome.is-returned { background:var(--magic-fill-confirmation); box-shadow:inset 0 0 0 1px var(--magic-line-confirmation); }
+.magic-prepared__return strong { font-weight:550; }
+.magic-prepared__summary { color:var(--magic-ink); }
+.magic-prepared__problem-text { color:var(--magic-ink-status-warning-candidate); font-weight:550; }
+.magic-prepared__recover { display:flex; flex-wrap:wrap; align-items:center; gap:.35rem; }
+.magic-prepared__dismiss { display:grid; place-items:center; width:30px; height:30px; border:0; border-radius:var(--magic-radius-control); background:transparent; color:var(--magic-ink-muted); cursor:pointer; }
+.magic-prepared__dismiss:hover { background:var(--magic-fill-pressed-overlay); }
+.magic-prepared__dismiss:focus-visible { outline:2px solid var(--magic-focus); outline-offset:2px; }
+.magic-prepared__problem { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; margin-top:.5rem; font-size:.9rem; color:var(--magic-ink-status-warning-candidate); }
+.magic-prepared__problem p { margin:0; }
+.magic-start-work--compact .magic-prepared__outcome { margin:6px 0 2px; padding:.5rem .75rem; font-size:13px; }
+.magic-start-work--compact .magic-prepared__recover .magic-ui-action { min-height:30px; padding:2px 6px; }
+@media (max-width: 720px) {
+  .magic-prepared__row { grid-template-columns:28px minmax(0,1fr); }
+  .magic-prepared__state { grid-column:2; align-items:flex-start; text-align:left; max-width:none; }
+}
+/* Destination summary: small optical icons, one per actual category. */
+.magic-prepared__cluster { display:inline-flex; flex-wrap:wrap; gap:.25rem .75rem; font-size:12px; }
+.magic-prepared__dest { display:inline-flex; align-items:center; gap:.3rem; }
+.magic-prepared__dest .magic-prepared__icon { width:14px; height:14px; }
+/* The row stays focusable while destinations prepare so Back and return can restore focus to it. */
+.magic-start-work--compact .home-work-row[aria-disabled=true] { cursor:default; }
+.magic-start-work--compact .home-work-row[aria-busy=true] { cursor:progress; }

@@ -4,8 +4,9 @@
  * module only stores the choice and sets attributes on the root element, so token rules like
  * `:root[data-theme="dark"]` and `:root[data-accent="rose"]` can apply it. No colour lives here.
  *
- * As of this change tokens.css defines no dark values and no accent set, so choosing Dark or an
- * accent is saved and set on the root but changes nothing visible until those tokens exist.
+ * tokens.css gives every colour a light-dark() pair and recolours command, focus and selection
+ * roles per [data-accent]; styles.css maps the accent to the window frame. "warm" keeps the
+ * default (blue) command colours with today's shell frame.
  */
 
 export type ThemePreference = "system" | "light" | "dark";
