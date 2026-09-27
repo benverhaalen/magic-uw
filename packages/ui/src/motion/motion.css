@@ -1,0 +1,72 @@
+/* Motion roles and small interruptible recipes. Values mirror tokens.ts (checked by tests).
+ * Every rule names its properties; transitions retarget from the current value on reversal.
+ * Reduced motion keeps opacity and drops travel, width and rotation.
+ */
+:root {
+  --magic-motion-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --magic-motion-ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --magic-motion-overlay-enter: 150ms;
+  --magic-motion-overlay-exit: 100ms;
+  --magic-motion-disclosure: 200ms;
+  --magic-motion-drawer: 220ms;
+}
+
+/* Anchored overlay: native [popover] with data-magic-motion="anchored"; markAnchor() sets the side.
+ * Closed styles are the exit target; @starting-style is the entrance origin. While exiting the
+ * panel is still painted but no longer interactive. */
+[popover][data-magic-motion~=anchored] {
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  interactivity: inert;
+  transition-property: opacity, transform, overlay, display;
+  transition-duration: var(--magic-motion-overlay-exit);
+  transition-timing-function: var(--magic-motion-ease-out);
+  transition-behavior: allow-discrete;
+}
+[popover][data-magic-motion~=anchored][data-magic-anchor=above] { transform: translateY(4px); }
+[popover][data-magic-motion~=anchored]:popover-open {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  interactivity: auto;
+  transition-duration: var(--magic-motion-overlay-enter);
+}
+@starting-style {
+  [popover][data-magic-motion~=anchored]:popover-open { opacity: 0; transform: translateY(-4px); }
+  [popover][data-magic-motion~=anchored][data-magic-anchor=above]:popover-open { transform: translateY(4px); }
+}
+
+/* Disclosure rows: the container stays mounted; the host sets data-open and `inert` when closed.
+ * Grid rows stand in for height: auto (the accordion exception to transform-only motion). */
+.magic-motion-rows {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition-property: grid-template-rows, opacity, visibility;
+  transition-duration: var(--magic-motion-disclosure);
+  transition-timing-function: var(--magic-motion-ease-out);
+  transition-behavior: allow-discrete;
+}
+.magic-motion-rows > * { min-height: 0; overflow: clip; overflow-clip-margin: 4px; }
+.magic-motion-rows[data-open=false] { grid-template-rows: 0fr; opacity: 0; visibility: hidden; }
+
+/* A glyph that turns with its disclosure state (host supplies the rotated state). */
+.magic-motion-turn { transition: transform var(--magic-motion-disclosure) var(--magic-motion-ease-out); }
+
+/* Content that fades as its container narrows or widens (sidebar labels). */
+.magic-motion-fade { transition: opacity var(--magic-motion-drawer) var(--magic-motion-ease-out); }
+.magic-motion-fade[data-faded] { opacity: 0; }
+
+/* A rightward page entrance briefly extends past the pane; do not flash a horizontal scrollbar. */
+[data-magic-page-motion] { overflow-x: hidden; }
+
+@media (prefers-reduced-motion: reduce) {
+  [popover][data-magic-motion~=anchored],
+  [popover][data-magic-motion~=anchored][data-magic-anchor=above] { transform: none; }
+  @starting-style {
+    [popover][data-magic-motion~=anchored]:popover-open,
+    [popover][data-magic-motion~=anchored][data-magic-anchor=above]:popover-open { transform: none; }
+  }
+  .magic-motion-rows { transition-property: opacity, visibility; }
+  .magic-motion-turn { transition: none; }
+}
