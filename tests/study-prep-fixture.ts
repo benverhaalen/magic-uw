@@ -77,7 +77,9 @@ const assignment = (externalId: string, title: string, text: string, dueAt: stri
     ...extra,
   });
 
-export const materialsBatch = (over: Partial<Record<keyof typeof TEXTS, string>> = {}, observedAt = NOW.toISOString()): CaptureBatch => ({
+/** `policy` replaces the fixture's captured course rule (e.g. none at all, for the UW default). */
+type Policy = { policy?: ResourceInput["policy"] };
+export const materialsBatch = (over: Partial<Record<keyof typeof TEXTS, string>> = {}, observedAt = NOW.toISOString(), { policy }: Policy = {}): CaptureBatch => ({
   source: { id: "sig-materials", kind: "canvas", accountScope: "acct", courseId: COURSE.courseId, scope: "materials", label: "Synthetic" },
   observedAt,
   complete: true,
@@ -89,9 +91,9 @@ export const materialsBatch = (over: Partial<Record<keyof typeof TEXTS, string>>
     material("sampling", "Lecture 9: Sampling", over.sampling ?? TEXTS.sampling),
     material("practice", "Midterm 2 Practice Exam", over.practice ?? TEXTS.practice),
     material("solutions", "Midterm 2 Practice Exam Solutions", over.solutions ?? TEXTS.solutions),
-  ],
+  ].map((r) => (policy ? { ...r, policy } : r)),
 });
-const assignmentsBatch = (): CaptureBatch => ({
+const assignmentsBatch = ({ policy }: Policy = {}): CaptureBatch => ({
   source: { id: "sig-assignments", kind: "canvas", accountScope: "acct", courseId: COURSE.courseId, scope: "assignments", label: "Synthetic" },
   observedAt: NOW.toISOString(),
   complete: true,
@@ -101,7 +103,7 @@ const assignmentsBatch = (): CaptureBatch => ({
     assignment("hw6", "Homework 6", TEXTS.hw6, "2026-10-10T05:00:00.000Z"),
     assignment("midterm1", "Midterm 1", TEXTS.midterm1, "2026-09-24T19:00:00.000Z"),
     assignment("midterm2", "Midterm 2", TEXTS.midterm2, "2026-10-15T19:00:00.000Z"),
-  ],
+  ].map((r) => (policy ? { ...r, policy } : r)),
 });
 
 export const LABELS = {
@@ -124,9 +126,9 @@ export interface SignalsFixture {
 }
 
 /** The synthetic course in a SQL workspace store: resources, the course map, the midterms and facts. */
-export function signalsFixture(store: SignalsStore = createStore(":memory:")): SignalsFixture {
-  store.ingest(materialsBatch());
-  store.ingest(assignmentsBatch());
+export function signalsFixture(store: SignalsStore = createStore(":memory:"), options: Policy = {}): SignalsFixture {
+  store.ingest(materialsBatch({}, NOW.toISOString(), options));
+  store.ingest(assignmentsBatch(options));
   const ids: Record<string, string> = {};
   for (const r of store.resources()) ids[r.externalId] = r.id;
   const byExt = (e: string) => store.resources().find((r) => r.externalId === e)!;

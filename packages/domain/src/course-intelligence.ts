@@ -792,4 +792,4 @@ export function intelligenceView(
   };
 }
 // Pure policy projection is shared by backend enforcement and renderer evidence displays.
-export { effectiveCoursePolicy } from "./course-policy";
+export { effectiveCoursePolicy, courseFramePolicy } from "./course-policy";

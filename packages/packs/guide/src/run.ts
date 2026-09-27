@@ -117,7 +117,7 @@ export async function generateGuide(
   const snapshot = () =>
     payloadHash({
       scope: store.resources().filter((r) => r.courseId === sel.courseId).map((r) => [r.id, r.contentHash, r.deleted, r.policy.mode]),
-      sources: store.sources(),
+      sources: store.sources().map((x) => [x.id, x.kind, x.accountScope, x.courseId, x.scope]) /* which sources, not their read status: a running sync must not block generation */,
       roster: rosterFor(store, sel.courseId, sel.accountScope).version,
       privacy: store.privacy(),
       consents: store.consents?.(),

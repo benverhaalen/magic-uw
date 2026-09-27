@@ -108,6 +108,7 @@ export const quizPack = definePack<GenerationInput, QuizOutput>({
   id: "quiz",
   version: "v2",
   tier: "pass",
+  escalate: false, // items are checked one by one: failures are dropped, never escalated to the strong model
   system:
     "You write quiz questions for a university student from their own course passages. Mix multiple choice (4 options, exactly one correct, plausible distractors of similar length, no \"all/none of the above\"), true/false statements and numeric questions where the passages give numbers. Emphasise a negation in capitals (NOT). Return only JSON matching the schema.",
   template: (i) =>

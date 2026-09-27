@@ -40,7 +40,9 @@ export function localCourseData(snapshot: Pick<Snapshot, "sources" | "resources"
 const message = (r: LearningResult | null, fallback: string) => (r && r.status !== "ok" ? (r.message ?? fallback) : null);
 
 export async function loadAnalyticsInputs(api: StudyApi, snapshot: Pick<Snapshot, "sources" | "resources">, course: CourseRef, now = new Date()): Promise<AnalyticsInputs> {
-  if (isSampleCourse(snapshot, course)) return sampleInputs(now, snapshot.resources, course.courseId, course.courseName);
+  // The canned inputs describe the Writing 101 sample only; the other sample courses (fixtures/sample-courses.json)
+  // carry their own captured scores, so they read through the same calls as a real course.
+  if (isSampleCourse(snapshot, course) && course.courseId === "sample-101") return sampleInputs(now, snapshot.resources, course.courseId, course.courseName);
   const { work, anchorIds, syllabus } = localCourseData(snapshot, course);
   const base: AnalyticsInputs = {
     courseId: course.courseId,

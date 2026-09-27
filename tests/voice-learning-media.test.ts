@@ -44,13 +44,14 @@ test("every ready request puts task mode, exact scope and each course's quoted p
   if (decision.status !== "ready") return;
   const { request } = decision;
   assert.equal(request.taskMode, "concept");
-  assert.equal(request.boundary, "coaching", "unknown policy in one course keeps the whole request conservative");
+  assert.equal(request.boundary, "coaching", "the UW default in one course keeps the whole request conservative");
   assert.deepEqual(request.scope.map((s) => [s.accountScope, s.courseId, s.resourceId, s.contentHash]), [["uw", "c220", a.id, a.contentHash], ["uw", "b101", b.id, b.contentHash]]);
   assert.match(request.system, /Task mode: concept/);
   assert.match(request.system, /C220 \[uw\/c220\]: coaching/);
   assert.match(request.system, /AI may explain concepts but not write solutions/);
-  assert.match(request.system, /B101 \[uw\/b101\]: unknown/);
-  assert.match(request.system, /Unknown is not permission/);
+  // No AI policy of its own: UW–Madison's default applies (operator decision, 2026-09-27).
+  assert.match(request.system, /B101 \[uw\/b101\]: coaching/);
+  assert.match(request.system, /No course AI policy was found, so UW–Madison's default applies/);
 });
 
 test("without a producer that enforces the contract, the request is built but not sent", () => {
@@ -73,7 +74,8 @@ test("help approach depends on use case; unknown or conflicting permission is no
   assert.equal(helpBoundary("graded-work", "coaching", false, true), "coaching");
   assert.equal(helpBoundary("debugging", "unknown", false, true), "withhold", "debugging an open graded assignment is graded work");
   assert.equal(helpBoundary("formative-practice", "restricted", false, false), "withhold");
-  const open = res({ sourceId: "s-a", courseId: "c220", kind: "assignment", policy: { mode: "unknown", evidence: "" } });
+  // A quoted course rule code couldn't classify stays unknown (the UW default applies only when the course states nothing).
+  const open = res({ sourceId: "s-a", courseId: "c220", kind: "assignment", policy: { mode: "unknown", evidence: "Ask me before using AI." } });
   assert.equal(learningSource(open, sources, undefined)!.openGraded, true);
   assert.equal(decideLearning(selectTaskMode(["why does my code crash?"]), [learningSource(open, sources, undefined)!], { learningContract: LEARNING_CONTRACT }).status, "withheld");
 });

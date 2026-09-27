@@ -232,14 +232,15 @@ test("no client connected: a friendly answer, never a throw", async () => {
   }
 });
 
-test("a batch failing the checks is retried, escalated once, then put to the student", async () => {
+// Operator decision 2026-09-27: item packs retry once on the pass tier and never escalate to the strong model.
+test("a batch failing the checks is retried once on the pass tier, never escalated, then put to the student", async () => {
   const g = await setup((pid) => [{ output: { items: [item(pid, { quote: "Queues were invented by Grace Hopper in 1952." })] } }]);
   try {
     const r = await pack(g.core);
     assert.equal(r.status, "needs_student");
     assert.deepEqual(r.options, ["retry", "narrow_scope", "skip"]);
     assert.ok(r.checkErrors?.some((e) => /quote not found/.test(e)));
-    assert.equal(await g.calls(), 3);
+    assert.equal(await g.calls(), 2);
     assert.equal(g.store.learning.items().length, 0);
   } finally {
     g.store.close();

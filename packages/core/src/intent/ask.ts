@@ -15,7 +15,7 @@ import { runPack } from "../jobs/pack";
 import { authorizer } from "./consent";
 import { coursePackCatalogue, type CoursePrefixSource } from "../course-facts/prefix"; // owner: course-facts
 import { intelligenceView } from "../../../domain/src/course-intelligence";
-import { LEARNING_CONTRACT, decideLearning, learningSource, selectTaskMode } from "../../../domain/src/learning-request";
+import { LEARNING_CONTRACT, decideLearning, learningSource, selectTaskMode, uwDefaultReminder } from "../../../domain/src/learning-request";
 import type { AskResult, IntentStore, ResolvedCourse } from "./types";
 import { originalQuote, passageClass, type IntentProtection } from "../privacy/intent"; // owner: privacy
 
@@ -353,7 +353,10 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
         })),
       }
     : result.artifact.output;
-  return { ...checkAnswer(output, passages, meta, (id) => store.resource(id)?.text ?? null), path, tokens };
+  const checked = checkAnswer(output, passages, meta, (id) => store.resource(id)?.text ?? null);
+  // Under UW–Madison's default, an answer touching open graded work always carries the reminder (added by code).
+  const reminder = checked.notFound ? null : uwDefaultReminder(decision.request);
+  return { ...checked, ...(reminder ? { text: `${checked.text}\n\n${reminder}` } : {}), path, tokens };
 }
 
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];

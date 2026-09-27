@@ -21,6 +21,7 @@ import type { StudyPrepRunResult } from "../packages/core/src/study-prep/generat
 import { MATH_RULE, prepAsk, prepContext, studyPrepPack, studyPrepOutputSchema, type PrepInput } from "../packages/packs/study-prep/src/index";
 import { z } from "zod";
 import { materialsBatch, NOW, passageId, signalsFixture, TEXTS } from "./study-prep-fixture";
+import { effectiveCoursePolicy } from "../packages/domain/src/course-policy";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fake: CliCommand = { file: process.execPath, prefixArgs: [join(here, "fixtures", "fake-cli", "fake-cli.mjs"), "claude"] };
@@ -122,8 +123,8 @@ const output = (p: Record<string, string>, kinds: ("guide" | "quiz" | "cards")[]
   output: { guide: kinds.includes("guide") ? guidePart(p) : null, quiz: kinds.includes("quiz") ? quizPart(p) : null, cards: kinds.includes("cards") ? cardsPart(p) : null, exam: null, problems: null, outline: null },
 });
 
-async function setup(responses: (p: Record<string, string>) => unknown[]) {
-  const f = signalsFixture(createStore(":memory:"));
+async function setup(responses: (p: Record<string, string>) => unknown[], options: Parameters<typeof signalsFixture>[1] = {}) {
+  const f = signalsFixture(createStore(":memory:"), options);
   const store = f.store;
   store.setPrivacy({ ...defaultPrivacy, mode: "selective_cloud", hostedProvider: "claude", shareCourseText: true });
   const p = { dtft: passageId(store, f.ids.dtft!), sampling: passageId(store, f.ids.sampling!), solutions: passageId(store, f.ids.solutions!) };
@@ -276,6 +277,20 @@ test("one call makes all three kinds: TeX survives in prose, quotes are checked 
     assert.ok(q.materials.cards.cards!.filter((c) => c.kind === "card").every((c) => c.cardId?.startsWith("card-") && c.due), "each term card is an FSRS card");
     assert.equal(cloze.cardId, null, "a cloze card is a recall item, not an FSRS card");
     assert.ok(q.materials.cards.cards!.every((c) => c.source.quote && c.source.resourceId));
+  } finally {
+    g.store.close();
+  }
+});
+
+test("no course AI policy: study-prep generation still runs under UW–Madison's default", async () => {
+  const g = await setup((p) => [output(p, ["guide", "quiz", "cards"])], { policy: { mode: "unknown", evidence: "" } });
+  try {
+    assert.ok(g.store.resources().every((r) => effectiveCoursePolicy(undefined, r).source === "uw-default"), "every source rests on the UW default");
+    const r = await g.generate(["guide", "quiz", "cards"]);
+    assert.equal(r.status, "done", r.message);
+    assert.equal(await g.calls(), 1);
+    assert.equal(r.counts.quiz?.accepted, 3, JSON.stringify(r.drops));
+    assert.equal(r.counts.cards?.accepted, 3, JSON.stringify(r.drops));
   } finally {
     g.store.close();
   }

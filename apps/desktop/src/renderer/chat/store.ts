@@ -1,6 +1,6 @@
 import type { AppBridge, LocalAnswer, ResourceView, SourceHealth } from "@magic/contracts";
 import {
-  chatItem, dueCaveat, dueInScope, localErrorIsBusy, localErrorNeedsSetup, namesAnotherItem, permits, permittedCourses, permittedScope,
+  chatItem, dueCaveat, dueInScope, namesAnotherItem, permits, permittedCourses, permittedScope,
   resolveCourseMention, routeIntent, safeWebLink, scopeCourses, scopeLabel, studentError, withoutMention,
   type ChatCourse, type ChatItem, type ChatScope, type DueRow, type DueWindow,
 } from "./model";
@@ -48,7 +48,9 @@ export type ChatResult =
   /** The router read this as an action that changes something. The chat names it and does not run it. */
   | { kind: "action"; action: string; hint: string | null }
   | { kind: "opened"; item: ChatItem }
-  | { kind: "note"; text: string };
+  | { kind: "note"; text: string }
+  /** owner: claude-chat. The persistent Claude session's answer; `text` grows as it streams. */
+  | { kind: "claude"; text: string; streaming: boolean; tools: string[]; sources: { id: string; title: string; course: string; url: string | null }[]; cards: { status: string; message: string } | null; ms: number | null };
 export type ExchangeState = "queued" | "running" | "done" | "failed" | "stopped";
 export interface Exchange {
   id: string;
@@ -80,7 +82,7 @@ export interface Chat {
   version: number;
 }
 
-export type ChatBridge = Pick<AppBridge, "openExternal"> & Partial<Pick<AppBridge, "localAsk" | "cancelLocal" | "query" | "openLink" | "execute" | "intentRun" | "cancelIntent">>;
+export type ChatBridge = Pick<AppBridge, "openExternal"> & Partial<Pick<AppBridge, "localAsk" | "cancelLocal" | "query" | "openLink" | "execute" | "intentRun" | "cancelIntent" | "chatAsk" | "cancelChat" | "onChatDelta">>;
 /** What the pane passes in while it is visible. Chats only run while shown. */
 export interface ChatRuntime {
   bridge: ChatBridge;
@@ -277,7 +279,12 @@ async function run(chat: Chat, x: Exchange, rt: ChatRuntime) {
       allowedBase = permittedScope(initialPlan.scope, permitted);
     }
     if (!allowedBase) return update(chat, x, { state: "failed", error: { text: "This course is no longer included. Choose an included course or update Sources.", setup: "sources" } });
-    if (rt.bridge.intentRun && !x.local && !x.target && !x.wide && !x.course) {
+    // owner: claude-chat. A free-form question goes to the student's persistent Claude session, which
+    // reads the saved coursework through the app's read tools. Exact facts (what's due, opening an
+    // item or page) stay on the code path below and answer at once.
+    if (rt.bridge.chatAsk && !x.target && !x.wide && !x.course && !x.local && routeIntent(x.prompt).kind === "ask" && !/^\s*(open|go to|take me to)\b/i.test(x.prompt))
+      return await askClaude(chat, x, rt, live);
+    if (rt.bridge.intentRun && !x.target && !x.wide && !x.course) {
       const courses = scopeCourses(allowedBase);
       const context = { view: chat.origin.view, ...(courses.length === 1 ? {courseId: courses[0]!.key} : {}), ...(allowedBase.kind === 'item' ? {resourceId: allowedBase.item.id} : {}) };
       const result = await rt.bridge.intentRun({ operationId: x.id, text: x.prompt, context });
@@ -329,7 +336,13 @@ async function run(chat: Chat, x: Exchange, rt: ChatRuntime) {
       if (!target) return update(chat, x, { state: "failed", error: { text: `${chosen.title} is no longer in your saved workspace.`, setup: null } });
       if (!permits(permitted, target, chat.origin.scope)) return update(chat, x, { state: "failed", error: { text: `${target.title} is not in an included course.`, setup: "sources" } });
       if (intent.kind === "open") return await open(chat, x, target, rt, live);
-      return await ask(chat, x, target, rt, live, `${x.id}:${ticket}`);
+      // An item question is answered by the student's connected Claude Code or Codex, scoped to that item.
+      if (!rt.bridge.intentRun) return update(chat, x, { state: "failed", error: { text: "Answers need your connected Claude Code or Codex. Choose it in Data & AI.", setup: "local-model" } });
+      update(chat, x, { step: "ask", target });
+      const courseKey = target.courseKey;
+      const result = await rt.bridge.intentRun({ operationId: x.id, text: x.prompt, context: { view: chat.origin.view, ...(courseKey ? { courseId: courseKey } : {}), resourceId: target.id } });
+      if (!live()) return;
+      return applyIntent(chat, x, result, rt, permitted, scope);
     }
     if (intent.kind === "open") return update(chat, x, { state: "done", result: { kind: "note", text: "Choose one item to open. Ask about it by name and pick it from the saved matches." } });
 
@@ -363,9 +376,38 @@ async function run(chat: Chat, x: Exchange, rt: ChatRuntime) {
   }
 }
 
+// owner: claude-chat
+async function askClaude(chat: Chat, x: Exchange, rt: ChatRuntime, live: () => boolean) {
+  const answer: Extract<ChatResult, { kind: "claude" }> = { kind: "claude", text: "", streaming: true, tools: [], sources: [], cards: null, ms: null };
+  update(chat, x, { step: "answer", result: { ...answer } });
+  const off = rt.bridge.onChatDelta?.((id, delta) => {
+    if (id !== x.id || !live()) return;
+    if (delta.text) answer.text += delta.text;
+    if (delta.tool) answer.tools = [...answer.tools, delta.tool];
+    update(chat, x, { step: delta.tool ? "search" : "answer", result: { ...answer, text: visibleText(answer.text) } });
+  });
+  try {
+    const r = await rt.bridge.chatAsk!({ operationId: x.id, text: x.prompt });
+    if (!live()) return;
+    if (r.status === "setup")
+      return update(chat, x, { state: "failed", step: null, result: null, error: { text: "Chat answers through your Claude Code. Choose it and sign in as Your AI.", setup: "local-model", detail: r.reason } });
+    update(chat, x, { state: "done", step: null, result: { kind: "claude", text: r.text, streaming: false, tools: r.tools, sources: r.sources, cards: r.cards ? { status: r.cards.status, message: r.cards.message } : null, ms: r.ms } });
+  } finally {
+    off?.();
+  }
+}
+/** While streaming, the code-read SOURCES/ACTION lines are hidden as soon as they start. */
+function visibleText(text: string): string {
+  return text.split(/\r?\n/).filter((line) => !/^\s*(SOURCES|ACTION):/i.test(line)).join("\n");
+}
+// end owner: claude-chat
+
 /** Maps the router's result into the chat. Rows and items come from the same saved data the pages show. */
 function applyIntent(chat: Chat, x: Exchange, r: IntentResult, rt: ChatRuntime, permitted: ChatCourse[], base: ChatScope) {
   const byKey = new Map(permitted.map((c) => [c.key, c]));
+  // The send gate refused the connected client: say how to turn it on instead of the gate's bare reason.
+  if (r.status === "unavailable" && /Fully local processing|hosted AI has not been selected|not agreed to share|Sharing course text is disabled/.test(r.reason))
+    return update(chat, x, { state: "failed", step: null, error: { text: "Chat answers through your Claude Code or Codex. Choose it as Your AI in Data & AI.", setup: "local-model", detail: r.reason } });
   if (r.status === "unavailable") return update(chat, x, { state: "done", step: null, result: { kind: "unavailable", reason: r.reason } });
   if (r.status === "answer") return update(chat, x, { state: "done", step: null, result: { kind: "grounded", text: r.text, citations: r.citations, notFound: r.notFound, dropped: r.dropped, path: r.path } });
   if (r.status === "clarify") {
@@ -421,28 +463,6 @@ function message(cause: unknown, fallback: string) {
   return cause instanceof Error && cause.message ? cause.message : fallback;
 }
 
-const BUSY = "Another answer is running on this device. Try again when it finishes.";
-async function ask(chat: Chat, x: Exchange, target: ChatItem, rt: ChatRuntime, live: () => boolean, owner: string) {
-  if (!rt.bridge.localAsk) return update(chat, x, { state: "failed", error: { text: "Answers need the desktop app's local model. This window cannot run it.", setup: "local-model" } });
-  if (localOwner) return update(chat, x, { state: "failed", error: { text: BUSY, setup: null } });
-  localOwner = owner;
-  update(chat, x, { step: "ask", target });
-  try {
-    const answer = await rt.bridge.localAsk({ id: target.id, inputHash: target.contentHash, question: x.prompt });
-    if (!live()) return;
-    if (answer.resourceId !== target.id || answer.inputHash !== target.contentHash)
-      return update(chat, x, { state: "failed", step: null, error: { text: "The answer did not match this item's current version, so it was not shown.", setup: null } });
-    update(chat, x, { state: "done", step: null, result: { kind: "answer", answer, item: target } });
-  } catch (cause) {
-    if (!live()) return;
-    const raw = message(cause, "");
-    if (localErrorIsBusy(raw)) return update(chat, x, { state: "failed", step: null, error: { text: BUSY, setup: null } });
-    update(chat, x, { state: "failed", step: null, error: { ...studentError(raw, "The local model could not answer. Try again."), setup: localErrorNeedsSetup(raw) ? "local-model" : null } });
-  } finally {
-    if (localOwner === owner) localOwner = null;
-  }
-}
-
 async function open(chat: Chat, x: Exchange, target: ChatItem, rt: ChatRuntime, live: () => boolean) {
   const url = safeWebLink(target.url);
   if (!url) return update(chat, x, { state: "done", result: { kind: "note", text: `${target.title} has no web link Magic can open.` } });
@@ -464,6 +484,7 @@ export function stop(chat: Chat, x: Exchange, bridge: ChatBridge) {
   if (x.state !== "running" && x.state !== "queued") return;
   tickets.set(x.id, (tickets.get(x.id) ?? 0) + 1);
   void bridge.cancelIntent?.(x.id).catch(() => undefined);
+  void bridge.cancelChat?.(x.id).catch(() => undefined); // owner: claude-chat
   if (localOwner?.startsWith(`${x.id}:`)) {
     localOwner = null;
     void bridge.cancelLocal?.().catch(() => undefined);

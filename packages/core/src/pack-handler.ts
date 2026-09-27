@@ -7,7 +7,7 @@
  */
 import { aiRecipientSchema, type CourseCoreStore, type PackScope, type Resource, type Store } from "@magic/contracts";
 import { maySend } from "@magic/domain";
-import { effectiveCoursePolicy } from "../../domain/src/course-intelligence";
+import { courseFramePolicy, effectiveCoursePolicy } from "../../domain/src/course-intelligence";
 import type { BackendCall, ModelRunner } from "../../runner/src/index";
 // owner: ai-paths
 import { createClaudeBackend, createSessionPool, type CliCommand, type PoolOptions, type SessionPool } from "../../runner/src/index";
@@ -162,7 +162,7 @@ function resolveScope(store: WorkspaceStore, scope: PackScope): Scoped | null {
     label,
     resources,
     restricted,
-    policy: policies.find((p) => p.mode !== "unknown") ?? policies[0],
+    policy: courseFramePolicy(policies),
     family,
   };
 }
@@ -425,8 +425,11 @@ export function createPackHandler(deps: PackHandlerDeps) {
     signal: AbortSignal | undefined,
     options: GenerateOptions,
   ): Promise<PackRunResult> {
+    // This course's items and their text: a change to this course's material blocks the send; reads of other courses don't.
     const snapshot = () => payloadHash({
-      scope: resolveScope(store, scope), sources: store.sources(), roster: rosterFor(store, s.courseId, s.accountScope).version,
+      content: store.resources().filter((r) => r.courseId === scope.courseId).map((r) => [r.id, r.contentHash, r.deleted, r.policy.mode]),
+      reads: store.sources().filter((x) => x.courseId === scope.courseId).map((x) => [x.id, x.lastSuccessAt, x.readId]),
+      scope: resolveScope(store, scope), sources: store.sources().map((x) => [x.id, x.kind, x.accountScope, x.courseId, x.scope]) /* which sources, not their read status: a running sync must not block generation */, roster: rosterFor(store, s.courseId, s.accountScope).version,
       privacy: store.privacy(), consents: store.consents?.(), concepts: store.learning.concepts(s.courseRef).filter((c) => c.origin !== "model"),
     });
     const fingerprint = snapshot();

@@ -341,19 +341,26 @@ test("maySend refuses a hosted recipient without its own current consent record"
   assert.equal(maySend(defaultPrivacy, "local", ["course_text"]).allowed, true);
 });
 
-test("maySend refuses planning, holds and audit for every non-local recipient, whatever the flags", () => {
+// Operator decision 2026-09-27 (decisions.md): holds never leave the device; the degree plan and
+// audit may, only while Data & AI's "Degree plan and audit" row (sharePlanning, shareAudit) is on.
+test("maySend refuses holds for every non-local recipient whatever the flags, and planning/audit unless their switch is on", () => {
   const all = (["uw", ...hosted] as const).map((r) => record(r));
-  for (const recipient of hosted)
-    for (const category of ["planning", "holds", "audit"]) {
-      const p = withConsents(
-        { ...everything, hostedProvider: recipient === "jev" ? "claude" : recipient },
-        all,
-      );
-      assert.equal(maySend(p, recipient, ["course_text"]).allowed, true, "the control");
-      const result = maySend(p, recipient, [category, "course_text"]);
-      assert.equal(result.allowed, false, `${recipient} ${category}`);
-      assert.match(result.reason, /never leave this device/);
+  for (const recipient of hosted) {
+    const on = withConsents({ ...everything, hostedProvider: recipient === "jev" ? "claude" : recipient }, all);
+    const off = withConsents({ ...everything, sharePlanning: false, shareAudit: false, hostedProvider: recipient === "jev" ? "claude" : recipient }, all);
+    assert.equal(maySend(on, recipient, ["course_text"]).allowed, true, "the control");
+    const holds = maySend(on, recipient, ["holds", "course_text"]);
+    assert.equal(holds.allowed, false, `${recipient} holds`);
+    assert.match(holds.reason, /never leave this device/);
+    for (const category of ["planning", "audit"]) {
+      const refused = maySend(off, recipient, [category, "course_text"]);
+      assert.equal(refused.allowed, false, `${recipient} ${category} with the switch off`);
+      assert.match(refused.reason, /stay on this device/);
+      assert.equal(maySend(on, recipient, [category, "course_text"]).allowed, true, `${recipient} ${category} with the switch on`);
     }
+  }
+  assert.equal(maySend({ ...everything, shareAudit: false }, "claude", ["planning", "audit"]).allowed, false, "each category needs its own flag");
+  assert.equal(maySend(withConsents({ ...everything, mode: "local_only" }, all), "claude", ["audit"]).allowed, false, "fully local still wins");
   for (const category of ["planning", "holds", "audit"])
     assert.equal(maySend(everything, "local", [category]).allowed, true);
 });

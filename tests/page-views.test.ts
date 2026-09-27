@@ -120,7 +120,9 @@ test("assignment.workspace: one read with header, quoted instructions, ranked re
   const missing = w.missing.map((m) => m.field);
   for (const f of ["startBy", "aiPolicy", "readiness"]) assert.ok(missing.includes(f), `${f} is reported missing`);
   assert.equal(w.header.startBy, null);
-  assert.equal(w.header.aiPolicy.mode, "unknown");
+  // No course AI policy: UW–Madison's default applies and the line says so (the course's own policy is still missing).
+  assert.deepEqual([w.header.aiPolicy.mode, w.header.aiPolicy.source], ["coaching", "uw-default"]);
+  assert.equal(w.header.aiPolicy.text, "No course AI policy found, so UW–Madison's guidelines apply: study help is fine; ask your instructor before using AI on graded work. https://conduct.students.wisc.edu/artificial-intelligence/");
   assert.equal(w.readiness.status, "no_topics");
   assert.equal(w.approach.status, "not_generated");
   assert.deepEqual(w.approach.request, { type: "pack", pack: "page-approach", scope: { courseId: COURSE, resourceIds: [hw1] } });

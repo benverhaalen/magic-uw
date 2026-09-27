@@ -67,7 +67,7 @@ import { checkedGraphUrl } from "../../../packages/connectors/src/graph";
 import { OUTLOOK_MAIL_COURSE_ID, OUTLOOK_CALENDAR_COURSE_ID, type OutlookStatus } from "@magic/contracts";
 // end owner: T30
 import { MadgradesHttp, madgradesRequestSchema } from "../../../packages/connectors/src/madgrades";
-import sampleFixture from "../../../fixtures/course.json";
+import sampleFixture from "../../../fixtures/sample-courses.json";
 // owner: T05c
 import { Tray, Menu, nativeImage } from "electron";
 import { clearUwLoginCookies } from "./sign-in-cookies";
@@ -130,6 +130,12 @@ import {
   type CommandResult,
 } from "@magic/contracts";
 const headless = process.env.MAGIC_HEADLESS === "1";
+// A generation command (packs and guides, study prep, the learning ask, notes fill) waits on the
+// student's AI: measured live with Claude Code, 25-84 s per study-prep kind and 30 s for a briefing.
+// The runner bounds each call itself (180 s, and one stronger-model retry), so main doesn't cut a
+// run short; every other command keeps the 30 s workspace timeout.
+const GENERATION_COMMANDS = new Set(["pack", "learning", "notes"]);
+const GENERATION_TIMEOUT_MS = 2 * 180_000 + 30_000;
 if (headless) {
   app.commandLine.appendSwitch("headless");
   void app.dock?.hide();
@@ -302,6 +308,7 @@ app
     // owner: notes. Google Docs sync: OAuth (PKCE, loopback) and the Drive proxy; the token stays here.
     const notesGoogle = createGoogleNotesAuth({
       clientId: process.env.MAGIC_GOOGLE_CLIENT_ID || undefined,
+      clientSecret: process.env.MAGIC_GOOGLE_CLIENT_SECRET || undefined,
       vault,
       openExternal: (url) => shell.openExternal(url),
     });
@@ -573,6 +580,30 @@ app
       }
       // owner: client-health (D36, D50). Gemini's key for the worker's runner, only when the
       // worker builds a Gemini backend. Read from the safeStorage vault; never logged.
+      // owner: claude-chat. The agent's app-control tools: navigate the window (fixed pages, ids the
+      // worker already checked) and bring it forward, or open a stored Canvas link through the safe path.
+      if (message.kind === "app-control") {
+        try {
+          const p = message.payload ?? {};
+          if (p.op === "navigate" && window && !window.isDestroyed()) {
+            const t = p.target ?? {};
+            const pages = ["home", "course", "item", "prep", "study", "calendar", "data-ai"];
+            if (!pages.includes(t.page)) throw new Error();
+            const clean = Object.fromEntries(["page", "courseId", "accountScope", "resourceId", "action"].flatMap((k) => (typeof t[k] === "string" && t[k].length <= 300 ? [[k, t[k]]] : [])));
+            window.webContents.send("magic:agent-navigate", clean);
+            if (window.isMinimized()) window.restore();
+            window.show();
+            window.focus();
+            worker.postMessage({ kind: "source-response", id: message.id, result: { ok: true } });
+          } else if (p.op === "open" && typeof p.url === "string" && !headless) {
+            await shell.openExternal(safeExternal(p.url));
+            worker.postMessage({ kind: "source-response", id: message.id, result: { ok: true } });
+          } else worker.postMessage({ kind: "source-response", id: message.id, result: { ok: false } });
+        } catch {
+          worker.postMessage({ kind: "source-response", id: message.id, result: { ok: false } });
+        }
+        return;
+      }
       if (message.kind === "ai-key") {
         try {
           if (message.payload?.provider !== "gemini") throw new Error();
@@ -1030,7 +1061,7 @@ app
           calls.delete(id); finish();
           worker.postMessage({ kind: "cancel-command", id });
           reject(new Error("Local workspace request timed out."));
-        }, 30000);
+        }, GENERATION_COMMANDS.has(parsed.type) ? GENERATION_TIMEOUT_MS : 30000);
         const abort = () => {
           clearTimeout(timer); calls.delete(id); finish();
           worker.postMessage({ kind: "cancel-command", id });
@@ -1319,6 +1350,72 @@ app
       try { return await dispatchInteractive(value.text, value.context ?? {}, { operationId: r.operationId, signal: controller.signal, current: () => !controller.signal.aborted && authority === voiceAuthority }); }
       finally { if (interactiveCalls.get(r.operationId) === controller) interactiveCalls.delete(r.operationId); }
     });
+    // owner: claude-chat. A chat question goes to the worker's persistent Claude session; its text
+    // streams back as `magic:chat-delta` to the asking window, and the answer resolves the invoke.
+    const chatCalls = new Map<string, { resolve(value: unknown): void; reject(error: Error): void; sender: Electron.WebContents; timer: NodeJS.Timeout }>();
+    worker.on("message", (message: any) => {
+      if (typeof message?.id !== "string") return;
+      const c = chatCalls.get(message.id);
+      if (!c) return;
+      if (message.kind === "claude-chat-delta" && typeof message.text === "string") {
+        if (!c.sender.isDestroyed()) c.sender.send("magic:chat-delta", message.id, { text: message.text });
+      } else if (message.kind === "claude-chat-tool" && typeof message.tool === "string") {
+        if (!c.sender.isDestroyed()) c.sender.send("magic:chat-delta", message.id, { tool: message.tool });
+      } else if (message.kind === "claude-chat-response") {
+        clearTimeout(c.timer);
+        chatCalls.delete(message.id);
+        if (message.error) c.reject(new Error(String(message.error)));
+        else c.resolve(message.result);
+      }
+    });
+    ipcMain.handle("magic:chat-ask", async (event, request: unknown) => {
+      validateSender(event);
+      const r = request as { operationId?: unknown; text?: unknown } | null;
+      if (!r || typeof r.operationId !== "string" || !/^[a-zA-Z0-9_-]{1,100}$/.test(r.operationId)) throw new Error("Invalid request identity.");
+      if (typeof r.text !== "string" || !r.text.trim() || r.text.length > 2000) throw new Error("Write a message of up to 2,000 characters.");
+      if (chatCalls.has(r.operationId)) throw new Error("This request is already running.");
+      await ready;
+      const id = r.operationId;
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          chatCalls.delete(id);
+          worker.postMessage({ kind: "claude-chat-cancel", id });
+          reject(new Error("Claude took too long to answer. Try again."));
+        }, 250_000);
+        chatCalls.set(id, { resolve, reject, sender: event.sender, timer });
+        worker.postMessage({ kind: "claude-chat", id, text: r.text });
+      });
+    });
+    // The voice agent: Claude Code in Windows Terminal (else a console window) on the app's tools.
+    ipcMain.handle("magic:agent-terminal", async (event) => {
+      validateSender(event);
+      if (headless) throw new Error("Terminal windows are disabled in headless mode.");
+      await ready;
+      const id = randomUUID();
+      const prepared = (await new Promise<unknown>((resolve, reject) => {
+        const timer = setTimeout(() => { calls.delete(id); reject(new Error("The Claude Code terminal couldn't be prepared.")); }, 30_000);
+        calls.set(id, { resolve: (value: CommandResult) => resolve(value), reject, timer });
+        worker.postMessage({ kind: "agent-terminal", id });
+      })) as { status: string; reason?: string; folder?: string; launcher?: string };
+      if (prepared.status !== "ready" || !prepared.folder || !prepared.launcher) return { status: "setup", reason: prepared.reason ?? "Claude Code isn't ready." };
+      const { spawn } = await import("node:child_process");
+      const wt = join(process.env.LOCALAPPDATA ?? "", "Microsoft", "WindowsApps", "wt.exe");
+      const cmd = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "cmd.exe");
+      const launch = (file: string, args: string[]) => new Promise<boolean>((resolve) => {
+        const child = spawn(file, args, { cwd: prepared.folder, detached: true, stdio: "ignore", windowsHide: false, shell: false });
+        child.once("error", () => resolve(false));
+        child.once("spawn", () => { child.unref(); resolve(true); });
+      });
+      const opened = process.platform === "win32"
+        && ((await stat(wt).then(() => true, () => false) && await launch(wt, ["-w", "new", "new-tab", "--title", "My Magic UW agent", "-d", prepared.folder, cmd, "/k", prepared.launcher]))
+          || await launch(cmd, ["/c", "start", "My Magic UW agent", cmd, "/k", prepared.launcher]));
+      return opened ? { status: "opened" } : { status: "setup", reason: "No terminal could be opened on this computer." };
+    });
+    ipcMain.handle("magic:chat-cancel", (event, operationId: unknown) => {
+      validateSender(event);
+      if (typeof operationId === "string") worker.postMessage({ kind: "claude-chat-cancel", id: operationId });
+    });
+    // end owner: claude-chat
     ipcMain.handle("magic:intent-cancel", (event, operationId: unknown) => {
       validateSender(event);
       if (typeof operationId === 'string') interactiveCalls.get(operationId)?.abort();
@@ -2317,6 +2414,7 @@ app
     await window.loadURL(rendererURL);
     await ready;
     worker.postMessage({ kind: "voice-agent-warm" }); // owner: voice-plan: after first paint, before any voice; no microphone
+    worker.postMessage({ kind: "claude-chat-warm" }); // owner: claude-chat: the chat's session starts now (0 tokens)
     powerMonitor.on("suspend", () => worker.postMessage({ kind: "suspend" }));
     powerMonitor.on("resume", () => {
       worker.postMessage({ kind: "resume" });
@@ -2402,7 +2500,7 @@ app
           "window.magic.execute({type:'fixture'})",
         );
         if (
-          imported.snapshot.resources.length !== sampleFixture.resources.length ||
+          imported.snapshot.resources.length !== sampleFixture.reduce((n, batch) => n + batch.resources.length, 0) ||
           !imported.snapshot.fixtureMode
         )
           throw new Error("Fixture import failed");

@@ -24,23 +24,23 @@ import { localDataBytes } from "../apps/desktop/src/local-data";
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const cloud: PrivacyPreferences = { ...defaultPrivacy, mode: "selective_cloud" };
-const hosted: PrivacyPreferences = { ...cloud, hostedProvider: "claude" };
+const hosted: PrivacyPreferences = { ...cloud, hostedProvider: "claude", shareCourseText: true };
 const row = (id: string) => SHARE_ROWS.find((r) => r.id === id)!;
 const health = (state: ClientHealth["state"], extra: Partial<ClientHealth> = {}): ClientHealth => ({
   id: "claude", state, mode: "instant", source: "status", instant: { available: true }, modes: ["instant", "isolated"], checkedAt: "2026-09-27T12:00:00.000Z", ...extra,
 });
 
 test("your AI: a hosted choice selects it with cloud access on; this computer and Off both clear the hosted AI", () => {
-  assert.deepEqual(aiChoicePatch(defaultPrivacy, "claude"), { hostedProvider: "claude", mode: "selective_cloud" });
+  assert.deepEqual(aiChoicePatch(defaultPrivacy, "claude"), { hostedProvider: "claude", mode: "selective_cloud", shareCourseText: true });
   assert.equal(aiChoicePatch(hosted, "claude"), null);
-  assert.deepEqual(aiChoicePatch(hosted, "codex"), { hostedProvider: "codex", mode: "selective_cloud" });
+  assert.deepEqual(aiChoicePatch(hosted, "codex"), { hostedProvider: "codex", mode: "selective_cloud", shareCourseText: true });
   assert.deepEqual(aiChoicePatch(hosted, "local"), { hostedProvider: "none" });
   assert.deepEqual(aiChoicePatch(hosted, "off"), { hostedProvider: "none" });
   assert.equal(aiChoicePatch(defaultPrivacy, "off"), null);
   assert.equal(aiChoiceOf({ ...hosted, mode: "local_only" }, false), "off", "a hosted pick with all sharing off is not answering");
   assert.deepEqual(shownChoices("off", false), ["claude", "codex", "off"], "this computer shows only once found");
-  assert.deepEqual(shownChoices("off", true), ["claude", "codex", "local", "off"]);
-  assert.deepEqual(shownChoices("gemini", false), ["claude", "codex", "gemini", "off"], "Gemini only while it is the saved choice");
+  assert.deepEqual(shownChoices("off", true), ["claude", "codex", "off"], "on-device answering is no longer offered");
+  assert.deepEqual(shownChoices("gemini", false), ["claude", "codex", "off"], "Gemini is no longer offered");
 });
 
 test("your AI: each card says Connected, Signed out (Sign in), Not installed, or Usage limit with its reset time", () => {
@@ -78,7 +78,11 @@ test("what you share: each row writes the same preferences the earlier page wrot
     ["Course materials", ["shareCourseText"]],
     ["Your work and grades", ["shareStudentWork", "shareGrades", "shareComments"]],
     ["Course messages", ["shareCommunications"]],
+    // Operator decision 2026-09-27 (decisions.md): the in-app Claude chat may read the degree audit when this is on.
+    ["Degree plan and audit", ["sharePlanning", "shareAudit"]],
   ]);
+  assert.deepEqual(sharePatch(cloud, row("degree"), true), { sharePlanning: true, shareAudit: true });
+  assert.equal(shareOn(cloud, row("degree")), false, "off by default");
   assert.deepEqual(sharePatch(cloud, row("materials"), true), { shareCourseText: true });
   assert.deepEqual(sharePatch(cloud, row("work"), false), { shareStudentWork: false, shareGrades: false, shareComments: false });
   assert.deepEqual(sharePatch(cloud, row("messages"), true), { shareCommunications: true });
@@ -91,7 +95,7 @@ test("what you share: each row writes the same preferences the earlier page wrot
   assert.equal(next.shareCommunications, true);
   for (const key of ["shareCourseText", "shareGrades", "shareStudentWork", "shareComments", "jevEnabled"] as const) assert.equal(next[key], false, key);
   assert.equal(next.hostedProvider, "none");
-  assert.deepEqual(shareNothingPatch(), { shareCourseText: false, shareStudentWork: false, shareGrades: false, shareComments: false, shareCommunications: false });
+  assert.deepEqual(shareNothingPatch(), { shareCourseText: false, shareStudentWork: false, shareGrades: false, shareComments: false, shareCommunications: false, sharePlanning: false, shareAudit: false });
   assert.match(PLANNING_ROW.line, /never shared/);
   const app = read("apps/desktop/src/renderer/App.tsx");
   assert.match(app, /onChange=\{\(checked\) => void update\(sharePatch\(value, row, checked\)\)\}/, "rows save through the consent-checking update");

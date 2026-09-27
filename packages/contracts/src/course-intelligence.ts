@@ -75,6 +75,11 @@ export interface CourseIntelligenceView extends CourseIntelligence {
 }
 export interface EffectiveCoursePolicy {
   mode: "allowed" | "coaching" | "restricted" | "unknown";
+  /**
+   * `course`: the course's own claims or captured rule decide `mode`. `uw-default`: the course states no AI
+   * policy, so UW–Madison's general guidance applies (mode `coaching`, evidence cites the page).
+   */
+  source: "course" | "uw-default";
   evidence: string;
   claimIds: string[];
   resourceIds: string[];

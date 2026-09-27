@@ -242,7 +242,17 @@ export interface IngestionHost {
     scopes(): string[];
     onSynced?(result: Pick<GraphSyncResult, "requests" | "changed" | "failures"> & { at: string }): void;
   };
+  /** sync-cap. Every sync's wall-clock cap in milliseconds (default SYNC_CAP_MS); tests shorten it. */
+  syncCapMs?: number;
 }
+/**
+ * sync-cap (operator decision, 2026-09-27). A Canvas scan closes after 30 seconds and treats
+ * itself as populated: what was read is kept, the sources read this run show as read, and the
+ * next check probes for changes instead of starting the full read again. The data still records
+ * the cut (a `sync_capped` diagnostic on each source and a partial sync run).
+ */
+export const SYNC_CAP_MS = 30_000;
+const SYNC_CAPPED = { code: "sync_capped", path: [], severity: "warning" } as const;
 export function inputResource(resource: Resource): ResourceInput {
   return resourceInputSchema.parse(
     Object.fromEntries(
@@ -1906,6 +1916,25 @@ export function createIngestion(
         ].join("|"),
       ),
     manual: (signal) => manualCheck(signal),
+    capMs: host.syncCapMs ?? SYNC_CAP_MS, // sync-cap
+    // sync-cap: no Canvas source stays "reading" after a sync. After a capped run, every Canvas
+    // read left unfinished (ok or partial, incomplete) shows as read, each marked capped; a source
+    // that failed (sign-in, error, restricted, needs review) keeps its state.
+    settle(capped) {
+      const at = now().toISOString();
+      for (const source of store.sources()) {
+        if (source.kind !== "canvas") continue;
+        const unfinished =
+          !source.complete &&
+          (source.status === "ok" || source.status === "partial") &&
+          capped;
+        if (!unfinished && source.progress?.phase !== "reading") continue;
+        store.settleSource?.(source.id, {
+          phase: unfinished ? "complete" : "ended",
+          ...(unfinished ? { done: { at, diagnostic: { ...SYNC_CAPPED, path: [] } } } : {}),
+        });
+      }
+    },
     persist: {
       load: () => JSON.parse(readFileSync(join(host.directory, "canvas-refresh.json"), "utf8")),
       save: (snapshot) =>
@@ -2149,7 +2178,7 @@ export function createIngestion(
         ? "needs_sign_in"
         : run.action === "failed"
           ? "error"
-          : hasIncompleteRead()
+          : run.capped || hasIncompleteRead() // sync-cap: a capped run stays partial in the record
             ? "partial"
             : run.action === "unchanged"
               ? "unchanged"
@@ -2162,7 +2191,7 @@ export function createIngestion(
         rateLimitRemaining,
         requestCost,
       },
-      diagnostics: [],
+      diagnostics: run.capped ? [{ ...SYNC_CAPPED, path: [] }] : [],
     });
   }
   function markExpired() {

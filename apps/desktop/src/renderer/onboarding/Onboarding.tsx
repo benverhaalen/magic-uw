@@ -4,7 +4,8 @@ import {
   CONSENT_DISCLOSURE_VERSION,
   hasCurrentConsent,
 } from "../../../../../packages/domain/src/index";
-import { ConsentSetup } from "../consent/ConsentSetup";
+import { ConsentSetup, missingConsents } from "../consent/ConsentSetup";
+import { writeLocalChoice } from "../ai-choice/answering";
 import { ACCENTS, applyAppearance, readAppearance, writeAppearance, type Appearance, type ThemePreference } from "../appearance";
 import { signInAndSync, signInMessage } from "../sign-in";
 import { ClientHealthNotice } from "./ClientHealthNotice";
@@ -227,6 +228,8 @@ export function Onboarding(props: OnboardingProps) {
         onLoadSample={loadSample}
         onBack={back}
         onFinish={() => {
+          // Saved now, not in the state updater: App reads it on its next render to leave setup.
+          writeProgress({ ...progress, done: true });
           update({ done: true });
           // Finishing setup accepts the course choice if the step was never confirmed.
           if (snapshot.ingestionSettings?.awaitingCourseChoice) void window.magic?.syncCanvas?.({ confirm: true });
@@ -1016,10 +1019,13 @@ function ConnectClient({
             setFinishing(true);
             try {
               await clients.choose(id);
-              // owner: client-detection (e2e harness): runs go to the chosen client only when the
-              // privacy preference names it, so a student who picked Codex isn't blocked.
-              if (snapshot.privacy.mode !== "local_only" && snapshot.privacy.hostedProvider !== id)
-                await run({ type: "privacy", value: { ...snapshot.privacy, hostedProvider: id } });
+              // owner: ai-choice (c82fa42). The chosen client is also "Your AI" in Data & AI: the send gate's
+              // selected AI with cloud access on and course passages shared, exactly what the student just
+              // agreed to ("Passages from your courses, only when you ask"). Saved only when every agreement
+              // it needs is current.
+              const next = { ...snapshot.privacy, mode: "selective_cloud" as const, hostedProvider: id, shareCourseText: true };
+              if (!missingConsents(next, snapshot.consents).length) await run({ type: "privacy", value: next });
+              writeLocalChoice(false);
               onConnected();
             } catch {
               setProblem(`Could not save ${info.name} as your AI.`);
@@ -1167,24 +1173,6 @@ function AppearanceStep({ heading, onBack, onNext }: { heading: Heading; onBack:
 // --- 5. Connections -------------------------------------------------------------------------------
 type RowState = { kind: "checking" } | { kind: "unavailable"; text: string } | { kind: "connect"; text: string; label: string } | { kind: "working"; text: string } | { kind: "connected"; text: string } | { kind: "waiting"; text: string };
 
-function outlookRow(status: OutlookStatus | null): RowState {
-  if (!status) return { kind: "unavailable", text: "Available in the desktop app." };
-  switch (status.outlook) {
-    case "not_set_up":
-      return { kind: "unavailable", text: "Not set up in this build." };
-    case "connected":
-      return { kind: "connected", text: "Connected." };
-    case "needs_uw_approval":
-      return { kind: "waiting", text: "Waiting for UW to approve My Magic UW for your account." };
-    case "expired":
-      return { kind: "connect", text: "The sign-in expired.", label: "Reconnect" };
-    case "error":
-      return { kind: "connect", text: "The last connection attempt failed.", label: "Try again" };
-    default:
-      return { kind: "connect", text: "Mail and calendar, read with your own Microsoft sign-in.", label: "Connect" };
-  }
-}
-
 function ConnectionsStep({
   heading,
   run,
@@ -1196,7 +1184,6 @@ function ConnectionsStep({
   onBack: (() => void) | null;
   onNext: () => void;
 }) {
-  const [microsoft, setMicrosoft] = useState<RowState>({ kind: "checking" });
   const [google, setGoogle] = useState<RowState>({ kind: "checking" });
   const [localFolders, setLocalFolders] = useState<DetectedLocalFolder[]>([]);
   const [localChosen, setLocalChosen] = useState<string | null>(null);
@@ -1214,9 +1201,6 @@ function ConnectionsStep({
       .catch(() => {});
   }, [run]);
   useEffect(() => {
-    const bridge = window.magic;
-    if (bridge?.outlookStatus) bridge.outlookStatus().then((s) => setMicrosoft(outlookRow(s))).catch(() => setMicrosoft(outlookRow(null)));
-    else setMicrosoft(outlookRow(null));
     run({ type: "notes", request: { op: "notes.sync.status" } })
       .then((result) => {
         const notes = result?.notes;
@@ -1232,14 +1216,6 @@ function ConnectionsStep({
   const chooseLocalFolder = async (folder: string | null) => {
     await run({ type: "notes", request: { op: "notes.localFolders.choose", folder } });
     loadLocal();
-  };
-  const connectMicrosoft = async () => {
-    setMicrosoft({ kind: "working", text: "Finish signing in with Microsoft." });
-    try {
-      setMicrosoft(outlookRow((await window.magic?.outlookConnect?.()) ?? null));
-    } catch {
-      setMicrosoft({ kind: "connect", text: "Microsoft sign-in didn't finish.", label: "Try again" });
-    }
   };
   const connectGoogle = async () => {
     setGoogle({ kind: "working", text: "Finish signing in with Google in your browser." });
@@ -1282,8 +1258,13 @@ function ConnectionsStep({
       {heading("Add other accounts")}
       <p className="onb-lede">Optional. Each one uses that service's own sign-in, and you can disconnect it any time.</p>
       <ul className="chn-rows" aria-label="Optional connections">
-        {row("Microsoft 365", microsoft, () => void connectMicrosoft())}
         {row("Google Drive", google, () => void connectGoogle())}
+        {/* Microsoft 365 notes (Word/OneDrive) aren't offered in this build; Outlook stays under Sources. */}
+        <li className="chn-row" aria-disabled="true">
+          <span className="chn-row-text">
+            <span className="chn-row-name">Microsoft 365: possibly coming soon</span>
+          </span>
+        </li>
       </ul>
       {localChosen ? (
         <p className="onb-note">
@@ -1313,7 +1294,7 @@ function ConnectionsStep({
       ) : null}
       <Actions onBack={onBack}>
         <button className="onb-primary" onClick={onNext}>
-          {microsoft.kind === "connected" || google.kind === "connected" ? "Continue" : "Skip for now"}
+          {google.kind === "connected" ? "Continue" : "Skip for now"}
         </button>
       </Actions>
     </>

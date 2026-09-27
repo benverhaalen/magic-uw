@@ -20,7 +20,7 @@ import type {
  */
 export type { ClientId, ClientStatus, ClientsBridge };
 
-export const clientOrder: readonly ClientId[] = ["claude", "codex", "gemini"];
+export const clientOrder: readonly ClientId[] = ["claude", "codex"]; // Claude Code and Codex only; Gemini is not offered.
 export const clientInfo: Record<
   ClientId,
   { name: string; provider: string; plan: string; recipient: ConsentRecord["recipient"]; installUrl: string }
@@ -70,7 +70,7 @@ export function recommendedClient(health: Partial<Record<ClientId, ClientHealth>
   const ready = clientOrder.find((id) => health[id]?.state === "ok");
   if (ready) return ready;
   const installed = clientOrder.find((id) => id !== "gemini" && health[id] && health[id]!.state !== "not_installed");
-  return installed ?? "gemini";
+  return installed ?? "claude";
 }
 /**
  * owner: client-detection. When exactly one command-line client is installed, it is the one to

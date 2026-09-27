@@ -848,6 +848,9 @@ select {
 .privacy-page .settings-section {
   scroll-margin-top: 28px;
 }
+/* Contain the hidden legends: without a positioned ancestor they sit at their static position against the
+   window and stretch the whole document, so the shell scrolls away and leaves a blank strip. */
+.privacy-page { position: relative; }
 .privacy-page .visually-hidden {
   position: absolute;
   width: 1px;

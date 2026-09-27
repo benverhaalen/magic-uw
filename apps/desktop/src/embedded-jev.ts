@@ -16,6 +16,20 @@ const embeddedKey = (): string =>
  */
 export const embeddedJevKey = (): string => embeddedKey();
 
+/**
+ * Operator decision 2026-09-27 (demo): the repo defaults (5 requests an hour, 1 at a time per device)
+ * stalled judgments mid-demo. The embedded gateway runs for one laptop, so its per-device caps are
+ * lifted to keep results coming; the body size and per-request timeout stay as the defaults.
+ */
+const DEMO_LIMITS = {
+  ...DEFAULT_LIMITS,
+  globalDailyRequestLimit: 5_000,
+  deviceDailyLimit: 5_000,
+  deviceHourlyLimit: 1_000,
+  deviceConcurrency: 6,
+  globalConcurrency: 12,
+};
+
 export interface EmbeddedJev {
   /** Loopback URL for the desktop's ordinary gateway client. */
   url: string;
@@ -33,7 +47,7 @@ export async function startEmbeddedJev(dataDir: string, key = embeddedKey()): Pr
     port: 0,
     dbPath: join(dataDir, "jev-embedded.sqlite"),
     apiKey: key,
-    limits: DEFAULT_LIMITS,
+    limits: DEMO_LIMITS,
     // The gateway's lines never contain bodies, tokens or the key; keep the main process quiet.
     log: () => {},
   });

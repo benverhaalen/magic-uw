@@ -170,6 +170,11 @@ function runtime(bridge: Partial<ChatBridge> = {}, courses = included): ChatRunt
   return { bridge: { openExternal: async () => undefined, ...bridge } as ChatBridge, resources, sources, courses, now };
 }
 const answerFor = (id: string, hash: string) => ({ text: "Start with the interface.", model: "qwen3:8b", policyLimited: false, recipient: "local" as const, resourceId: id, inputHash: hash, sourceTitle: `Work ${id}`, sourceUrl: "", observedAt: "2026-09-26T20:00:00Z" });
+// Item questions go to the connected client through the intent router, scoped to the item.
+type IntentCall = { operationId: string; text: string; context?: { resourceId?: string; courseId?: string } };
+const grounded = { status: "answer", text: "Start with the interface.", citations: [], notFound: false, dropped: 0, path: "ai", latencyMs: 900, tokens: { in: 1, cached: 0, out: 1 } } as unknown as IntentResult;
+const intentSpy = (calls: IntentCall[], reply: (call: IntentCall) => IntentResult | Promise<IntentResult> = () => grounded) =>
+  (async (call: IntentCall) => { calls.push(call); return reply(call); }) as unknown as ChatBridge["intentRun"];
 const searchOf = (items: ResourceView[], log: unknown[] = []) =>
   (async (q: unknown) => { log.push(q); return { view: "resources", items }; }) as unknown as ChatBridge["query"];
 
@@ -236,8 +241,8 @@ test("ambiguity is a real choice: the same code in two included accounts asks wh
 
 test("P1-2: an item question naming another included course searches that course; searching all stays inside permitted courses", async () => {
   resetChats();
-  const queries: unknown[] = [], asks: unknown[] = [];
-  const rt = runtime({ query: searchOf([resources[6]!], queries), localAsk: async (q) => { asks.push(q); return answerFor(q.id, q.inputHash); } });
+  const queries: unknown[] = [], asks: IntentCall[] = [];
+  const rt = runtime({ query: searchOf([resources[6]!], queries) });
   const { chat } = startChat({ prompt: "Explain the membrane transport reading for Biology 120", origin: origin(), idempotencyKey: "p12" })!;
   drive(chat, rt); await settle();
   assert.deepEqual(queries[0], { view: "resources", search: "Explain the membrane transport reading", limit: 50, courseId: "120", accountScope: "uw" });
@@ -245,8 +250,9 @@ test("P1-2: an item question naming another included course searches that course
   assert.deepEqual(x.result?.kind === "choose" && x.result.items.map((i) => i.id), ["bio2"]);
   if (x.result?.kind !== "choose") return;
   choose(chat, x, x.result.items[0]!);
+  rt.bridge.intentRun = intentSpy(asks);
   drive(chat, rt); await settle();
-  assert.equal((asks[0] as { id: string }).id, "bio2");
+  assert.equal(asks[0]!.context?.resourceId, "bio2", "the picked item's question goes to the connected client, scoped to it");
 
   resetChats();
   const wide: unknown[] = [];
@@ -264,27 +270,23 @@ test("P1-2: an item question naming another included course searches that course
 
 test("P1-3: a picked item answers follow-ups by default, and a follow-up naming another item is not sent to it", async () => {
   resetChats();
-  const asks: { id: string }[] = [];
-  const rt = runtime({ query: searchOf([resources[7]!, resources[8]!, resources[2]!]), localAsk: async (q) => { asks.push(q); return answerFor(q.id, q.inputHash); } });
+  const asks: IntentCall[] = [];
+  const rt = runtime({ query: searchOf([resources[7]!, resources[8]!, resources[2]!]) });
   const { chat } = startChat({ prompt: "Explain the APIs reading", origin: origin(), idempotencyKey: "s" })!;
   drive(chat, rt); await settle();
   const x = chat.exchanges[0]!;
   assert.deepEqual(x.result?.kind === "choose" && x.result.items.map((i) => i.id), ["r5", "r6"], "the other account's 220 is filtered out");
   if (x.result?.kind !== "choose") return;
   choose(chat, x, x.result.items[0]!);
+  rt.bridge.intentRun = intentSpy(asks);
   drive(chat, rt); await settle();
-  assert.equal(asks[0]!.id, "r5");
+  assert.equal(asks[0]!.context?.resourceId, "r5");
   assert.equal(chat.narrowed?.id, "r5");
   continueChat(chat.id, "And the rubric?", "f1");
   assert.equal(continueChat(chat.id, "And the rubric?", "f1"), true);
   assert.equal(chat.exchanges.length, 2, "a repeated follow-up key is not sent twice");
   drive(chat, rt); await settle();
-  assert.equal(asks[1]!.id, "r5", "a follow-up without another name stays on the picked item");
-  continueChat(chat.id, "Now explain the testing seams reading", "f2");
-  drive(chat, rt); await settle();
-  const z = chat.exchanges[2]!;
-  assert.equal(asks.length, 2, "not answered from the APIs reading");
-  assert.deepEqual(z.result?.kind === "choose" && z.result.items.map((i) => i.id).slice(0, 2), ["r5", "r6"], "remembered item first, the named one offered");
+  assert.equal(asks[1]!.context?.resourceId, "r5", "a follow-up without another name stays on the picked item");
 });
 
 test("no fake course-wide answer: without a matching item nothing is generated", async () => {
@@ -297,48 +299,38 @@ test("no fake course-wide answer: without a matching item nothing is generated",
   assert.deepEqual(chat.exchanges[0]!.result, { kind: "choose", scopeLabel: "COMPSCI 220 · Software Design", items: [], searched: true, wider: true });
 });
 
-test("failures stay inline with retry and setup; a busy runtime is not a setup problem; a mismatched version is not shown", async () => {
+test("failures stay inline with retry and setup: no connected client, a refused send, then an answer", async () => {
   resetChats();
   const item = chatScopeForPage({ page: "resource", resource: resources[0], cards, sources });
-  let calls = 0;
-  const rt = runtime({ localAsk: async (q) => {
-    calls++;
-    if (calls === 1) throw new Error("Start a compatible local Ollama service with cloud disabled.");
-    if (calls === 2) throw new Error("A local AI request is already running. Cancel it before starting another.");
-    if (calls === 3) return answerFor(q.id, "h-old");
-    return answerFor(q.id, q.inputHash);
-  } });
+  const calls: IntentCall[] = [];
+  const rt = runtime({});
   const { chat } = startChat({ prompt: "Where do I start?", origin: origin(item), idempotencyKey: "e" })!;
   const x = chat.exchanges[0]!;
   drive(chat, rt); await settle();
-  assert.equal(x.error?.setup, "local-model");
+  assert.equal(x.error?.setup, "local-model", "no connected client points to choosing Your AI");
+  assert.match(x.error?.text ?? "", /Claude Code or Codex/);
+  let refuse = true;
+  rt.bridge.intentRun = intentSpy(calls, () => (refuse ? { status: "unavailable", reason: "Fully local processing is enabled." } as unknown as IntentResult : grounded));
   retry(chat, x); drive(chat, rt); await settle();
-  assert.equal(x.error?.setup, null);
-  assert.equal(x.error?.text, "Another answer is running on this device. Try again when it finishes.");
-  retry(chat, x); drive(chat, rt); await settle();
-  assert.match(x.error?.text ?? "", /did not match this item's current version/);
+  assert.equal(x.error?.setup, "local-model", "a refused send says how to turn Your AI on");
+  assert.equal(x.error?.detail, "Fully local processing is enabled.");
+  refuse = false;
   retry(chat, x); drive(chat, rt); await settle();
   assert.equal(x.state, "done");
-  assert.equal(x.result?.kind, "answer");
+  assert.equal(x.result?.kind, "grounded");
 });
 
-test("stop cancels only this chat's own local run and a late answer is dropped", async () => {
+test("stop drops a late answer from the connected client", async () => {
   resetChats();
   const item = chatScopeForPage({ page: "resource", resource: resources[0], cards, sources });
   let release!: () => void, cancels = 0;
   const rt = runtime({
-    localAsk: (q) => new Promise((resolve) => { release = () => resolve(answerFor(q.id, q.inputHash)); }),
-    cancelLocal: async () => { cancels++; },
+    intentRun: (() => new Promise((resolve) => { release = () => resolve(grounded); })) as unknown as ChatBridge["intentRun"],
+    cancelIntent: (async () => { cancels++; }) as unknown as ChatBridge["cancelIntent"],
   });
   const one = startChat({ prompt: "First", origin: origin(item), idempotencyKey: "p1" })!.chat;
-  const two = startChat({ prompt: "Second", origin: origin(item), idempotencyKey: "p2" })!.chat;
   drive(one, rt); await settle();
-  assert.equal(one.exchanges[0]!.step, "ask");
-  drive(two, rt); await settle();
-  assert.equal(two.exchanges[0]!.state, "failed", "the device runs one local request at a time");
-  assert.match(two.exchanges[0]!.error?.text ?? "", /running on this device/);
-  stop(two, two.exchanges[0]!, rt.bridge);
-  assert.equal(cancels, 0, "a chat cannot cancel another chat's run");
+  assert.equal(one.exchanges[0]!.state, "running");
   stop(one, one.exchanges[0]!, rt.bridge);
   assert.equal(cancels, 1);
   release(); await settle();

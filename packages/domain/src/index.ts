@@ -281,8 +281,13 @@ const sendCategories = [
   "holds",
   "audit",
 ];
-/** Degree plans, holds and audits never leave the device, whatever the flags say. */
-const deviceOnlyCategories = ["planning", "holds", "audit"];
+/**
+ * Holds never leave the device, whatever the flags say. Degree plans and audits stay on the device
+ * unless the student turns on Data & AI's "Degree plan and audit" row (sharePlanning, shareAudit;
+ * decisions.md, 2026-09-27); off by default.
+ */
+const deviceOnlyCategories = ["holds"];
+const optInPlanningCategories = { planning: "sharePlanning", audit: "shareAudit" } as const;
 const hostedRecipients = [
   "jev",
   "chatgpt",
@@ -306,7 +311,18 @@ export function maySend(
   if (categories.some((category) => deviceOnlyCategories.includes(category)))
     return {
       allowed: false,
-      reason: "Degree plans, holds and audits never leave this device.",
+      reason: "Holds never leave this device.",
+    };
+  if (
+    categories.some(
+      (category) =>
+        category in optInPlanningCategories &&
+        p[optInPlanningCategories[category as keyof typeof optInPlanningCategories]] !== true,
+    )
+  )
+    return {
+      allowed: false,
+      reason: "Your degree plan and audit stay on this device. Turn on sharing in Data & AI.",
     };
   if (!(hostedRecipients as readonly string[]).includes(recipient))
     return { allowed: false, reason: "This recipient is not supported." };
@@ -346,3 +362,4 @@ export function maySend(
 export * from "./calendar-coverage";
 
 export * from "./course-policy";
+export * from "./uw-ai-policy";

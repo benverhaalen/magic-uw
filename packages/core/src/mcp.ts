@@ -17,14 +17,14 @@ export const mcpArgumentsSchema = z
     limit: z.number().int().min(1).max(50).default(20),
   })
   .strict();
-type ToolName =
+export type ToolName =
   | "search"
   | "due_soon"
   | "recent_changes"
   | "course_overview"
   | "get_item"
   | "answer_course_question";
-const toolDescriptions: Record<ToolName, string> = {
+export const toolDescriptions: Record<ToolName, string> = {
   search:
     "Search permitted local course evidence. Returns bounded excerpts and citations.",
   due_soon:
