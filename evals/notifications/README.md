@@ -8,7 +8,11 @@ pnpm exec tsx evals/notifications/run.ts --captures <run>/captures --out <folder
 node --env-file=apps/gateway/.env --import tsx evals/notifications/run.ts --captures <run>/captures --out <folder> --jev --max-calls 260
 # Offline raise-policy comparison from a run's recorded answers (no calls):
 pnpm exec tsx evals/notifications/policies.ts --out <folder>
+# Compare a rules change: a code-only run of the new rules against an earlier Jev run (no calls):
+pnpm exec tsx evals/notifications/compare.ts --before <jev run> --after <code-only run> --out <folder>
 ```
+
+**Labeling real data:** open `evals/notifications/labeler.html` in a browser, load the run's `PRIVATE-labeling-sheet.csv`, label with keys 1–4 (progress stays in that browser), and export. Pass the exported file back with `--labels` to score real-data accuracy. The tool makes no network requests.
 
 | File | What it holds | Suggested chart |
 | --- | --- | --- |
@@ -20,6 +24,7 @@ pnpm exec tsx evals/notifications/policies.ts --out <folder>
 | `b5`/`b6_synthetic_*.csv` | Labeled synthetic announcements/email: label, code level, Jev fields, final level | — |
 | `b7_confusion_matrices.csv` | Label × predicted counts, code vs code+Jev | Heatmaps |
 | `b8_policy_comparison.csv` | Precision/recall/F1 and badge share per raise policy | Grouped bars |
+| `b9_rules_comparison.csv` | The same metrics for rules v1 vs v2, code only and with Jev (from `compare.ts`) | Grouped bars |
 | `PRIVATE-labeling-sheet.csv` | Real titles and excerpts with an empty `your_label` column, for a human to fill in; pass it back with `--labels` for real-data accuracy | Never commit or share |
 
 Labels in the synthetic corpora were written independently of the rules. Treat results as evidence about these corpora, not calibrated accuracy. Keep Jev latency, cost and accuracy figures out of the repository (see `docs/notes/jev-usage.md`).
