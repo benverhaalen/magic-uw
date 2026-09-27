@@ -1,3 +1,33 @@
+@import "../../../../docs/design/tokens.css";
+
+/* Accent frame: Sean's interim choice (2026-09-27), pending Ben's design system (DESIGN.md/tokens.css).
+   The chosen accent colours only the frame outside the white content; "warm" is today's shell.
+   Text on the frame (onboarding wordmark, preview flag) uses the matching identity ink so it stays
+   readable on the light accents. */
+:root {
+  --magic-accent-frame: var(--magic-fill-shell);
+  --magic-accent-frame-ink: var(--magic-ink-on-shell);
+  --magic-accent-frame-chip: var(--magic-fill-shell-selected);
+}
+:root[data-accent="rose"] {
+  --magic-accent-frame: var(--magic-fill-identity-rose);
+  --magic-accent-frame-ink: var(--magic-ink-identity-rose);
+  --magic-accent-frame-chip: var(--magic-surface-workspace);
+}
+:root[data-accent="blue"] {
+  --magic-accent-frame: var(--magic-fill-identity-blue);
+  --magic-accent-frame-ink: var(--magic-ink-identity-blue);
+  --magic-accent-frame-chip: var(--magic-surface-workspace);
+}
+:root[data-accent="coral"] {
+  --magic-accent-frame: var(--magic-fill-identity-coral);
+  --magic-accent-frame-ink: var(--magic-ink-identity-coral);
+  --magic-accent-frame-chip: var(--magic-surface-workspace);
+}
+:root:has(.app-shell) {
+  height: 100%;
+  background: var(--magic-accent-frame);
+}
 :root {
   font-family: var(--magic-font-interface);
   font-weight: var(--magic-font-interface-weight);
@@ -97,9 +127,13 @@ a {
   margin-bottom: 12px;
 }
 .app-shell {
-  min-height: 100vh;
+  position: fixed;
+  inset: 10px;
+  overflow: auto;
   display: grid;
   grid-template-columns: 212px minmax(0, 1fr);
+  background: #fff;
+  border-radius: var(--magic-radius-workspace);
 }
 .sidebar {
   background: #f7f7f5;
@@ -108,8 +142,9 @@ a {
   display: flex;
   flex-direction: column;
   position: fixed;
-  inset: 0 auto 0 0;
+  inset: 10px auto 10px 10px;
   width: 212px;
+  border-radius: var(--magic-radius-workspace) 0 0 var(--magic-radius-workspace);
 }
 .brand {
   display: flex;
@@ -395,7 +430,7 @@ a {
 .today-layout {
   display: grid;
   grid-template-columns: minmax(300px, 1fr) minmax(320px, 0.9fr);
-  min-height: calc(100vh - 184px);
+  min-height: calc(100vh - 204px); /* 20px: the accent frame insets .app-shell by 10px each side */
   border-top: 1px solid var(--border);
 }
 .resource-panel {
@@ -1259,7 +1294,7 @@ select {
     position: sticky;
     top: 0;
     align-self: start;
-    height: calc(100vh - 188px);
+    height: calc(100vh - 208px);
   }
 }
 @media (min-width: 1450px) {

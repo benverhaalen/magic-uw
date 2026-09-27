@@ -46,6 +46,7 @@ export function Icon({ name, className }: { name: IconName; className?: string }
     </svg>
   );
 }
-export function Spinner() {
-  return <span className="onb-spinner" aria-hidden="true" />;
+/** The status ring. `idle` holds it still and muted: nothing is running, so nothing turns. */
+export function Spinner({ idle = false }: { idle?: boolean }) {
+  return <span className={idle ? "onb-spinner idle" : "onb-spinner"} aria-hidden="true" />;
 }
