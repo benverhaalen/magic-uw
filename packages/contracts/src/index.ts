@@ -1356,6 +1356,23 @@ export const learningRequestSchema = z.discriminatedUnion("op", [
     end: z.number().int().min(0),
     activeSeconds: z.number().int().min(0).max(86_400),
   }),
+  // owner: analytics. Practice analytics (code-only rollups, 0 tokens). Course-scoped like the
+  // practice ops: the anchors are required and each is authorized by the worker's trusted resolver.
+  learningOp("analytics.assignment", {
+    courseId: id,
+    anchorIds: z.array(id).min(1).max(50),
+    assignmentId: id,
+  }),
+  learningOp("analytics.course", {
+    courseId: id,
+    anchorIds: z.array(id).min(1).max(50),
+    sessions: z.number().int().min(1).max(20).optional(),
+  }),
+  learningOp("analytics.agendaHints", {
+    courseId: id,
+    anchorIds: z.array(id).min(1).max(50),
+  }),
+  // end owner: analytics
 ]);
 export type LearningRequest = z.infer<typeof learningRequestSchema>;
 export type LearningOp = LearningRequest["op"];
@@ -1476,6 +1493,17 @@ export const queryRequestSchema = z.discriminatedUnion("view", [
       limit: z.number().int().min(1).max(500).optional(),
     })
     .strict(),
+  // owner: guides. The personalised view of a cached study guide (op guide.view); reads only, 0 tokens.
+  z
+    .object({
+      view: z.literal("guide"),
+      courseId: id,
+      kind: z.enum(["guide", "briefing", "faq", "timeline", "compare", "conceptmap"]),
+      moduleId: id.optional(),
+      assessmentId: id.optional(),
+    })
+    .strict(),
+  // end owner: guides
 ]);
 export type QueryRequest = z.infer<typeof queryRequestSchema>;
 /** A list row: a resource without its bodies (text, raw HTML, parts, document pages). */
@@ -1529,7 +1557,23 @@ export type QueryResult =
       cursor: string;
       /** false: more changed than one page can say; reload the views, then follow the new cursor. */
       complete: boolean;
+    }
+  // owner: guides. `guide` is the view body (packages/packs/guide GuideView | ConceptMapView).
+  | {
+      view: "guide";
+      op: "guide.view";
+      status: "ready" | "stale" | "missing" | "empty" | "blocked" | "unavailable";
+      kind: "guide" | "briefing" | "faq" | "timeline" | "compare" | "conceptmap";
+      courseRef: string | null;
+      artifactId: string | null;
+      /** True when the material changed since the guide was made; it is served until regenerated on request. */
+      stale: boolean;
+      changedSources: { resourceId: string; title: string; change: "changed" | "removed" | "added" }[];
+      message: string | null;
+      modelCalls: 0;
+      guide: unknown;
     };
+// end owner: guides
 // end owner: T15
 export const commandSchema = z.discriminatedUnion("type", [
   z
