@@ -1396,6 +1396,71 @@ export const learningRequestSchema = z.discriminatedUnion("op", [
     anchorIds: z.array(id).min(1).max(50),
   }),
   // end owner: analytics
+  // owner: exam-prep. The exam blueprint, the practice exam and interactive solving (N15, P09's
+  // input). Course-scoped like the practice ops; every check runs in code (0 tokens at study time).
+  learningOp("exam.blueprint", {
+    courseId: id,
+    anchorIds: z.array(id).min(1).max(50),
+    assessmentId: id,
+  }),
+  learningOp("exam.build", {
+    courseId: id,
+    anchorIds: z.array(id).min(1).max(50),
+    assessmentId: id,
+    length: z.number().int().min(3).max(60),
+    lean: z.boolean(),
+    timed: z.boolean(),
+    minutes: z.number().int().min(5).max(300).optional(),
+    examConditions: z.boolean(),
+    operationId: id,
+  }),
+  learningOp("exam.solve", {
+    courseId: id,
+    anchorIds: z.array(id).min(1).max(50),
+    problemIds: ids(20).optional(),
+    topicIds: ids(20).optional(),
+    count: z.number().int().min(1).max(10),
+    fade: z.boolean(),
+    operationId: id,
+  }),
+  learningOp("exam.session", { sessionId: id }),
+  learningOp("exam.answer", {
+    sessionId: id,
+    revision: z.number().int().nonnegative(),
+    operationId: id,
+    questionId: id,
+    stepId: id,
+    response: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("choice"), optionId: id }).strict(),
+      z.object({ kind: z.literal("text"), text: z.string().max(4000) }).strict(),
+      z.object({ kind: z.literal("number"), value: z.number(), unit: z.string().max(40).optional() }).strict(),
+      z.object({ kind: z.literal("expression"), text: z.string().max(300) }).strict(),
+      z
+        .object({
+          kind: z.literal("order"),
+          blocks: z.array(z.object({ id, indent: z.number().int().min(0).max(8) }).strict()).max(40),
+        })
+        .strict(),
+      z.object({ kind: z.literal("mark"), mark: z.enum(["right", "partly", "wrong"]) }).strict(),
+    ]),
+    /** Optional self-explanation of the step, graded against its key ideas; never required. */
+    explanation: z.string().max(2000).optional(),
+    confidence: z.union([z.literal(0), z.literal(0.33), z.literal(0.67), z.literal(1), z.null()]),
+    responseMs: z.number().int().min(0).max(86_400_000),
+  }),
+  learningOp("exam.hint", {
+    sessionId: id,
+    revision: z.number().int().nonnegative(),
+    operationId: id,
+    questionId: id,
+    stepId: id,
+  }),
+  learningOp("exam.submit", {
+    sessionId: id,
+    revision: z.number().int().nonnegative(),
+    operationId: id,
+  }),
+  // end owner: exam-prep
 ]);
 export type LearningRequest = z.infer<typeof learningRequestSchema>;
 export type LearningOp = LearningRequest["op"];
