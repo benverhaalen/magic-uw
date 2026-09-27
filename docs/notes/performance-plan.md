@@ -1,4 +1,4 @@
-# Performance plan: what makes Magic Canvas measurably better
+# Performance plan: what makes My Magic UW measurably better
 
 **Status: Proposal. Version 2, 2026-09-26.** Revised after three reviews against the code at `73ff7a6`: a Claude reviewer (citation checks), a Codex adversary, and a backend remap. The review record is at the end.
 **Status vocabulary** (AGENTS.md): researched · proposed · built · tested in isolation · integrated · demonstrated.

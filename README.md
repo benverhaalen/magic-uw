@@ -16,15 +16,23 @@ Read the [shared context](docs/README.md). It separates the product direction, p
 
 **How we build:** [reference-driven design](docs/reference-driven-design.md). Study the actual mechanism or interaction, adapt it to the student journey, and verify its effect in the product. [Agent instructions](AGENTS.md) carry this method into new sessions and delegated work.
 
-**Current state:** an Electron desktop workspace with versioned local SQLite storage, expanded Canvas reads, background refresh, independent calendar feeds, linked course-site/document/GitLab evidence, and local MCP tools with explicit sharing grants. My UW adds local enrollment, saved DARS audits, course search/sections, and conservative academic-source comparison. An owner-funded Jev gateway and an installed-local-model adapter provide bounded AI features. Embedded hosted account connections, managed model downloads, and the broader learning loop are still ahead. See [implementation status](docs/implementation-status.md) for the exact boundary and [development setup](docs/development.md) to run it.
+## How it works
 
-## The course backend and the open academic data platform
+**[How My Magic UW works](docs/how-it-works.md)** is the front door. It follows the student from install to daily study, and each step gives its status: demonstrated live, integrated, tested in isolation, in progress or planned.
 
-Under the app is a local-first academic database. After one UW sign-in, code inventories and reads every course the student can already see, stores it in one SQLite file on their computer as passages with exact offsets, and checks every quote, ID and date. The student's own AI client writes only what code can't, and studying costs no model tokens. The same packages are MIT and open to Badger developers who want to build their own study tools.
+In short:
+- The student checks one agreement box and signs in to UW in the app's window, completing Duo themselves.
+- The app uses the student's own signed-in Claude Code or Codex, passing its settings as flags only.
+- Code reads every course the student can already see into one SQLite database on their computer, as passages with exact offsets. Changes are picked up by cheap probes that re-read only the course that moved.
+- **AI writes, code decides.** Code handles every date, ID and quote. Jev makes small typed judgments. The student's AI gets one checked call only where language must be read or written, and a result is cached by content hash so unchanged content never costs twice.
+- Studying (flashcards, Learn, module quizzes, "Quiz me on", guides, analytics) costs 0 tokens.
+- The same packages are MIT and open to Badger developers through a read-only API and an MCP course bank.
 
-- [Academic data platform](docs/academic-data-platform.md): what it is, what's built, a developer quickstart, the decisions with their evidence, and a sourced scorecard against NotebookLM, Quizlet, Anki and seven other tools.
-- [Course backend architecture](docs/course-backend-architecture.md): the system map and where the build stands.
+More detail:
+- [Academic data platform](docs/academic-data-platform.md): a developer quickstart, the decisions with their evidence, and a sourced scorecard.
+- [Course backend architecture](docs/course-backend-architecture.md): processes, data flow and interfaces.
 - [Build record](docs/course-backend-build-record.md): tests, measurements and the live trial.
+- [Development setup](docs/development.md): running the app.
 
 ## Run the workspace
 
@@ -39,6 +47,7 @@ The app starts empty with hosted AI sharing off. Load the explicitly synthetic s
 
 | Document                                                   | What it answers                                                                     |
 | ---------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| [How it works](docs/how-it-works.md)                       | What does the student see at each step, what runs underneath, and what is proven?   |
 | [Product](docs/product.md)                                 | Who is this for, what should feel magical, and what remains open?                   |
 | [AI and privacy](docs/ai-and-privacy.md)                   | Which AI choices, sign-ins, and data controls are intended?                         |
 | [Architecture](docs/architecture.md)                       | How should access, local data, judgments, and learning fit together?                |

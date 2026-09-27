@@ -6,7 +6,7 @@
 The app writes a code-built folder tree of templated `.docx` notes from the banked course structure (course → lecture, assignment, exam, reading). **It assumes no cloud storage or OneDrive is set up.** Cloud targets are used only when detected or explicitly connected.
 
 ## Targets, in order
-1. **Local folder (default, always works):** `Documents/Magic Canvas/<Term>/<Course>/{Lectures, Assignments, Exams, Readings}/…`. Plain `.docx` opens in Word, Pages, LibreOffice or Google Docs.
+1. **Local folder (default, always works):** `Documents/My Magic UW/<Term>/<Course>/{Lectures, Assignments, Exams, Readings}/…`. Plain `.docx` opens in Word, Pages, LibreOffice or Google Docs.
 2. **A detected sync folder,** offered, never assumed:
 
 | Service | Where it is | How to detect it |

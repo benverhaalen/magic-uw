@@ -5,7 +5,7 @@ Deeper research and feature proposals behind the product docs. The status terms 
 | Note | What it covers |
 |---|---|
 | [where-we-differ.md](where-we-differ.md) | **Start here:** where the research suggests something different from the current plan and code, with evidence and the trigger for each change |
-| [competitive-comparison.md](competitive-comparison.md) | Magic Canvas vs Gemini Notebook (NotebookLM), Quizlet and Duolingo: cost to the student, efficiency, capabilities, where they are ahead |
+| [competitive-comparison.md](competitive-comparison.md) | My Magic UW vs Gemini Notebook (NotebookLM), Quizlet and Duolingo: cost to the student, efficiency, capabilities, where they are ahead |
 | [benchmark-catalog.md](benchmark-catalog.md) | Public datasets and metrics to measure against, licences checked: citations, long documents and slides, item quality, knowledge tracing, spaced repetition, speed and cost |
 | [performance-plan.md](performance-plan.md) | Evidence-ranked choices for retrieval and citations, speed and cost, quiz and test intelligence, and evaluation (reviewed and corrected) |
 | [benchmarking.md](benchmarking.md) | How to benchmark against NotebookLM and study tools without fooling ourselves: tasks, corpus, freezing gold, seeded errors, blind rating, statistics |

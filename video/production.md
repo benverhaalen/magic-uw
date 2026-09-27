@@ -34,7 +34,7 @@ Do these in this order — later steps depend on earlier ones:
    beat 3's click-reveal, and beat 4's split-screen all need real, present data, not a stale or
    cleaned-up account.
 6. **Set up a real MCP client connection for beat 5.** Connect Claude Desktop (or another compatible
-   client) to Magic Canvas with a real grant — one course, `assignments` category only, `grades` off
+   client) to My Magic UW with a real grant — one course, `assignments` category only, `grades` off
    — so it can ask a real question and be revoked on camera. Nobody's done this yet; it's new setup
    work, not just a script line.
 
@@ -96,7 +96,7 @@ one continuous shot.**
   cold-start number if it's actually a rehearsed one).
 - **Who does which side:** participants confirmed (Sean, Ben), but not which side each takes — and
   that choice matters more than it looks. A one-off race where the naturally-faster clicker happens
-  to land on Magic Canvas isn't real evidence, it's a coin flip dressed up as a demo; a skeptical
+  to land on My Magic UW isn't real evidence, it's a coin flip dressed up as a demo; a skeptical
   judge would have the same objection. **Recommend running it twice, sides swapped** (Sean on Magic
   Canvas / Ben on raw Canvas, then the reverse), and using whichever take is cleanest — or showing
   the gap holds both directions, if there's room. Either way, disclose the setup rather than pick

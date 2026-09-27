@@ -1,20 +1,11 @@
 # Plans: start here to pick up the work
 
-**Status: Proposal.** Updated 2026-09-26 against `main` at `d44dcf7`. The plans carry our decisions and their evidence. Changes to the shared packages go to `main` as PRs ([AGENTS.md](../../AGENTS.md)).
+**Status: Living index.** Updated 2026-09-27 against current `main`. For what the system does today and the status of each part, read [how it works](../how-it-works.md) first; the plans below carry the decisions and their evidence. Changes to the shared packages go to `main` as PRs ([AGENTS.md](../../AGENTS.md)).
 
 ## Where things stand
-- **Built on `main`:**
-  - an Electron desktop with a utility-process SQLite store (FTS5, versioned captures, jobs, judgment cache, attempts, receipts)
-  - the Canvas connector (courses, syllabus, assignments, modules, pages, files, quizzes, discussions, announcements)
-  - document extraction (PDF, PPTX, DOCX, HTML)
-  - calendar, external-site and GitLab connectors
-  - background refresh
-  - a permissioned MCP server
-  - privacy gates
-  - local AI via Ollama
-  - a Jev gateway with one judgment
-  - See [implementation status](../implementation-status.md) and the [backend map](../notes/backend-map.md).
-- **Not built yet:** passages with offsets, the course map (assessment scope and materials), Outlook and campus feeds, prompt packs and the model runner, the notebook UI, the learning features, notes export, licensing.
+- **Status per part** (demonstrated live, integrated, tested in isolation, in progress, planned) lives in one place: [how it works](../how-it-works.md). This index does not repeat it.
+- **On `main` since the course-backend plan began:** passages with offsets and passage search; the one job drain and the material pipeline (categorisation, the reference graph, the daily agenda); prompt packs on the student's own Claude Code or Codex (instant mode, client health); cards and quizzes feeding the learning router; study guides; practice analytics; lecture notes with Word and Google sync; Outlook and Microsoft 365 through Graph; file acquisition with OCR; the intent router; read-only MCP and `agent-api` v1; the Workspace tools preview tabs.
+- **In progress on branches:** the in-flight table in [how it works](../how-it-works.md).
 
 ## Read in this order
 1. **[Course backend: execution playbook](2026-09-26-course-backend/execution.md), [spec](2026-09-26-course-backend/spec.md), [plan](2026-09-26-course-backend/plan.md) and [tasks](2026-09-26-course-backend/tasks.md): the build.** Start with the playbook: units U0-U10, each with a research pass, the fleet, live trials and an exit condition. Connect every source (Canvas, Outlook as a gist and a link, calendar and campus feeds, Kaltura), store it, map assignments and assessments to their materials, and build the notebook on top. Every AI feature is a one-call prompt pack on the student's own AI. It supersedes the agent data-layer and sync-and-actions docs where they differ.

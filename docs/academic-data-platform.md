@@ -155,9 +155,9 @@ Two secondary rows still miss their targets, and the planted questions were writ
 
 **Where quality is not yet measured.** We make no claim that our answers or questions are better than anyone's. The blind quality benchmark (spec B6; blind scoring on a public MIT OpenCourseWare course against a rubric fixed before the run; see [benchmarking](notes/benchmarking.md)) is **protocol fixed, run pending**. We found no published accuracy figures from any of the ten vendors below, so that run would be the first public measurement of its kind.
 
-### Magic Canvas
+### My Magic UW
 
-| Criterion | Magic Canvas | Status |
+| Criterion | My Magic UW | Status |
 |---|---|---|
 | Price for a student | Code MIT and free; generation runs on the student's own AI plan or key. The product price is open decision H1 ([plan §9](plans/2026-09-26-course-backend/plan.md#9-open-human-calls)): $5 lifetime for the hosted Jev service, or a $5 one-time licence | proposed |
 | Automatic Canvas connection for a student alone | yes: the student's own UW sign-in; no school deployment | integrated; shown on one live account |

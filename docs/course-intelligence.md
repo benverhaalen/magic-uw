@@ -35,7 +35,7 @@ The important distinction is between **finding text** and **establishing what th
 
 UW's [student conduct guidance](https://conduct.students.wisc.edu/faculty-staff-resources/artificial-intelligence/) directs students to ask their instructor when permission is unclear. The [Law School course rules](https://law.wisc.edu/current/rules/chap3.html) include a prohibition default when a faculty member has not established a policy. These sources demonstrate that a missing course statement does not establish campus-wide permission.
 
-Magic Canvas's coaching fallback is a product behavior, not a finding that a school authorized that help. The profile should say when no applicable policy was established from available sources. Program or school defaults cannot be claimed as covered unless those sources are actually captured and their applicability established. General course-policy interpretation and compliance across all schools remain unverified.
+My Magic UW's coaching fallback is a product behavior, not a finding that a school authorized that help. The profile should say when no applicable policy was established from available sources. Program or school defaults cannot be claimed as covered unless those sources are actually captured and their applicability established. General course-policy interpretation and compliance across all schools remain unverified.
 
 ## Optional local semantic extraction
 

@@ -1,6 +1,6 @@
 # Shared project context
 
-For Ben and three teammates. Updated September 26, 2026.
+For Ben and three teammates. Updated September 27, 2026.
 
 This section gets everyone informed about what My Magic UW is and where the thinking stands. It is not a build guide, ownership plan, or first-demo proposal. Treat the concept as established; resolve remaining choices without repeatedly reopening the thesis.
 
@@ -14,7 +14,7 @@ Reference-driven design is our working method: assign each reference a job, insp
 
 The technical direction starts with local course data: connectors capture sources, code handles exact facts, Jev makes typed judgments, and a language model writes and reasons with relevant context. **Our gateway pays for Jev on the Claude/Codex/Gemini routes; OpenRouter users will pay through their own OpenRouter key. Our TypeSafe key stays server-side.** The OpenRouter path is accepted direction, not yet implemented.
 
-Ben accepted Nathaniel’s $5 one-time license plus bring-your-own-paid-AI direction. Intended routes are Claude Code, Codex, Gemini CLI with a paid key, and OpenRouter; verified adapters and payment setup remain unfinished. See [the resolution](decisions.md#pricing-and-ai-access-resolution--september-26). Desktop comes first; the website is for information/downloads/GitHub; iOS is later if time permits.
+Ben accepted Nathaniel’s $5 one-time license plus bring-your-own-paid-AI direction. Intended routes are Claude Code, Codex, Gemini CLI with a paid key, and OpenRouter. Claude Code and Codex run on `main` in instant mode, and Gemini runs with the student's key ([how it works](how-it-works.md#1-install-and-onboarding)); the OpenRouter route and payment setup remain unfinished. See [the resolution](decisions.md#pricing-and-ai-access-resolution--september-26). Desktop comes first; the website is for information/downloads/GitHub; iOS is later if time permits.
 
 Trust is part of the product: course AI policy first, no submitting/enrolling/posting or explicit completion commands to school systems, sources and freshness, reversible links, and honest uncertainty. Reading may register views or satisfy must-view requirements; this accepted effect is disclosed. Local storage and hosted processing must be described separately.
 
@@ -24,12 +24,13 @@ We are entering Applied AI & Automation, DoIT's Badgers Building for Badgers, an
 
 | Read                                                  | Contents                                                                                                 |
 | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| [Academic data platform](academic-data-platform.md)   | **Start here for the backend and for developers:** the app's backend as an open, local-first academic database; status per part, quickstart, decisions with evidence, sourced scorecard |
+| [How it works](how-it-works.md)                       | **Start here:** the student's journey from install to study; what they see, what runs underneath, what it costs and each step's status. The canonical explanation of the running system |
+| [Academic data platform](academic-data-platform.md)   | **For developers:** the app's backend as an open, local-first academic database; quickstart, decisions with evidence, sourced scorecard |
 | [Design system](../DESIGN.md) / [handoff](design-handoff.md) | Small entry point: visual anchor, semantic tokens, behavior contracts, platform handoffs and scoped audit workflow |
 | [Marketing materials](../marketing/README.md)          | Website page directions, wizard logo pack, and team photos (design exports, not the built site)          |
 | [Home and visual direction](home-design-direction.md) | Current flagship Home, near-approved layout/type, remaining local refinements and reference transfers |
 | [My Magic UW direction](magic-canvas-direction.md) | Course backend lane: the whole product, frontend surfaces, open-source academic data platform plus paid product, roadmap (open decisions marked) |
-| [Course backend architecture](course-backend-architecture.md) | Course backend lane: system map, integration with main, what changed and why, implementation status and what is left |
+| [Course backend architecture](course-backend-architecture.md) | Course backend: processes, data flow, storage layout, interfaces, what changed and why |
 | [Course-aware learning sessions](learning-sessions.md) | Assignment learning surface adapted to the shared backend; explicit integration dependencies and verification limits |
 | [Product](product.md)                                 | Vision, student experience, learning loop, interface ideas, visual taste                                 |
 | [Organizing concepts](product-directions.md)          | Earlier organizing alternatives; current Home decisions supersede their unresolved entry/navigation status |
@@ -43,7 +44,7 @@ We are entering Applied AI & Automation, DoIT's Badgers Building for Badgers, an
 | [Course ingestion](ingestion-upgrade.md)              | Expanded sources, refresh, local materials, privacy, and verified limits                                 |
 | [Course intelligence](course-intelligence.md)          | Versioned course claims, source-bound policy interpretation, optional local extraction, and evidence limits |
 | [Planning integration](planning-upgrade.md)           | My UW adapters, source reconciliation, privacy, live evidence, and remaining work                         |
-| [Implementation status](implementation-status.md)     | Actual capability boundaries, evidence, and the remaining product scope                                  |
+| [Implementation status](implementation-status.md)     | Detailed history of each capability and its verification; current status per step is in [How it works](how-it-works.md) |
 | [Development](development.md)                         | Run the workspace and checks; configure the shared gateway safely                                        |
 | [Decisions and open points](decisions.md)             | What is established and what still needs input                                                           |
 | [BuildFest context](buildfest.md)                     | Event facts, judging audiences, opening-slide notes                                                      |
