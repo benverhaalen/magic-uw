@@ -13,7 +13,8 @@ test("no rereads: no URL twice in a run, a relaunch probes only, refresh isn't a
   const first = by("first sync after sign-in");
   assert.equal(first.coursesRead.current, 6);
   assert.equal(first.coursesRead.shells + first.coursesRead.past, 0, "old and org courses are never read");
-  const fullRead = (s: (typeof scenarios)[number]) => (s.byEndpoint["/api/v1/users/self/profile"] ?? 0) > 0;
+  // A full read reads every current course's assignment list; a warm read reads only the moved ones.
+  const fullRead = (s: (typeof scenarios)[number]) => (s.byEndpoint["/api/v1/courses/:id/assignments"] ?? 0) >= 6;
   const relaunch = by("second launch within the freshness window");
   assert.equal(fullRead(relaunch), false, "a relaunch within the window is not a full read");
   assert.deepEqual(
