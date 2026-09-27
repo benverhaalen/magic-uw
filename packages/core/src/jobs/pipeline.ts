@@ -11,7 +11,8 @@
  * - retry-after: a handler's `defer` sets a durable per-kind cooldown, and the loop wakes itself
  *   when the earliest cooldown ends (also after a restart).
  *
- * A handler that sends (Jev) keeps its own egress checks: `available` gates leasing and the
+ * A handler that sends (Jev, or the student's own model on the background lane, as agenda.estimate
+ * does) keeps its own egress checks: `available` gates leasing and the
  * handler re-checks consent, writes its receipt and discards a result that went stale.
  * Planning data is never queued.
  */
