@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inflateRawSync } from "node:zlib";
@@ -273,13 +273,11 @@ test("v5 → current (v6 course core, v7 learning) keeps every row, planning and
       const next = store.changesAfter(n);
       assert.equal(next.length, 1);
       assert.equal(next[0]!.seq, n + 1);
-      // The backup is the untouched v5 file.
-      const backup = store.migrationBackup();
-      assert.equal(backup, migrationBackupPath(file));
-      const copy = new DatabaseSync(backup!, { readOnly: true });
-      assert.equal(copy.prepare("PRAGMA user_version").get()!.user_version, 5);
-      assert.equal(copy.prepare("SELECT count(*) AS n FROM resources").get()!.n, before.resources);
-      copy.close();
+      // privacy (lead decision, September 27): the v5 backup is a plaintext copy; once the migrated
+      // database passes integrity_check and every carried-over table's row count, it is deleted.
+      assert.equal(store.backupCheck()?.status, "deleted");
+      assert.equal(store.migrationBackup(), null);
+      assert.equal(existsSync(migrationBackupPath(file)), false);
       assert.ok(migrationMs < 2000, `migration took ${migrationMs} ms`);
     } finally {
       store.close();
@@ -342,7 +340,11 @@ test("the backup restores through SQLite's backup API while a reader is open", a
   const { file, cleanup } = temporary();
   try {
     seedV5(file);
-    createStore(file).close(); // migrates; the backup holds v5
+    // A verified migration deletes its backup (privacy, September 27); a backup is kept only when the
+    // check fails. Stand in for that kept backup with the v5 file itself.
+    copyFileSync(file, `${file}.v5`);
+    createStore(file).close(); // migrates
+    copyFileSync(`${file}.v5`, migrationBackupPath(file));
     const reader = new DatabaseSync(file, { readOnly: true });
     reader.exec("BEGIN");
     reader.prepare("SELECT count(*) FROM resources").get();
@@ -389,9 +391,10 @@ test("purge enumerates every table: zero rows everywhere, FTS empty, backup dele
       store.notes.addSuggestions("n1", [{ id: "sg", blockId: "notes", text: "t", resourceId: syllabus.id, quote: "q" }]);
       store.notes.putRemote({ noteId: "n1", provider: "google", remoteId: "r", webUrl: null, etag: null, modifiedTime: null, syncedVersion: 1, syncedAt: t(9), status: "synced", error: null });
       store.notes.setSyncSetting({ provider: "google", enabled: true, enabledAt: t(9), lastCheckAt: null, message: null });
-      assert.ok(store.migrationBackup());
+      assert.equal(store.migrationBackup(), null, "the verified v5 backup was deleted after migration (privacy)");
       for (const [table, n] of Object.entries(counts(file)))
-        if (!["preferences", "life_items", "course_briefs", "mcp_grants"].includes(table) && !table.startsWith("learning_")) assert.ok(n > 0, `${table} is populated before purge`);
+        // platform-fix: observations and source_observations were never read and are no longer written.
+        if (!["preferences", "life_items", "course_briefs", "mcp_grants", "observations", "source_observations"].includes(table) && !table.startsWith("learning_")) assert.ok(n > 0, `${table} is populated before purge`);
 
       const onDisk = () =>
         [file, `${file}-wal`, migrationBackupPath(file)]
