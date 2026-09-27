@@ -31,6 +31,14 @@ export function NotesPreview({ course }: { course: Course }) {
   const [tree, reloadTree] = useLoad(`notes-tree:${courseKey}`, () => ask({ op: "notes.tree", courseId: course.courseId, accountScope: course.accountScope }));
   const [templates] = useLoad("notes-templates", () => ask({ op: "notes.templates" }));
   const [sync, reloadSync] = useLoad("notes-sync", () => ask({ op: "notes.sync.status" }));
+  const [local, reloadLocal] = useLoad("notes-local", () => ask({ op: "notes.localFolders.status" }));
+  const chooseFolder = async (folder: string | null) => {
+    setNotice(null);
+    const got = await action.run(() => ask({ op: "notes.localFolders.choose", folder }));
+    if (!got) return;
+    if (failed(got)) return setNotice({ status: got.failed, message: got.message });
+    reloadLocal();
+  };
 
   const show = async (request: { sessionId: string } | { noteId: string }) => {
     setNotice(null);
@@ -63,7 +71,7 @@ export function NotesPreview({ course }: { course: Course }) {
   return (
     <PreviewSection
       title="Notes"
-      op="notes.recent · notes.tree · notes.open · notes.templates · notes.setTemplate · notes.fill · notes.sync.status"
+      op="notes.recent · notes.tree · notes.open · notes.templates · notes.setTemplate · notes.fill · notes.sync.status · notes.localFolders.status"
       actions={
         <button
           className="button small-button"
@@ -71,6 +79,7 @@ export function NotesPreview({ course }: { course: Course }) {
             reloadRecent();
             reloadTree();
             reloadSync();
+            reloadLocal();
           }}
         >
           Reload
@@ -210,6 +219,39 @@ export function NotesPreview({ course }: { course: Course }) {
                 </li>
               ))}
             </ul>
+          )
+        }
+      </Loaded>
+      <h3>Save to a local folder</h3>
+      <Loaded load={local} retry={reloadLocal}>
+        {(got) =>
+          failed(got) ? (
+            <Partial status={got.failed}>{got.message}</Partial>
+          ) : (
+            <>
+              {got.local.folder ? (
+                <div className="backend-row">
+                  <span>Saving edited notes to {got.local.folder}. Its own sync client uploads them from there.</span>
+                  <button className="button small-button" disabled={action.busy} onClick={() => void chooseFolder(null)}>
+                    Stop
+                  </button>
+                </div>
+              ) : got.local.folders.length === 0 ? (
+                <Empty>No OneDrive, Google Drive or iCloud folder was found on this device.</Empty>
+              ) : (
+                <ul className="backend-list">
+                  {got.local.folders.map((f) => (
+                    <li key={f.id} className="backend-row">
+                      <span>{f.label}</span>
+                      <button className="button small-button" disabled={action.busy} onClick={() => void chooseFolder(f.path)}>
+                        Save notes to {f.label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {got.local.lastError ? <Partial status="failed">{got.local.lastError}</Partial> : null}
+            </>
           )
         }
       </Loaded>
