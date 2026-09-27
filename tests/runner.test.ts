@@ -73,11 +73,17 @@ test("claude one-shot: exact spec E2 argv, prompt only on stdin, byte-stable pre
   const [call] = await h.calls();
   const prefixPath = call.argv[call.argv.indexOf("--system-prompt-file") + 1];
   const schemaJson = call.argv[call.argv.indexOf("--json-schema") + 1];
+  // client-detection (operator, defence in depth): streamed so the tripwire sees a tool use as it
+  // starts, and a deny-every-tool PreToolUse hook passed with --settings from the run folder.
+  const settingsPath = call.argv[call.argv.indexOf("--settings") + 1];
   assert.deepEqual(call.argv, [
-    "-p", "--output-format", "json", "--json-schema", schemaJson, "--tools", "",
+    "-p", "--output-format", "stream-json", "--verbose", "--settings", settingsPath,
+    "--json-schema", schemaJson, "--tools", "",
     "--strict-mcp-config", "--setting-sources", "project,local", "--no-session-persistence",
     "--system-prompt-file", prefixPath, "--model", "sonnet",
   ]);
+  assert.ok(settingsPath.startsWith(h.workDir));
+  assert.deepEqual(JSON.parse(await readFile(settingsPath, "utf8")).hooks.PreToolUse[0].hooks[0], { type: "command", command: "exit 2" });
   assert.equal(JSON.parse(schemaJson).type, "object");
   assert.equal(await readFile(prefixPath, "utf8"), SYSTEM);
   assert.equal(call.stdin, secretAsk);
@@ -113,6 +119,8 @@ test("codex one-shot: exact spec E2 argv, prefix leads stdin, strong tier adds e
     "exec", "-", "--json", "--output-schema", schemaPath, "--ephemeral", "-s", "read-only", "--ignore-user-config",
     // Codex refuses a non-git folder without it (verified on 0.156.1); the app's folders never are one.
     "--skip-git-repo-check",
+    // client-detection (security review): never ask for approval, in both modes.
+    "-c", 'approval_policy="never"',
   ]);
   assert.equal(JSON.parse(await readFile(schemaPath, "utf8")).additionalProperties, false);
   assert.ok(first.stdin.startsWith(SYSTEM));

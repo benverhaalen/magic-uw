@@ -122,7 +122,15 @@ export type RunnerErrorKind =
   | "plan_insufficient"
   | "model_unavailable"
   | "offline"
-  | "keychain_locked"; // owner: client-detection
+  | "keychain_locked" // owner: client-detection
+  // owner: client-detection (security). The client started to use a tool; the run was killed.
+  | "tool_use_blocked";
+
+/** A blocked tool use, as recorded: the event kind and the tool's name only, never its input or output. */
+export interface ToolUseEvent {
+  event: string;
+  tool: string;
+}
 
 const studentMessages: Record<RunnerErrorKind, string> = {
   not_installed: "Your AI client isn't installed. Open Settings to choose one.",
@@ -148,6 +156,8 @@ const studentMessages: Record<RunnerErrorKind, string> = {
   offline: "Your AI service couldn't be reached. Check your internet connection.",
   keychain_locked:
     "macOS blocked access to your AI client's saved sign-in. Run it once in Terminal and allow Keychain access.",
+  tool_use_blocked:
+    "Your AI client tried to use a tool, which My Magic UW never allows, so the request was stopped and its answer discarded.",
 };
 
 /** Messages never include stderr, prompts or keys: those can hold course text or secrets. */
@@ -157,13 +167,16 @@ export class RunnerError extends Error {
   readonly studentMessage: string;
   /** owner: client-health. When a usage limit resets, as the client stated it (never parsed further). */
   readonly resetsAt?: string;
-  constructor(kind: RunnerErrorKind, detail?: string, checkErrors: string[] = [], extra: { resetsAt?: string } = {}) {
+  /** owner: client-detection. For `tool_use_blocked`: what was blocked (kind and name only). */
+  readonly blocked?: ToolUseEvent;
+  constructor(kind: RunnerErrorKind, detail?: string, checkErrors: string[] = [], extra: { resetsAt?: string; blocked?: ToolUseEvent } = {}) {
     super(detail ? `${kind}: ${detail}` : kind);
     this.name = "RunnerError";
     this.kind = kind;
     this.checkErrors = checkErrors;
     this.studentMessage = studentMessages[kind];
     if (extra.resetsAt) this.resetsAt = extra.resetsAt;
+    if (extra.blocked) this.blocked = extra.blocked;
   }
 }
 
@@ -190,5 +203,7 @@ export interface LedgerEntry {
   outcome: LedgerOutcome;
   checkErrors: string[];
   errorKind?: RunnerErrorKind;
+  /** owner: client-detection. The security receipt of a blocked tool use (kind and name only). */
+  blocked?: ToolUseEvent;
 }
 export type LedgerSink = (entry: LedgerEntry) => void;

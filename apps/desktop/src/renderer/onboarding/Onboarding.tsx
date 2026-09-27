@@ -98,8 +98,11 @@ export function Onboarding(props: OnboardingProps) {
   const next = () => setStep(steps[Math.min(index + 1, steps.length - 1)].id);
   const loadSample = async () => {
     const result = await props.onLoadSample();
-    if (result?.snapshot?.resources.length) {
-      update({ uw: "skipped" });
+    // owner: client-detection (e2e harness): from the agreement or UW step the sample stands in
+    // for the sign-in and the flow moves on; anywhere later it only adds coursework, and the
+    // student stays where they are.
+    if (result?.snapshot?.resources.length && (step === "consent" || step === "uw")) {
+      if (progress.uw !== "confirmed") update({ uw: "skipped" });
       setStep("client");
     }
   };
@@ -453,6 +456,7 @@ const stateWords: Record<ClientHealth["state"], string> = {
   model_unavailable: "Model unavailable",
   offline: "Can't connect",
   keychain_locked: "Keychain blocked", // owner: client-detection
+  tool_use_blocked: "Stopped: tried a tool",
 };
 
 /** A tile's real status: what the client on this computer says, in its saved mode. Signs nothing in. */
@@ -527,13 +531,25 @@ function ClientStep(props: {
   }, [current]);
   const recommended = health ? recommendedClient(health) : null;
 
-  if (connecting)
+  // owner: client-detection (e2e harness): never assume a mode on remount. Use the one chosen on
+  // this screen, else the client's saved mode from its health; until that's known, wait. (A
+  // default of "isolated" here used to be saved over the student's instant mode.)
+  const connectMode: ClientMode | null =
+    connecting === "gemini" ? "api_key" : connecting && (mode ?? health?.[connecting]?.mode ?? null);
+  if (connecting && !connectMode)
+    return (
+      <div className="onb-inline-status" role="status">
+        <Spinner />
+        <span>Checking {clientInfo[connecting].name}…</span>
+      </div>
+    );
+  if (connecting && connectMode)
     return (
       <ConnectClient
-        key={`${connecting}-${mode ?? ""}`}
+        key={`${connecting}-${connectMode}`}
         {...props}
         id={connecting}
-        mode={mode ?? (connecting === "gemini" ? "api_key" : "isolated")}
+        mode={connectMode}
         onBack={() => setConnecting(null)}
         onMode={setMode}
       />
@@ -880,6 +896,10 @@ function ConnectClient({
             setFinishing(true);
             try {
               await clients.choose(id);
+              // owner: client-detection (e2e harness): runs go to the chosen client only when the
+              // privacy preference names it, so a student who picked Codex isn't blocked.
+              if (snapshot.privacy.mode !== "local_only" && snapshot.privacy.hostedProvider !== id)
+                await run({ type: "privacy", value: { ...snapshot.privacy, hostedProvider: id } });
               onConnected();
             } catch {
               setProblem(`Could not save ${info.name} as your AI.`);

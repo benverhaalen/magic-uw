@@ -10,6 +10,7 @@ import {
   type Usage,
 } from "./types";
 import { contentFile, extractJson, failure } from "./util";
+import { DENY_TOOLS_SETTINGS, claudeToolUse, toolUseError } from "./tripwire"; // owner: client-detection
 
 /** Aliases resolve to the latest model of each family on the student's plan (`claude --help`). */
 export const CLAUDE_TIER_MODELS: Record<Tier, string> = { pass: "sonnet", strong: "opus" };
@@ -36,11 +37,16 @@ export function claudeOneShotArgs(o: {
   schemaJson: string;
   prefixPath: string;
   model: string;
+  /** owner: client-detection: the deny-every-tool PreToolUse hook (tripwire.ts), a file in the run folder. */
+  settingsPath?: string;
 }): string[] {
   return [
     "-p",
+    // owner: client-detection (security): streamed, so the tripwire sees a tool use as it starts.
     "--output-format",
-    "json",
+    "stream-json",
+    "--verbose",
+    ...(o.settingsPath ? ["--settings", o.settingsPath] : []),
     "--json-schema",
     o.schemaJson,
     "--tools",
@@ -109,7 +115,17 @@ export function parseClaudeJson(stdout: string): ClaudeResult | null {
   try {
     parsed = JSON.parse(stdout.trim());
   } catch {
-    return null;
+    // owner: client-detection: stream-json is one event per line; the result event is the last.
+    parsed = stdout
+      .split(/\r?\n/)
+      .map((line) => {
+        try {
+          return JSON.parse(line) as unknown;
+        } catch {
+          return null;
+        }
+      })
+      .filter((v) => v !== null);
   }
   const candidates = Array.isArray(parsed) ? parsed : [parsed];
   for (const c of candidates.reverse()) {
@@ -136,8 +152,9 @@ export function createClaudeBackend(options: ClaudeOptions): ModelBackend {
     async call(call: BackendCall): Promise<BackendResult> {
       const model = models[call.tier];
       const prefixPath = await prefixFile(options.workDir, call.systemPrompt);
+      const settingsPath = await contentFile(join(options.workDir, "settings"), DENY_TOOLS_SETTINGS, ".json"); // owner: client-detection
       const args = [
-        ...claudeOneShotArgs({ schemaJson: inlineSchema(call.jsonSchema), prefixPath, model }),
+        ...claudeOneShotArgs({ schemaJson: inlineSchema(call.jsonSchema), prefixPath, model, settingsPath }),
         ...(options.extraArgs ?? []),
       ];
       const run = await runProcess(options.command, args, {
@@ -146,6 +163,11 @@ export function createClaudeBackend(options: ClaudeOptions): ModelBackend {
         env: cliEnvironment(options.env),
         timeoutMs: call.timeoutMs,
         signal: call.signal,
+        // owner: client-detection (security): any tool use kills the run and discards its output.
+        onStdoutLine: (line) => {
+          const blocked = claudeToolUse(line);
+          return blocked ? toolUseError(blocked) : null;
+        },
       });
       const result = parseClaudeJson(run.stdout);
       if (!result) {

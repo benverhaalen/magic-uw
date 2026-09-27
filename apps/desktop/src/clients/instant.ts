@@ -217,21 +217,48 @@ export async function instantSupport(id: ClientId, version: string | undefined, 
     const home = studentCodexHome(deps.env ?? process.env);
     const has = deps.exists ?? fileExists;
     const personal = (await has(join(home, "AGENTS.md"))) || (await has(join(home, "AGENTS.override.md")));
-    const canDisable = helpHasFlag(help, "--disable");
-    const listed = canDisable ? listedFeatures(await (deps.features ?? (() => runText("codex", ["features", "list"], deps)))()) : new Set<string>();
-    plan = {
-      support: {
-        available: true,
-        testedWith,
-        ...(personal ? { note: "Codex adds your personal AGENTS.md to each request. My Magic UW still checks every answer." } : {}),
-      },
-      features: CODEX_TOOL_FEATURES.filter((f) => listed.has(f)),
-      ignoreRules: helpHasFlag(help, "--ignore-rules"),
-    };
+    const features = await codexToolFeatures(help, deps);
+    // Security review, 2026-09-27: the model never gets tools, so a Codex that can't turn its
+    // shell off isn't run at all.
+    plan = !features.includes("shell_tool")
+      ? no(`This Codex${version ? ` (${version})` : ""} can't turn off its shell tool, and My Magic UW never lets the model use tools.`, ["--disable shell_tool"])
+      : {
+          support: {
+            available: true,
+            testedWith,
+            ...(personal ? { note: "Codex adds your personal AGENTS.md to each request. My Magic UW still checks every answer." } : {}),
+          },
+          features,
+          ignoreRules: helpHasFlag(help, "--ignore-rules"),
+        };
   }
   if (!plan.support.available) plan.support.testedWith = testedWith;
   cache.set(key, plan);
   return plan;
+}
+
+/** The tool features this Codex lists and can turn off (`--disable` must be in its `exec --help`). */
+async function codexToolFeatures(help: string, deps: InstantDeps): Promise<string[]> {
+  if (!helpHasFlag(help, "--disable")) return [];
+  const listed = listedFeatures(await (deps.features ?? (() => runText("codex", ["features", "list"], deps)))());
+  return CODEX_TOOL_FEATURES.filter((f) => listed.has(f));
+}
+
+/**
+ * owner: client-detection (security review, 2026-09-27). The app's own Codex profile gets the
+ * same tools-off arguments as instant mode (the tool features disabled, web search off, rules
+ * ignored when listed); the read-only sandbox and `approval_policy="never"` are in the runner's
+ * spec argv for both modes. Null when this Codex can't turn its shell off: then it isn't run.
+ */
+export async function codexToolsOffArgs(deps: InstantDeps): Promise<string[] | null> {
+  const help = await (deps.help ?? ((c) => runText(c, ["exec", "--help"], deps)))("codex");
+  const features = await codexToolFeatures(help, deps);
+  if (!features.includes("shell_tool")) return null;
+  return [
+    ...(helpHasFlag(help, "--ignore-rules") ? ["--ignore-rules"] : []),
+    "-c", 'web_search="disabled"',
+    ...features.flatMap((f) => ["--disable", f]),
+  ];
 }
 
 /** The backend options for an instant-mode run: cwd, env and the extra argv. Creates app files only. */

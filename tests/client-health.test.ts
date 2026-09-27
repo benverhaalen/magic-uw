@@ -164,8 +164,10 @@ test("instant argv: Claude adds --safe-mode to the spec flags; nothing points at
   assert.ok(argv[argv.indexOf("--system-prompt-file") + 1].startsWith(userData));
   for (const a of argv) {
     assert.ok(!a.includes(studentConfig) && !a.includes(join(home, ".claude")) && !a.includes(profileDir(userData, "claude")), a);
-    assert.ok(!/--bare|--dangerously|--settings\b|--mcp-config/.test(a), a);
+    assert.ok(!/--bare|--dangerously|--mcp-config/.test(a), a);
   }
+  // client-detection: --settings carries only the app's own deny-every-tool hook, from the app's folder.
+  assert.ok(argv[argv.indexOf("--settings") + 1].startsWith(userData));
 });
 
 test("instant argv: Codex skips rules, git check, user instructions and tools; state stays in the app folder", async () => {

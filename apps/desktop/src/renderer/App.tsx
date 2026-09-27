@@ -1592,6 +1592,7 @@ function Privacy({
             <option value="none">Local model</option>
             <option value="chatgpt">ChatGPT</option>
             <option value="claude">Claude</option>
+            <option value="codex">Codex</option>{/* owner: client-detection: the client a student can pick in onboarding */}
             <option value="gemini">Gemini</option>
           </select>
           <p className="small muted">

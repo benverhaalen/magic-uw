@@ -6,6 +6,7 @@
 //   FAKE_CLI_LOG        JSONL file; one line per invocation or stream message: {kind, argv, stdin, cwd}
 //   FAKE_CLI_STATE      counter file shared by every invocation (responses are consumed in order)
 //   FAKE_CLI_RESPONSES  JSON array of response specs; the last one repeats
+//                       (also {events, holdMs}: stream lines before the answer, then a pause)
 //                       {output, text, usage, error, exit, stderr, sleepMs, crash, model}
 //   FAKE_CLI_AUTH       JSON {stdout, exit} for `claude auth status` / `codex login status`
 //                       (FAKE_CLI_AUTH_CLAUDE / FAKE_CLI_AUTH_CODEX override it per CLI)
@@ -28,6 +29,12 @@ function nextSpec() {
   return specs[Math.min(n, specs.length - 1)] ?? {};
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// owner: client-detection. `events`: stream lines printed before the answer (a tool use, for the
+// tripwire tests); `holdMs`: a pause after them, so a test can tell the run was killed early.
+async function emitEvents(spec) {
+  for (const e of spec.events ?? []) process.stdout.write(`${JSON.stringify(e)}\n`);
+  if (spec.holdMs) await sleep(spec.holdMs);
+}
 async function readAll() {
   const chunks = [];
   for await (const c of process.stdin) chunks.push(c);
@@ -79,6 +86,7 @@ if (kind === "claude" && args.includes("--input-format")) {
     if (spec.sleepMs) await sleep(spec.sleepMs);
     if (spec.crash) process.exit(3);
     process.stdout.write(`${JSON.stringify({ type: "system", subtype: "init", model: spec.model ?? "claude-sonnet-5" })}\n`);
+    await emitEvents(spec);
     process.stdout.write(`${JSON.stringify({ type: "assistant", message: { content: [] } })}\n`);
     process.stdout.write(`${JSON.stringify(claudeResult(spec))}\n`);
   }
@@ -93,11 +101,14 @@ if (spec.stderr) process.stderr.write(spec.stderr);
 if (spec.exit && !spec.error) process.exit(spec.exit);
 
 if (kind === "claude") {
+  await emitEvents(spec);
   process.stdout.write(JSON.stringify(claudeResult(spec)));
   process.exit(spec.error ? 1 : 0);
 }
 if (kind === "codex") {
-  const out = [{ type: "thread.started", thread_id: "t1" }, { type: "turn.started" }];
+  process.stdout.write(`${JSON.stringify({ type: "thread.started", thread_id: "t1" })}\n`);
+  await emitEvents(spec);
+  const out = [{ type: "turn.started" }];
   if (spec.error) out.push({ type: "turn.failed", error: { message: spec.error } });
   else {
     out.push({

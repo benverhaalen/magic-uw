@@ -205,14 +205,21 @@ test("scenario claude-no-safe-mode: a Claude Code without --safe-mode isn't offe
   assert.match(html, /tested with 2\.1\.283/);
 });
 
-test("scenario codex-older-without-optional-flags: Codex without --ignore-rules or --disable runs instant with the nearest safe argv", async () => {
+test("scenario codex-older-without-optional-flags: without --ignore-rules Codex runs the nearest safe argv; without a way to turn its shell off it isn't run", async () => {
   const userData = await tmp("magic-cap-");
   const help = `Run Codex non-interactively\n${CODEX_REQUIRED_FLAGS.map((f) => `      ${f} <x>`).join("\n")}\n`;
-  const plan = await instantSupport("codex", "0.120.0", { userData, help: async () => help, exists: async () => false, features: async () => { throw new Error("not asked without --disable"); } });
+  // Security review, 2026-09-27: no --disable means the shell tool can't be turned off.
+  const noDisable = await instantSupport("codex", "0.120.0", { userData, help: async () => help, exists: async () => false, features: async () => { throw new Error("not asked without --disable"); } });
+  assert.equal(noDisable.support.available, false);
+  assert.deepEqual(noDisable.support.missingFlags, ["--disable shell_tool"]);
+  assert.match(noDisable.support.reason!, /can't turn off its shell tool/);
+  const withDisable = `${help}      --disable <FEATURE>\n`;
+  const plan = await instantSupport("codex", "0.121.0", { userData, help: async () => withDisable, exists: async () => false, features: async () => "shell_tool   stable   true\nunified_exec   stable   true\n" });
   assert.equal(plan.support.available, true);
-  assert.deepEqual([plan.features, plan.ignoreRules], [[], false]);
+  assert.deepEqual([plan.features, plan.ignoreRules], [["shell_tool", "unified_exec"], false]);
   const args = codexInstantArgs({ instructionsPath: "/i.md", stateDir: "/s", features: plan.features, ignoreRules: plan.ignoreRules });
-  assert.ok(!args.includes("--ignore-rules") && !args.includes("--disable"));
+  assert.ok(!args.includes("--ignore-rules"));
+  assert.deepEqual(args.filter((_, i) => args[i - 1] === "--disable"), ["shell_tool", "unified_exec"]);
   assert.equal((await instantSupport("codex", "0.119.0", { userData, help: async () => help.replace("--ignore-user-config", ""), exists: async () => false })).support.missingFlags?.[0], "--ignore-user-config");
 });
 

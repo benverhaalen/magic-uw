@@ -30,6 +30,8 @@ export type ClientHealthState =
   | "offline"
   // owner: client-detection. macOS refused the client's saved sign-in in the Keychain.
   | "keychain_locked"
+  // owner: client-detection (security). The client started to use a tool; the run was stopped.
+  | "tool_use_blocked"
   | "ok";
 
 /** Whether instant mode can be offered for this client on this device, and why not. */

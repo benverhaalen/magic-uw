@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { join } from "node:path";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { z } from "zod";
 import { claudeOutcome, claudeResultSchema, inlineSchema, CLAUDE_TIER_MODELS, type ClaudeResult } from "./claude";
 import { cliEnvironment, type CliCommand } from "./process";
@@ -10,8 +11,10 @@ import {
   type ModelBackend,
   type Tier,
   type Usage,
+  type ToolUseEvent,
 } from "./types";
 import { contentFile, formatAskHeader, jsonSchemaOf, sha256 } from "./util";
+import { DENY_TOOLS_SETTINGS, claudeToolUse, toolUseError } from "./tripwire"; // owner: client-detection
 
 /**
  * Appended to every pooled prefix, so a session knows the header and the union output.
@@ -81,9 +84,10 @@ export interface SessionPool extends ModelBackend {
 }
 
 /** D38 argv: the one-shot flags with stream-json in and out. Tools off; never --bare. */
-export function claudeSessionArgs(o: { schemaJson: string; prefixPath: string; model: string }): string[] {
+export function claudeSessionArgs(o: { schemaJson: string; prefixPath: string; model: string; settingsPath?: string }): string[] {
   return [
     "-p",
+    ...(o.settingsPath ? ["--settings", o.settingsPath] : []), // owner: client-detection: the deny-every-tool hook
     "--input-format",
     "stream-json",
     "--output-format",
@@ -133,6 +137,8 @@ class Session {
   contextTokens = 0;
   lastUsed: number;
   private buffer = "";
+  /** owner: client-detection: set when the tripwire killed this session. */
+  private blocked: ToolUseEvent | null = null;
   private pending: {
     resolve: (r: ClaudeResult) => void;
     reject: (e: RunnerError) => void;
@@ -176,6 +182,16 @@ class Session {
       const line = this.buffer.slice(0, newline).trim();
       this.buffer = this.buffer.slice(newline + 1);
       if (!line) continue;
+      // owner: client-detection (security): any tool use kills the session and fails the ask.
+      const blocked = claudeToolUse(line);
+      if (blocked) {
+        this.blocked = blocked;
+        const p = this.pending;
+        this.pending = null;
+        this.kill();
+        p?.reject(toolUseError(blocked));
+        return;
+      }
       let raw: unknown;
       try {
         raw = JSON.parse(line);
@@ -195,10 +211,11 @@ class Session {
     this.alive = false;
     const p = this.pending;
     this.pending = null;
-    p?.reject(new RunnerError("process_failed", "session ended"));
+    p?.reject(this.blocked ? toolUseError(this.blocked) : new RunnerError("process_failed", "session ended"));
     this.onExit(this);
   }
   ask(text: string, timeoutMs: number, signal?: AbortSignal): Promise<ClaudeResult> {
+    if (this.blocked) return Promise.reject(toolUseError(this.blocked)); // owner: client-detection
     if (!this.alive) return Promise.reject(new RunnerError("process_failed", "session ended"));
     this.busy = true;
     return new Promise<ClaudeResult>((resolve, reject) => {
@@ -269,6 +286,10 @@ export function createSessionPool(options: PoolOptions): SessionPool {
   const idleMs = options.idleMs ?? 10 * 60 * 1000;
   const schemaJson = inlineSchema(unionSchema(options.kinds));
   const env = cliEnvironment(options.env);
+  // owner: client-detection: the deny-every-tool hook, one file in the app-owned run folder.
+  const settingsPath = join(options.workDir, "settings", "deny-tools.json");
+  mkdirSync(dirname(settingsPath), { recursive: true });
+  writeFileSync(settingsPath, DENY_TOOLS_SETTINGS, { encoding: "utf8", mode: 0o600 });
   const lanes = new Map<string, LaneState>();
   const listeners = new Set<(e: ActivityEvent) => void>();
   const emit = (e: ActivityEvent) => {
@@ -299,7 +320,7 @@ export function createSessionPool(options: PoolOptions): SessionPool {
       prefixHash,
       model,
       options.command,
-      [...claudeSessionArgs({ schemaJson, prefixPath, model }), ...(options.extraArgs ?? [])],
+      [...claudeSessionArgs({ schemaJson, prefixPath, model, settingsPath }), ...(options.extraArgs ?? [])],
       options.workDir,
       env,
       now(),

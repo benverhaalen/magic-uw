@@ -328,20 +328,42 @@ function claudeVersionsBinary(name: string, env: NodeJS.ProcessEnv, platform: No
 }
 
 /** Variables the app itself uses that must not reach the student's client. */
-const strippedEnv = ["NODE_OPTIONS", "ELECTRON_RUN_AS_NODE", "NODE_TEST_CONTEXT"];
-const strippedPrefixes = ["MAGIC_", "JEV_"];
+/**
+ * owner: client-detection (security). The only parent variables a client process inherits: what
+ * the OS, the runtime, certificates and a proxy need. Everything else is dropped, so no
+ * ANTHROPIC_*, CLAUDE_CODE_*, OPENAI_*, CODEX_*, GEMINI_*, AWS_*, AZURE_*, GOOGLE_*, GITHUB_*
+ * or other token variable can override the student's sign-in or bill a key, and no NODE_OPTIONS,
+ * ELECTRON_RUN_AS_NODE, MAGIC_* or JEV_* leaks in. Each mode adds only what it needs through
+ * `extra` (the student's own CLAUDE_CONFIG_DIR/CODEX_HOME in instant mode, the profile folder in
+ * isolated mode). Matched case-insensitively, as Windows treats names. (Before, the whole parent
+ * environment passed through underneath the extras.)
+ */
+export const CLIENT_ENV_ALLOW = new Set([
+  // Program lookup, home and temp folders (Windows and POSIX).
+  "PATH", "PATHEXT", "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC",
+  "TEMP", "TMP", "TMPDIR", "HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
+  "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "PROGRAMFILES", "PROGRAMFILES(X86)", "ALLUSERSPROFILE", "PUBLIC",
+  "USERNAME", "USERDOMAIN", "PROCESSOR_ARCHITECTURE", "NUMBER_OF_PROCESSORS", "OS",
+  // macOS Keychain and home lookup; XDG folders on Linux.
+  "USER", "LOGNAME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR",
+  "LANG", "LANGUAGE", "TERM",
+  // Proxies and certificates (no credentials).
+  "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR",
+]);
+export function allowlistedEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(base)) {
+    if (value === undefined) continue;
+    const upper = key.toUpperCase();
+    if (CLIENT_ENV_ALLOW.has(upper) || /^LC_[A-Z]+$/.test(upper)) env[key] = value;
+  }
+  return env;
+}
 export function cliEnvironment(
   extra: Record<string, string> = {},
   base: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {};
-  for (const [key, value] of Object.entries(base)) {
-    if (value === undefined) continue;
-    if (strippedEnv.includes(key.toUpperCase())) continue;
-    if (strippedPrefixes.some((p) => key.toUpperCase().startsWith(p))) continue;
-    env[key] = value;
-  }
-  return { ...env, ...extra };
+  return { ...allowlistedEnv(base), ...extra };
 }
 
 export interface ProcessResult {
@@ -356,6 +378,11 @@ export interface ProcessOptions {
   timeoutMs: number;
   signal?: AbortSignal;
   maxOutputBytes?: number;
+  /**
+   * owner: client-detection (security). Checks each complete stdout line as it arrives; an error
+   * returned here kills the process at once and rejects with it, discarding all output.
+   */
+  onStdoutLine?: (line: string) => RunnerError | null;
 }
 
 /** Runs a command without a shell. The prompt goes on stdin; argv holds only our flags and paths. */
@@ -403,6 +430,24 @@ export function runProcess(
       else sink.push(chunk);
     };
     child.stdout.on("data", collect(out));
+    // owner: client-detection: the tripwire reads stdout line by line as it streams.
+    if (options.onStdoutLine) {
+      let pending = "";
+      child.stdout.on("data", (chunk: Buffer) => {
+        if (settled) return;
+        pending += chunk.toString("utf8");
+        const lines = pending.split("\n");
+        pending = lines.pop() ?? "";
+        for (const line of lines) {
+          const blocked = options.onStdoutLine!(line);
+          if (blocked) return finish(blocked);
+        }
+      });
+      child.stdout.on("end", () => {
+        const blocked = pending && !settled ? options.onStdoutLine!(pending) : null;
+        if (blocked) finish(blocked);
+      });
+    }
     child.stderr.on("data", collect(err));
     child.on("error", (e: NodeJS.ErrnoException) =>
       finish(

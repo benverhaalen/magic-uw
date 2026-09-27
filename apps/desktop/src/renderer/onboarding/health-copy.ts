@@ -161,6 +161,14 @@ export function healthCopy(h: ClientHealth, options: { chat?: boolean } = {}): H
         command: h.id === "codex" ? "codex" : "claude",
         actions: [{ kind: "check_again" }, ...chat(h)],
       };
+    case "tool_use_blocked": // owner: client-detection (security)
+      return {
+        tone: "problem",
+        title: `${name} tried to use a tool`,
+        cause: `My Magic UW never lets the model run commands, edit files or browse. ${name} started to, so that request was stopped and its answer discarded. Nothing it tried ran to completion.`,
+        next: "Try again. If it keeps happening, update the client or choose another AI, and tell us which version you have.",
+        actions: [{ kind: "check_again" }, { kind: "switch" }],
+      };
     case "offline":
       return {
         tone: "wait",

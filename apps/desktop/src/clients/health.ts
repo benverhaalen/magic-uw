@@ -15,6 +15,7 @@ import { CLIENTS, authStatus, detectClient, resolveClient } from "./profiles";
 import {
   instantEnv,
   instantRunOptions,
+  codexToolsOffArgs,
   instantSupport,
   instantWorkDir,
   modeOf,
@@ -87,6 +88,8 @@ export function stateFromError(error: RunnerError): ClientHealthState | null {
       return "offline";
     case "keychain_locked": // owner: client-detection
       return "keychain_locked";
+    case "tool_use_blocked":
+      return "tool_use_blocked";
     default:
       return null;
   }
@@ -109,6 +112,8 @@ export function errorForState(health: Pick<ClientHealth, "state" | "resetsAt">):
       return new RunnerError("offline", "health");
     case "keychain_locked": // owner: client-detection
       return new RunnerError("keychain_locked", "health");
+    case "tool_use_blocked":
+      return new RunnerError("tool_use_blocked", "health");
     default:
       return null;
   }
@@ -300,7 +305,14 @@ export async function clientRunOptions(
     return { mode: "instant", options: await instantRunOptions(id, command, plan, deps), check };
   }
   const options = await isolated();
-  return options ? { mode: "isolated", options, check } : null;
+  if (!options) return null;
+  if (id === "codex") {
+    // owner: client-detection (security): the app's own profile turns Codex's tools off too.
+    const off = await codexToolsOffArgs(deps);
+    if (!off) return null;
+    return { mode: "isolated", options: { ...options, extraArgs: [...(options.extraArgs ?? []), ...off] }, check };
+  }
+  return { mode: "isolated", options, check };
 }
 
 /** The chosen client's backend in its mode, health-gated before every run. */

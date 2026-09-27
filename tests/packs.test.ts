@@ -147,6 +147,15 @@ test("a usage limit pauses background work without retry; on-demand work tells t
   assert.equal((await h.calls()).length, 2);
 });
 
+// owner: client-detection (e2e harness): the reset time the client stated reaches the student.
+test("a usage limit's stated reset time is in the pack result the student sees", async () => {
+  const h = await setup([{ error: "You've hit your limit · resets 3pm (America/Chicago)" }]);
+  const r = await runPack(h.deps, pack, frame, { topic: "stacks" }, passages, { lane: "interactive" });
+  assert.ok(r.status === "failed" && r.kind === "usage_limit");
+  assert.equal(r.status === "failed" && r.resetsAt, "3pm (America/Chicago)");
+  assert.match(r.status === "failed" ? r.message : "", /resets 3pm \(America\/Chicago\)/);
+});
+
 test("the daily background budget from the configuration defers work before any call", async () => {
   const h = await setup([good], { dailyBackgroundTokens: 10 });
   const r = await runPack(h.deps, pack, frame, { topic: "stacks" }, passages, { lane: "background" });
