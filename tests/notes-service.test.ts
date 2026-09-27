@@ -1,5 +1,5 @@
 // Notes: sessions from the enrollment and calendar, batch scaffolds for the rolling window, edits,
-// templates, passages, the v9 migration and purge. Synthetic data only.
+// templates, passages, the v11 migration and purge. Synthetic data only.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -249,20 +249,20 @@ test("the notes command reaches the service through core; purge deletes every no
   assert.deepEqual((after as { notes: unknown[] }).notes, []);
 });
 
-test("v9 migration: an existing v8 file gains the notes tables and keeps its data", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "notes-v9-"));
+test("v11 migration: an existing v9 file gains the notes tables and keeps its data", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "notes-v11-"));
   const path = join(dir, "workspace.sqlite");
   const first = createStore(path);
   first.ingest(batch("courses", "canvas", [res(COURSE, "course", { title: "COMPSCI400" })]));
   first.close();
-  // Roll the file back to v8 by dropping the v9 tables, as a v8 build left it.
+  // Roll the file back to v9 by dropping the notes tables, as a v9 build left it.
   const raw = new DatabaseSync(path);
   for (const t of ["note_sync_settings", "note_remotes", "note_suggestions", "note_template_choices", "note_links", "note_versions", "notes"])
     raw.exec(`DROP TABLE ${t}`);
-  raw.exec("PRAGMA user_version = 8");
+  raw.exec("PRAGMA user_version = 9");
   raw.close();
   const store = createStore(path);
-  assert.equal(SCHEMA_VERSION, 9);
+  assert.equal(SCHEMA_VERSION, 11);
   assert.equal(store.resources().length, 1);
   assert.deepEqual(store.notes.notes(), []);
   assert.ok(store.migrationBackup());

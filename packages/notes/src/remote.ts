@@ -1,13 +1,14 @@
 /**
  * Where the student writes: the NotesRemote port and its two adapters.
- * - Microsoft: the Graph app folder (packages/connectors/src/graph.ts, a teammate's), to its exact
- *   `appFolderPut` / `appFolderGet` signature. This file never imports graph.ts.
+ * - Microsoft: the Graph app folder through graph.ts's `appFolderPut` / `appFolderGet` and main's
+ *   Graph proxy.
  * - Google: Drive with the `drive.file` scope. The HTTP call runs in main, which alone holds the
  *   token; the adapter only builds Drive requests and reads their JSON.
  */
 import type { NoteSyncProvider } from "@magic/contracts";
 import { z } from "zod";
 import { DOCX_TYPE } from "./docx";
+import { appFolderGet, appFolderPut, GraphError, type GraphTransport } from "../../connectors/src/graph";
 
 export const APP_FOLDER = "My Magic UW";
 export interface RemoteFile {
@@ -36,27 +37,30 @@ export function safeName(value: string, max = 120): string {
   return (cleaned || "Untitled").slice(0, max);
 }
 
-/** The teammate's Graph surface (feat/outlook-graph), exactly as briefed. */
-export interface GraphAppFolder {
-  appFolderPut(path: string, bytes: Uint8Array, contentType: string): Promise<{ id: string; webUrl: string; eTag: string }>;
-  appFolderGet(id: string, ifNoneMatch?: string): Promise<304 | { bytes: Uint8Array; eTag: string }>;
-  appFolderDelta?(): Promise<unknown>;
-  connected?(): Promise<boolean>;
-}
-export function microsoftRemote(graph: GraphAppFolder): NotesRemote {
+/**
+ * Word online through the app's own OneDrive folder (Files.ReadWrite.AppFolder). Graph's `approot`
+ * is already `Apps/<app>`, so paths start at the course folder: `<Course>/<date> <type>.docx`.
+ * `transport` is main's Graph proxy (the worker never holds a token).
+ */
+export function microsoftRemote(transport: GraphTransport, connected: () => Promise<boolean>): NotesRemote {
   return {
     provider: "microsoft",
-    connected: async () => (graph.connected ? graph.connected() : true),
+    connected,
     async put({ folders, name, bytes }) {
-      const path = [APP_FOLDER, ...folders.map((f) => safeName(f)), safeName(name.replace(/\.docx$/i, "")) + ".docx"].join("/");
-      const saved = await graph.appFolderPut(path, bytes, DOCX_TYPE);
+      const path = [...folders.map((f) => safeName(f)), safeName(name.replace(/\.docx$/i, "")) + ".docx"].join("/");
+      const saved = await appFolderPut(transport, path, Buffer.from(bytes), DOCX_TYPE);
       return { remoteId: saved.id, webUrl: saved.webUrl, etag: saved.eTag, modifiedTime: null };
     },
     async get(remote) {
-      const read = await graph.appFolderGet(remote.remoteId, remote.etag ?? undefined);
-      if (read === 304) return { status: "unchanged" };
-      if (read.eTag === remote.etag) return { status: "unchanged" };
-      return { status: "changed", format: "docx", bytes: read.bytes, etag: read.eTag, modifiedTime: null };
+      let read;
+      try {
+        read = await appFolderGet(transport, remote.remoteId, remote.etag ?? undefined);
+      } catch (error) {
+        if (error instanceof GraphError && error.status === 404) return { status: "missing" };
+        throw error;
+      }
+      if (read.status === 304 || (read.eTag !== undefined && read.eTag === remote.etag)) return { status: "unchanged" };
+      return { status: "changed", format: "docx", bytes: new Uint8Array(read.bytes), etag: read.eTag ?? null, modifiedTime: null };
     },
   };
 }

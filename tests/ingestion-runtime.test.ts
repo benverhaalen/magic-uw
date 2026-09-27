@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { DatabaseSync } from "node:sqlite";
+import { inflateRawSync } from "node:zlib";
 import { join } from "node:path";
 import { captureBatchSchema } from "@magic/contracts";
 import { createStore } from "@magic/storage";
@@ -15,11 +17,13 @@ import {
 
 const origin = "https://canvas.wisc.edu";
 const courseIds = ["101", "102", "103", "104", "105"];
+const localRosterOnly = [
+  "never-store@example.test",
+  "Synthetic student - should not be stored",
+];
 const noPersistence = [
   "SYNTHETIC_CAPABILITY",
   "SYNTHETIC_DOWNLOAD_SECRET",
-  "never-store@example.test",
-  "Synthetic student - should not be stored",
   "author_id",
   "user_id",
 ];
@@ -431,7 +435,7 @@ test("runtime refresh saves scoped evidence, compiles supporting context, and ke
     );
 
     await t.test(
-      "vault capabilities and identity fields never persist in current or historical SQLite records",
+      "capabilities never persist; profile identities exist only in the local scrubber roster",
       () => {
         assert.ok(
           Object.values(vault).every((url) =>
@@ -443,16 +447,43 @@ test("runtime refresh saves scoped evidence, compiles supporting context, and ke
           .filter((name) => name.startsWith("coursework.sqlite"))
           .map((name) => readFileSync(join(directory, name)).toString("utf8"))
           .join("\n");
-        for (const canary of noPersistence) {
+        for (const canary of [...noPersistence, ...localRosterOnly]) {
           assert.ok(
             !current.includes(canary),
             `Snapshot leaked synthetic canary ${canary}`,
           );
-          assert.ok(
+          if (noPersistence.includes(canary)) assert.ok(
             !persisted.includes(canary),
             `Database leaked synthetic canary ${canary}`,
           );
         }
+        // Inspect logical rows too: historical resource payloads are compressed, so
+        // searching raw SQLite bytes alone cannot establish that they are clean.
+        const db = new DatabaseSync(database, { readOnly: true });
+        try {
+          const rosterRows = db.prepare("SELECT value FROM preferences WHERE key='identity_roster_auto'").all();
+          assert.equal(rosterRows.length, 1);
+          const rosterText = String(rosterRows[0]!.value);
+          for (const identity of localRosterOnly) assert.ok(rosterText.includes(identity));
+          assert.deepEqual(JSON.parse(rosterText), store.autoIdentities());
+          const tables = db.prepare("SELECT name FROM sqlite_schema WHERE type='table'").all();
+          for (const table of tables) {
+            const name = String(table.name);
+            const statement = db.prepare(`SELECT * FROM "${name.replaceAll('"', '""')}"`);
+            statement.setReadBigInts(true);
+            const rows = statement.all();
+            for (const row of rows) {
+              if (name === "preferences" && row.key === "identity_roster_auto") continue;
+              const decoded = Object.values(row).map((value) => {
+                if (!(value instanceof Uint8Array)) return String(value);
+                try { return inflateRawSync(value).toString("utf8"); }
+                catch { return Buffer.from(value).toString("utf8"); }
+              }).join("\n");
+              for (const canary of [...noPersistence, ...localRosterOnly])
+                assert.ok(!decoded.includes(canary), `${name} leaked ${canary} outside the local roster`);
+            }
+          }
+        } finally { db.close(); }
         assert.doesNotMatch(
           current,
           /feeds\/calendars|[?&](?:signature|verifier)=/,
@@ -463,6 +494,17 @@ test("runtime refresh saves scoped evidence, compiles supporting context, and ke
         );
       },
     );
+    await t.test("purge removes the local roster and its persisted identity bytes", async () => {
+      await runtime.stop();
+      await core.execute({ type: "purge", confirmation: "DELETE LOCAL DATA" });
+      assert.deepEqual(store.autoIdentities(), { accounts: {} });
+      const remaining = readdirSync(directory)
+        .filter((name) => name.startsWith("coursework.sqlite"))
+        .map((name) => readFileSync(join(directory, name)).toString("utf8"))
+        .join("\n");
+      for (const identity of localRosterOnly)
+        assert.ok(!remaining.includes(identity), "Purge retained local identity bytes");
+    });
   } finally {
     await runtime.stop();
     await core.close();

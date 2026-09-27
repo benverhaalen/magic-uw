@@ -7,6 +7,7 @@ import {
   type Connector,
   type Resource,
   type ResourceInput,
+  type AutoIdentityUpdate,
 } from "@magic/contracts";
 import {
   CanvasHttp,
@@ -14,6 +15,7 @@ import {
   canvasNextPage,
   type CanvasHttpOptions,
 } from "./canvas-http";
+import { readCanvasModules, createCanvasModuleRun, type CanvasModuleRun } from "./canvas-modules";
 import { canvasContent } from "./canvas-content";
 import {
   courseSelection,
@@ -25,8 +27,6 @@ import {
   canvasSubmissionSchema,
   submissionEvidence,
   assignmentSchema,
-  moduleSchema,
-  itemSchema,
   pageSchema,
   fileSchema,
   folderSchema,
@@ -48,6 +48,9 @@ import {
   groupResource,
   quizResource,
   discussionResource,
+  discussionAuthor,
+  profileSchema,
+  profileIdentity,
   activityResource,
   type CanvasCourse,
 } from "./canvas-models";
@@ -76,10 +79,17 @@ export interface CanvasConnectorOptions
     courseId: string;
     url: string;
   }) => void | Promise<void>;
+  /**
+   * Local scrubbing roster only: the student's own profile identity and
+   * non-teacher topic/announcement authors. Never put into capture batches.
+   */
+  onIdentity?: (update: AutoIdentityUpdate) => void | Promise<void>;
   /** Earliest announcement window; defaults to all available historical announcements. */
   announcementsStartDate?: string;
   /** owner: T33. A warm read: only these courses get per-course reads (D37); the account reads still run. */
   onlyCourses?: string[];
+  moduleRun?: CanvasModuleRun;
+  onModuleRun?: (run: CanvasModuleRun) => void;
 }
 // owner: T17. Scheduler order: essentials (0), then pages (1), then the background lists (2).
 const BACKGROUND_SCOPES = new Set([
@@ -95,10 +105,6 @@ function scopePriority(scope: string): number {
   if (scope === "pages" || scope.startsWith("page:")) return 1;
   return BACKGROUND_SCOPES.has(scope) ? 2 : 0;
 }
-/** Modules listed with include[]=items: each item is still validated on its own. */
-const moduleListSchema = moduleSchema.extend({
-  items: z.array(z.unknown()).max(2000).optional(),
-});
 function failure(error: unknown, hasRecords = false): CaptureBatch["status"] {
   if (error instanceof CanvasFailure) return error.status;
   if (error instanceof z.ZodError) return "partial";
@@ -538,6 +544,7 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
             "ok",
             true,
           );
+          return resources;
         } catch (error) {
           emit(
             course.id,
@@ -642,20 +649,32 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
           );
         }
       }
+      async function reportIdentity(update: AutoIdentityUpdate) {
+        if (combined.aborted) return;
+        // Scrubbing-roster failures must not break coursework sync.
+        try {
+          await options.onIdentity?.(update);
+        } catch {}
+      }
+      function noteAuthor(course: CanvasCourse, item: z.infer<typeof discussionSchema>): undefined {
+        const author = discussionAuthor(item, course);
+        if (author && options.onIdentity)
+          void reportIdentity({ accountScope, courseId: course.id, authors: [author] });
+        return undefined;
+      }
       async function work() {
         const accountUrl = (path: string) =>
             `${origin}/api/v1/users/self/${path}?per_page=100${path.startsWith("activity_stream") ? "&only_active_courses=true" : ""}`,
           catalogUrl = `${origin}/api/v1/courses?enrollment_state=active&per_page=100&include[]=syllabus_body&include[]=term&include[]=teachers&include[]=total_scores&include[]=concluded`,
           historicalUrl = `${origin}/api/v1/courses?enrollment_state=completed&state[]=available&state[]=completed&per_page=100&include[]=term&include[]=total_scores&include[]=concluded`;
-        let profile: { id: string };
+        let profile: z.infer<typeof profileSchema>;
         try {
-          profile = z
-            .object({ id: canvasId })
+          profile = profileSchema
             .parse(
               (
                 await http.request(
                   `${origin}/api/v1/users/self/profile`,
-                  combined,
+                  combined, undefined, 0, { fresh: true },
                 )
               ).data,
             );
@@ -673,6 +692,12 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
           return;
         }
         accountScope = hashCanvas(`${origin}\n${profile.id}`);
+        const self = profileIdentity(profile);
+        if (self) await reportIdentity({ accountScope, self });
+        combined.throwIfAborted();
+        const moduleRun = options.moduleRun?.accountScope === accountScope && !options.moduleRun.invalidated
+          ? options.moduleRun : createCanvasModuleRun(accountScope);
+        options.onModuleRun?.(moduleRun);
         const account: CanvasCourse = { id: "account", name: "Canvas account" };
         const accountJobs = [
           { scope: "todo", schema: todoSchema, path: "todo" },
@@ -897,89 +922,80 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
             const soon = row.deadlines.some(
               (d) =>
                 d.kind === "due" &&
+                Date.parse(d.value) >= now().getTime() - 7 * 86400_000 &&
                 Date.parse(d.value) <= now().getTime() + 14 * 86400_000,
             );
             for (const link of row.links ?? []) {
-              const url = new URL(typeof link === "string" ? link : link.url);
+              let url: URL;
+              try { url = new URL(typeof link === "string" ? link : link.url); } catch { continue; }
               const match = url.pathname.match(
                 new RegExp(`^/courses/${course.id}/pages/([^/]+)$`),
               );
               if (url.origin === origin && match) {
-                const slug = decodeURIComponent(match[1]!);
-                if (/^[a-zA-Z0-9_%.-]{1,256}$/.test(slug))
+                let slug: string;
+                try { slug = decodeURIComponent(match[1]!); } catch { continue; }
+                if (/^[a-zA-Z0-9_%.-]{1,256}$/.test(slug) && (refs.has(slug) || refs.size < 2000))
                   refs.set(slug, (refs.get(slug) ?? false) || soon);
               }
             }
           }
         }
-        // owner: T17. A course's essentials: assignments, modules with their items inline (one
-        // request), announcements, all at once under the scheduler.
+        // Per-course essentials run concurrently; the HTTP scheduler prioritizes them over bodies
+        // and background lists. Module validation is shared with inventory and freshness probes.
+        async function moduleResources(course: CanvasCourse) {
+          const captured: ResourceInput[] = [];
+          const started = performance.now();
+          const reused = moduleRun.results.has(`${http.origin}\n${course.id}`);
+          const acquisition = await readCanvasModules(http, course.id, combined,
+            moduleRun);
+          const moduleDiagnostics = acquisition.diagnostics.map(code => ({ code, path: [], severity: "error" as const }));
+          emit(course.id, courseName(course), "modules",
+            acquisition.modules.map(entry => moduleResource(entry.module, course, origin)),
+            acquisition.listComplete ? "ok" : acquisition.status === "ok" ? "partial" : acquisition.status,
+            acquisition.listComplete, moduleDiagnostics, started, 0,
+            reused ? 0 : acquisition.listRequests);
+          for (const entry of acquisition.modules) {
+            const resources: ResourceInput[] = [];
+            const diagnostics: CaptureDiagnostic[] = entry.diagnostics.map(code => ({ code, path: [], severity: "error" as const }));
+            for (const item of entry.items) {
+              try { resources.push(itemResource(item, course, origin)); }
+              catch (error) { diagnostics.push(...diagnostic(error).map(d => ({ ...d, severity: "error" as const }))); }
+            }
+            emit(course.id, courseName(course), `module-items:${entry.module.id}`, resources,
+              diagnostics.length && entry.status === "ok" ? "partial" : entry.status,
+              entry.complete && !diagnostics.length, diagnostics, started, 0,
+              reused ? 0 : entry.requests);
+            captured.push(...resources);
+          }
+          return captured;
+        }
         async function essentials(course: CanvasCourse) {
           const end = now().toISOString(),
             start = options.announcementsStartDate ?? "1970-01-01";
-          const [assignments, itemLists] = await Promise.all([
+          const [assignments, items, announcements] = await Promise.all([
             collect(
               course,
               "assignments",
               `${origin}/api/v1/courses/${course.id}/assignments?per_page=100&include[]=submission&order_by=due_at`,
               assignmentSchema,
-              (item) =>
-                assignmentResource(
-                  item,
-                  course,
-                  origin,
-                  options.collectComments !== false,
-                ),
+              (item) => assignmentResource(item, course, origin, options.collectComments !== false),
             ),
-            collect(
-              course,
-              "modules",
-              `${origin}/api/v1/courses/${course.id}/modules?per_page=100&include[]=items&include[]=content_details`,
-              moduleListSchema,
-              (item) => moduleResource(item, course, origin),
-            ).then((modules) =>
-              Promise.all(
-                modules.items.map((module) => {
-                  if (http.needsSignIn) return undefined;
-                  // "Canvas is free to omit 'items' for any particular module if it deems them too
-                  // numerous to return inline. Callers must be prepared to use the List Module Items
-                  // API if items are not returned." (Modules API, include[]=items). The source omits
-                  // them when a module has more than Api::MAX_PER_PAGE (100) visible items
-                  // (lib/api/v1/context_module.rb). Fewer inline items than items_count also reads.
-                  const inline =
-                    Array.isArray(module.items) &&
-                    (module.items_count === undefined ||
-                      module.items.length >= module.items_count)
-                      ? module.items
-                      : undefined;
-                  return collect(
-                    course,
-                    `module-items:${module.id}`,
-                    `${origin}/api/v1/courses/${course.id}/modules/${module.id}/items?per_page=100&include[]=content_details`,
-                    itemSchema,
-                    (item) => {
-                      if (item.module_id && item.module_id !== module.id)
-                        throw new CanvasFailure("partial", "module_id_mismatch");
-                      return itemResource(item, course, origin);
-                    },
-                    false,
-                    { records: inline },
-                  );
-                }),
-              ),
-            ),
+            moduleResources(course),
             collect(
               course,
               "announcements",
               `${origin}/api/v1/announcements?per_page=100&context_codes[]=course_${course.id}&start_date=${encodeURIComponent(start)}&end_date=${encodeURIComponent(end)}`,
               discussionSchema,
-              (item) => discussionResource(item, course, origin),
+              (item) => noteAuthor(course, item) ?? discussionResource(item, course, origin),
             ),
           ]);
-          // References keep their earlier order: assignments, then each module's items in order.
           gather(course, assignments.resources);
-          for (const items of itemLists) if (items) gather(course, items.resources);
+          gather(course, items);
+          gather(course, announcements.resources);
         }
+        const visitedPages = new Map<string, Set<string>>();
+        const pageDepth = new Map<string, Map<string, number>>();
+        const pageStarted = new Map<string, number>();
         const pageListRead = (course: CanvasCourse) =>
             collect(
               course,
@@ -1000,8 +1016,13 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
           course: CanvasCourse,
           pageList: { items: z.infer<typeof pageSchema>[] },
         ) {
-            const refs =
-              references.get(course.id) ?? new Map<string, boolean>();
+            const refs = references.get(course.id) ?? new Map<string, boolean>();
+            references.set(course.id, refs);
+            const visited = visitedPages.get(course.id) ?? new Set<string>();
+            visitedPages.set(course.id, visited);
+            const depths = pageDepth.get(course.id) ?? new Map<string, number>();
+            pageDepth.set(course.id, depths);
+            if (!pageStarted.has(course.id)) pageStarted.set(course.id, performance.now());
             // Reading may register a view in Canvas. This accepted side effect is disclosed in Sources.
             const bodyJobs = [
               ...new Set([
@@ -1013,9 +1034,37 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
                 Number(refs.get(b) ?? false) - Number(refs.get(a) ?? false) ||
                 Number(refs.has(b)) - Number(refs.has(a)),
             );
-            // owner: T17. Bodies are read together; the scheduler keeps their priority order.
-            await Promise.all(bodyJobs.map(async (slug) => {
+            // Read each frontier concurrently; discoveries form the next bounded wave.
+            let cursor = 0;
+            while (cursor < bodyJobs.length) {
+              const wave = bodyJobs.slice(cursor);
+              cursor = bodyJobs.length;
+              await Promise.all(wave.map(async (slug) => {
               if (http.needsSignIn) return;
+              if (visited.has(slug)) return;
+              if ((depths.get(slug) ?? 0) > 3) {
+                emit(course.id, courseName(course), "page-discovery", [], "partial", false,
+                  [{ code: "linked_page_depth", path: [], severity: "warning" }]);
+                return;
+              }
+              if (visited.size >= 100 || performance.now() - pageStarted.get(course.id)! > 120_000) {
+                emit(course.id, courseName(course), "page-discovery", [], "partial", false,
+                  [{ code: "linked_page_budget", path: [], severity: "warning" }]);
+                return;
+              }
+              visited.add(slug);
+              const depth = depths.get(slug) ?? 0;
+              const expand = (resources: ResourceInput[]) => {
+                const before = new Set(refs.keys());
+                gather(course, resources);
+                for (const discovered of refs.keys()) {
+                  if (!before.has(discovered) && !visited.has(discovered)) {
+                    depths.set(discovered, depth + 1);
+                    refs.set(discovered, (refs.get(discovered) ?? false) || (refs.get(slug) ?? false));
+                    bodyJobs.push(discovered);
+                  }
+                }
+              };
               const metadata = pageList.items.find((page) => page.url === slug);
               const scope = `page:${metadata?.page_id ?? hashCanvas(slug).slice(0, 24)}`;
               const known = options.knownResources?.find(
@@ -1030,6 +1079,7 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
                   row.contentHash,
               );
               if (known) {
+                expand([known]);
                 emit(
                   course.id,
                   courseName(course),
@@ -1055,7 +1105,7 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
                 );
                 return;
               }
-              await collect(
+              const captured = await collect(
                 course,
                 scope,
                 `${origin}/api/v1/courses/${course.id}/pages/${encodeURIComponent(slug)}`,
@@ -1069,13 +1119,15 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
                       "partial",
                       "page_identity_mismatch",
                     );
-                  if (item.body === undefined)
+                  if (item.body == null)
                     throw new CanvasFailure("partial", "missing_page_body");
                   return pageResource(item, course, origin);
                 },
                 true,
               );
-            }));
+              expand(captured.resources);
+              }));
+            }
         }
         function backgroundFor(course: CanvasCourse) {
           const backgroundJobs: Array<() => Promise<unknown>> = [];
@@ -1119,7 +1171,7 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
                 details.status,
                 details.complete,
               );
-              syllabus(detailed);
+              gather(detailed, syllabus(detailed) ?? []);
               await calendar(details.items[0]);
             }
           });
@@ -1185,27 +1237,28 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
               (item) => quizResource(item, course, origin),
             ),
           );
-          backgroundJobs.push(() =>
-            collect(
+          backgroundJobs.push(async () => {
+            const discussions = await collect(
               course,
               "discussions",
               `${prefix}/discussion_topics?per_page=100`,
               discussionSchema,
-              (item) => discussionResource(item, course, origin),
-            ),
-          );
+              (item) => noteAuthor(course, item) ?? discussionResource(item, course, origin),
+            );
+            gather(course, discussions.resources);
+          });
           return backgroundJobs;
         }
-        // owner: T17. Every course runs its own pipeline at once; the scheduler bounds requests
-        // per host and serves essentials first, then page reads, then the background lists.
-        // Each scope still writes its own batch.
+        // Each course advances independently while the scheduler bounds host concurrency and
+        // serves essentials first, then pages, then background lists. Late references drain once.
         await Promise.all(
           courses.map(async (course) => {
             if (http.needsSignIn) return;
-            syllabus(course);
-            const pages = pageListRead(course);
-            await essentials(course);
-            const pageList = await pages;
+            gather(course, syllabus(course) ?? []);
+            const [, pageList] = await Promise.all([
+              essentials(course),
+              pageListRead(course),
+            ]);
             if (http.needsSignIn) return;
             await pageBodies(course, pageList);
             await Promise.all(
@@ -1213,6 +1266,7 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
                 if (!http.needsSignIn) await job();
               }),
             );
+            if (!http.needsSignIn) await pageBodies(course, { items: [] });
           }),
         );
         const [reconciliation] = await reconciled;

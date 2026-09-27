@@ -1,11 +1,11 @@
 /**
- * v9 "notes": session notes (packages/notes). Additive: new tables only, nothing existing changes.
+ * v11 "notes" (v10 is reserved for another lane): session notes (packages/notes). Additive: new tables only, nothing existing changes.
  * A note belongs to a course and, usually, one scheduled session; its content lives in versions
  * (the last N kept, plus any version kept for a sync conflict). Purge deletes every table here
  * through the generic purge order; the note's passage-backed resource goes with the resources.
- * IF NOT EXISTS: a file whose version was rolled back below 9 may still hold these tables.
+ * IF NOT EXISTS: a file whose version was rolled back below 11 may still hold these tables.
  */
-export const NOTES_V9 = `
+export const NOTES_V11 = `
 CREATE TABLE IF NOT EXISTS notes (
  id TEXT PRIMARY KEY,
  account_scope TEXT NOT NULL, course_id TEXT NOT NULL,

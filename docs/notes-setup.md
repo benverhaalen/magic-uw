@@ -59,9 +59,9 @@ The student can switch templates with `notes.setTemplate`. Their content moves i
 - **Key terms (at most 8):** the linked materials' `material_facts` terms. If there are none, the course profile's topic claims are used. Both may be empty until the material pipeline lands.
 - **Due next (at most 3):** assignments with confirmed due dates after the session.
 
-## Storage (v9, `packages/storage/src/notes-v9.ts`)
+## Storage (v11, `packages/storage/src/notes-v11.ts`)
 
-- **The tables are additive:** `notes`, `note_versions`, `note_links`, `note_template_choices`, `note_suggestions`, `note_remotes`, `note_sync_settings`. `SCHEMA_VERSION` is 9.
+- **The tables are additive:** `notes`, `note_versions`, `note_links`, `note_template_choices`, `note_suggestions`, `note_remotes`, `note_sync_settings`. `SCHEMA_VERSION` is 11; v10 is reserved for another lane, and v11 applies from 9 with `IF NOT EXISTS`.
 - **Versions:** the last 20 are kept. A version kept for a sync conflict is never pruned.
 - **Purge:** the generic purge order empties every table here, and main's purge clears the vault, including the Google token.
 - **Passages:** an **edited** note's text becomes one resource of the course's `notes` source. That resource has kind `material`, URL `https://local-note.invalid/<noteId>`, and source kind `notes`. Search, the notebook and analytics therefore read notes through the passage index. For `maySend` it counts as `course_text`, so it is sent only under the existing consent. Untouched scaffolds are not indexed, because they only repeat what the materials say.
@@ -125,7 +125,7 @@ Send `{ type: "notes", request }` through `window.magic.execute`. The typed answ
 
 - **Nothing without the student:** nothing syncs until the student enables a provider, and even then a remote file is created only by `notes.sync.export`.
 - **Export:** a Word document, with a title, one Heading 2 per block, and one bullet per item (links kept).
-  - **Microsoft:** `My Magic UW/<Course>/<date> <type>.docx` through the teammate's `appFolderPut(path, bytes, contentType)`. The note stores the returned item id and eTag.
+  - **Microsoft:** `<Course>/<date> <type>.docx` in the app folder (Graph's `approot`, already `Apps/<app>`, so no extra prefix) through `appFolderPut` in `packages/connectors/src/graph.ts` over main's Graph proxy. The note stores the returned item id and eTag.
   - **Google:** the same folder path is created with `drive.file`. The .docx is uploaded with conversion to a Google Doc (`mimeType: application/vnd.google-apps.document`), and the note stores the file id and `modifiedTime`.
 - **Pull:** a conditional check at most every 2 minutes per provider. Microsoft uses `appFolderGet(id, eTag)`, where a 304 means unchanged. Google compares `files.get?fields=modifiedTime`, then reads `files.export?mimeType=text/html` only when the file changed.
   - Imported text becomes blocks again. Block and item ids, kinds and links are kept when their text is unchanged; new text is marked origin `remote`.
@@ -161,4 +161,4 @@ The brief assumed mammoth was MIT. BSD-2-Clause is permissive and compatible wit
 
 ### Microsoft
 
-The adapter targets the Graph surface on `feat/outlook-graph` exactly (`appFolderPut`, `appFolderGet`). It is not wired in the worker until `graph.ts` lands, so `notes.sync.enable("microsoft")` answers `not_connected` with that reason.
+The adapter calls `appFolderPut` and `appFolderGet` from `graph.ts` through the worker's Graph transport (main's proxy; the token stays in main). It counts as connected once the student's Microsoft sign-in granted `Files.ReadWrite.AppFolder`; `notes.sync.enable("microsoft")` answers `not_connected` until then. A 404 on read marks the link as missing; the note on this device is unchanged. `appFolderDelta` is not used yet: the per-note conditional GET (`If-None-Match`) covers the pull.

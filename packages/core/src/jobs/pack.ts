@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   RunnerError,
   type ClientId,
+  type BackendCall,
   type Lane,
   type ModelRunner,
   type RunnerErrorKind,
@@ -16,6 +17,8 @@ import {
   type PackSpec,
   type Passage,
 } from "../../../packs/core/src/index";
+
+class PackAuthorizationError extends Error {}
 
 /** The consent recipient each route sends to (contracts' `consentRecipientSchema`). */
 const recipientOf: Record<ClientId, string> = {
@@ -34,6 +37,9 @@ export interface PackJobDeps {
   ledger: LedgerStore;
   /** The egress decision (`maySend` for the current settings). Checked on every call. */
   authorize: (recipient: string, categories: string[]) => { allowed: boolean; reason: string };
+  beforeCall?: (call: BackendCall) => BackendCall;
+  validate?: () => void;
+  cacheKey?: string;
   /** Jev's typed judgments on the output's items; absent in fully local mode. */
   jev?: (
     gateId: string,
@@ -72,7 +78,7 @@ export async function runPack<I, O>(
 ): Promise<PackJobResult<O>> {
   const now = deps.now ?? Date.now;
   const prompt = buildPrompt(pack, frame, input, passages);
-  const cacheKey = packCacheKey(pack, prompt.systemPrompt, input, passages);
+  const cacheKey = deps.cacheKey ?? packCacheKey(pack, prompt.systemPrompt, input, passages);
   const hit = deps.artifacts.get(cacheKey);
   if (hit) {
     const output = pack.schema.safeParse(hit.output);
@@ -96,6 +102,12 @@ export async function runPack<I, O>(
   let result;
   try {
     result = await deps.runner.run({
+      beforeCall: (call) => {
+        const permission = deps.authorize(recipientOf[deps.runner.client], pack.categories);
+        if (!permission.allowed) throw new PackAuthorizationError(permission.reason);
+        return deps.beforeCall ? deps.beforeCall(call) : call;
+      },
+      afterCall: deps.validate,
       pack: { id: pack.id, version: pack.version },
       systemPrompt: prompt.systemPrompt,
       input: prompt.input,
@@ -116,6 +128,7 @@ export async function runPack<I, O>(
       ledger: (entry) => deps.ledger.append({ ...entry, courseId: frame.courseId, cacheKey }),
     });
   } catch (error) {
+    if (error instanceof PackAuthorizationError) return { status: "blocked", reason: error.message };
     if (!(error instanceof RunnerError)) throw error;
     if (error.kind === "check_failed")
       return {
@@ -160,6 +173,7 @@ export async function runPack<I, O>(
     usage: result.usage,
     createdAt: new Date(now()).toISOString(),
   };
+  deps.validate?.();
   deps.artifacts.put(artifact);
   return { status: "done", artifact, cached: false };
 }

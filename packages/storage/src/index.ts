@@ -11,12 +11,12 @@ import { basename, dirname, join, resolve } from "node:path";
 import { backup, DatabaseSync, type StatementSync } from "node:sqlite";
 import { planningMigration, planningRepository } from "./planning";
 import { textHash } from "../../retrieval/src/index";
-import { COURSE_CORE_SCHEMA, courseCoreRepository } from "./course-core";
+import { COURSE_CORE_SCHEMA, COURSE_SPACE_OBSERVATION_MIGRATION, courseCoreRepository } from "./course-core";
 import { createPassageIndex, scopeToken } from "./passages";
 import { LEARNING_SCHEMA } from "./learning";
 import { LEARNING_V8 } from "./learning-v8";
 import { createSqlLearningStore, type SqlLearningStore } from "../../learning/src/sql-store";
-import { NOTES_V9 } from "./notes-v9"; // owner: notes
+import { NOTES_V11 } from "./notes-v11"; // owner: notes
 import { createSqlNotesStore, type SqlNotesStore } from "../../notes/src/sql-store"; // owner: notes
 import { decodePayload, encodePayload } from "./payload";
 import {
@@ -57,6 +57,11 @@ import {
   consentRecordSchema,
   type ConsentChange,
   type ConsentRecord,
+  identityRosterSchema,
+  autoIdentityStateSchema,
+  autoIdentityUpdateSchema,
+  type AutoIdentityUpdate,
+  type IdentityRoster,
   type Attempt,
   type DayPlanEntry,
   type EgressReceipt,
@@ -71,7 +76,7 @@ import {
   type Store,
 } from "@magic/contracts";
 
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 11;
 const MAX_ATTEMPTS = 3;
 /** The latest pre-migration backup, beside the database (one kept; purge deletes it). */
 export function migrationBackupPath(path: string): string {
@@ -342,8 +347,9 @@ export function createStore(
   // v7: learning and practice tables (T10L, D17).
   steps.push([7, () => db.exec(LEARNING_SCHEMA + "PRAGMA user_version = 7;")]);
   steps.push([8, () => db.exec(LEARNING_V8 + "PRAGMA user_version = 8;")]);
-  // v9 "notes": session notes (packages/notes); additive tables only.
-  steps.push([9, () => db.exec(NOTES_V9 + "PRAGMA user_version = 9;")]);
+  steps.push([9, () => db.exec(COURSE_SPACE_OBSERVATION_MIGRATION + "PRAGMA user_version = 9;")]);
+  // v11 "notes": session notes (packages/notes); additive tables only (IF NOT EXISTS). v10 is reserved.
+  steps.push([11, () => db.exec(NOTES_V11 + "PRAGMA user_version = 11;")]);
   const migrationBackup = file ? migrationBackupPath(path) : null;
   const passageIndex = createPassageIndex(db, prepare);
   const courseScope = (accountScope: string, courseId: string) =>
@@ -845,7 +851,10 @@ export function createStore(
               .length / count
           : 0;
         const drift: string[] = [];
-        if (complete && baseline && Number(baseline.record_count) >= 5) {
+        // owner: T30: a Graph source's set is built from Microsoft's own delta, whose removals are
+        // authoritative (a student archiving mail), so a drop there is real, not a failed read.
+        const deltaAuthoritative = source.scope.startsWith("graph_");
+        if (complete && baseline && !deltaAuthoritative && Number(baseline.record_count) >= 5) {
           if (count < Number(baseline.record_count) * 0.3)
             drift.push("record_count_drop");
           if (
@@ -1469,6 +1478,50 @@ export function createStore(
         return ids.length;
       });
     },
+    identityRoster() {
+      // Stored in the existing preferences table: no schema change. Cleared by purge().
+      const row = db
+        .prepare("SELECT value FROM preferences WHERE key = 'identity_roster'")
+        .get();
+      return row
+        ? identityRosterSchema.parse(JSON.parse(String(row.value)))
+        : identityRosterSchema.parse({});
+    },
+    setIdentityRoster(value: IdentityRoster) {
+      const parsed = identityRosterSchema.parse(value);
+      db.prepare(
+        "INSERT INTO preferences VALUES ('identity_roster', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      ).run(JSON.stringify(parsed));
+    },
+    autoIdentities() {
+      // Kept apart from the manual roster so a sync can never overwrite manual entries.
+      const row = db
+        .prepare("SELECT value FROM preferences WHERE key = 'identity_roster_auto'")
+        .get();
+      return row
+        ? autoIdentityStateSchema.parse(JSON.parse(String(row.value)))
+        : { accounts: {} };
+    },
+    recordAutoIdentity(value: AutoIdentityUpdate) {
+      const update = autoIdentityUpdateSchema.parse(value);
+      const row = db
+        .prepare("SELECT value FROM preferences WHERE key = 'identity_roster_auto'")
+        .get();
+      const state = row
+        ? autoIdentityStateSchema.parse(JSON.parse(String(row.value)))
+        : { accounts: {} as ReturnType<typeof autoIdentityStateSchema.parse>["accounts"] };
+      const account = (state.accounts[update.accountScope] ??= { authorsByCourse: {} });
+      // The current profile replaces the account's previous automatic self identity.
+      if (update.self) account.self = update.self;
+      if (update.courseId && update.authors?.length) {
+        // Authors accumulate: a partial read never forgets a known student.
+        const known = account.authorsByCourse[update.courseId] ?? [];
+        account.authorsByCourse[update.courseId] = [...new Set([...known, ...update.authors])].slice(0, 2000);
+      }
+      db.prepare(
+        "INSERT INTO preferences VALUES ('identity_roster_auto', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      ).run(JSON.stringify(autoIdentityStateSchema.parse(state)));
+    },
     setCompleted(id, completed) {
       if (!liveResource(id))
         throw new Error(
@@ -1603,8 +1656,10 @@ export function createStore(
         for (;;) {
           const row = prepare(
             `SELECT * FROM jobs WHERE ((status = 'pending' AND run_after <= ?) OR (status = 'running' AND lease_until <= ?))
-             ${filter} ORDER BY run_after, rowid LIMIT 1`,
-          ).get(time, time, ...params) as Row | undefined;
+             ${filter} AND NOT EXISTS (
+               SELECT 1 FROM preferences WHERE key = 'jobCooldown:' || jobs.kind AND value > ?
+             ) ORDER BY run_after, rowid LIMIT 1`,
+          ).get(time, time, ...params, time) as Row | undefined;
           if (!row) return undefined;
           const error =
             Number(row.attempts) >= MAX_ATTEMPTS
@@ -1633,6 +1688,27 @@ export function createStore(
             error: null,
           });
         }
+      });
+    },
+    jobCooldown(kind) {
+      return (prepare("SELECT value FROM preferences WHERE key = ?").get(`jobCooldown:${kind}`) as Row | undefined)?.value as string | undefined;
+    },
+    defer(job, runAfter, reason, now = new Date().toISOString()) {
+      const time = timestamp(now), until = timestamp(runAfter);
+      if (until <= time) throw new Error("Job deferral must be in the future.");
+      return transaction(() => {
+        const row = prepare(
+          `SELECT * FROM jobs WHERE id = ? AND status = 'running' AND lease_token = ?
+           AND input_hash = ? AND kind = ? AND lease_until > ?`,
+        ).get(job.id, job.leaseToken, job.inputHash, job.kind, time) as Row | undefined;
+        if (!row || (row.resource_id ?? "") !== job.resourceId || !isFresh(row)) return false;
+        prepare(`INSERT INTO preferences (key, value) VALUES (?, ?)
+          ON CONFLICT(key) DO UPDATE SET value = MAX(value, excluded.value)`)
+          .run(`jobCooldown:${job.kind}`, until);
+        prepare(`UPDATE jobs SET status = 'pending', attempts = MAX(0, attempts - 1),
+          run_after = ?, lease_until = NULL, lease_token = NULL, error = ? WHERE id = ?`)
+          .run(until, reason.slice(0, 2000), job.id);
+        return true;
       });
     },
     finish(job, error, now = new Date().toISOString()) {

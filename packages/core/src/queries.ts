@@ -8,6 +8,7 @@
  * `snapshot` command) for debugging.
  */
 import type {
+  CourseCoreStore,
   QueryRequest,
   QueryResult,
   Resource,
@@ -21,6 +22,7 @@ import { judgmentResultSchema } from "@magic/ai";
 import { evidenceFor } from "./evidence";
 import { courseIncluded } from "./access";
 import { createHash } from "node:crypto";
+import { guideQuery } from "../../packs/guide/src/query"; // owner: guides
 
 /** The one mapping from stored resources to what a view shows: deadline, label, order. */
 export function resourceViews(store: Store, list: Resource[]): ResourceView[] {
@@ -44,7 +46,7 @@ export function resourceViews(store: Store, list: Resource[]): ResourceView[] {
           : null;
       return {
         ...r,
-        deadline: resolveDeadline(evidence.deadlines(r)),
+        deadline: resolveDeadline(evidence.deadlines(r), evidence.unresolvedDeadlines(r)),
         kindLabel: label,
       };
     })
@@ -129,6 +131,10 @@ export interface QueryContext {
 /** Runs one scoped query. Pure over the store; the caller owns caching and IPC. */
 export function runQuery(store: Store, request: QueryRequest, context: QueryContext): QueryResult {
   switch (request.view) {
+    case "courseSpaces": {
+      const core = store as Store & Partial<CourseCoreStore>;
+      return { view: "courseSpaces", items: core.courseSpaces?.({ accountScope: request.accountScope, courseId: request.courseId }) ?? [] };
+    }
     case "summary": {
       const sources = store.sources();
       const all = store.resources();
@@ -222,6 +228,55 @@ export function runQuery(store: Store, request: QueryRequest, context: QueryCont
         changes: store.changes({ resourceId: r.id, limit: 50 }),
       };
     }
+    // owner: T30. The agent layer's mail search: stored fields only (subject, preview, gist,
+    // sender, category, org, course). Bodies are never stored, so they are never searched.
+    case "mail.search": {
+      const terms = (request.text ?? "")
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((t) => t.length > 1)
+        .slice(0, 12);
+      const from = request.from?.toLowerCase();
+      const org = request.org?.toLowerCase();
+      const since = request.since ? Date.parse(request.since) : undefined;
+      const items = store
+        .resources()
+        .filter((r) => r.kind === "message" && !r.deleted && r.mail)
+        .filter((r) => {
+          const m = r.mail!;
+          if (request.category && m.category !== request.category) return false;
+          if (request.courseId && m.courseId !== request.courseId) return false;
+          if (org && !(m.org ?? "").toLowerCase().includes(org)) return false;
+          if (from && !`${m.fromName ?? ""} ${m.fromAddress ?? ""}`.toLowerCase().includes(from))
+            return false;
+          if (since !== undefined && Date.parse(m.receivedAt) < since) return false;
+          if (!terms.length) return true;
+          const hay = `${r.title} ${m.preview} ${m.gist ?? ""} ${m.org ?? ""} ${m.fromName ?? ""}`.toLowerCase();
+          return terms.every((t) => hay.includes(t));
+        })
+        .sort((a, b) => b.mail!.receivedAt.localeCompare(a.mail!.receivedAt))
+        .slice(0, request.limit)
+        .map((r) => {
+          const m = r.mail!;
+          return {
+            id: r.id,
+            subject: r.title,
+            webLink: r.url,
+            receivedAt: m.receivedAt,
+            ...(m.fromName ? { fromName: m.fromName } : {}),
+            category: m.category,
+            categoryReason: m.categoryReason,
+            ...(m.courseId ? { courseId: m.courseId } : {}),
+            ...(m.org ? { org: m.org } : {}),
+            preview: m.preview,
+            ...(m.gist ? { gist: m.gist } : {}),
+            ...(m.importance ? { importance: m.importance } : {}),
+            ...(m.hasAttachments !== undefined ? { hasAttachments: m.hasAttachments } : {}),
+          };
+        });
+      return { view: "mail.search", items };
+    }
+    // end owner: T30
     case "changes": {
       const previous = decode(request.cursor, isChangeCursor);
       const limit = request.limit ?? 100;
@@ -255,5 +310,9 @@ export function runQuery(store: Store, request: QueryRequest, context: QueryCont
         complete: true,
       };
     }
+    // owner: guides. guide.view: the personalised view of a cached study guide, 0 model calls.
+    case "guide":
+      return guideQuery(store, request, context.now());
+    // end owner: guides
   }
 }

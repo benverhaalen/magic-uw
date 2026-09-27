@@ -1,3 +1,4 @@
+import { judgmentFailureError } from "./judgment-errors";
 import { createLocalCourseExtractor } from "@magic/ai";
 import { createStore } from "@magic/storage";
 import { createCore } from "@magic/core";
@@ -8,6 +9,7 @@ import { randomUUID } from "node:crypto";
 import { createLocalService } from "./local-service";
 import { createIngestion } from "./ingestion";
 import { createLearningRouter, type StudyContext } from "../../../packages/learning/src/router";
+import { createCurrentReferences } from "../../../packages/learning/src/analytics"; // owner: analytics
 import { createStudyContextResolver } from "./learning-context";
 import { dirname } from "node:path";
 import {
@@ -54,7 +56,7 @@ const generation = createPackHandler({ store, runner: generationRunner });
 // end owner: generation
 // owner: notes. Session notes: batch scaffolds on the tick, "fill from slides" through the same
 // runner, and Google Docs sync through main (which alone holds the token). Microsoft waits for graph.ts.
-import { createNotesService, googleRemote, type NotesRemote } from "../../../packages/notes/src/index";
+import { createNotesService, googleRemote, microsoftRemote, type NotesRemote } from "../../../packages/notes/src/index";
 function notesHostCall(payload: unknown, timeoutMs: number): Promise<any> {
   const id = randomUUID();
   return new Promise((resolve, reject) => {
@@ -69,7 +71,7 @@ function notesHostCall(payload: unknown, timeoutMs: number): Promise<any> {
     port.postMessage({ kind: "notes-google", id, payload });
   });
 }
-const notesRemotes: { google?: NotesRemote & { connect(): Promise<boolean> } } = process.env.MAGIC_GOOGLE_CLIENT_ID
+const notesRemotes: { microsoft?: NotesRemote; google?: NotesRemote & { connect(): Promise<boolean> } } = process.env.MAGIC_GOOGLE_CLIENT_ID
   ? {
       google: {
         ...googleRemote(
@@ -80,16 +82,27 @@ const notesRemotes: { google?: NotesRemote & { connect(): Promise<boolean> } } =
       },
     }
   : {};
+// Word online: the app folder through main's Graph proxy (T30). Connected once the student's
+// Microsoft sign-in granted Files.ReadWrite.AppFolder. graphHost is defined below; called later.
+notesRemotes.microsoft = microsoftRemote(
+  (request) => graphHost.transport(request),
+  async () => graphScopes.includes("Files.ReadWrite.AppFolder"),
+);
 const notes = createNotesService({ store, runner: generationRunner, remotes: notesRemotes });
 // end owner: notes
 const core = createCore(store, {
   fixture: captureBatchSchema.parse(fixture),
   courseExtractor: createLocalCourseExtractor(),
   planningPublicClient: publicClients.core, // owner: T06
+  madgrades: { read: (request, signal) => hostRead("madgrades-read", { request }, signal) },
   planningHttp: { read: (request, signal) => hostRead("planning-public-read", { request }, signal) },
   seams: { learning: createLearningRouter({
     store: store.learning,
     resolveContext: (resourceId): StudyContext | null => resolveStudyContext(resourceId),
+    // owner: analytics. One references port per analytics request, over the coursework store; the
+    // material pipeline's adapter replaces this factory when it lands.
+    analyticsReferences: () => createCurrentReferences(store),
+    // end owner: analytics
   }), pack: generation.pack /* owner: generation */, notes /* owner: notes */ },
   ...(process.env.MAGIC_GATEWAY_URL
     ? {
@@ -190,6 +203,30 @@ const extractor = createLocalDocumentExtractor(
       }
     : {},
 );
+// owner: T30. Microsoft Graph through main's proxy: this process never sees a token. Main says
+// which scopes the student granted; the delta links live in main's encrypted vault.
+let graphScopes: string[] = [];
+const graphHost = {
+  transport: async (request: import("../../../packages/connectors/src/graph").GraphRequest) => {
+    const { signal, ...payload } = request;
+    const value = await hostRead("source-fetch", { service: "graph", ...payload }, signal);
+    return {
+      status: Number(value?.status) || 0,
+      headers: (value?.headers ?? {}) as Record<string, string>,
+      body: typeof value?.body === "string" ? value.body : "",
+    };
+  },
+  state: {
+    get: async (key: string) =>
+      ((await hostRead("graph-state", { operation: "get", key })) as string | undefined) || undefined,
+    set: async (key: string, value: string | null) => {
+      await hostRead("graph-state", { operation: "set", key, value });
+    },
+  },
+  scopes: () => graphScopes,
+  onSynced: (result: unknown) => port.postMessage({ kind: "graph-synced", payload: result }),
+};
+// end owner: T30
 const ingestion = createIngestion(store, {
   directory: dirname(process.env.MAGIC_DB_PATH!),
   extractor,
@@ -198,6 +235,7 @@ const ingestion = createIngestion(store, {
   gitlabFetch: sourceFetch("gitlab"),
   onSaved: (sourceId) => void core.saved(sourceId), // owner: T05b: save → enqueue
   spaceFetch: sourceFetch("space"), // owner: T05b: D41 access check
+  graph: graphHost, // owner: T30
   secrets: (operation, key, value) =>
     hostRead("source-secret", { operation, key, value }),
 });
@@ -327,6 +365,14 @@ port.on("message", async ({ data }: { data: any }) => {
     return;
   }
   // end owner: T33
+  // owner: T30. The granted Graph scopes (never a token); an empty list stops the Graph step.
+  if (data.kind === "graph-scopes") {
+    graphScopes = Array.isArray(data.scopes)
+      ? data.scopes.filter((s: unknown): s is string => typeof s === "string" && s.length < 100).slice(0, 20)
+      : [];
+    return;
+  }
+  // end owner: T30
   if (data.kind === "reconnected") {
     ingestion.reconnected();
     return;
@@ -382,7 +428,7 @@ port.on("message", async ({ data }: { data: any }) => {
     const p = pending.get(data.id);
     pending.delete(data.id);
     if (p) {
-      if (data.error) p.reject(new Error("Judgment unavailable"));
+      if (data.error) p.reject(judgmentFailureError(data));
       else p.resolve(data.result);
     }
     return;

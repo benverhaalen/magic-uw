@@ -15,6 +15,7 @@ import {
   type NotesRemote,
   type RemoteFile,
 } from "../packages/notes/src/index";
+import type { GraphRequest, GraphResponse } from "../packages/connectors/src/graph";
 
 const NOW = new Date("2026-09-28T15:00:00Z");
 const COURSE = "E177";
@@ -194,21 +195,26 @@ test("conflict: remote and local both changed; both are kept as versions and not
 });
 
 test("adapters: Microsoft to the Graph app folder signature; Google drive.file requests", async () => {
-  const calls: unknown[][] = [];
-  const ms = microsoftRemote({
-    async appFolderPut(path, bytes, contentType) {
-      calls.push([path, bytes.length, contentType]);
-      return { id: "item-1", webUrl: "https://onedrive.example.test/item-1", eTag: "\"1\"" };
-    },
-    async appFolderGet(id, ifNoneMatch) {
-      calls.push([id, ifNoneMatch]);
-      return ifNoneMatch === "\"1\"" ? 304 : { bytes: new Uint8Array([1]), eTag: "\"2\"" };
-    },
-  });
+  // Microsoft: graph.ts's appFolderPut/appFolderGet over a fake main proxy (GraphTransport).
+  const calls: GraphRequest[] = [];
+  const ms = microsoftRemote(async (request): Promise<GraphResponse> => {
+    calls.push(request);
+    if (request.method === "PUT")
+      return { status: 201, headers: {}, body: JSON.stringify({ id: "item-1", webUrl: "https://onedrive.example.test/item-1", eTag: "\"1\"" }) };
+    if (request.url.includes("/items/gone/")) return { status: 404, headers: {}, body: "{}" };
+    if (request.ifNoneMatch === "\"1\"") return { status: 304, headers: {}, body: "" };
+    return { status: 200, headers: { etag: "\"2\"" }, body: Buffer.from([1, 2, 3]).toString("base64") };
+  }, async () => true);
   const put = await ms.put({ folders: ["ENGL 177"], name: "2026-09-28 lecture.docx", bytes: new Uint8Array([1, 2]), remote: null });
-  assert.deepEqual(calls[0], ["My Magic UW/ENGL 177/2026-09-28 lecture.docx", 2, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]);
+  assert.equal(calls[0]!.url, "https://graph.microsoft.com/v1.0/me/drive/special/approot:/ENGL%20177/2026-09-28%20lecture.docx:/content", "relative to approot: no doubled app folder");
+  assert.equal(calls[0]!.contentType, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+  assert.equal(calls[0]!.bodyBase64, Buffer.from([1, 2]).toString("base64"));
+  assert.deepEqual(put, { remoteId: "item-1", webUrl: "https://onedrive.example.test/item-1", etag: "\"1\"", modifiedTime: null });
   assert.deepEqual(await ms.get(put), { status: "unchanged" });
-  assert.equal((await ms.get({ ...put, etag: "\"0\"" })).status, "changed");
+  const changed = await ms.get({ ...put, etag: "\"0\"" });
+  assert.equal(changed.status, "changed");
+  assert.deepEqual(changed.status === "changed" ? [...changed.bytes] : [], [1, 2, 3]);
+  assert.deepEqual(await ms.get({ ...put, remoteId: "gone" }), { status: "missing" });
 
   const requests: DriveRequest[] = [];
   const reply = (status: number, body: unknown) => ({ status, body: new TextEncoder().encode(typeof body === "string" ? body : JSON.stringify(body)) });

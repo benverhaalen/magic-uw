@@ -1,5 +1,5 @@
 /**
- * The notes repository over the workspace's SQLite connection (schema v9, NOTES_V9). Storage
+ * The notes repository over the workspace's SQLite connection (schema v11, NOTES_V11). Storage
  * builds it with its own prepared-statement cache and transaction, like the learning store.
  */
 import type { StatementSync } from "node:sqlite";

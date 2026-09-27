@@ -88,6 +88,28 @@ export function gatePublicClient(
       check();
       return client.signedDownload(url, allowedOrigins, signal);
     },
+    // owner: T30: the Outlook published-calendar reads were not forwarded, so the gated client
+    // (the one the worker uses) had no Outlook feed at all.
+    ...(client.outlookFeed
+      ? {
+          async outlookFeed(secretUrl: string, signal?: AbortSignal) {
+            check();
+            return client.outlookFeed!(secretUrl, signal);
+          },
+        }
+      : {}),
+    ...(client.outlookFeedIfChanged
+      ? {
+          async outlookFeedIfChanged(
+            secretUrl: string,
+            validators: Parameters<NonNullable<PublicClient["outlookFeedIfChanged"]>>[1],
+            signal?: AbortSignal,
+          ) {
+            check();
+            return client.outlookFeedIfChanged!(secretUrl, validators, signal);
+          },
+        }
+      : {}),
   };
 }
 
@@ -177,8 +199,10 @@ export type EgressDecision =
       prompt: boolean;
     };
 
+type EgressManifest = Omit<ContextManifest, "payload"> & { payload: unknown };
+
 interface Pending {
-  manifest: ContextManifest;
+  manifest: EgressManifest;
   payloadHash: string;
 }
 
@@ -189,13 +213,13 @@ export interface EgressPolicy {
    * record with `record(manifest, "sent")` just before the call.
    */
   check(
-    manifest: ContextManifest,
+    manifest: EgressManifest,
     options: { at: string; background?: boolean },
   ): EgressDecision;
   /** The `preview.ack` command. Binds the answer to the previewed payload's hash. */
   acknowledge(raw: unknown, at: string): string;
   record(
-    manifest: ContextManifest,
+    manifest: EgressManifest,
     status: "sent" | "failed",
     at: string,
   ): void;

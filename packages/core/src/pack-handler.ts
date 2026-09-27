@@ -7,7 +7,7 @@
  */
 import { aiRecipientSchema, type CourseCoreStore, type PackScope, type Resource, type Store } from "@magic/contracts";
 import { maySend } from "@magic/domain";
-import type { ModelRunner } from "../../runner/src/index";
+import type { BackendCall, ModelRunner } from "../../runner/src/index";
 import { buildPrompt, packCacheKey, type ArtifactStore, type CourseFrame, type LedgerStore, type PackSpec, type Passage } from "../../packs/core/src/index";
 import { learningArtifactStore, sqlLedgerStore } from "../../packs/core/src/learning-stores";
 import { quizDrafts, quizPack, type Draft, type GenerationInput } from "../../packs/items/src/index";
@@ -18,9 +18,13 @@ import { newCard } from "../../learning/src/fsrs";
 import type { Concept, LearningStore } from "../../learning/src/store";
 import { eligibleStudySource } from "../../learning/src/router";
 import { findQuote } from "../../retrieval/src/quotes";
-import { courseInclusion } from "./access";
-import { buildReceipt, egressFor } from "./egress";
-import { readPackArtifact, runPack } from "./jobs/pack";
+import { contentCategories, courseInclusion } from "./access";
+import { payloadScrubber, rosterFor, scrubText, toOriginalSpan } from "./identity";
+import { buildReceipt, egressFor, payloadHash } from "./egress";
+import { runPack } from "./jobs/pack";
+// owner: guides
+import { generateGuide, guideView, isGuideKind, type GuideRunResult, type GuideViewResult } from "../../packs/guide/src/index";
+// end owner: guides
 
 export type GenerationPackName = "quiz" | "cards";
 /** Command pack names the handler answers to. */
@@ -29,6 +33,7 @@ export const DEFAULT_COUNT: Record<GenerationPackName, number> = { quiz: 8, card
 /** Passages sent per call, by the store's token estimate. */
 export const PASSAGE_TOKEN_BUDGET = 6000;
 const MAX_PASSAGES = 24;
+class PackEgressBlocked extends Error {}
 const MAP_VERSION = "generated-v1";
 
 export type PackRunStatus = "done" | "needs_student" | "blocked" | "paused" | "failed" | "no_client" | "empty" | "unknown_pack";
@@ -59,7 +64,7 @@ export interface PackRunResult {
 export type WorkspaceStore = Store & CourseCoreStore & { learning: LearningStore };
 export interface PackHandlerDeps {
   store: WorkspaceStore;
-  /** The student's own client, or null when none is connected. Never called on a cache hit. */
+  /** The student's own client, or null. A cache hit never calls its provider. */
   runner: () => ModelRunner | null | Promise<ModelRunner | null>;
   artifacts?: ArtifactStore;
   ledger?: LedgerStore;
@@ -98,7 +103,7 @@ function resolveScope(store: WorkspaceStore, scope: PackScope): Scoped | null {
     .filter((r) => !scope.resourceIds?.length || scope.resourceIds.includes(r.id))
     .filter((r) => !scope.moduleId || r.module?.id === scope.moduleId)
     .sort((a, b) => a.id.localeCompare(b.id));
-  const label = course.find((r) => r.courseName)?.courseName ?? scope.courseId;
+  const label = resources.find((r) => r.courseName)?.courseName ?? scope.courseId;
   return {
     accountScope,
     courseId: scope.courseId,
@@ -327,9 +332,38 @@ export function createPackHandler(deps: PackHandlerDeps) {
     signal: AbortSignal | undefined,
     options: GenerateOptions,
   ): Promise<PackRunResult> {
-    const draftsOf = (output: O) => toDrafts(output).slice(0, input.count);
+    const snapshot = () => payloadHash({
+      scope: resolveScope(store, scope), sources: store.sources(), roster: rosterFor(store, s.courseId, s.accountScope).version,
+      privacy: store.privacy(), consents: store.consents?.(), concepts: store.learning.concepts(s.courseRef).filter((c) => c.origin !== "model"),
+    });
+    const fingerprint = snapshot();
+    const validate = () => {
+      if (signal?.aborted || snapshot() !== fingerprint) throw new PackEgressBlocked("Course evidence or sharing permissions changed. Try again with the current material.");
+    };
+    const runner = await deps.runner();
+    try { validate(); } catch (error) { return empty(name, "blocked", (error as Error).message, s.courseRef); }
+    const hosted = runner ? runner.client !== "local" : store.privacy().mode !== "local_only";
+    const roster = rosterFor(store, s.courseId, s.accountScope);
+    const scrubber = payloadScrubber(store, hosted, s.accountScope);
+    const scrub = (value: string) => scrubber.field(value, s.courseId);
+    // Freeze the exact passage projection; output citations may never search outside it.
+    const frozen = new Map(passages.map((p) => [p.sourceId, {
+      original: p.text, result: hosted ? scrubText(p.text, roster) : { text: p.text, spans: [] },
+    }]));
+    const draftsOf = (output: O) => toDrafts(output).slice(0, input.count).map((d) => {
+      const p = frozen.get(d.sourceId);
+      const start = p?.result.text.indexOf(d.quote) ?? -1;
+      if (!p || !d.quote || start < 0 || p.result.text.indexOf(d.quote, start + 1) >= 0)
+        return { ...d, quote: "" };
+      const span = toOriginalSpan(p.result, start, start + d.quote.length);
+      return span ? { ...d, quote: p.original.slice(span.start, span.end) }
+        : { ...d, quote: "" };
+    });
+    passages = passages.map((p) => ({ ...p, text: frozen.get(p.sourceId)!.result.text }));
+    input = { ...input, sections: input.sections.map(scrub), topics: input.topics.map(scrub), focus: input.focus.map(scrub) };
+    frame = { ...frame, course: scrub(frame.course), skeleton: scrub(frame.skeleton), policy: scrub(frame.policy) };
     const prompt = buildPrompt(pack, frame, input, passages);
-    const cacheKey = packCacheKey(pack, prompt.systemPrompt, input, passages);
+    const cacheKey = payloadHash({ version: "pack-projection-v1", route: runner?.client ?? store.privacy().hostedProvider, fingerprint, key: packCacheKey(pack, prompt.systemPrompt, input, passages) });
     const receiptIds: string[] = [];
     const lane = options.lane ?? "interactive";
 
@@ -353,28 +387,33 @@ export function createPackHandler(deps: PackHandlerDeps) {
       };
     };
 
-    // Study-time rule (spec §2): a cache hit is served without the runner, so it costs 0 tokens.
-    const hit = readPackArtifact(artifacts, pack, frame, input, passages);
+    // Study-time rule (spec §2): a cache hit makes no provider call and costs 0 tokens.
+    const stored = artifacts.get(cacheKey);
+    const parsedHit = stored && pack.schema.safeParse(stored.output);
+    const hit = stored && parsedHit?.success ? { ...stored, output: parsedHit.data } : null;
     if (hit) {
       ledger.append({ at: at(), pack: pack.id, packVersion: pack.version, courseId: frame.courseId, cacheKey, outcome: "cache_hit", usage: { in: 0, cached: 0, out: 0 } });
       return finish(hit, true);
     }
-    const runner = await deps.runner();
     if (!runner) return empty(name, "no_client", "Connect your AI first: choose Claude or Codex in Settings and sign in, then try again.", s.courseRef);
 
-    const authorize = (recipient: string, categories: string[]) => {
+    const authorize = (recipient: string, categories: string[], payload?: unknown) => {
+      validate();
+      categories = [...new Set([...categories, ...s.resources.flatMap(contentCategories)])];
       const parsed = aiRecipientSchema.safeParse(recipient);
       if (!parsed.success) return { allowed: false, reason: "This recipient is not supported." };
       const permission = maySend(store.privacy(), recipient, categories);
+      // Generic job checks permissions without consuming a one-shot payload approval.
+      if (payload === undefined && permission.allowed) return permission;
       const m = {
         recipient: parsed.data,
         purpose: `Generate ${name === "quiz" ? "quiz questions" : "flashcards"} from course materials`,
         categories,
-        resourceIds: [...new Set(resourceOf.values())],
-        characters: prompt.systemPrompt.length + prompt.input.length,
+        resourceIds: s.resources.map((r) => r.id),
+        characters: JSON.stringify(payload ?? {}).length,
         allowed: permission.allowed,
         reason: permission.reason,
-        payload: { course: s.label, title: name, text: prompt.input, policy: frame.policy },
+        payload,
       };
       const decision = egressFor(store).check(m, { at: at(), background: lane === "background" });
       if (decision.status === "blocked") {
@@ -390,24 +429,48 @@ export function createPackHandler(deps: PackHandlerDeps) {
       receiptIds.push(receipt.id);
       return { allowed: true, reason: permission.reason };
     };
-    const result = await runPack(
-      { runner, artifacts, ledger, authorize, now: () => now().getTime() },
-      pack,
-      frame,
-      input,
-      passages,
-      { lane, scope: scope.moduleId ?? (scope.resourceIds?.length ? "resources" : "course"), ...(signal ? { signal } : {}) },
-    );
-    if (result.status === "blocked") return { ...base, status: "blocked", message: result.reason };
-    if (result.status === "paused" || result.status === "failed") return { ...base, status: result.status, message: result.message };
-    if (result.status === "needs_student")
-      return { ...base, status: "needs_student", message: result.question, options: result.options, checkErrors: result.checkErrors };
-    return finish(result.artifact, result.cached);
+    const beforeCall = (call: BackendCall): BackendCall => {
+      const outgoing = { ...call, courseId: hosted ? undefined : call.courseId, systemPrompt: scrub(call.systemPrompt), input: scrub(call.input) };
+      const recipients = { local: "local", claude: "claude", anthropic: "claude", codex: "codex", openai: "chatgpt", openrouter: "openrouter", gemini: "gemini" };
+      const permission = authorize(recipients[runner.client], pack.categories, { systemPrompt: outgoing.systemPrompt, input: outgoing.input, jsonSchema: outgoing.jsonSchema });
+      if (!permission.allowed) throw new PackEgressBlocked(permission.reason);
+      return outgoing;
+    };
+    try {
+      const result = await runPack(
+        { runner, artifacts, ledger, authorize, beforeCall, validate, cacheKey, now: () => now().getTime() },
+        pack,
+        frame,
+        input,
+        passages,
+        { lane, scope: scope.moduleId ?? (scope.resourceIds?.length ? "resources" : "course"), ...(signal ? { signal } : {}) },
+      );
+      if (result.status === "blocked") return { ...base, status: "blocked", message: result.reason };
+      if (result.status === "paused" || result.status === "failed") return { ...base, status: result.status, message: result.message };
+      if (result.status === "needs_student")
+        return { ...base, status: "needs_student", message: result.question, options: result.options, checkErrors: result.checkErrors };
+      validate();
+      return finish(result.artifact, result.cached);
+    } catch (error) {
+      if (error instanceof PackEgressBlocked) return { ...base, status: "blocked", message: error.message };
+      throw error;
+    }
   }
+  // owner: guides. The study-guide kinds (guide, briefing, faq, timeline, compare, conceptmap)
+  // and `<kind>-view`, the 0-token personalised view (op "guide.view"), answer through this seam.
+  const guideDeps = { store, runner: deps.runner, artifacts, ledger, now };
+  function guides(packName: string, scope: PackScope, signal?: AbortSignal): Promise<GuideRunResult | GuideViewResult> | null {
+    if (isGuideKind(packName)) return generateGuide(guideDeps, packName, scope, signal ? { signal } : {});
+    const viewOf = /^([a-z]+)-view$/.exec(packName)?.[1];
+    if (viewOf && isGuideKind(viewOf)) return Promise.resolve(guideView(guideDeps, viewOf, scope));
+    return null;
+  }
+  // end owner: guides
   return {
     run,
+    guides, // owner: guides
     /** The CoreSeams.pack signature. */
-    pack: (packName: string, scope: PackScope, signal: AbortSignal) => run(packName, scope, signal),
+    pack: (packName: string, scope: PackScope, signal: AbortSignal) => guides(packName, scope, signal) /* owner: guides */ ?? run(packName, scope, signal),
   };
 }
 
