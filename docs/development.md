@@ -85,3 +85,21 @@ Change shared contracts before making incompatible changes across packages. Keep
 Sources exposes term/inclusion choices, refresh timing, metadata/download concurrency, local feedback collection, and recent runs. Inaccessible courses stay excluded even with an inclusion override. Read [course ingestion](ingestion-upgrade.md) for capture scopes, defaults, limits, and failure semantics. Canvas reads may register views or satisfy must-view requirements; the entry screen discloses that accepted side effect. Data & AI lets the student create an MCP grant, choose courses/categories, export a local stdio configuration, and revoke it. Export replaces that connection’s credential; keep its access file on the device. Provider/client support must be verified separately.
 
 OCR is optional and local: explicit absolute `MAGIC_PDFTOPPM_PATH`, `MAGIC_TESSERACT_PATH`, and `MAGIC_TESSDATA_DIRECTORY` paths connect installed tools and language data. Without them, textless documents report `needs_ocr`. No binaries/models are downloaded or bundled by this adapter. Distributing external tools requires their own license review.
+
+## Planning development and checks
+
+[Planning integration](planning-upgrade.md) is the canonical capability/evidence map. My UW → Refresh reads bounded UW planning operations through the native broker, normalizes verified fields, and stores them separately from coursework. It supports public term/subject search and selected-course sections. Public Registrar/Guide HTML remains a fallback. Unknown private shapes retain partial/blocked status; an HTTP 200 alone is insufficient.
+
+**Import capture** accepts `PlanningCapture` from `packages/contracts/src/planning.ts`; it is not a raw UW/Madgrades JSON importer. Use labeled synthetic fixtures. Private sessions, PDF reports, response captures, and student data stay outside Git. No additional dependency or Jev key is required for planning.
+
+With Node 24, run:
+
+```sh
+pnpm exec tsx --test tests/*planning*.test.ts tests/academic-reconciliation.test.ts tests/canvas-history.test.ts
+pnpm build
+pnpm test:desktop
+```
+
+These exercise domain rules, actual SQLite/core flows, source adapters, transport limits, reconciliation, and hidden desktop import/purge. The full gate is `pnpm test`. [Implementation status](implementation-status.md#verification) records observed results. For visual work, use the temporary `pnpm preview` surface with synthetic captures and headless agent-browser; it deliberately has no UW session or live planning transport.
+
+Ben separately authorized a headless Firefox-session check for development. Its adapters and persistence were exercised on live data; the product still uses app-owned sessions and has no browser-cookie importer. Embedded SSO/reconnect, Windows, and broad program coverage need independent checks. Reserved planning sharing flags do not enable model/MCP access.

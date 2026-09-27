@@ -12,7 +12,7 @@ A representative demo should show a non-obvious requirement recovered from its s
 
 ## Settled structure and interaction
 
-- One collapsible left navigation sidebar: Home, Courses with expandable individual courses. Course overview uses one card per course.
+- One collapsible left navigation sidebar: Home, Courses with expandable individual courses, and My UW with the Wisconsin symbol. Email is deferred. My UW holds planning; consequential holds and enrollment windows also appear on Home. Course overview uses one card per course.
 - Home content order: **Briefing → Upcoming → Study & Learn**. The briefing is the focal point. Home may scroll vertically.
 - Explicit exception to the earlier no-right-column rule: a quiet right-hand **Today** calendar. Today’s tasks and their times anchor at the top right; a readable hourly lecture/event timeline anchors at the bottom right while the main Home content scrolls. It is not a second navigation sidebar.
 - Compact native Mac/Codex-like window. Traffic controls, history arrows, sidebar toggle, and context-aware new-chat control live at the top. Current page name is centered.

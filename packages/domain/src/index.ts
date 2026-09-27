@@ -45,6 +45,9 @@ export function maySend(
           "grades",
           "comments",
           "communications",
+          "planning",
+          "holds",
+          "audit",
         ].includes(category),
     )
   )
@@ -70,6 +73,12 @@ export function maySend(
     return { allowed: false, reason: "Sharing grader comments is disabled." };
   if (categories.includes("communications") && !p.shareCommunications)
     return { allowed: false, reason: "Sharing communications is disabled." };
+  if (categories.includes("planning") && !p.sharePlanning)
+    return { allowed: false, reason: "Sharing degree plans and enrollment is disabled." };
+  if (categories.includes("holds") && !p.shareHolds)
+    return { allowed: false, reason: "Sharing holds is disabled." };
+  if (categories.includes("audit") && !p.shareAudit)
+    return { allowed: false, reason: "Sharing degree audits is disabled." };
   return {
     allowed: true,
     reason: "Allowed by your current data-sharing settings.",

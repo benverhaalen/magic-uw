@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { planningCaptureSchema, type PlanningCapture, type PlanningRecord, type PlanningScope } from "./planning";
+export * from "./planning";
 
 export const instant = z.iso.datetime({ offset: true });
 const id = z.string().min(1).max(256);
@@ -145,6 +147,14 @@ export const courseMetadataSchema = z
     termId: id.optional(),
     termName: z.string().max(300).optional(),
     workflowState: z.string().max(100).optional(),
+    // LMS calculations, never official transcript grades or evidence of mastery.
+    gradeEvidence: z.array(z.object({
+      enrollmentState: z.string().max(100).optional(),
+      currentGrade: z.string().max(100).nullable().optional(),
+      finalGrade: z.string().max(100).nullable().optional(),
+      currentScore: z.number().finite().nullable().optional(),
+      finalScore: z.number().finite().nullable().optional(),
+    }).strict()).max(500).optional(),
     accessRestricted: z.boolean().optional(),
     accessState: z
       .enum(["open", "not_open", "concluded", "date_restricted"])
@@ -462,6 +472,9 @@ export const privacySchema = z
     shareGrades: z.boolean().optional(),
     shareComments: z.boolean().optional(),
     shareCommunications: z.boolean().optional(),
+    sharePlanning: z.boolean().optional(),
+    shareHolds: z.boolean().optional(),
+    shareAudit: z.boolean().optional(),
   })
   .strict();
 export type PrivacyPreferences = Omit<
@@ -481,6 +494,9 @@ export const defaultPrivacy: PrivacyPreferences = {
   shareGrades: false,
   shareComments: false,
   shareCommunications: false,
+  sharePlanning: false,
+  shareHolds: false,
+  shareAudit: false,
 };
 export interface Link {
   id: string;
@@ -647,6 +663,9 @@ export interface ScopeBaseline {
   observedAt: string;
 }
 export interface Store {
+  ingestPlanning(batch: unknown): { sourceId: string; accepted: number; rejected: number; ignored: boolean };
+  planningRecords(): StoredPlanningRecord[];
+  planningSources(): PlanningSourceHealth[];
   close(): void;
   ingest(batch: unknown): IngestReport;
   ingestionSettings(): IngestionSettings;
@@ -701,6 +720,7 @@ export interface ResourceView extends Resource {
   kindLabel: string | null;
 }
 export interface Snapshot {
+  planning?: PlanningSnapshot;
   resources: ResourceView[];
   sources: SourceHealth[];
   privacy: PrivacyPreferences;
@@ -718,6 +738,11 @@ export interface Snapshot {
   mcpGrants?: McpGrant[];
 }
 export const commandSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("planning-guide"), subjectCode: z.string().regex(/^\d{1,6}$/) }).strict(),
+  z.object({ type: z.literal("planning-search"), subjectCode: z.string().regex(/^\d{1,6}$/), termCode: z.string().regex(/^1\d{2}[246]$/), page: z.number().int().min(1).max(20).default(1) }).strict(),
+  z.object({ type: z.literal("planning-sections"), recordId: z.string().max(200) }).strict(),
+  z.object({ type: z.literal("planning-compare"), termCode: z.string().regex(/^1\d{2}[246]$/), style: z.enum(["balanced", "mornings", "compact", "lighter"]) }).strict(),
+  z.object({ type: z.literal("planning-import"), batch: planningCaptureSchema }).strict(),
   z
     .object({
       type: z.literal("snapshot"),
@@ -766,6 +791,7 @@ export const commandSchema = z.discriminatedUnion("type", [
 ]);
 export type Command = z.infer<typeof commandSchema>;
 export type CommandResult = {
+  planningComparison?: PlanningComparison;
   snapshot: Snapshot;
   manifest?: ContextManifest;
   message?: string;
@@ -812,13 +838,54 @@ export interface AppBridge {
   execute(command: Command): Promise<CommandResult>;
   openExternal(url: string): Promise<void>;
   importFile(): Promise<CommandResult | null>;
-  signInUW?(service?: "canvas" | "gitlab"): Promise<void>;
+  signInUW?(service?: "canvas" | "gitlab" | "enroll" | "myuw"): Promise<void>;
+  syncPlanning?(): Promise<CommandResult>;
   syncCanvas?(): Promise<CommandResult>;
   signOutUW?(): Promise<void>;
   localStatus?(): Promise<LocalStatus>;
   localAsk?(request: LocalQuestion): Promise<LocalAnswer>;
   cancelLocal?(): Promise<void>;
   exportMcp?(id: string): Promise<string>;
+}
+export type StoredPlanningRecord = PlanningRecord & {
+  localId: string;
+  sourceId: string;
+  accountScope: string;
+  contentHash: string;
+  version: number;
+  deleted: boolean;
+};
+export interface PlanningSourceHealth {
+  id: string;
+  source: PlanningCapture["source"];
+  accountScope: string;
+  scope: PlanningScope;
+  sourceUrl: string;
+  status: PlanningCapture["status"];
+  completeness: PlanningCapture["completeness"];
+  observedAt: string;
+  lastSuccessAt: string | null;
+  diagnostics: PlanningCapture["diagnostics"];
+}
+export interface PlanningSnapshot {
+  records: StoredPlanningRecord[];
+  sources: PlanningSourceHealth[];
+  reconciliation?: import("./planning").AcademicReconciliation;
+}
+export interface PlanningComparison {
+  termCode: string;
+  createdAt: string;
+  warnings: string[];
+  candidates: {
+    courseKey: string; title: string; packageId: string | null; requirements: string[];
+    prerequisite: "met" | "conditional" | "unmet" | "unknown"; prerequisiteReasons: string[];
+    schedule: "clear" | "conflict" | "unknown"; scheduleReasons: string[];
+    creditMin: number | null; creditMax: number | null;
+    seatsAvailable: number | null; seatStatus: string; multipleRequirements: boolean;
+    sourceUrl: string; observedAt: string;
+    evidence: { label: string; url: string; observedAt: string }[];
+    historicalAverage: number | null; historicalCount: number | null;
+  }[];
 }
 export interface Connector {
   id: string;

@@ -139,6 +139,24 @@ a {
   background: #e9e9e5;
   color: #292926;
 }
+.nav-button.nav-utility { margin-top: 22px; }
+.planning-content { max-width: 960px; padding: 0 36px 48px; }
+.planning-alerts { margin: 0 36px 24px; border: 1px solid var(--border); border-radius: 9px; padding: 18px 22px; }
+.planning-content .planning-alerts { margin: 24px 0; }
+.planning-section-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.planning-row { padding: 16px 0; border-bottom: 1px solid var(--border); }
+.planning-row p { margin: 8px 0; }
+.planning-evidence { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 10px; color: var(--muted); font-size: 11px; }
+.planning-controls { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px; margin: 18px 0; }
+.planning-controls label { display: grid; gap: 8px; }
+.planning-controls select { max-width: 320px; min-height: 34px; border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; background: white; }
+.planning-candidate { padding: 22px 0; border-bottom: 1px solid var(--border); }
+.planning-candidate h3 { font-size: 15px; }
+.planning-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.planning-audit { margin: 22px 0; }
+.planning-audit details { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.planning-audit summary { display: flex; gap: 12px; align-items: baseline; cursor: pointer; }
+.planning-audit blockquote { margin: 12px 0; padding-left: 14px; border-left: 2px solid var(--border); color: var(--muted); }
 .nav-button:hover {
   background: #eeeee9;
 }
@@ -1174,3 +1192,5 @@ select {
 .ingestion-controls input[type="number"] {
   width: 5rem;
 }
+
+.uw-nav-mark { width: 18px; height: 24px; object-fit: contain; flex: 0 0 18px; }

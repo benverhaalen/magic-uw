@@ -51,3 +51,9 @@ The useful older analogy is record linkage's three-way decision: link, do not li
 7. **Learn from corrections carefully.** Preserve confirmed/undone decisions, the reason if voluntarily supplied, evidence hash, question/model/rule version, and time. Silence is not approval; undo may reflect relevance or preference rather than false identity. Review those cases, sample auto-links and suppressed candidates too, retune offline, then check a fresh holdout. Do not silently lower thresholds because users accepted a selected subset of chips.
 
 Acceptance checks: wrong-course P1 never merges; no-match can abstain; multiple supporting documents survive; rejected links are not silently restored; changed evidence invalidates obsolete judgments; uncertain links remain inspectable. The ingestion coordinator implements exact same-course URL/ID links and user overrides. Fuzzy candidate generation, scoring, and threshold tuning remain unimplemented.
+
+## Historical Canvas and academic reconciliation
+
+Canvas discovery now enumerates active and completed enrollments separately, requesting available and completed course workflow states for the historical query. Active coursework does not wait for historical discovery. Historical courses receive metadata and the student's own current/final grade claims without automatically crawling old materials. Restricted entries remain restricted, and failed discovery preserves prior records. This is accessible Canvas coverage, not all university course history.
+
+[Planning integration](planning-upgrade.md) owns the separate UW enrollment/history/DARS pipeline and exact reconciliation rules. Native identity binding, source-specific terms, credit basis, and independent current/final grade claims prevent convenient but unsupported merges. No transcript authority or mastery is inferred from Canvas.

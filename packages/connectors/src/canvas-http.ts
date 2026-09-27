@@ -55,7 +55,8 @@ const allowedQuery: Record<string, RegExp> = {
   page: /^[a-zA-Z0-9_:.,=-]{1,256}$/,
   "include[]":
     /^(?:syllabus_body|term|teachers|total_scores|concluded|calendar|submission|submission_comments|items|content_details)$/,
-  enrollment_state: /^active$/,
+  enrollment_state: /^(?:active|completed)$/,
+  "state[]": /^(?:available|completed)$/,
   order_by: /^due_at$/,
   only_active_courses: /^true$/,
   "context_codes[]": /^course_[1-9]\d{0,29}$/,
@@ -97,7 +98,10 @@ export function checkedCanvasUrl(input: string, origin: string): string {
       "total_scores",
       "concluded",
     ];
-    if (path === "/api/v1/courses") allowedKeys.add("enrollment_state");
+    if (path === "/api/v1/courses") {
+      allowedKeys.add("enrollment_state");
+      allowedKeys.add("state[]");
+    }
   } else if (/\/assignments$/.test(path)) {
     includes = ["submission"];
     allowedKeys.add("order_by");

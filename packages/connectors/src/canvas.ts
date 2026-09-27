@@ -229,6 +229,7 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
         started = performance.now(),
         pages = 0,
         requests = 0,
+        recordCount = resources.length,
       ) {
         const durationMs = Math.max(0, performance.now() - started);
         const batchSource = source(courseId, name, scope);
@@ -247,7 +248,7 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
           stats: {
             durationMs,
             pages,
-            records: resources.length,
+            records: recordCount,
             requests,
             rateLimitRemaining: http.rate.remaining,
             requestCost: http.rate.cost,
@@ -258,7 +259,7 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
               : status === "partial"
                 ? "reading"
                 : status,
-            completed: resources.length,
+            completed: recordCount,
           },
         });
         queue.push(value);
@@ -270,7 +271,7 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
           scope,
           status,
           complete,
-          records: resources.length,
+          records: recordCount,
           durationMs,
         });
       }
@@ -432,6 +433,7 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
                 started,
                 pages,
                 requestStats.requests,
+                items.length,
               );
           }
           if (next) throw new CanvasFailure("partial", "page_limit");
@@ -465,6 +467,7 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
           started,
           pages,
           requestStats.requests,
+          items.length,
         );
         return { items, resources, complete, status };
       }
@@ -682,19 +685,29 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
         const accountSettled = Promise.allSettled(
           accountReads.map((read) => read.promise),
         );
-        const catalog = await collect(
+        const catalogRead = collect(
           account,
           "courses",
           `${origin}/api/v1/courses?enrollment_state=active&per_page=100&include[]=syllabus_body&include[]=term&include[]=teachers&include[]=total_scores&include[]=concluded`,
           courseSchema,
         );
+        // Past-course discovery is a metadata read only. It does not delay the
+        // active learning path or start a deep crawl of concluded coursework.
+        const historicalRead = collect(
+          account,
+          "courses-completed",
+          `${origin}/api/v1/courses?enrollment_state=completed&state[]=available&state[]=completed&per_page=100&include[]=term&include[]=total_scores&include[]=concluded`,
+          courseSchema,
+        );
+        const historicalSettled = Promise.allSettled([historicalRead]);
+        const catalog = await catalogRead;
         emit(
           "connection",
           "Canvas connection",
           "connection",
           [],
-          catalog.status,
-          catalog.complete,
+          catalog.status === "ok" ? "partial" : catalog.status,
+          false,
         );
         for (const course of catalog.items) {
           const restricted =
@@ -704,7 +717,7 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
             course.id,
             courseName(course),
             "course",
-            [courseResource(course, origin, selection())],
+            [courseResource(course, origin, selection(), profile.id)],
             restricted
               ? course.workflow_state === "unpublished"
                 ? "not_published"
@@ -713,10 +726,32 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
             !restricted,
           );
         }
-        // Absence is evidence only after the complete catalog succeeds. Keep the last
-        // coursework while removing the stale automatic inclusion decision.
-        if (catalog.complete) {
+        const reconcileCatalog = historicalRead.then((historical) => {
+          combined.throwIfAborted();
+          // A course can appear in both date-aware lists. Prefer the active row;
+          // never replace its enrollment or grade claims with a historical copy.
           const listed = new Set(catalog.items.map((course) => course.id));
+          for (const raw of historical.items) {
+            if (listed.has(raw.id)) continue;
+            listed.add(raw.id);
+            const course: CanvasCourse = { ...raw, historicalOnly: true };
+            const restricted = course.access_restricted_by_date || course.workflow_state === "unpublished";
+            emit(course.id, courseName(course), "course",
+              [courseResource(course, origin, selection(), profile.id)],
+              restricted ? course.workflow_state === "unpublished" ? "not_published" : "inaccessible" : "ok",
+              !restricted,
+              [{ code: "historical_course_metadata_only", path: [], severity: "warning" }]);
+          }
+          const complete = catalog.complete && historical.complete;
+          emit("connection", "Canvas connection", "connection", [],
+            complete ? "ok" : catalog.status === "needs_sign_in" || historical.status === "needs_sign_in" ? "needs_sign_in" : "partial",
+            complete,
+            [{ code: "active_and_completed_course_inventory", path: [], severity: "warning" }],
+            performance.now(), 0, 0, listed.size);
+          // Absence is evidence only after BOTH date-aware lists finish. These
+          // lists cover accessible active/completed enrollments, not a transcript.
+          // Failure of either query must retain all previously known coursework.
+          if (!complete) return;
           for (const known of options.knownResources ?? []) {
             if (
               known.kind !== "course" ||
@@ -738,7 +773,7 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
               selection: {
                 score: retained.course?.selection?.score ?? 0,
                 included: false,
-                reasons: ["No longer returned in the active enrollment list"],
+                reasons: ["No longer returned in the active or completed enrollment lists"],
                 override: retained.course?.selection?.override,
               },
             };
@@ -758,9 +793,10 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
               ],
             );
           }
-        }
+        });
+        const reconciled = Promise.allSettled([reconcileCatalog]);
         if (http.needsSignIn) {
-          await accountSettled;
+          await Promise.all([accountSettled, historicalSettled, reconciled]);
           return;
         }
         const courses = catalog.items.filter(
@@ -995,7 +1031,7 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
             const details = await collect(
               course,
               "details",
-              `${prefix}?include[]=term&include[]=syllabus_body`,
+              `${prefix}?include[]=term&include[]=syllabus_body&include[]=total_scores`,
               courseSchema,
               (item) => {
                 if (item.id !== course.id)
@@ -1006,11 +1042,17 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
             );
             if (details.items[0]) {
               const detailed = { ...course, ...details.items[0] };
+              const detailedResource = courseResource(detailed, origin, selection(), profile.id);
+              // A detail response may omit total scores despite inclusion. Keep
+              // this pull's explicit catalog claims rather than clear them with
+              // an omitted optional field. Explicit null claims remain distinct.
+              if (detailedResource.course && !detailedResource.course.gradeEvidence)
+                detailedResource.course.gradeEvidence = courseResource(course, origin, selection(), profile.id).course?.gradeEvidence;
               emit(
                 course.id,
                 courseName(detailed),
                 "course",
-                [courseResource(detailed, origin, selection())],
+                [detailedResource],
                 details.status,
                 details.complete,
               );
@@ -1093,6 +1135,8 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
         await pool(backgroundJobs, http.concurrency, async (job) => {
           if (!http.needsSignIn) await job();
         });
+        const [reconciliation] = await reconciled;
+        if (reconciliation.status === "rejected") throw reconciliation.reason;
         if (http.needsSignIn)
           emit(
             "connection",

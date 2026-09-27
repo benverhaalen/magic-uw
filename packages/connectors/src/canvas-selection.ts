@@ -5,6 +5,8 @@ export interface SelectableCanvasCourse {
   workflow_state?: string;
   access_restricted_by_date?: boolean;
   concluded?: boolean;
+  /** Connector-owned discovery context; never accepted from a source payload. */
+  historicalOnly?: boolean;
   start_at?: string | null;
   end_at?: string | null;
   term?: {
@@ -123,6 +125,10 @@ export function courseSelection(
     included = false;
     reasons.push("Course concluded");
   }
+  if (course.historicalOnly) {
+    included = false;
+    reasons.push("Completed enrollment catalog; course metadata only");
+  }
   const selected = parseAcademicTerm(options.selectedTerm);
   if (
     options.selectedTerm &&
@@ -146,10 +152,13 @@ export function courseSelection(
     // An include choice persists, but cannot turn inaccessible course evidence into an open course.
     if (
       course.access_restricted_by_date ||
-      course.workflow_state === "unpublished"
+      course.workflow_state === "unpublished" ||
+      course.historicalOnly
     ) {
       included = false;
-      reasons.push("Saved include choice waits for course access");
+      reasons.push(course.historicalOnly
+        ? "Saved include choice retained; historical content is not collected in this refresh"
+        : "Saved include choice waits for course access");
     }
     return { score, included, reasons, override: override.included };
   }

@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { chmodSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { planningMigration, planningRepository } from "./planning";
 import {
   captureEnvelopeSchema,
   resourceInputSchema,
@@ -30,7 +31,7 @@ import {
   type Store,
 } from "@magic/contracts";
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 const MAX_ATTEMPTS = 3;
 type Row = Record<string, string | number | bigint | Uint8Array | null>;
 
@@ -226,6 +227,9 @@ export function createStore(path: string): Store {
     `);
     });
 
+  if (schemaVersion < 4) transaction(() => db.exec(planningMigration + "PRAGMA user_version = 4;"));
+  const planning = planningRepository(db);
+
   function resourceRow(id: string): Row | undefined {
     return db
       .prepare(
@@ -325,6 +329,7 @@ export function createStore(path: string): Store {
 
   let closed = false;
   return {
+    ...planning,
     close() {
       if (!closed) {
         db.close();
@@ -1301,6 +1306,7 @@ export function createStore(path: string): Store {
     },
     purge() {
       transaction(() => {
+        db.exec("DELETE FROM planning_versions; DELETE FROM planning_sources;");
         db.exec(`DELETE FROM receipts; DELETE FROM preferences; DELETE FROM course_overrides; DELETE FROM sync_runs; DELETE FROM mcp_grants; DELETE FROM resource_search; DELETE FROM sources;
           INSERT INTO resource_search(resource_search) VALUES ('optimize');`);
       });

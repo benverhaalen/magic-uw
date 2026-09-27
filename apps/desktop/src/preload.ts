@@ -6,6 +6,7 @@ const bridge: AppBridge = {
   importFile: () => ipcRenderer.invoke("magic:import"),
   signInUW: (service) => ipcRenderer.invoke("magic:signin", service),
   syncCanvas: () => ipcRenderer.invoke("magic:sync"),
+  syncPlanning: () => ipcRenderer.invoke("magic:planning-sync"),
   signOutUW: () => ipcRenderer.invoke("magic:signout"),
   localStatus: () => ipcRenderer.invoke("magic:local-status"),
   localAsk: (request) => ipcRenderer.invoke("magic:local-ask", request),

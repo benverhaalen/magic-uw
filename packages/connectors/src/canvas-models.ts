@@ -52,7 +52,15 @@ export const courseSchema = z.object({
     .optional(),
   enrollments: z
     .array(
-      z.object({ type: state.optional(), enrollment_state: state.optional() }),
+      z.object({
+        type: state.optional(), enrollment_state: state.optional(),
+        // Transient identity check only. Course resources never retain this field.
+        user_id: canvasId.optional(),
+        computed_current_grade: z.string().max(100).nullable().optional(),
+        computed_final_grade: z.string().max(100).nullable().optional(),
+        computed_current_score: z.number().finite().nullable().optional(),
+        computed_final_score: z.number().finite().nullable().optional(),
+      }),
     )
     .max(500)
     .nullable()
@@ -62,7 +70,7 @@ export const courseSchema = z.object({
     .nullable()
     .optional(),
 });
-export type CanvasCourse = z.infer<typeof courseSchema>;
+export type CanvasCourse = z.infer<typeof courseSchema> & { historicalOnly?: boolean };
 const rating = z.object({
   id: z.union([z.string(), z.number()]).transform(String).optional(),
   description: z.string().max(4000).optional(),
@@ -307,7 +315,24 @@ export function courseResource(
   course: CanvasCourse,
   origin: string,
   selection: CanvasSelectionOptions,
+  viewerId?: string,
 ): ResourceInput {
+  // Canvas's course endpoint returns the requesting user's enrollments. When an
+  // explicit user_id is present, corroborate it against the transient profile.
+  // Preserve distinct enrollments and the distinction between current/final and
+  // letter/score. Canvas gradebook claims are not transcript grades.
+  const gradeEvidence = course.enrollments?.filter((enrollment) =>
+    /^(?:student|StudentEnrollment)$/i.test(enrollment.type ?? "") &&
+    (!enrollment.user_id || enrollment.user_id === viewerId) &&
+    [enrollment.computed_current_grade, enrollment.computed_final_grade,
+      enrollment.computed_current_score, enrollment.computed_final_score].some((value) => value !== undefined),
+  ).map((enrollment) => ({
+    enrollmentState: enrollment.enrollment_state,
+    currentGrade: enrollment.computed_current_grade,
+    finalGrade: enrollment.computed_final_grade,
+    currentScore: enrollment.computed_current_score,
+    finalScore: enrollment.computed_final_score,
+  }));
   return resourceInputSchema.parse({
     ...base(course, origin, course.id, courseName(course), ""),
     kind: "course",
@@ -322,6 +347,7 @@ export function courseResource(
       startAt: course.start_at,
       endAt: course.end_at,
       selection: courseSelection(course, selection),
+      gradeEvidence: gradeEvidence?.length ? gradeEvidence : undefined,
     },
   });
 }

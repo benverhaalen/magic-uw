@@ -16,12 +16,17 @@ import { pathToFileURL } from "node:url";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { gatewayClient } from "@magic/ai";
 import { checkedCanvasUrl } from "../../../packages/connectors/src/canvas-http";
+import {
+  UwPlanningHttp,
+} from "../../../packages/connectors/src/uw-planning-http";
+import { syncUwPlanning } from "../../../packages/connectors/src/uw-planning-sync";
 import { readBounded } from "../../../packages/connectors/src/network";
 import { createSecretVault } from "./secrets";
 import {
   commandSchema,
   captureBatchSchema,
   captureEnvelopeSchema,
+  planningCaptureSchema,
   localQuestionSchema,
   type CommandResult,
 } from "@magic/contracts";
@@ -82,6 +87,22 @@ app
     const data = app.getPath("userData");
     await mkdir(data, { recursive: true, mode: 0o700 });
     const studentSession = session.fromPartition("persist:uw");
+    const planningScopePath = join(data, "planning-session-scope");
+    let planningAccountScope: string;
+    try {
+      const saved = (await readFile(planningScopePath, "utf8")).trim();
+      planningAccountScope = /^uw-session:[a-f0-9-]{36}$/.test(saved)
+        ? saved : `uw-session:${randomUUID()}`;
+    } catch {
+      planningAccountScope = `uw-session:${randomUUID()}`;
+    }
+    const planningHttp = new UwPlanningHttp({
+      fetch: (url, init) => studentSession.fetch(url, init),
+    });
+    const planningReads = new Set<string>();
+    let planningCall: { id: string; promise: Promise<CommandResult> } | undefined;
+    let planningEpoch = 0;
+    let planningClears = 0;
     const gitlabSession = session.fromPartition("persist:gitlab");
     gitlabSession.setPermissionRequestHandler((_wc, _permission, callback) =>
       callback(false),
@@ -100,7 +121,11 @@ app
     studentSession.setPermissionCheckHandler(() => false);
     studentSession.on("will-download", (event) => event.preventDefault());
     const worker = utilityProcess.fork(join(root, "worker.cjs"), [], {
-      env: { ...process.env, MAGIC_DB_PATH: join(data, "workspace.sqlite") },
+      env: {
+        ...process.env,
+        MAGIC_DB_PATH: join(data, "workspace.sqlite"),
+        MAGIC_PLANNING_SCOPE: planningAccountScope,
+      },
       stdio: "pipe",
       serviceName: "Magic Canvas local workspace",
     });
@@ -153,6 +178,25 @@ app
           },
         })
       : undefined;
+    function cancelPlanning() {
+      planningEpoch++;
+      worker.postMessage({ kind: "planning-cancel" });
+      for (const id of planningReads) sourceReads.get(id)?.abort();
+      if (planningCall) {
+        const pending = calls.get(planningCall.id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          calls.delete(planningCall.id);
+          pending.reject(new Error("Planning refresh cancelled. Saved records are still available."));
+        }
+        planningCall = undefined;
+      }
+    }
+    async function resetPlanningScope() {
+      planningAccountScope = `uw-session:${randomUUID()}`;
+      await rm(planningScopePath, { force: true });
+      worker.postMessage({ kind: "planning-scope", accountScope: planningAccountScope });
+    }
     worker.on("message", async (message: any) => {
       if (message.kind === "source-abort") {
         sourceReads.get(message.id)?.abort();
@@ -198,6 +242,42 @@ app
             id: message.id,
             error: true,
           });
+        }
+        return;
+      }
+      if (message.kind === "planning-public-read") {
+        const controller = new AbortController();
+        sourceReads.set(message.id, controller);
+        planningReads.add(message.id);
+        try {
+          const request = message.payload?.request;
+          if (planningClears > 0 || !["public-search", "enrollment-packages"].includes(request?.kind)) throw new Error("Unsupported planning read");
+          const result = await planningHttp.read(request, controller.signal);
+          controller.signal.throwIfAborted();
+          worker.postMessage({ kind: "source-response", id: message.id, result });
+        } catch {
+          worker.postMessage({ kind: "source-response", id: message.id, error: true });
+        } finally { planningReads.delete(message.id); sourceReads.delete(message.id); }
+        return;
+      }
+      if (message.kind === "planning-refresh") {
+        const controller = new AbortController();
+        sourceReads.set(message.id, controller);
+        planningReads.add(message.id);
+        try {
+          if (!planningCall || planningClears > 0) throw new Error("Planning read cancelled");
+          // The native orchestration owns fixed reads, identity validation, and raw
+          // response projection. The worker cannot supply URLs or private identities.
+          const result = await syncUwPlanning({
+            http: planningHttp, accountSeed: planningAccountScope, signal: controller.signal,
+          });
+          controller.signal.throwIfAborted();
+          worker.postMessage({ kind: "source-response", id: message.id, result });
+        } catch {
+          worker.postMessage({ kind: "source-response", id: message.id, error: true });
+        } finally {
+          planningReads.delete(message.id);
+          sourceReads.delete(message.id);
         }
         return;
       }
@@ -357,6 +437,9 @@ app
       await ready;
       if (parsed.type === "purge") {
         sync?.abort();
+        cancelPlanning();
+        signIn?.close();
+        for (const c of sourceReads.values()) c.abort();
         for (const c of evaluations.values()) c.abort();
       }
       const id = randomUUID();
@@ -371,18 +454,25 @@ app
     }
     ipcMain.handle("magic:execute", async (event, command) => {
       validateSender(event);
-      const result = await execute(command);
-      if (command?.type === "purge") {
-        for (const c of sourceReads.values()) c.abort();
-        await vault.clear();
-        await Promise.all([
-          rm(join(data, "documents"), { recursive: true, force: true }),
-          rm(join(data, "mcp"), { recursive: true, force: true }),
-          studentSession.clearStorageData(),
-          gitlabSession.clearStorageData(),
-        ]);
+      const purging = command?.type === "purge";
+      if (purging) planningClears++;
+      try {
+        const result = await execute(command);
+        if (purging) {
+          for (const c of sourceReads.values()) c.abort();
+          await vault.clear();
+          await Promise.all([
+            rm(join(data, "documents"), { recursive: true, force: true }),
+            rm(join(data, "mcp"), { recursive: true, force: true }),
+            studentSession.clearStorageData(),
+            gitlabSession.clearStorageData(),
+            resetPlanningScope(),
+          ]);
+        }
+        return result;
+      } finally {
+        if (purging) planningClears--;
       }
-      return result;
     });
     ipcMain.handle("magic:mcp-export", async (event, id) => {
       validateSender(event);
@@ -471,22 +561,24 @@ app
       if (headless)
         throw new Error("File dialogs are disabled in headless mode.");
       const choice = await dialog.showOpenDialog(window!, {
-        title: "Import a local course capture",
+        title: "Import a local capture",
         properties: ["openFile"],
         filters: [{ name: "JSON capture", extensions: ["json"] }],
       });
       if (choice.canceled) return null;
       if ((await stat(choice.filePaths[0])).size > 8 * 1024 * 1024)
         throw new Error("Capture exceeds the 8 MB import limit.");
-      let batch;
+      let imported: unknown;
       try {
-        batch = captureEnvelopeSchema.parse(
-          JSON.parse(await readFile(choice.filePaths[0], "utf8")),
-        );
+        imported = JSON.parse(await readFile(choice.filePaths[0], "utf8"));
       } catch {
-        throw new Error("File is not a valid course capture.");
+        throw new Error("File is not a valid JSON capture.");
       }
-      return execute({ type: "import", batch });
+      const planning = planningCaptureSchema.safeParse(imported);
+      if (planning.success) return execute({ type: "planning-import", batch: planning.data });
+      const course = captureEnvelopeSchema.safeParse(imported);
+      if (course.success) return execute({ type: "import", batch: course.data });
+      throw new Error("File is not a valid coursework or normalized planning capture.");
     });
     ipcMain.handle(
       "magic:signin",
@@ -495,14 +587,19 @@ app
         if (
           requestedService !== undefined &&
           requestedService !== "canvas" &&
-          requestedService !== "gitlab"
+          requestedService !== "gitlab" &&
+          requestedService !== "enroll" &&
+          requestedService !== "myuw"
         )
           throw new Error("Unsupported sign-in source.");
         const gitlab = requestedService === "gitlab",
+          planning = requestedService === "enroll" || requestedService === "myuw",
           loginSession = gitlab ? gitlabSession : studentSession,
           loginOrigin = gitlab
             ? "https://git.doit.wisc.edu"
-            : "https://canvas.wisc.edu";
+            : requestedService === "enroll" ? "https://enroll.wisc.edu"
+              : requestedService === "myuw" ? "https://my.wisc.edu"
+                : "https://canvas.wisc.edu";
         if (headless)
           throw new Error(
             "Sign-in requires your interaction; headless mode will not open a window.",
@@ -515,7 +612,7 @@ app
           width: 760,
           height: 720,
           parent: window!,
-          title: "UW sign in · canvas.wisc.edu",
+          title: `UW sign in · ${new URL(loginOrigin).hostname}`,
           autoHideMenuBar: true,
           webPreferences: {
             partition: gitlab ? "persist:gitlab" : "persist:uw",
@@ -551,6 +648,8 @@ app
         let checking = false;
         // Verify only after a user-driven navigation returns to Canvas; never keep a session alive.
         login.webContents.on("did-finish-load", async () => {
+          // Unknown MyUW/enroll JSON cannot establish identity. The student closes this window when done.
+          if (planning) return;
           if (checking || login.isDestroyed()) return;
           if (new URL(login.webContents.getURL()).origin !== loginOrigin)
             return;
@@ -616,34 +715,84 @@ app
         worker.postMessage({ kind: "refresh", id });
       });
     });
+    ipcMain.handle("magic:planning-sync", async (event) => {
+      validateSender(event);
+      await ready;
+      if (planningClears > 0) throw new Error("Planning is unavailable while local data or sessions are being cleared.");
+      if (planningCall) return planningCall.promise;
+      const epoch = planningEpoch;
+      await writeFile(planningScopePath, planningAccountScope, { mode: 0o600 });
+      if (epoch !== planningEpoch || planningClears > 0) throw new Error("Planning refresh cancelled.");
+      const concurrent = planningCall as { id: string; promise: Promise<CommandResult> } | undefined;
+      if (concurrent) return concurrent.promise;
+      const id = randomUUID();
+      const promise = new Promise<CommandResult>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          calls.delete(id);
+          worker.postMessage({ kind: "planning-cancel" });
+          for (const requestId of planningReads) sourceReads.get(requestId)?.abort();
+          reject(new Error("Planning refresh timed out. Saved records are still available."));
+        }, 90_000);
+        calls.set(id, { resolve, reject, timer });
+        worker.postMessage({ kind: "planning-sync", id });
+      });
+      planningCall = { id, promise };
+      try { return await promise; }
+      finally { if (planningCall?.id === id) planningCall = undefined; }
+    });
     ipcMain.handle("magic:signout", async (event) => {
       validateSender(event);
-      sync?.abort();
-      worker.postMessage({ kind: "refresh-cancel" });
-      for (const c of sourceReads.values()) c.abort();
-      signIn?.close();
-      await studentSession.clearStorageData();
-      await studentSession.clearCache();
-      await gitlabSession.clearStorageData();
-      await gitlabSession.clearCache();
-      await vault.deletePrefix("calendar:");
-      const result = await execute({ type: "snapshot" });
-      for (const source of result.snapshot.sources.filter(
-        (s) => s.kind === "canvas" || s.kind === "gitlab",
-      )) {
-        const { id, label, kind, accountScope, courseId, scope } = source;
-        await execute({
-          type: "import",
-          batch: {
-            source: { id, label, kind, accountScope, courseId, scope },
-            observedAt: new Date(
-              Math.max(Date.now(), Date.parse(source.lastAttemptAt) + 1),
-            ).toISOString(),
-            complete: false,
-            status: "needs_sign_in",
-            resources: [],
-          },
-        });
+      planningClears++;
+      try {
+        sync?.abort();
+        cancelPlanning();
+        const signOutEpoch = planningEpoch;
+        worker.postMessage({ kind: "refresh-cancel" });
+        for (const c of sourceReads.values()) c.abort();
+        signIn?.close();
+        await studentSession.clearStorageData();
+        await studentSession.clearCache();
+        await gitlabSession.clearStorageData();
+        await gitlabSession.clearCache();
+        await vault.deletePrefix("calendar:");
+        await resetPlanningScope();
+        if (signOutEpoch !== planningEpoch) return;
+        const result = await execute({ type: "snapshot" });
+        for (const source of result.snapshot.sources.filter(
+          (s) => s.kind === "canvas" || s.kind === "gitlab",
+        )) {
+          if (signOutEpoch !== planningEpoch) return;
+          const { id, label, kind, accountScope, courseId, scope } = source;
+          await execute({
+            type: "import",
+            batch: {
+              source: { id, label, kind, accountScope, courseId, scope },
+              observedAt: new Date(
+                Math.max(Date.now(), Date.parse(source.lastAttemptAt) + 1),
+              ).toISOString(),
+              complete: false,
+              status: "needs_sign_in",
+              resources: [],
+            },
+          });
+        }
+        for (const source of result.snapshot.planning?.sources.filter(
+          (source) => ["uw_enroll", "uw_myuw", "uw_dars"].includes(source.source),
+        ) ?? []) {
+          if (signOutEpoch !== planningEpoch) return;
+          await execute({
+            type: "planning-import",
+            batch: {
+              schemaVersion: 1, id: randomUUID(), accountScope: source.accountScope,
+              source: source.source, scope: source.scope, sourceUrl: source.sourceUrl,
+              observedAt: new Date(Math.max(Date.now(), Date.parse(source.observedAt) + 1)).toISOString(),
+              status: "blocked", completeness: "unknown", records: [],
+              diagnostics: [{ code: "needs_sign_in", message: "Signed out. Saved planning records remain on this device." }],
+            },
+          });
+        }
+      } finally {
+        planningClears--;
       }
     });
     window = new BrowserWindow({
@@ -679,6 +828,7 @@ app
       event.preventDefault();
       quitting = true;
       sync?.abort();
+      cancelPlanning();
       for (const c of sourceReads.values()) c.abort();
       for (const c of evaluations.values()) c.abort();
       worker.postMessage({ kind: "shutdown" });
@@ -704,6 +854,25 @@ app
           !imported.snapshot.fixtureMode
         )
           throw new Error("Fixture import failed");
+        const planningStamp = new Date().toISOString();
+        const planningScope = { kind: "terms", key: "synthetic-smoke" };
+        const planningFixture = {
+          schemaVersion: 1, id: "synthetic-planning-smoke", accountScope: "synthetic",
+          source: "normalized_import", scope: planningScope,
+          sourceUrl: "https://example.test/synthetic-planning", observedAt: planningStamp,
+          status: "complete", completeness: "complete", diagnostics: [],
+          records: [{ kind: "term", id: "1272", code: "1272", season: "fall", year: 2026,
+            label: "Fall 2026", past: false,
+            provenance: { sourceUrl: "https://example.test/synthetic-planning", observedAt: planningStamp, scope: planningScope },
+          }],
+        };
+        const planningImported = await window.webContents.executeJavaScript(
+          `window.magic.execute(${JSON.stringify({ type: "planning-import", batch: planningFixture })})`,
+        );
+        if (planningImported.snapshot.planning?.records.length !== 1 ||
+            planningImported.snapshot.planning?.sources.length !== 1 ||
+            !(await window.webContents.executeJavaScript("typeof window.magic.syncPlanning === 'function'")))
+          throw new Error("Planning import or preload bridge failed");
         await window.webContents.executeJavaScript(
           "window.magic.execute({type:'mcp-grant',value:{id:'smoke',label:'Synthetic local client',recipient:'local',enabled:true,courses:[{accountScope:'synthetic',courseId:'sample-101'}],categories:['course_text']}})",
         );
@@ -728,11 +897,13 @@ app
         if (
           cleared.snapshot.resources.length ||
           cleared.snapshot.mcpGrants.length ||
+          cleared.snapshot.planning?.records.length ||
+          cleared.snapshot.planning?.sources.length ||
           (await stat(accessFile).catch(() => null))
         )
           throw new Error("Local purge left data or access credentials");
         console.log(
-          "PASS hidden desktop: renderer → preload → worker → SQLite; MCP export and local purge",
+          "PASS hidden desktop: renderer → preload → worker → SQLite; synthetic planning import, MCP export and local purge",
         );
       } catch (error) {
         console.error(

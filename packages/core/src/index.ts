@@ -13,12 +13,22 @@ import { maySend, resolveDeadline } from "@magic/domain";
 import { judgmentResultSchema, type JudgmentGateway } from "@magic/ai";
 import { contentCategories, courseIncluded } from "./access";
 import { evidenceFor } from "./evidence";
+import { pullGuideForSubject } from "../../connectors/src/planning-public";
+import { createPublicClient, type PublicClient } from "../../connectors/src/network";
+import { comparePlanning } from "./planning";
+import { reconcileAcademicRecords } from "./academic-reconciliation";
+import type { UwPlanningHttp } from "../../connectors/src/uw-planning-http";
+import { buildUwPublicCourseSearchRequest, normalizeUwPublicCourseSearch, buildUwPublicEnrollmentPackagesRequest, normalizeUwPublicEnrollmentPackages } from "../../connectors/src/uw-planning-catalog";
 export interface CoreOptions {
   fixture: CaptureBatch;
   gateway?: JudgmentGateway;
   now?: () => Date;
+  planningPublicClient?: PublicClient;
+  planningHttp?: Pick<UwPlanningHttp, "read">;
 }
 export function createCore(store: Store, options: CoreOptions) {
+  const planningReads = new Set<AbortController>();
+  const publicClient = options.planningPublicClient ?? createPublicClient();
   const now = () => (options.now?.() ?? new Date()).toISOString();
   let generation = 0,
     active: AbortController | undefined,
@@ -60,6 +70,7 @@ export function createCore(store: Store, options: CoreOptions) {
       );
     const sources = store.sources();
     return {
+      planning: { records: store.planningRecords(), sources: store.planningSources(), reconciliation: reconcileAcademicRecords(store, now()) },
       resources,
       sources,
       privacy: store.privacy(),
@@ -235,6 +246,7 @@ export function createCore(store: Store, options: CoreOptions) {
   function interrupt() {
     generation++;
     active?.abort();
+    for (const read of planningReads) read.abort();
   }
   async function execute(raw: unknown): Promise<CommandResult> {
     if (closed) throw new Error("Workspace is closed.");
@@ -247,6 +259,56 @@ export function createCore(store: Store, options: CoreOptions) {
         store.ingest(command.batch);
         wake();
         message = "Capture imported locally.";
+        break;
+      }
+      case "planning-guide": {
+        const subjects = store.planningRecords().filter((row) => !row.deleted && row.accountScope === "public").filter((row) => row.kind === "subject");
+        const subject = subjects.find((row) => row.code === command.subjectCode);
+        if (!subject) throw new Error("Refresh planning to load the official subject list first.");
+        const controller = new AbortController(), version = generation;
+        planningReads.add(controller);
+        try {
+          const capture = await pullGuideForSubject(publicClient, subject, subjects, now(), AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]));
+          if (closed || version !== generation) throw new Error("Catalog read cancelled; no data was saved.");
+          store.ingestPlanning(capture);
+          message = capture.records.length ? "Public course descriptions saved. Term offerings and prerequisites need separate verification." : "The Guide page could not be parsed; previous records were preserved.";
+        } finally { planningReads.delete(controller); }
+        break;
+      }
+      case "planning-search":
+      case "planning-sections": {
+        if (!options.planningHttp) throw new Error("Term offerings are available through the desktop UW connection.");
+        const controller = new AbortController(), version = generation;
+        planningReads.add(controller);
+        const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]);
+        try {
+          let capture;
+          if (command.type === "planning-search") {
+            const search = { termCode: command.termCode, subjectCode: command.subjectCode, page: command.page, observedAt: now() };
+            const response = await options.planningHttp.read(buildUwPublicCourseSearchRequest(search), signal);
+            const result = normalizeUwPublicCourseSearch(response.status === "ok" ? response.data : null, search);
+            capture = result.capture;
+            message = capture.status === "failed" ? "The offering search could not refresh. Saved results remain available and need verification." : `${result.courses.length} course descriptions saved from this search page${result.found === null ? "" : ` (${result.found} source results)`}. Sections are loaded separately; search text does not establish eligibility.`;
+          } else {
+            const record = store.planningRecords().find(r => !r.deleted && r.localId === command.recordId && r.accountScope === "public" && r.kind === "catalog_course");
+            const match = record?.id.match(/^course:(1\d{2}[246]):(\d{1,6}):(\d{1,12}(?:\.\d{1,6})?)$/);
+            if (!record || record.kind !== "catalog_course" || !match) throw new Error("Load a verified term search result before requesting its sections.");
+            const course = { termCode: match[1]!, subjectCode: match[2]!, courseId: match[3]!, catalogNumber: record.courseKey.split(":")[2]! };
+            const response = await options.planningHttp.read(buildUwPublicEnrollmentPackagesRequest(course), signal);
+            capture = normalizeUwPublicEnrollmentPackages(response.status === "ok" ? response.data : null, { course, observedAt: now() });
+            message = capture.status === "failed" ? "Sections could not refresh. Saved meetings remain available; seat counts and schedule fit need verification." : `${capture.records.length} section options saved with ${capture.completeness} coverage. Seat counts describe this observation, not a reservation.`;
+          }
+          signal.throwIfAborted();
+          if (closed || version !== generation) throw new Error("Offering read cancelled; no data was saved.");
+          store.ingestPlanning(capture);
+        } finally { planningReads.delete(controller); }
+        break;
+      }
+      case "planning-compare":
+        return { snapshot: snapshot(), planningComparison: comparePlanning(store, command.termCode, command.style, now()) };
+      case "planning-import": {
+        store.ingestPlanning(command.batch);
+        message = "Planning capture saved on this device.";
         break;
       }
       case "fixture": {

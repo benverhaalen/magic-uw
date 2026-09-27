@@ -1,0 +1,51 @@
+/** Reviewed public facts. No student eligibility is inferred from these summaries. */
+export const planningPolicies = [
+  {
+    id: "uw-grading",
+    title: "Official grades and repeat attempts",
+    scope: "UW–Madison undergraduate grading; professional programs can differ",
+    text: "Canvas scores are not official final grades. The Registrar's undergraduate GPA includes UW A–F grades from repeated attempts; transfer and exam credit do not contribute grade points. Degree credit and GPA credit are different calculations.",
+    sourceUrl: "https://registrar.wisc.edu/student-grades/",
+    checkedAt: "2026-09-26",
+  },
+  {
+    id: "uw-load",
+    title: "Credit limits depend on the student and session",
+    scope: "UW–Madison enrollment; use the student's career and exceptions",
+    text: "Credit limits vary by career and session. Overload exceptions require academic dean approval. Summer limits depend on session length as well as a term maximum; fall/spring rules cannot simply be reused.",
+    sourceUrl: "https://registrar.wisc.edu/credit-load-and-ranges/",
+    checkedAt: "2026-09-26",
+  },
+  {
+    id: "uw-appointment",
+    title: "Your enrollment appointment",
+    scope: "Continuing students; new undergraduate students enroll through SOAR",
+    text: "An assigned appointment is the earliest time a continuing student can begin enrollment for that term. Use the student's actual appointment; a general priority-enrollment date is not their personal opening time.",
+    sourceUrl: "https://registrar.wisc.edu/enrollment-appointment-times/",
+    checkedAt: "2026-09-26",
+  },
+  {
+    id: "uw-waitlist",
+    title: "Waitlist permission still needs action",
+    scope: "Course Search & Enroll waitlists",
+    text: "A waitlist permission email specifies how long permission lasts. Permission does not enroll the student: they must complete enrollment themselves. UW does not show a waitlist position, and department response times vary.",
+    sourceUrl: "https://kb.wisc.edu/registrar/15002",
+    checkedAt: "2026-09-26",
+  },
+  {
+    id: "uw-session-dates",
+    title: "Use the course's session deadlines",
+    scope: "UW–Madison term sessions",
+    text: "Most fall and spring courses use the regular A1 session. Shorter or differently scheduled classes can have different deadlines. Confirm the session before applying a drop or refund date.",
+    sourceUrl: "https://registrar.wisc.edu/session-dates/",
+    checkedAt: "2026-09-26",
+  },
+  {
+    id: "uw-audit-scope",
+    title: "What a degree audit covers",
+    scope: "Undergraduate and capstone DARS; graduate programs generally use other systems",
+    text: "DARS reports cover one major or certificate at a time. What-if reports can assess an undeclared program, but multiple majors and certificates cannot be combined into one report. Advisors can help interpret how requirements apply.",
+    sourceUrl: "https://registrar.wisc.edu/dars/",
+    checkedAt: "2026-09-26",
+  },
+] as const;

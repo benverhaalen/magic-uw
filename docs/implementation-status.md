@@ -1,14 +1,15 @@
 # Implementation status
 
-Updated September 26, 2026. This describes the code and observed checks, not completion of the broader [product](product.md). The detailed [ingestion handoff](ingestion-upgrade.md) covers scopes, bounds, evidence, and primary references.
+Updated September 26, 2026. This describes the code and observed checks, not completion of the broader [product](product.md). The [ingestion](ingestion-upgrade.md) and [planning](planning-upgrade.md) handoffs cover scopes, bounds, evidence, and primary references.
 
 ## What exists
 
 | Area                        | Implemented behavior                                                                                                                                                                      | Current limit                                                                                                                      |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Desktop                     | Isolated Electron renderer, preload, native session broker, utility worker, local SQLite; Today, evidence, Sources, Data & AI                                                             | Development build; no signed Mac or Windows installer                                                                              |
+| Desktop                     | Isolated Electron renderer, preload, native session broker, utility worker, local SQLite; Home, Courses, My UW, evidence, Sources, Data & AI                                                             | Development build; no signed Mac or Windows installer                                                                              |
 | UW access                   | App-owned sign-in window; student completes NetID/Duo; strict Canvas GET boundary; separate GitLab session                                                                                | No personal browser-cookie import. Embedded sign-in, SSO between services, and session lifetimes need live validation              |
 | Canvas                      | Account activity first; academic-course selection; assignments/submissions, details/syllabus, modules/items, pages and bodies, files/folders, groups, quizzes, discussions, announcements | Bounds can produce partial coverage. Page reads may register views or satisfy must-view requirements; accepted and disclosed       |
+| My UW                       | Native enrollment/history/saved-DARS adapters, public search/packages, holds/appointments, local comparisons and exact academic-source reconciliation | Individual options only; no combined schedule, production transcript ingestion, or broad audit coverage |
 | Refresh                     | Open-app background scheduler, quiet hours, jitter, activity-summary shortcut, expiry backoff, independent feeds, suspend/resume                                                          | No waking sleeping devices or keeping sessions alive. Actual UW timing/rate costs remain unmeasured                                |
 | Materials                   | Folder-scoped public crawling, redirects/robots/DNS checks, embedded JSON, local document downloads and extraction, exact supporting links                                                | No JavaScript rendering fallback; unknown file hosts remain partial; fuzzy association is not implemented                          |
 | Documents                   | PDF text/page anchors; local Office/HTML/text extraction; unchanged-file reuse; bounded local OCR adapter                                                                                 | OCR needs explicitly configured local tools and trained data; not bundled or demonstrated on a real scan                           |
@@ -21,13 +22,13 @@ Updated September 26, 2026. This describes the code and observed checks, not com
 
 ## Data and access promises
 
-Hosted sharing is off by default, including Jev. Grader feedback is collected locally by default; grades and comments require separate sharing permission. MCP also requires an explicit recipient, courses, and categories. GitLab content is conservatively classified as student work. Messages require communications permission. Rechecks apply on every MCP read.
+Hosted sharing is off by default, including Jev. Planning is stored in separate versioned SQLite tables (schema 4) and excluded from hosted context, Jev, local tutoring, and MCP. Native account binding stores opaque links, not the institutional identifiers used to verify them. Grader feedback is collected locally by default; grades and comments require separate sharing permission. MCP also requires an explicit recipient, courses, and categories. GitLab content is conservatively classified as student work. Messages require communications permission. Rechecks apply on every MCP read.
 
 The current Jev payload remains course name, title, bounded instruction text, and policy evidence for one assignment. It excludes structured credentials, account identifiers, grades, comments, and drafts. Local tutoring and selected-provider previews can include directly linked supporting material. Field allowlists and capability-URL removal do not anonymize free text; the planned identity scrubber is still missing. Relevant instructor/author names should survive that future scrubber, while unnecessary student identifiers should not.
 
 The coursework database and downloaded files are local and permission restricted, but not app encrypted. Source capabilities use OS-backed encryption. MCP connection credentials live in private local files; the database stores their hashes. Exported configuration is meant to remain local.
 
-Deleting local data removes coursework/history, cached documents, feed secrets, app-owned UW sessions, and MCP access files. Clearing only the UW session retains coursework. Neither action removes UW records, provider-retained data, or OS backups. Reading may cause access logs, viewed status, or must-view completion on the source system. The app provides no submit, post, enroll, or explicit completion command to UW.
+Deleting local data removes coursework/history, planning, cached documents, feed secrets, app-owned UW sessions, and MCP access files. Clearing only the UW session retains coursework. Neither action removes UW records, provider-retained data, or OS backups. Reading may cause access logs, viewed status, or must-view completion on the source system. The app provides no submit, post, enroll, or explicit completion command to UW.
 
 ## Evidence and context
 
@@ -39,17 +40,20 @@ The deadline resolver separates due, lock, and event claims, preserves conflicts
 
 ## Verification
 
-The upgrade passed **119 automated tests** and the TypeScript/desktop build on September 26. Tests use synthetic transports and temporary databases, with no paid model calls. They include:
+The combined ingestion/planning upgrade passed **255 automated tests** and the TypeScript/desktop build on September 26. Tests use synthetic transports and temporary databases, with no paid model calls. They include:
 
 - Synthetic university: five academic courses, five noncourse sites, a restricted course, 205 paginated assignments, linked instructions, changed/graded/removed/restored items, rate limits, and mid-sync expiry.
 - Real ingestion coordinator → SQLite → core context: course exclusion, exact support links, independent conflicting calendar dates, stale-data preservation, continued feeds after expiry, and no capabilities in snapshots or SQLite/WAL.
 - Actual generated PDF/Office extraction, bounded downloads, redirect/SSRF/robots checks, cache reuse, and capability removal in captured HTML/JSON/GitLab material. OCR selection uses a fake adapter, not a real scan.
 - MCP service and SDK stdio integration: category/course/privacy gates, invalid tokens, revocation, removed events, late-document passages, source coverage, and restrictive access-file permissions.
-- Hidden Electron: renderer → preload → utility worker → SQLite, private MCP configuration export, and local-data purge. Headless browser checks cover empty entry, synthetic import, refresh settings, local feedback versus cloud defaults, and creating/revoking an MCP connection.
+- Planning: source-specific profile/enrollment/history/audit/catalog adapters; exact terms and meetings; partial/failed retention; native account rechecks; source-scoped grades/credits; normal core search → sections → failed refresh; late-result rejection after purge. Fixtures contain synthetic data.
+- Hidden Electron: renderer → preload → utility worker → SQLite, synthetic planning import, private MCP configuration export, and local-data purge. Headless browser checks cover empty entry, synthetic import, refresh settings, local feedback versus cloud defaults, and creating/revoking an MCP connection. Planning QA covers empty My UW, synthetic saved audit/hold/appointment, Home → My UW, term comparison, evidence, and purge without page errors.
 
 Scope/request timing and remaining-rate headers are recorded. `firstValueMs` measures arrival of the first assignment/event during a run. `nextWeekInstructionsMs`, when present, measures when all captured assignments due within seven days have text or exact supporting text; it is not proof of complete course coverage. Neither establishes live speed. Missing timings are not zero.
 
-An earlier authorized private pull verified the previous thin connector against live Canvas and persisted its results; no private content is committed. That adapter is retired under the newer no-personal-cookie-access requirement. The expanded app-owned path has not yet been demonstrated on a live UW account. No teacher-controlled course is available to isolate view-tracking effects; that incidental effect is accepted rather than used as a blocker.
+An earlier authorized private pull verified the previous thin Canvas connector. Ben later explicitly authorized private headless Firefox-session checks for planning: actual native request/normalization → SQLite/reopen succeeded; historical Canvas discovery and cross-source comparisons used saved real responses. Private inventories, grades, reports, sessions, and evidence remain outside Git. A saved unofficial transcript was accessed without generating a report; production transcript ingestion is absent. These developer checks do not demonstrate app-owned onboarding, SSO, or expiry recovery. No teacher-controlled course is available to isolate view-tracking effects; that incidental effect is accepted rather than used as a blocker.
+
+Historical Canvas refresh now reads completed enrollments with explicit available/completed workflow states. It stores metadata and separate current/final grade claims, without automatically deep-crawling older material. Restricted entries remain restricted. No claim of exhaustive course history, transcript completeness, or mastery follows.
 
 Windows behavior, signed distribution, production gateway deployment, provider-account compatibility, non-CS coverage, real OCR, and live model quality/cost remain unverified.
 

@@ -14,7 +14,7 @@ Read the [shared context](docs/README.md). It separates the product direction, p
 
 **How we build:** [reference-driven design](docs/reference-driven-design.md). Study the actual mechanism or interaction, adapt it to the student journey, and verify its effect in the product. [Agent instructions](AGENTS.md) carry this method into new sessions and delegated work.
 
-**Current state:** an Electron desktop workspace with versioned local SQLite storage, expanded Canvas reads, background refresh, independent calendar feeds, linked course-site/document/GitLab evidence, and local MCP tools with explicit sharing grants. An owner-funded Jev gateway and an installed-local-model adapter provide bounded AI features. Embedded hosted account connections, managed model downloads, and the broader learning loop are still ahead. See [implementation status](docs/implementation-status.md) for the exact boundary and [development setup](docs/development.md) to run it.
+**Current state:** an Electron desktop workspace with versioned local SQLite storage, expanded Canvas reads, background refresh, independent calendar feeds, linked course-site/document/GitLab evidence, and local MCP tools with explicit sharing grants. My UW adds local enrollment, saved DARS audits, course search/sections, and conservative academic-source comparison. An owner-funded Jev gateway and an installed-local-model adapter provide bounded AI features. Embedded hosted account connections, managed model downloads, and the broader learning loop are still ahead. See [implementation status](docs/implementation-status.md) for the exact boundary and [development setup](docs/development.md) to run it.
 
 ## Run the workspace
 
@@ -33,6 +33,7 @@ The app starts empty with hosted AI sharing off. Load the explicitly synthetic s
 | [AI and privacy](docs/ai-and-privacy.md)                   | Which AI choices, sign-ins, and data controls are intended?                         |
 | [Architecture](docs/architecture.md)                       | How should access, local data, judgments, and learning fit together?                |
 | [Course ingestion](docs/ingestion-upgrade.md)              | What gets captured, how it refreshes, and what evidence survives failures?          |
+| [Planning integration](docs/planning-upgrade.md)         | What My UW reads, how academic sources differ, and what remains unverified?         |
 | [Implementation status](docs/implementation-status.md)     | What exists, what has been exercised, and what is still intended?                   |
 | [Engineering principles](docs/engineering-principles.md)   | How do we select tools, evaluate evidence, and preserve trust?                      |
 | [Reference-driven design](docs/reference-driven-design.md) | How do references change our design, implementation, and verification?              |

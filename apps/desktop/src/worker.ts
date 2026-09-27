@@ -1,6 +1,6 @@
 import { createStore } from "@magic/storage";
 import { createCore } from "@magic/core";
-import { captureBatchSchema } from "@magic/contracts";
+import { captureBatchSchema, planningCaptureSchema, type PlanningCapture } from "@magic/contracts";
 import fixture from "../../../fixtures/course.json";
 import { randomUUID } from "node:crypto";
 import { createLocalService } from "./local-service";
@@ -10,6 +10,9 @@ import {
   createLocalDocumentExtractor,
   createLocalOcrAdapter,
 } from "../../../packages/connectors/src/documents";
+import { createPublicClient } from "../../../packages/connectors/src/network";
+import { pullPublicSubjects, pullPublicTerms } from "../../../packages/connectors/src/planning-public";
+import type { UwPlanningSyncResult } from "../../../packages/connectors/src/uw-planning-sync";
 const port = process.parentPort;
 if (!port) throw new Error("Workspace must be started by the desktop app.");
 const pending = new Map<
@@ -19,6 +22,7 @@ const pending = new Map<
 const store = createStore(process.env.MAGIC_DB_PATH!);
 const core = createCore(store, {
   fixture: captureBatchSchema.parse(fixture),
+  planningHttp: { read: (request, signal) => hostRead("planning-public-read", { request }, signal) },
   ...(process.env.MAGIC_GATEWAY_URL
     ? {
         gateway: {
@@ -125,6 +129,86 @@ const ingestion = createIngestion(store, {
   secrets: (operation, key, value) =>
     hostRead("source-secret", { operation, key, value }),
 });
+const planningPublicClient = createPublicClient();
+let planningAccountScope = /^uw-session:[a-f0-9-]{36}$/.test(process.env.MAGIC_PLANNING_SCOPE ?? "")
+  ? process.env.MAGIC_PLANNING_SCOPE! : `uw-session:${randomUUID()}`;
+let planningGeneration = 0;
+let planningRun: { controller: AbortController; promise: Promise<void> } | undefined;
+function cancelPlanning() {
+  planningGeneration++;
+  planningRun?.controller.abort();
+}
+
+function refreshPlanning(): Promise<void> {
+  if (planningRun && !planningRun.controller.signal.aborted) return planningRun.promise;
+  const generation = planningGeneration;
+  const controller = new AbortController();
+  const signal = controller.signal;
+  const accountScope = planningAccountScope;
+  const save = (capture: PlanningCapture) => {
+    signal.throwIfAborted();
+    if (generation !== planningGeneration) throw new Error("Planning refresh cancelled");
+    store.ingestPlanning(planningCaptureSchema.parse(capture));
+  };
+  const observedAt = (source: PlanningCapture["source"], scope: PlanningCapture["scope"], account: string) => {
+    const previous = store.planningSources().find((entry) => entry.source === source && entry.accountScope === account && entry.scope.kind === scope.kind && entry.scope.key === scope.key);
+    return new Date(Math.max(Date.now(), previous ? Date.parse(previous.observedAt) + 1 : 0)).toISOString();
+  };
+  const promise = Promise.all([
+    (async () => {
+      let result: UwPlanningSyncResult;
+      try { result = await hostRead("planning-refresh", {}, signal); }
+      catch {
+        signal.throwIfAborted();
+        result = { captures: [], invalidated: ["uw_enroll", "uw_myuw", "uw_dars"].map((source) => ({ source: source as "uw_enroll" | "uw_myuw" | "uw_dars", status: "failed", code: "refresh_failed" })) };
+      }
+      signal.throwIfAborted();
+      const refreshed = new Set(result.captures.map((capture) => JSON.stringify([capture.source, capture.accountScope, capture.scope])));
+      for (const invalid of result.invalidated) {
+        for (const previous of store.planningSources().filter((source) => source.source === invalid.source && source.accountScope !== "public")) {
+          if (refreshed.has(JSON.stringify([previous.source, previous.accountScope, previous.scope]))) continue;
+          save({ schemaVersion: 1, id: randomUUID(), source: previous.source, accountScope: previous.accountScope,
+            scope: previous.scope, sourceUrl: previous.sourceUrl,
+            observedAt: observedAt(previous.source, previous.scope, previous.accountScope),
+            status: invalid.status, completeness: "unknown", records: [],
+            diagnostics: [{ code: invalid.code, message: "This service could not verify the saved evidence during refresh. Saved records remain available but need verification." }],
+          });
+        }
+      }
+      for (const capture of result.captures) save(capture);
+    })(),
+    (async () => {
+      const scope = { kind: "subjects" as const, key: "registrar-subjects" };
+      try {
+        save(await pullPublicSubjects(planningPublicClient, observedAt("uw_public", scope, "public"), signal));
+      } catch {
+        signal.throwIfAborted();
+        save({ schemaVersion: 1, id: randomUUID(), accountScope: "public", source: "uw_public", scope,
+          sourceUrl: "https://registrar.wisc.edu/subjectareas/", observedAt: observedAt("uw_public", scope, "public"),
+          status: "failed", completeness: "unknown", records: [],
+          diagnostics: [{ code: "registrar_subjects_unavailable", message: "The public Registrar subject list could not be read. Saved subjects were retained." }],
+        });
+      }
+    })(),
+    (async () => {
+      const scope = { kind: "terms" as const, key: "registrar-session-terms" };
+      try {
+        save(await pullPublicTerms(planningPublicClient, observedAt("uw_public", scope, "public"), signal));
+      } catch {
+        signal.throwIfAborted();
+        save({ schemaVersion: 1, id: randomUUID(), accountScope: "public", source: "uw_public", scope,
+          sourceUrl: "https://registrar.wisc.edu/sessioncodes/", observedAt: observedAt("uw_public", scope, "public"),
+          status: "failed", completeness: "unknown", records: [],
+          diagnostics: [{ code: "registrar_terms_unavailable", message: "The public Registrar session table could not be read. Saved terms were retained." }],
+        });
+      }
+    })(),
+  ]).then(() => {});
+  const run = { controller, promise };
+  planningRun = run;
+  void promise.finally(() => { if (planningRun === run) planningRun = undefined; }).catch(() => {});
+  return promise;
+}
 const refreshTimer = setInterval(() => {
   void ingestion.tick();
 }, 30_000);
@@ -140,6 +224,7 @@ port.on("message", async ({ data }: { data: any }) => {
     return;
   }
   if (data.kind === "suspend") {
+    cancelPlanning();
     ingestion.suspend();
     return;
   }
@@ -153,6 +238,28 @@ port.on("message", async ({ data }: { data: any }) => {
   }
   if (data.kind === "refresh-cancel") {
     ingestion.cancel();
+    return;
+  }
+  if (data.kind === "planning-cancel") {
+    cancelPlanning();
+    return;
+  }
+  if (data.kind === "planning-scope") {
+    cancelPlanning();
+    if (typeof data.accountScope === "string" && /^uw-session:[a-f0-9-]{36}$/.test(data.accountScope))
+      planningAccountScope = data.accountScope;
+    return;
+  }
+  if (data.kind === "planning-sync") {
+    try {
+      await refreshPlanning();
+      port.postMessage({ kind: "response", id: data.id, result: {
+        ...(await core.execute({ type: "snapshot" })),
+        message: "Planning sources checked. Each source shows what was verified and what still needs attention.",
+      } });
+    } catch {
+      port.postMessage({ kind: "response", id: data.id, error: "Planning refresh interrupted. Saved planning records are still available." });
+    }
     return;
   }
   if (data.kind === "refresh") {
@@ -186,6 +293,8 @@ port.on("message", async ({ data }: { data: any }) => {
     return;
   }
   if (data.kind === "shutdown") {
+    cancelPlanning();
+    await planningRun?.promise.catch(() => {});
     clearInterval(refreshTimer);
     await ingestion.stop();
     clearInterval(tick);
@@ -223,10 +332,12 @@ port.on("message", async ({ data }: { data: any }) => {
   }
   if (data.kind !== "command") return;
   if (data.command?.type === "purge") {
+    cancelPlanning();
+    await planningRun?.promise.catch(() => {});
     ingestion.suspend();
     await ingestion.tick();
   }
-  if (["import", "fixture", "privacy", "purge"].includes(data.command?.type))
+  if (["import", "planning-import", "fixture", "privacy", "purge"].includes(data.command?.type))
     local.cancel();
   try {
     port.postMessage({

@@ -8,11 +8,12 @@ import type {
   Snapshot,
   SourceHealth,
 } from "@magic/contracts";
+import { MyUw, PlanningAlerts } from "./MyUw";
 import { LocalAiPanel } from "./LocalAiPanel";
 import { ProviderGuidance } from "./ProviderGuidance";
 import { IngestionControls, McpConnections } from "./IngestionControls";
 
-type View = "today" | "sources" | "privacy";
+type View = "today" | "courses" | "myuw" | "sources" | "privacy";
 type Recipient = ContextManifest["recipient"];
 type Run = (
   command: Command,
@@ -57,9 +58,12 @@ function formatDate(value: string | null, full = false): string {
 function Icon({
   name,
 }: {
-  name: "today" | "sources" | "privacy" | "search" | "arrow" | "file" | "check";
+  name: "today" | "courses" | "myuw" | "sources" | "privacy" | "search" | "arrow" | "file" | "check";
 }) {
+  if (name === "myuw") return <img className="uw-nav-mark" src={new URL("./assets/uw-crest.svg", import.meta.url).href} alt="" aria-hidden="true" />;
   const paths = {
+    courses: <><path d="M3 4h6v13H3zM11 4h6v13h-6zM5 7h2m6 0h2" /></>,
+    myuw: <><path d="m2 7 8-4 8 4-8 4-8-4Zm3 3v5c3 3 7 3 10 0v-5M18 7v8" /></>,
     today: (
       <>
         <rect x="3" y="5" width="14" height="12" rx="2" />
@@ -262,6 +266,10 @@ export function App() {
       if (override?.included != null) return override.included;
       return course?.course?.selection?.included ?? true;
     }) ?? [];
+  const accountBySource = new Map(snapshot?.sources.map((source) => [source.id, source.accountScope]));
+  const courses = [...new Map(resources.map((resource) => [
+    `${accountBySource.get(resource.sourceId) ?? resource.sourceId}:${resource.courseId}`, resource,
+  ])).values()];
   const selected =
     resources.find((resource) => resource.id === selectedId) ?? null;
   const openItems = resources.filter(
@@ -295,14 +303,16 @@ export function App() {
         <nav aria-label="Main navigation">
           {(
             [
-              ["today", "Today"],
+              ["today", "Home"],
+              ["courses", "Courses"],
+              ["myuw", "My UW"],
               ["sources", "Sources"],
               ["privacy", "Data & AI"],
             ] as const
           ).map(([key, label]) => (
             <button
               key={key}
-              className={`nav-button ${view === key ? "active" : ""}`}
+              className={`nav-button ${key === "sources" ? "nav-utility" : ""} ${view === key ? "active" : ""}`}
               aria-current={view === key ? "page" : undefined}
               onClick={() => setView(key)}
             >
@@ -337,7 +347,7 @@ export function App() {
               ? "Your workspace"
               : view === "sources"
                 ? "Connected sources"
-                : "Privacy & models"}
+                : view === "privacy" ? "Privacy & models" : view === "myuw" ? "My UW" : "Your courses"}
           </span>
           <div className="topbar-end">
             {snapshot?.fixtureMode ? (
@@ -416,6 +426,7 @@ export function App() {
                 ) : null}
               </div>
             </div>
+            <PlanningAlerts snapshot={snapshot} open={open} onPlanning={() => setView("myuw")} />
             {unavailableSources.length > 0 ? (
               <div className="evidence-note" role="status">
                 <p>
@@ -496,6 +507,15 @@ export function App() {
               </div>
             )}
           </>
+        ) : view === "myuw" ? (
+          <MyUw snapshot={snapshot} busy={busy} run={run} open={open}
+            refresh={() => void perform(async () => window.magic.syncPlanning?.())}
+            signIn={(service) => void perform(async () => { await window.magic.signInUW?.(service); return window.magic.syncPlanning?.(); })} />
+        ) : view === "courses" ? (
+          <><div className="page-heading"><h1>Courses</h1></div><div className="planning-content">
+            {courses.map((course) => <article className="planning-row" key={course.id}><h2>{course.courseName}</h2><button className="button" onClick={() => { setQuery(course.courseName); setSelectedId(null); setView("today"); }}>View coursework</button></article>)}
+            {!resources.length ? <p className="muted">Connect Canvas from Home to see your courses here.</p> : null}
+          </div></>
         ) : view === "sources" ? (
           <Sources
             snapshot={snapshot}
@@ -1205,7 +1225,7 @@ function Privacy({
         <p>
           Course records, source history, completion state, and practice records
           are stored on this device. UW sign-in sessions stay in the app’s local
-          browser.
+          browser. Degree audits, holds, course history, and planning records also stay local; this build does not send them to hosted AI or expose them through coursework MCP connections.
         </p>
         <fieldset className="mode-choices" disabled={busy}>
           <legend>Cloud access</legend>

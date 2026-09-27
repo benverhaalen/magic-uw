@@ -70,7 +70,7 @@ Count recovery effort when judging least effort. Keep navigation stable while ad
 
 - Collect grader comments locally by default. Sharing them with hosted AI requires a separate category opt-in and, for MCP, a client grant.
 - Accept and disclose incidental Canvas viewing/must-view effects caused by reads. This does not authorize explicit completion, submission, posting, or enrollment actions. Read accessible page bodies, prioritizing linked requirements; a teacher-controlled side-effect test is unavailable and is not a release gate for this behavior.
-- Use app-owned UW sessions. Never reuse the retired personal Firefox-cookie adapter. Approved browser bridges remain candidates, not implemented integrations.
+- Use app-owned UW sessions in the product; no personal-browser cookie importer. Ben subsequently authorized a narrow headless Firefox-session development check for planning/transcript evidence. That explicit exception supersedes the earlier prohibition for this investigation only. Approved browser bridges remain candidates, not product integrations.
 - Preserve source-specific freshness during expiry; calendar feeds carry independent access and coverage. Excluded/restricted courses cannot enter AI context.
 - Local MCP connections use explicit course/category grants and live revocation checks. Compatibility with each provider account is an evidence question, not a promise implied by implementing MCP.
 
@@ -90,3 +90,14 @@ All UI work should synthesize the product goal, general guiding principles, shar
 ## 2026-09-26 — Named briefing references and continued alignment
 
 Named objects within briefing prose should be visibly clickable and lead to context useful for the student's actual task. The current proposed routing distinguishes inspecting an object from explicit work launch; preserve one-click Upcoming behavior and avoid empty intermediary pages. See [clickable references](home-design-direction.md#clickable-references-and-useful-destinations) for the identity, evidence, keyboard, provenance, and return-position rules. Continue actual Opus 5.5 discussion and rendered audits for consequential UI work, retain cumulative corrections and relevant earlier-chat context, and ask when interpretations materially differ. Exact visual treatments remain under review.
+
+## Planning decisions — September 26 update
+
+- Primary navigation: **Home / Courses / My UW** with the Wisconsin crest; Email later. Holds and enrollment appointments can appear on Home.
+- Rank evidenced degree progress before schedule preferences. Grades and professor ratings provide optional comparison evidence, never an easier-grading optimization target.
+- Preserve independent Canvas, student-history, DARS, and eventual transcript claims. Do not convert percentages into letters, audit applications into earned credits, or recorded grades into mastery/readiness.
+- Compare exact course/term identities only after fresh native account binding. Unknown/partial/stale evidence cannot establish eligibility, full degree coverage, or an all-clear state.
+- Existing saved audits may be read; the app never generates audits or changes enrollment. Transcript access remains research-only until a production adapter is validated.
+- All planning remains local and outside Jev, model context, and MCP. App-owned onboarding still needs live verification; the private developer transport does not satisfy it.
+
+See [planning integration](planning-upgrade.md) for implementation evidence and remaining scope.
