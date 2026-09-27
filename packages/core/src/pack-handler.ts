@@ -425,8 +425,11 @@ export function createPackHandler(deps: PackHandlerDeps) {
     signal: AbortSignal | undefined,
     options: GenerateOptions,
   ): Promise<PackRunResult> {
+    // This course's items and their text: a change to this course's material blocks the send; reads of other courses don't.
     const snapshot = () => payloadHash({
-      scope: resolveScope(store, scope), sources: store.sources(), roster: rosterFor(store, s.courseId, s.accountScope).version,
+      content: store.resources().filter((r) => r.courseId === scope.courseId).map((r) => [r.id, r.contentHash, r.deleted, r.policy.mode]),
+      reads: store.sources().filter((x) => x.courseId === scope.courseId).map((x) => [x.id, x.lastSuccessAt, x.readId]),
+      scope: resolveScope(store, scope), sources: store.sources().map((x) => [x.id, x.kind, x.accountScope, x.courseId, x.scope]) /* which sources, not their read status: a running sync must not block generation */, roster: rosterFor(store, s.courseId, s.accountScope).version,
       privacy: store.privacy(), consents: store.consents?.(), concepts: store.learning.concepts(s.courseRef).filter((c) => c.origin !== "model"),
     });
     const fingerprint = snapshot();

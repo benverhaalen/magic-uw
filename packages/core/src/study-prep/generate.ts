@@ -278,7 +278,7 @@ export function createStudyPrep(deps: StudyPrepDeps) {
           const x = store.resource(r.id);
           return [r.id, x?.contentHash, x?.deleted, x?.policy.mode];
         }),
-        sources: store.sources(),
+        sources: store.sources().map((x) => [x.id, x.kind, x.accountScope, x.courseId, x.scope]) /* which sources, not their read status: a running sync must not block generation */,
         roster: rosterFor(store, prep.courseId, prep.accountScope).version,
         privacy: store.privacy(),
         consents: store.consents?.(),
