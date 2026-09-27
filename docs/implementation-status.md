@@ -4,9 +4,9 @@ Updated September 26, 2026. This describes the code and observed checks, not com
 
 Historical provider snapshot, predating the main `780aaed` backend integration; use the [backend execution record](plans/2026-09-26-course-backend/execution.md) for newer runtime/client/onboarding task status. The later September 26 [pricing/provider decision](decisions.md#pricing-and-ai-access-resolution--september-26) adopts a $5 one-time license and the student's paid AI plan/key. This is product direction only: no checkout, license enforcement, paid CLI inference adapters, or OpenRouter route has been added. The existing local adapter and hosted-sharing-off default remain the actual implementation. Accepted OpenRouter-funded Jev and provider-consent/context-receipt/first-sensitive-preview behavior are also pending; current privacy flags and MCP grants do not implement the full new flow.
 
-## Sync resilience implementation branch
+## Sync resilience integration
 
-The local `codex/sync-resilience-final` branch extends the integrated backend with shared module acquisition, typed linked-file capture, partial component freshness, durable access observations and Sources detail. It uses schema **v9** after the canonical learning v8 migration. Code is not yet pushed or released. See the [canonical handoff](sync-resilience-review.md#implementation-handoff--september-26-2026) for interfaces, tests, measured request costs and limits.
+The sync resilience implementation extends the integrated backend with shared module acquisition, typed linked-file capture, partial component freshness, durable access observations and Sources detail. It uses schema **v9** after the canonical learning v8 migration. Implementation is integrated into main; a packaged release and live UW verification are not claimed. See the [canonical handoff](sync-resilience-review.md#implementation-handoff--september-26-2026) for interfaces, tests, measured request costs and limits.
 
 ## Canonical learning-session integration
 
