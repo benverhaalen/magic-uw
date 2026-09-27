@@ -65,6 +65,27 @@ export interface Prep {
   resourceById: Map<string, Resource>;
 }
 
+/**
+ * A course's live resources, decoded once per inventory: `courseInventoryHash` covers every live
+ * resource's id and content hash (the hash of its whole captured record), so an unchanged hash
+ * means the same rows. Decoding a large course's texts is most of a cold query's time.
+ */
+const decoded = new WeakMap<object, Map<string, { hash: string; rows: Resource[] }>>();
+export function courseRows(store: PrepStore, course: { accountScope: string; courseId: string }): Resource[] {
+  const inventory = (store as { courseInventoryHash?(c: typeof course): string }).courseInventoryHash;
+  if (!store.courseResources) return store.resources();
+  if (!inventory) return store.courseResources(course);
+  const hash = inventory.call(store, course);
+  let byCourse = decoded.get(store);
+  if (!byCourse) decoded.set(store, (byCourse = new Map()));
+  const key = `${course.accountScope}:${course.courseId}`;
+  const hit = byCourse.get(key);
+  if (hit && hit.hash === hash) return hit.rows;
+  const rows = store.courseResources(course);
+  byCourse.set(key, { hash, rows });
+  return rows;
+}
+
 /** The course's account scope, as the pack handler decides it (the first scope with this course). */
 export function courseScope(store: Store, courseId: string): string | null {
   return store.sources().filter((s) => s.courseId === courseId).map((s) => s.accountScope).sort()[0] ?? null;
@@ -127,7 +148,7 @@ export function loadPrep(store: PrepStore, courseId: string, assessmentId: strin
   if (!accountScope) return { status: "empty", message: "This course has no saved material yet." };
   const course = { accountScope, courseId };
   const sources = new Map(store.sources().map((s) => [s.id, s]));
-  const resources = (store.courseResources ? store.courseResources(course) : store.resources())
+  const resources = courseRows(store, course)
     .filter((r) => !r.deleted && r.courseId === courseId && sources.get(r.sourceId)?.accountScope === accountScope);
   const factMemo = new Map<string, MaterialFact[]>();
   const facts = (id: string) => {

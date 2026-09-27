@@ -20,12 +20,13 @@ import type {
 } from "@magic/contracts";
 import { createExamEvidence, type ExamAssessment } from "../../../learning/src/exam/evidence";
 import type { BlueprintEvidence } from "../../../learning/src/exam/types";
-import { assessmentMastery } from "../../../learning/src/mastery/index";
+import { assessmentMastery, createMasteryMemo, type MasteryMemo } from "../../../learning/src/mastery/index";
+import { memoReferences, referenceFingerprint, type ReferencesMemo } from "../../../learning/src/mastery/references-memo";
 import type { StoredItem } from "../../../learning/src/store";
 import { createPipelineReferences } from "../graph/references-port";
 import { isPipelineStore } from "../graph/course-index";
 import { STUDY_PREP_PACK_VERSION } from "../../../packs/study-prep/src/index";
-import { collapse, courseScope, isPrepStore, loadPrep, selectScope, type Prep, type PrepStore, type Selection } from "./scope";
+import { collapse, courseRows, courseScope, isPrepStore, loadPrep, selectScope, type Prep, type PrepStore, type Selection } from "./scope";
 import { GENERATING_TIMEOUT_MS, readRecord, type PrepRecord } from "./records";
 
 type Request = Extract<QueryRequest, { view: "study.prep" }>;
@@ -107,12 +108,22 @@ function overviewOf(prep: Prep, sel: Selection): StudyPrepOverview {
   };
 }
 
+/**
+ * Per store: the references port's answers while the course fingerprint holds (the learning
+ * router's own memo over the same reads), and mastery's as-of memo. Building the port's answers
+ * reads every resource; the fingerprint that guards them costs a few milliseconds.
+ */
+const memos = new WeakMap<object, { refs: Map<string, ReferencesMemo>; mastery: MasteryMemo }>();
 function masteryOf(store: PrepStore, prep: Prep, now: Date): StudyPrepMastery | null {
   if (!isPipelineStore(store)) return null;
   try {
-    const input = { store: store.learning, ref: prep.courseRef, courseId: prep.courseId, references: createPipelineReferences(store), now };
+    let memo = memos.get(store);
+    if (!memo) memos.set(store, (memo = { refs: new Map(), mastery: createMasteryMemo() }));
+    const course = { accountScope: prep.accountScope, courseId: prep.courseId };
+    const references = memoReferences(createPipelineReferences(store), referenceFingerprint(store, course), memo.refs, prep.courseRef);
+    const input = { store: store.learning, ref: prep.courseRef, courseId: prep.courseId, references, now };
     const a = prep.evidence.assessment;
-    const data = assessmentMastery(input, a.id) ?? (a.resourceId ? assessmentMastery(input, a.resourceId) : null);
+    const data = assessmentMastery(input, a.id, memo.mastery) ?? (a.resourceId ? assessmentMastery(input, a.resourceId, memo.mastery) : null);
     if (!data) return null;
     const c = data.assessment.counts;
     return { label: data.assessment.label, counts: { solid: c.solid, getting_there: c.getting_there, iffy: c.iffy, not_seen: c.not_seen }, total: data.assessment.topicIds.length };
@@ -217,7 +228,7 @@ export function studyPrepQuery(store: Store, request: Request, nowIso: string): 
     const accountScope = courseScope(store, request.courseId);
     if (!accountScope) return { ...base, status: "empty", message: "This course has no saved material yet.", ms: ms() };
     const course = { accountScope, courseId: request.courseId };
-    const resources = store.courseResources ? store.courseResources(course) : store.resources().filter((r) => r.courseId === request.courseId);
+    const resources = courseRows(store, course).filter((r) => !r.deleted && r.courseId === request.courseId);
     const port = createExamEvidence({ resources: () => resources, sources: () => store.sources(), courseResources: () => resources, assessments: (c) => store.assessments(c) });
     const upcoming = port
       .assessments(accountScope, request.courseId)
