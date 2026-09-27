@@ -8,6 +8,7 @@ export {
   type ProcessResult,
 } from "./process";
 export { formatAskHeader, jsonSchemaOf, estimateTokens, sha256 } from "./util";
+export { classifyFailure, statedReset } from "./util"; // owner: client-health
 export {
   createClaudeBackend,
   claudeOneShotArgs,

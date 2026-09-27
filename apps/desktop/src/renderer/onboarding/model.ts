@@ -1,38 +1,23 @@
-import type { ConsentRecord, ResourceView, Snapshot, SourceHealth } from "@magic/contracts";
+import type {
+  ApiKeyStatus,
+  ClientHealth,
+  ClientId,
+  ClientMode,
+  ClientsBridge,
+  ClientStatus,
+  ConsentRecord,
+  ResourceView,
+  Snapshot,
+  SourceHealth,
+} from "@magic/contracts";
 
 /**
  * T81 onboarding model: pure logic for the first-run flow, kept free of React and CSS so it
- * can be unit-tested. The client bridge types below are a local copy of the T80 contract
- * (`wave-b/T80`); the lead replaces them with the contracts type at integration.
+ * can be unit-tested. owner: client-health (D50, D51): the step order is consent → UW sign-in →
+ * client (with health and mode) → appearance → optional connections → done, and the client
+ * types now come from the contracts (T80 is integrated).
  */
-
-// --- Local copy of the T80 IPC contract -----------------------------------------------------
-export type ClientId = "claude" | "codex" | "gemini";
-export interface ClientStatus {
-  id: ClientId;
-  installed: boolean;
-  version?: string;
-  profileReady: boolean;
-  signedIn: boolean | "unknown";
-  method?: "subscription" | "api-key" | "unknown";
-  isolated: boolean;
-  installUrl?: string;
-}
-export interface ClientsBridge {
-  detect(): Promise<ClientStatus[]>;
-  prepare(id: ClientId): Promise<unknown>;
-  authStatus(id: ClientId): Promise<ClientStatus>;
-  choose(id: ClientId): Promise<unknown>;
-  terminal: {
-    open(id: ClientId, purpose: "signin" | "session"): Promise<{ sessionId: string }>;
-    write(sessionId: string, data: string): unknown;
-    resize(sessionId: string, cols: number, rows: number): unknown;
-    close(sessionId: string): unknown;
-    onData(sessionId: string, listener: (data: string) => void): unknown;
-    onExit(sessionId: string, listener: (code: number | null) => void): unknown;
-  };
-}
-// ----------------------------------------------------------------------------------------------
+export type { ClientId, ClientStatus, ClientsBridge };
 
 export const clientOrder: readonly ClientId[] = ["claude", "codex", "gemini"];
 export const clientInfo: Record<
@@ -44,7 +29,7 @@ export const clientInfo: Record<
     provider: "Anthropic",
     plan: "Claude plan",
     recipient: "claude",
-    installUrl: "https://docs.claude.com/en/docs/claude-code/setup",
+    installUrl: "https://code.claude.com/docs/en/setup",
   },
   codex: {
     name: "Codex",
@@ -54,9 +39,9 @@ export const clientInfo: Record<
     installUrl: "https://developers.openai.com/codex/cli",
   },
   gemini: {
-    name: "Gemini CLI",
+    name: "Gemini",
     provider: "Google",
-    plan: "Google account",
+    plan: "Google AI Studio key",
     recipient: "gemini",
     installUrl: "https://github.com/google-gemini/gemini-cli",
   },
@@ -77,34 +62,106 @@ export function orderedClients(statuses: readonly ClientStatus[]): ClientStatus[
 }
 
 /**
+ * The client to recommend (D35 order: Claude Code, then Codex, then Gemini): the first one that
+ * is ready, else the first installed one, else Gemini (a key needs no install).
+ */
+export function recommendedClient(health: Partial<Record<ClientId, ClientHealth>>): ClientId {
+  const ready = clientOrder.find((id) => health[id]?.state === "ok");
+  if (ready) return ready;
+  const installed = clientOrder.find((id) => id !== "gemini" && health[id] && health[id]!.state !== "not_installed");
+  return installed ?? "gemini";
+}
+/** Health from T80's status alone, for a main without `clients.health` (isolated profile, no instant check). */
+export function healthFromStatus(status: ClientStatus, checkedAt = new Date().toISOString()): ClientHealth {
+  const gemini = status.id === "gemini";
+  const state: ClientHealth["state"] = gemini
+    ? "not_signed_in"
+    : !status.installed || status.problem
+      ? "not_installed"
+      : status.signedIn === true
+        ? "ok"
+        : status.signedIn === false
+          ? "not_signed_in"
+          : "installed";
+  return {
+    id: status.id,
+    state,
+    mode: gemini ? "api_key" : "isolated",
+    source: "status",
+    instant: { available: false },
+    modes: gemini ? ["api_key"] : ["isolated"],
+    ...(status.version ? { version: status.version } : {}),
+    ...(status.plan ? { plan: status.plan } : {}),
+    checkedAt,
+  };
+}
+/** Whether a tile can be picked: an installed CLI, or Gemini (its key needs no install). */
+export const selectable = (id: ClientId, health: ClientHealth | undefined): boolean =>
+  id === "gemini" || (!!health && health.state !== "not_installed");
+
+/**
  * The browser-preview fixture (no `window.magic.clients`). Always labelled as a preview in the
  * UI; its sign-in "completes" a few seconds after the terminal opens so the flow can be walked.
+ * Claude Code is signed in and offers instant mode; Codex only its own profile.
  */
 export function createPreviewClients(signInDelayMs = 4000): ClientsBridge {
   const statuses: Record<ClientId, ClientStatus> = {
     claude: { id: "claude", installed: true, version: "2.1.283", profileReady: false, signedIn: false, isolated: true },
     codex: { id: "codex", installed: true, version: "0.156.1", profileReady: false, signedIn: false, isolated: true },
-    gemini: {
-      id: "gemini",
-      installed: false,
-      profileReady: false,
-      signedIn: false,
-      isolated: true,
-      installUrl: clientInfo.gemini.installUrl,
-    },
+    gemini: { id: "gemini", installed: false, profileReady: false, signedIn: false, isolated: false, installUrl: clientInfo.gemini.installUrl },
   };
+  const modes: Partial<Record<ClientId, ClientMode>> = {};
+  let key: ApiKeyStatus = { stored: false, inEnvironment: false };
   const openedAt = new Map<ClientId, number>();
+  const signedIn = (id: ClientId) => {
+    const opened = openedAt.get(id);
+    return opened !== undefined && Date.now() - opened >= signInDelayMs;
+  };
+  const health = async (id: ClientId, mode?: ClientMode): Promise<ClientHealth> => {
+    const checkedAt = new Date().toISOString();
+    if (id === "gemini")
+      return { id, state: key.stored ? "ok" : "not_signed_in", mode: "api_key", source: "key", instant: { available: false, reason: "Gemini runs only with your own API key." }, modes: ["api_key"], checkedAt };
+    const instant =
+      id === "claude"
+        ? { available: true }
+        : { available: false, reason: "Codex always adds your personal AGENTS.md to every request, so the app uses its own Codex profile instead." };
+    const chosen = mode ?? modes[id] ?? (instant.available ? "instant" : "isolated");
+    const m = chosen === "instant" && instant.available ? "instant" : "isolated";
+    const ok = m === "instant" || signedIn(id);
+    return {
+      id,
+      state: ok ? "ok" : "not_signed_in",
+      mode: m,
+      source: "status",
+      instant,
+      modes: instant.available ? ["instant", "isolated"] : ["isolated"],
+      version: statuses[id].version,
+      ...(ok && id === "claude" ? { plan: "pro" } : {}),
+      checkedAt,
+    };
+  };
   return {
     detect: async () => clientOrder.map((id) => ({ ...statuses[id] })),
     prepare: async (id) => {
       statuses[id].profileReady = true;
+      return { ...statuses[id] };
     },
-    authStatus: async (id) => {
-      const opened = openedAt.get(id);
-      const signedIn = opened !== undefined && Date.now() - opened >= signInDelayMs;
-      return { ...statuses[id], signedIn, method: signedIn ? "subscription" : undefined };
-    },
+    authStatus: async (id) => ({ ...statuses[id], signedIn: signedIn(id), method: signedIn(id) ? "subscription" : undefined }),
     choose: async () => undefined,
+    health,
+    setMode: async (id, mode) => {
+      modes[id] = mode;
+      return health(id, mode);
+    },
+    geminiKey: {
+      status: async () => key,
+      save: async (value) => {
+        if (!/^[A-Za-z0-9_-]{20,200}$/.test(value.trim())) throw new Error("That doesn't look like a Gemini API key.");
+        key = { ...key, stored: true };
+        return key;
+      },
+      remove: async () => (key = { ...key, stored: false }),
+    },
     terminal: {
       open: async (id) => {
         openedAt.set(id, Date.now());
@@ -112,40 +169,49 @@ export function createPreviewClients(signInDelayMs = 4000): ClientsBridge {
       },
       write: () => undefined,
       resize: () => undefined,
-      close: () => undefined,
-      onData: () => undefined,
-      onExit: () => undefined,
+      close: async () => undefined,
+      onData: () => () => undefined,
+      onExit: () => () => undefined,
     },
   };
 }
 
 // --- Steps and resume ---------------------------------------------------------------------------
-export type StepId = "welcome" | "ai" | "connect" | "uw" | "populating";
+export type StepId = "consent" | "uw" | "client" | "appearance" | "connections" | "done";
 export const steps: readonly { id: StepId; label: string }[] = [
-  { id: "welcome", label: "Welcome" },
-  { id: "ai", label: "Your AI" },
-  { id: "connect", label: "Connect" },
-  { id: "uw", label: "UW" },
-  { id: "populating", label: "Your workspace" },
+  { id: "consent", label: "Agreement" },
+  { id: "uw", label: "UW sign-in" },
+  { id: "client", label: "Your AI" },
+  { id: "appearance", label: "Appearance" },
+  { id: "connections", label: "Connections" },
+  { id: "done", label: "Your workspace" },
 ];
 
+/** How the UW step ended. Only `confirmed` counts as signed in (FDB-002); `skipped` is the student's choice. */
+export type UwProgress = "not_started" | "confirmed" | "cancelled" | "failed" | "skipped";
 /** What the flow remembers between launches. Step state only: no coursework, keys or sessions. */
 export interface OnboardingProgress {
-  welcomed: boolean;
+  started: boolean;
+  uw: UwProgress;
   /** The chosen client, or "later" when the student chose Set up later. */
   client: ClientId | "later" | null;
   clientConnected: boolean;
-  uwStarted: boolean;
+  appearanceDone: boolean;
+  connectionsDone: boolean;
   done: boolean;
 }
 export const emptyProgress: OnboardingProgress = {
-  welcomed: false,
+  started: false,
+  uw: "not_started",
   client: null,
   clientConnected: false,
-  uwStarted: false,
+  appearanceDone: false,
+  connectionsDone: false,
   done: false,
 };
-export const progressKey = "magic.onboarding.v1";
+export const progressKey = "magic.onboarding.v2";
+/** T81's record; read once so a student mid-setup keeps their place. */
+export const legacyProgressKey = "magic.onboarding.v1";
 
 interface KeyValueStore {
   getItem(key: string): string | null;
@@ -158,30 +224,42 @@ function defaultStore(): KeyValueStore | null {
     return null;
   }
 }
+const uwValues: readonly UwProgress[] = ["not_started", "confirmed", "cancelled", "failed", "skipped"];
+function parseClient(value: unknown): OnboardingProgress["client"] {
+  return value === "later" || clientOrder.includes(value as ClientId) ? (value as OnboardingProgress["client"]) : null;
+}
 export function readProgress(store: KeyValueStore | null = defaultStore()): OnboardingProgress {
   try {
     const raw = store?.getItem(progressKey);
-    if (!raw) return { ...emptyProgress };
-    const value = JSON.parse(raw) as Partial<OnboardingProgress>;
-    const client =
-      value.client === "later" || clientOrder.includes(value.client as ClientId)
-        ? (value.client as OnboardingProgress["client"])
-        : null;
+    if (raw) {
+      const value = JSON.parse(raw) as Partial<OnboardingProgress>;
+      const client = parseClient(value.client);
+      return {
+        started: value.started === true,
+        uw: uwValues.includes(value.uw as UwProgress) ? (value.uw as UwProgress) : "not_started",
+        client,
+        clientConnected: value.clientConnected === true && client !== null && client !== "later",
+        appearanceDone: value.appearanceDone === true,
+        connectionsDone: value.connectionsDone === true,
+        done: value.done === true,
+      };
+    }
+    const legacy = store?.getItem(legacyProgressKey);
+    if (!legacy) return { ...emptyProgress };
+    const old = JSON.parse(legacy) as { welcomed?: unknown; client?: unknown; clientConnected?: unknown; done?: unknown };
+    const client = parseClient(old.client);
     return {
-      welcomed: value.welcomed === true,
+      ...emptyProgress,
+      started: old.welcomed === true,
       client,
-      clientConnected: value.clientConnected === true && client !== null && client !== "later",
-      uwStarted: value.uwStarted === true,
-      done: value.done === true,
+      clientConnected: old.clientConnected === true && client !== null && client !== "later",
+      done: old.done === true,
     };
   } catch {
     return { ...emptyProgress };
   }
 }
-export function writeProgress(
-  progress: OnboardingProgress,
-  store: KeyValueStore | null = defaultStore(),
-): void {
+export function writeProgress(progress: OnboardingProgress, store: KeyValueStore | null = defaultStore()): void {
   try {
     store?.setItem(progressKey, JSON.stringify(progress));
   } catch {
@@ -202,30 +280,23 @@ function uwConsented(snapshot: Snapshot, hasConsent: ConsentCheck): boolean {
  * Onboarding shows on first run and while setup is incomplete. A workspace that already has
  * UW agreement and coursework from before this flow existed is treated as set up.
  */
-export function needsOnboarding(
-  snapshot: Snapshot,
-  progress: OnboardingProgress,
-  hasConsent: ConsentCheck,
-): boolean {
+export function needsOnboarding(snapshot: Snapshot, progress: OnboardingProgress, hasConsent: ConsentCheck): boolean {
   if (progress.done) return false;
-  const started = progress.welcomed || progress.client !== null;
+  const started = progress.started || progress.client !== null;
   const populated = snapshot.resources.some((resource) => !resource.deleted);
   if (!started && populated && uwConsented(snapshot, hasConsent)) return false;
   return true;
 }
 
 /** The first step still incomplete; a relaunch mid-setup resumes here. */
-export function firstIncompleteStep(
-  snapshot: Snapshot,
-  progress: OnboardingProgress,
-  hasConsent: ConsentCheck,
-): StepId {
-  if (!progress.welcomed) return "welcome";
-  if (progress.client === null) return "ai";
-  if (progress.client !== "later" && !progress.clientConnected) return "connect";
-  const hasSources = snapshot.sources.length > 0;
-  if (!hasSources && (!uwConsented(snapshot, hasConsent) || !progress.uwStarted)) return "uw";
-  return "populating";
+export function firstIncompleteStep(snapshot: Snapshot, progress: OnboardingProgress, hasConsent: ConsentCheck): StepId {
+  if (!uwConsented(snapshot, hasConsent)) return "consent";
+  const readSomething = snapshot.sources.length > 0;
+  if (!readSomething && progress.uw !== "confirmed" && progress.uw !== "skipped") return "uw";
+  if (progress.client === null || (progress.client !== "later" && !progress.clientConnected)) return "client";
+  if (!progress.appearanceDone) return "appearance";
+  if (!progress.connectionsDone) return "connections";
+  return "done";
 }
 
 // --- Populating summary ------------------------------------------------------------------------

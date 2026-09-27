@@ -1,0 +1,330 @@
+/* owner: client-health (D50, D51). The client health notice, connection modes, the Gemini key
+   field, appearance choices and optional connections. Every colour, face, radius and focus value
+   is a design-seed token (docs/design/tokens.css, imported by onboarding.css); geometry is local
+   and provisional per DESIGN.md "Extend without drifting". No new colour values. */
+
+/* Health notice */
+.chn {
+  display: grid;
+  gap: 8px;
+  margin-top: 20px;
+  padding: 16px 18px;
+  border-radius: var(--magic-radius-card);
+  background: var(--magic-surface-raised);
+  box-shadow: inset 0 0 0 1px var(--magic-line-quiet);
+  color: var(--magic-ink-prose);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.chn-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.chn-title {
+  margin: 0;
+  font-family: var(--magic-font-interface);
+  font-size: 15px;
+  font-weight: 560;
+  color: var(--magic-ink);
+}
+.chn-ok .chn-mark {
+  color: var(--magic-ink-review);
+}
+.chn-wait .chn-mark {
+  color: var(--magic-ink-status-warning-candidate);
+}
+.chn-problem .chn-mark {
+  color: var(--magic-ink-status-error-candidate);
+}
+.chn-cause,
+.chn-next {
+  margin: 0;
+  max-width: 60ch;
+}
+.chn-next {
+  color: var(--magic-ink);
+}
+.chn-error-text {
+  margin: 0;
+  color: var(--magic-ink-status-error-candidate);
+}
+.chn-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+.chn-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--magic-radius-control);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--magic-line-quiet);
+  color: var(--magic-ink);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.chn-action:hover:not(:disabled) {
+  background: var(--magic-surface-quiet);
+}
+.chn-action.primary {
+  background: var(--magic-fill-confirmation);
+  box-shadow: none;
+  color: var(--magic-ink-review);
+  font-weight: 560;
+}
+.chn-action.primary:hover:not(:disabled) {
+  background: var(--magic-fill-review-hover);
+}
+.chn-action.link {
+  color: var(--magic-ink-link);
+}
+.chn-action:disabled {
+  color: var(--magic-ink-disabled-candidate);
+  cursor: default;
+}
+.chn-action:focus-visible,
+.chn-mode-option:has(input:focus-visible),
+.chn-segment:has(input:focus-visible),
+.chn-swatch:has(input:focus-visible),
+.chn-key-input:focus-visible {
+  outline: 2px solid var(--magic-focus);
+  outline-offset: 2px;
+}
+.chn-action .onb-icon {
+  width: 15px;
+  height: 15px;
+}
+.chn-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0 0;
+  color: var(--magic-ink);
+}
+.chn-chat {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+.chn-chat-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--magic-ink-muted);
+}
+.chn-chat-terminal {
+  min-height: 220px;
+  border-radius: var(--magic-radius-card);
+  overflow: hidden;
+}
+
+/* Client tiles: the mode and recommendation labels */
+.chn-mode,
+.chn-recommended {
+  justify-self: start;
+  padding: 1px 7px;
+  border-radius: var(--magic-radius-tag-candidate);
+  font-size: 12px;
+}
+.chn-mode {
+  background: var(--magic-fill-tag-candidate);
+  color: var(--magic-ink-tag-candidate);
+}
+.chn-mode.instant {
+  background: var(--magic-fill-confirmation);
+  color: var(--magic-ink-review);
+}
+/* On a selected tile (itself the confirmation fill) the chip sits on the raised surface. */
+.onb-tile.selected .chn-mode.instant {
+  background: var(--magic-surface-raised);
+}
+.chn-recommended {
+  box-shadow: inset 0 0 0 1px var(--magic-line-tag-candidate);
+  color: var(--magic-ink-muted);
+}
+
+/* Connection mode choice */
+.chn-modes {
+  margin-top: 20px;
+}
+.chn-mode-choice,
+.chn-fieldset {
+  margin: 0 0 20px;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.chn-mode-choice legend,
+.chn-fieldset legend {
+  margin-bottom: 10px;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 560;
+  color: var(--magic-ink);
+}
+.chn-mode-choice {
+  display: grid;
+  gap: 8px;
+}
+.chn-mode-option {
+  display: grid;
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: var(--magic-radius-card);
+  background: var(--magic-surface-raised);
+  box-shadow: inset 0 0 0 1px var(--magic-line-quiet);
+  cursor: pointer;
+}
+.chn-mode-option.selected,
+.chn-segment.selected {
+  background: var(--magic-fill-confirmation);
+  box-shadow: inset 0 0 0 2px var(--magic-ink-review);
+}
+.chn-mode-option input,
+.chn-segment input,
+.chn-swatch input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+}
+.chn-mode-name,
+.chn-segment-name {
+  font-size: 14px;
+  font-weight: 560;
+  color: var(--magic-ink);
+}
+.chn-mode-detail,
+.chn-segment-detail {
+  font-size: 13px;
+  color: var(--magic-ink-muted);
+}
+
+/* Gemini key */
+.chn-key {
+  display: grid;
+  gap: 8px;
+}
+.chn-key-label {
+  font-size: 14px;
+  font-weight: 560;
+  color: var(--magic-ink);
+}
+.chn-key-row {
+  display: flex;
+  gap: 10px;
+}
+.chn-key-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--magic-radius-control);
+  background: var(--magic-surface-raised);
+  box-shadow: inset 0 0 0 1px var(--magic-line-quiet);
+  color: var(--magic-ink);
+  font: inherit;
+}
+
+/* Appearance */
+.chn-segments {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.chn-segment {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: var(--magic-radius-card);
+  background: var(--magic-surface-raised);
+  box-shadow: inset 0 0 0 1px var(--magic-line-quiet);
+  cursor: pointer;
+}
+.chn-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.chn-swatch {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 6px;
+  border-radius: var(--magic-radius-card);
+  cursor: pointer;
+}
+.chn-swatch-chip {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px var(--magic-line-quiet);
+}
+.chn-swatch.selected .chn-swatch-chip {
+  box-shadow: 0 0 0 2px var(--magic-surface-workspace), 0 0 0 4px var(--magic-ink-review);
+}
+.chn-swatch-name {
+  font-size: 13px;
+  color: var(--magic-ink-prose);
+}
+
+/* Optional connections */
+.chn-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.chn-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  border-top: 1px solid var(--magic-line-quiet);
+}
+.chn-row:last-child {
+  border-bottom: 1px solid var(--magic-line-quiet);
+}
+.chn-row-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.chn-row-name {
+  font-size: 15px;
+  font-weight: 560;
+  color: var(--magic-ink);
+}
+.chn-row-detail {
+  font-size: 13px;
+  color: var(--magic-ink-muted);
+}
+.chn-row-ok {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--magic-ink);
+}
+
+@media (max-width: 720px) {
+  .chn-segments {
+    grid-template-columns: 1fr;
+  }
+  .chn-key-row {
+    flex-direction: column;
+  }
+}

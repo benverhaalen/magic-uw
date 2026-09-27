@@ -26,6 +26,8 @@ export interface CodexOptions {
   workDir: string;
   models?: Partial<Record<Tier, CodexTierModel>>;
   env?: Record<string, string>;
+  /** owner: client-health. Appended after the spec argv (instant mode's overrides, D50). */
+  extraArgs?: readonly string[];
 }
 
 /**
@@ -118,7 +120,7 @@ export function createCodexBackend(options: CodexOptions): ModelBackend {
         JSON.stringify(call.jsonSchema),
         ".json",
       );
-      const run = await runProcess(options.command, codexArgs({ schemaPath, ...tier }), {
+      const run = await runProcess(options.command, [...codexArgs({ schemaPath, ...tier }), ...(options.extraArgs ?? [])], {
         stdin: codexStdin(call.systemPrompt, call.input),
         cwd: options.workDir,
         env: cliEnvironment(options.env),
