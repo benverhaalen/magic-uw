@@ -11,7 +11,8 @@ import {
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { backup, DatabaseSync, type StatementSync } from "node:sqlite";
-import { planningMigration, planningRepository } from "./planning";
+import { planningMigration, planningRepository, type PlanningRepository } from "./planning";
+import { PLANNING_V12 } from "./planning-v12"; // owner: planning-perf
 import { textHash } from "../../retrieval/src/index";
 import { COURSE_CORE_SCHEMA, COURSE_SPACE_OBSERVATION_MIGRATION, courseCoreRepository } from "./course-core";
 import { createPassageIndex, scopeToken } from "./passages";
@@ -199,7 +200,8 @@ export interface ReceiptCount {
 }
 export type LocalStore = Store &
   CourseCoreStore &
-  GraphStore & {
+  GraphStore &
+  PlanningRepository & {
     learning: SqlLearningStore;
     notes: SqlNotesStore;
     /** Imports the reader's receipt log into receipts (the writer only); returns how many were read. */
@@ -411,8 +413,10 @@ export function createStore(
   ]);
   // v11 "notes": session notes (packages/notes); additive tables only (IF NOT EXISTS). Runs after v10 (the course graph).
   steps.push([11, () => db.exec(NOTES_V11 + "PRAGMA user_version = 11;")]);
+  // owner: planning-perf. v12: planning index and capture pruning; idempotent (IF NOT EXISTS).
+  steps.push([12, () => db.exec(PLANNING_V12 + "PRAGMA user_version = 12;")]);
   // owner: platform-fix. v13 (additive, idempotent; reserved for this branch, applied after main's
-  // v11): the receipts index for the retention sweep. The per-day counts that outlive 90 days of
+  // v12): the receipts index for the retention sweep. The per-day counts that outlive 90 days of
   // detail live in preferences ('receiptCounts'), like consents and the day plan: no new table.
   steps.push([
     13,
@@ -480,7 +484,7 @@ export function createStore(
     }
   }
   if (!readOnly) migrate();
-  const planning = planningRepository(db);
+  const planning = planningRepository(db, prepare); // owner: planning-perf: cached statements
   // owner: T06. Consent storage helpers.
   function readConsents(): ConsentRecord[] {
     const row = db

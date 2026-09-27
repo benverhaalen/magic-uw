@@ -262,7 +262,7 @@ test("v11 migration: an existing v9 file gains the notes tables and keeps its da
   raw.exec("PRAGMA user_version = 9");
   raw.close();
   const store = createStore(path);
-  assert.equal(SCHEMA_VERSION, 11);
+  assert.ok(SCHEMA_VERSION >= 11, "v11 is part of the chain; later migrations may follow");
   assert.equal(store.resources().length, 1);
   assert.deepEqual(store.notes.notes(), []);
   assert.ok(store.migrationBackup());
