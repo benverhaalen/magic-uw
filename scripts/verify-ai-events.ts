@@ -130,16 +130,17 @@ await call({ kind: "query", query: { view: "summary" } }); // the first query sc
 send({ kind: "presence", present: true });
 
 const resources = (await must({ type: "snapshot" })).snapshot.resources as { id: string; externalId?: string; title: string; courseId: string; sourceId: string }[];
-const byTitle = (t: string) => {
-  const r = resources.find((x) => x.title === t);
+// The three-course synthetic sample (fixtures/sample-courses.json, 18d639c): MATH 240's items.
+const byTitle = (t: string, externalId?: string) => {
+  const r = resources.find((x) => x.title === t && (!externalId || x.externalId === externalId));
   if (!r) throw new Error(`fixture item missing: ${t}`);
   return r;
 };
-const COURSE = "sample-101";
-const essay = byTitle("Comparative analysis");
-const reading = byTitle("Argument and evidence");
-const slides = byTitle("Workshop 4 slides");
-const midterm = byTitle("Midterm exam");
+const COURSE = "math-240";
+const essay = byTitle("Problem Set 4: Induction");
+const reading = byTitle("Reading 4: Strong induction and well-ordering");
+const slides = byTitle("Lecture 7 slides: Mathematical induction");
+const midterm = byTitle("Midterm 1", "math240-midterm1"); // the assignment, not the gradebook group
 
 // ---- The events ----
 interface Row { event: string; path: string; pass: boolean; ms: number; detail: string }
@@ -173,7 +174,7 @@ const judgePack = (c: any): [boolean, string] => {
 };
 for (const kind of ["cards", "quiz", "exam", "guide", "outline", "problems"] as const)
   await event(`study: ${kind}`, `execute pack study-prep-${kind}`, () => command({ type: "pack", pack: `study-prep-${kind}`, scope: { courseId: COURSE, assessmentId: kind === "exam" || kind === "quiz" ? midterm.id : essay.id } }), judgePack);
-await event("study: Ask", "execute learning notebook.ask", () => command({ type: "learning", request: { op: "notebook.ask", courseId: COURSE, question: "What does a warrant explain?", scope: { assessmentId: essay.id, resourceIds: [reading.id] } } }), (c) => {
+await event("study: Ask", "execute learning notebook.ask", () => command({ type: "learning", request: { op: "notebook.ask", courseId: COURSE, question: "What does the inductive step have to show?", scope: { assessmentId: essay.id, resourceIds: [reading.id] } } }), (c) => {
   const l = c?.learning;
   const d = l?.data ?? {};
   const ok = l?.status === "ok" && !d.unavailable && (mode === "fake" || (d.notFound !== true && typeof d.text === "string" && d.text.length > 0));
@@ -186,7 +187,7 @@ await event("guide: briefing", "execute pack briefing", () => command({ type: "p
 
 // 3. Notes fill from slides (execute notes notes.create → notes.fill)
 await event("notes: fill from slides", "execute notes notes.fill", async () => {
-  const created = await command({ type: "notes", reply: "result", request: { op: "notes.create", courseId: COURSE, accountScope: "synthetic", title: "Workshop 4 notes" } });
+  const created = await command({ type: "notes", reply: "result", request: { op: "notes.create", courseId: COURSE, accountScope: "synthetic", title: "Lecture 7 notes" } });
   const noteId = created.result?.notes?.note?.id;
   if (!noteId) return { error: `notes.create: ${created.error ?? JSON.stringify(created.result?.notes ?? {}).slice(0, 160)}`, ms: created.ms };
   return command({ type: "notes", reply: "result", request: { op: "notes.fill", noteId, resourceIds: [slides.id] } });
@@ -195,24 +196,24 @@ await event("notes: fill from slides", "execute notes notes.fill", async () => {
   return [n?.status === "ok", `${n?.status} ${n?.message ?? n?.reason ?? ""} suggestions=${n?.note?.suggestions?.length ?? n?.suggestions?.length ?? "-"}`.slice(0, 200)];
 });
 
-// 4. The drain's course jobs. The sample course has no syllabus, so course.facts has nothing to
-// read; a synthetic syllabus tab is imported (execute import) to give it one. Each job passes when
-// it is done and a receipt shows the send reached Claude Code.
+// 4. The drain's course jobs. The sample's syllabus is an item in its assignments batch, not a
+// syllabus tab, so a synthetic syllabus tab is imported (execute import) for course.facts to read.
+// Each job passes when it is done and a receipt shows the send reached Claude Code.
 {
   const syllabus = [
     "Course Summary:",
-    "Writing 101 meets Tuesdays and Thursdays, 9:30-10:45 AM, in Room 120 (synthetic).",
+    "MATH 240 meets Mondays, Wednesdays and Fridays, 11:00-11:50 AM, in Room 120 (synthetic).",
     "Instructor: Dr. Example. Office hours: Wednesdays 2-4 PM in Room 330.",
-    "Grading: essays 40%, workshops 20%, grammar quizzes 10%, midterm 30%.",
+    "Grading: problem sets 30%, quizzes 10%, midterm 1 20%, midterm 2 20%, final exam 20%.",
     "Late work: 10% off per day, up to three days; after that it is not accepted.",
     "AI policy: you may use AI to explain concepts and ask questions, but it must not write any part of a submission.",
-    "Textbook: They Say / I Say (synthetic reference).",
-    ...Array.from({ length: 6 }, (_, i) => `Week ${i + 1}: readings, a workshop draft and a short reflection are due before class.`),
+    "Textbook: Discrete Mathematics (synthetic reference).",
+    ...Array.from({ length: 6 }, (_, i) => `Week ${i + 1}: readings, a problem set and a short quiz are due before class.`),
   ].join("\n");
   const imported = await command({ type: "import", batch: {
     source: { id: "sample-syllabus", label: "Sample syllabus · synthetic", kind: "fixture", accountScope: "synthetic", courseId: COURSE, scope: "syllabus" },
     observedAt: new Date().toISOString(), complete: true, status: "ok",
-    resources: [{ externalId: "syllabus", kind: "material", courseId: COURSE, courseName: "Writing 101 · Sample", title: "Syllabus", url: "https://example.org/course/syllabus", text: syllabus }],
+    resources: [{ externalId: "syllabus-tab", kind: "material", courseId: COURSE, courseName: "MATH 240: Introduction to Discrete Mathematics", title: "Syllabus", url: "https://example.org/math-240/syllabus", text: syllabus }],
   } });
   if (imported.error) console.error(`syllabus import: ${imported.error}`);
   const db = new DatabaseSync(process.env.MAGIC_DB_PATH!, { readOnly: true });
