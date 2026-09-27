@@ -17,11 +17,22 @@ import { judgmentRequestSchema } from "./schema";
 import { openStore, type Store } from "./store";
 import {
   createTypeSafeEvaluate,
+  UpstreamError,
   UpstreamRateLimitError,
   validateAssignmentKindResult,
   type AssignmentKindResult,
   type Evaluate,
 } from "./typesafe";
+import {
+  createTypeSafeMailTriage,
+  createTypeSafeTriage,
+  mailTriageRequestSchema,
+  triageRequestSchema,
+  validateMailTriageResult,
+  validateMessageTriageResult,
+  type MailTriage,
+  type Triage,
+} from "./triage";
 
 export interface GatewayLimits {
   maxBodyBytes: number;
@@ -68,6 +79,10 @@ export interface GatewayOptions {
   apiKey?: string;
   /** Test-only injection point: bypasses the real TypeSafe network call entirely. */
   evaluate?: Evaluate;
+  /** Test-only injection point for message.triage.v1; same fail-closed rule as `evaluate`. */
+  triage?: Triage;
+  /** Test-only injection point for mail.triage.v1; same fail-closed rule as `triage`. */
+  mailTriage?: MailTriage;
   limits?: Partial<GatewayLimits>;
   log?: (event: LogEvent) => void;
   now?: () => Date;
@@ -104,6 +119,23 @@ export function createGateway(options: GatewayOptions = {}): GatewayHandle {
   const evaluate: Evaluate =
     options.evaluate ??
     createDefaultEvaluate(options.apiKey, limits.requestTimeoutMs);
+  const triage: Triage =
+    options.triage ??
+    (options.evaluate && !options.apiKey?.trim()
+      ? // A test gateway that overrides only the assignment judgment: the triage route stays
+        // closed (every call fails as an upstream error) rather than answering without a key.
+        async () => {
+          throw new UpstreamError("Judgment upstream is not configured.");
+        }
+      : createDefaultTriage(options.apiKey, limits.requestTimeoutMs));
+  const mailTriage: MailTriage =
+    options.mailTriage ??
+    (options.evaluate && !options.apiKey?.trim()
+      ? // Same per-call closed behaviour as triage for an evaluate-only test gateway.
+        async () => {
+          throw new UpstreamError("Judgment upstream is not configured.");
+        }
+      : createDefaultMailTriage(options.apiKey, limits.requestTimeoutMs));
 
   const store: Store = openStore(dbPath);
   const activeByDevice = new Map<string, number>();
@@ -134,6 +166,8 @@ export function createGateway(options: GatewayOptions = {}): GatewayHandle {
       "/health",
       "/v1/devices",
       "/v1/judgments/assignment.kind.v1",
+      "/v1/judgments/message.triage.v1",
+      "/v1/judgments/mail.triage.v1",
     ].includes(path)
       ? path
       : "/unrecognized";
@@ -154,7 +188,81 @@ export function createGateway(options: GatewayOptions = {}): GatewayHandle {
       }
 
       if (method === "POST" && path === "/v1/judgments/assignment.kind.v1") {
-        const result = await handleJudgment(req, res);
+        const result = await handleJudgment(
+          req,
+          res,
+          (value) => {
+            const parsed = judgmentRequestSchema.safeParse(value);
+            return parsed.success ? parsed.data.state : undefined;
+          },
+          async (state, signal) => {
+            const result: AssignmentKindResult = validateAssignmentKindResult(
+              await evaluate(state, signal),
+            );
+            return {
+              kind: result.kind,
+              probabilities: result.probabilities,
+              model: result.model,
+              questionVersion: result.questionVersion,
+            };
+          },
+        );
+        status = result.status;
+        deviceId = result.deviceId;
+        return;
+      }
+
+      if (method === "POST" && path === "/v1/judgments/message.triage.v1") {
+        const result = await handleJudgment(
+          req,
+          res,
+          (value) => {
+            const parsed = triageRequestSchema.safeParse(value);
+            return parsed.success ? parsed.data.state : undefined;
+          },
+          async (state, signal) => {
+            const result = validateMessageTriageResult(
+              await triage(state, signal),
+              state,
+            );
+            return {
+              kind: result.kind,
+              kindProbabilities: result.kindProbabilities,
+              actionRequired: result.actionRequired,
+              affects: result.affects,
+              model: result.model,
+              questionVersion: result.questionVersion,
+            };
+          },
+        );
+        status = result.status;
+        deviceId = result.deviceId;
+        return;
+      }
+
+      if (method === "POST" && path === "/v1/judgments/mail.triage.v1") {
+        const result = await handleJudgment(
+          req,
+          res,
+          (value) => {
+            const parsed = mailTriageRequestSchema.safeParse(value);
+            return parsed.success ? parsed.data.state : undefined;
+          },
+          async (state, signal) => {
+            const result = validateMailTriageResult(
+              await mailTriage(state, signal),
+              state,
+            );
+            return {
+              kind: result.kind,
+              kindProbabilities: result.kindProbabilities,
+              actionRequired: result.actionRequired,
+              affects: result.affects,
+              model: result.model,
+              questionVersion: result.questionVersion,
+            };
+          },
+        );
         status = result.status;
         deviceId = result.deviceId;
         return;
@@ -253,9 +361,16 @@ export function createGateway(options: GatewayOptions = {}): GatewayHandle {
     return 201;
   }
 
-  async function handleJudgment(
+  /**
+   * Shared by every judgment route: device auth, content type, body cap, strict schema,
+   * concurrency, and ONE reservation against the same per-device and global budget.
+   * `run` must return only validated, allowlisted response fields.
+   */
+  async function handleJudgment<S>(
     req: IncomingMessage,
     res: ServerResponse,
+    parseState: (value: unknown) => S | undefined,
+    run: (state: S, signal: AbortSignal) => Promise<Record<string, unknown>>,
   ): Promise<{ status: number; deviceId?: string }> {
     const token = extractBearerToken(req);
     const device = store.authenticate(token);
@@ -284,8 +399,8 @@ export function createGateway(options: GatewayOptions = {}): GatewayHandle {
         "Request body must be valid JSON.",
       );
     }
-    const parsed = judgmentRequestSchema.safeParse(parsedBody);
-    if (!parsed.success) {
+    const state = parseState(parsedBody);
+    if (state === undefined) {
       throw new HttpError(
         422,
         "invalid_request",
@@ -335,14 +450,12 @@ export function createGateway(options: GatewayOptions = {}): GatewayHandle {
     };
     res.once("close", abort);
     try {
-      let result: AssignmentKindResult;
+      let result: Record<string, unknown>;
       try {
         // The reservation above already counted this attempt, so an
         // upstream failure here still bounds spend rather than being retried
         // for free.
-        result = validateAssignmentKindResult(
-          await evaluate(parsed.data.state, controller.signal),
-        );
+        result = await run(state, controller.signal);
       } catch (error) {
         // An upstream 429 spent nothing: refund the reservation and pass the wait through.
         if (error instanceof UpstreamRateLimitError) {
@@ -361,12 +474,7 @@ export function createGateway(options: GatewayOptions = {}): GatewayHandle {
       }
 
       if (res.destroyed) return { status: 499, deviceId: device.id };
-      sendJson(res, 200, {
-        kind: result.kind,
-        probabilities: result.probabilities,
-        model: result.model,
-        questionVersion: result.questionVersion,
-      });
+      sendJson(res, 200, result);
       return { status: 200, deviceId: device.id };
     } finally {
       res.removeListener("close", abort);
@@ -420,4 +528,30 @@ function createDefaultEvaluate(
     );
   }
   return createTypeSafeEvaluate(apiKey, timeoutMs);
+}
+
+function createDefaultTriage(
+  apiKey: string | undefined,
+  timeoutMs: number,
+): Triage {
+  if (!apiKey?.trim()) {
+    // Fail closed exactly like the assignment evaluator: never start a gateway whose
+    // triage route could answer without a real credential.
+    throw new Error(
+      "TYPESAFE_API_KEY is required to start the gateway (no triage() override was provided). See apps/gateway/README.md.",
+    );
+  }
+  return createTypeSafeTriage(apiKey, timeoutMs);
+}
+
+function createDefaultMailTriage(
+  apiKey: string | undefined,
+  timeoutMs: number,
+): MailTriage {
+  if (!apiKey?.trim()) {
+    throw new Error(
+      "TYPESAFE_API_KEY is required to start the gateway (no mailTriage() override was provided). See apps/gateway/README.md.",
+    );
+  }
+  return createTypeSafeMailTriage(apiKey, timeoutMs);
 }

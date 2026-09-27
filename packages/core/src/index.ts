@@ -54,6 +54,7 @@ import { createPipelineLoop, type PipelineTiming } from "./jobs/pipeline";
 import { createEnrichJob, judgedHash } from "./jobs/enrich";
 // end owner: drain
 import { codeAssignmentKind, resourceViews, runQuery } from "./queries"; // owner: T15
+import { createNotifications } from "./notifications";
 /** The Jev kind question reads the title, about 2,000 characters, and the item's own stated policy, clipped. */
 const JEV_TEXT_CHARS = 2000;
 const JEV_POLICY_CHARS = 500;
@@ -178,6 +179,14 @@ export function createCore(store: Store, options: CoreOptions) {
     now,
   });
   // end owner: drain
+  const notifications = createNotifications(store, {
+    now,
+    timeZone:
+      options.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+    gateway: options.gateway,
+    generation: () => generation,
+    closed: () => closed,
+  });
   function profileFor(r: Resource): CourseIntelligence | undefined {
     const source = store.sources().find((s) => s.id === r.sourceId);
     return source
@@ -243,6 +252,7 @@ export function createCore(store: Store, options: CoreOptions) {
       dayPlan: store.dayPlan(),
       gitlabLinks: store.gitlabLinks(),
       personalReports: store.personalReports(),
+      notifications: notifications.feed(),
     };
   }
   function context(
@@ -474,7 +484,11 @@ export function createCore(store: Store, options: CoreOptions) {
       return;
     }
     wakePending = false;
-    working = extractCourses()
+    // owner: notifications. Message and mail triage are not queued jobs: they run on wake before
+    // course extraction, as they did at the head of the old drain, behind their own
+    // communications gate, receipts and generation checks (notifications.ts).
+    working = (options.gateway ? notifications.triage() : Promise.resolve())
+      .then(extractCourses)
       .finally(() => {
         working = undefined;
         if (wakePending && !closed) wake();
@@ -487,6 +501,7 @@ export function createCore(store: Store, options: CoreOptions) {
     cancel.abort();
     cancel = new AbortController();
     pipeline.interrupt();
+    notifications.abort();
     for (const read of planningReads) read.abort();
     for (const call of seamCalls) call.abort(); // owner: T05b
   }
@@ -895,6 +910,12 @@ export function createCore(store: Store, options: CoreOptions) {
       case "gitlab-unlink":
         store.removeGitlabLink(command.accountScope, command.courseId, command.projectPath);
         message = "GitLab project unlinked. Work already saved from it stays until the next refresh.";
+        break;
+      case "notifications-read":
+        notifications.read(command.ids);
+        break;
+      case "notification-dismiss":
+        notifications.dismiss(command.id);
         break;
       case "outlook-disconnect": {
         // Only the student's Outlook calendar; coursework and other feeds are never touched here.

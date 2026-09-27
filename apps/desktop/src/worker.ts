@@ -4,6 +4,7 @@ import { createStore } from "@magic/storage";
 import { createCore } from "@magic/core";
 import { captureBatchSchema, planningCaptureSchema, type PlanningCapture } from "@magic/contracts";
 import { queryRequestSchema } from "@magic/contracts"; // owner: T15
+import type { MailTriageState, MessageTriageState } from "@magic/contracts"; // owner: notifications gateway relay
 import fixture from "../../../fixtures/course.json";
 import { randomUUID } from "node:crypto";
 import { createLocalService } from "./local-service";
@@ -116,6 +117,35 @@ const intent = createIntentRouter({
   warm: (request) => intentRuntime?.pool?.warm(request) ?? Promise.resolve(false),
 });
 // end owner: intent
+/** Jev judgments run in main (network + consent gate); the reply arrives as "evaluation". */
+function relayJudgment(
+  message:
+    | { kind: "evaluate"; payload: unknown }
+    | { kind: "triage"; state: MessageTriageState }
+    | { kind: "mailTriage"; state: MailTriageState },
+  signal: AbortSignal,
+): Promise<any> {
+  const id = randomUUID();
+  return new Promise<any>((resolve, reject) => {
+    const cancel = () => {
+      port.postMessage({ kind: "abort", id });
+      pending.delete(id);
+      reject(new Error("Cancelled"));
+    };
+    signal.addEventListener("abort", cancel, { once: true });
+    pending.set(id, {
+      resolve(value) {
+        signal.removeEventListener("abort", cancel);
+        resolve(value);
+      },
+      reject(error) {
+        signal.removeEventListener("abort", cancel);
+        reject(error);
+      },
+    });
+    port.postMessage({ ...message, id });
+  });
+}
 // owner: notes. Session notes: batch scaffolds on the tick, "fill from slides" through the same
 // runner, and Google Docs sync through main (which alone holds the token). Microsoft waits for graph.ts.
 import { createNotesService, googleRemote, microsoftRemote, type NotesRemote } from "../../../packages/notes/src/index";
@@ -172,26 +202,13 @@ const core = createCore(store, {
     ? {
         gateway: {
           evaluate(payload: any, signal: AbortSignal) {
-            const id = randomUUID();
-            return new Promise<any>((resolve, reject) => {
-              const cancel = () => {
-                port.postMessage({ kind: "abort", id });
-                pending.delete(id);
-                reject(new Error("Cancelled"));
-              };
-              signal.addEventListener("abort", cancel, { once: true });
-              pending.set(id, {
-                resolve(value) {
-                  signal.removeEventListener("abort", cancel);
-                  resolve(value);
-                },
-                reject(error) {
-                  signal.removeEventListener("abort", cancel);
-                  reject(error);
-                },
-              });
-              port.postMessage({ kind: "evaluate", id, payload });
-            });
+            return relayJudgment({ kind: "evaluate", payload }, signal);
+          },
+          triage(state: MessageTriageState, signal: AbortSignal) {
+            return relayJudgment({ kind: "triage", state }, signal);
+          },
+          mailTriage(state: MailTriageState, signal: AbortSignal) {
+            return relayJudgment({ kind: "mailTriage", state }, signal);
           },
         },
       }

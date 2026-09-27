@@ -9,6 +9,8 @@ import {
 } from "./planning";
 export * from "./planning";
 export * from "./course-intelligence";
+export * from "./notifications";
+import type { NotificationFeed, NotificationState } from "./notifications";
 // owner: T05b. The data builder's course core (schema v5) replaces the placeholder module.
 export * from "./course-core";
 // owner: notes
@@ -1059,6 +1061,11 @@ export interface Store {
   /** Adds or refreshes one course's manual GitLab project link. */
   setGitlabLink(value: GitlabLink): void;
   removeGitlabLink(accountScope: string, courseId: string, projectPath: string): void;
+  /** Read and dismissed notification ids (local preference; cleared by purge). */
+  notificationState?(): NotificationState;
+  setNotificationState?(value: NotificationState): void;
+  /** Each source's first read id; "new" changes recorded by it are the baseline, not news. */
+  baselineReadIds?(): string[];
   /**
    * Deletes a source the student disconnected and everything captured from it; returns the
    * number of items removed. Not for failed or empty reads, which must never erase coursework.
@@ -1147,6 +1154,7 @@ export interface Snapshot {
   gitlabLinks?: GitlabLink[];
   /** Local display only; excluded from AI/MCP contexts. Latest choice per issue, not the journal. */
   personalReports?: PersonalReportState[];
+  notifications?: NotificationFeed;
 }
 // owner: T05b. The integration seams: the learning channel (spec §8.1 of the learning spec,
 // its practice addendum, and T47/T53's practice.target and practice.assessmentQuiz), the
@@ -1750,6 +1758,18 @@ export const commandSchema = z.discriminatedUnion("type", [
     })
     .strict(),
   z.object({ type: z.literal("personal-report"), value: personalReportChangeSchema }).strict(),
+  z
+    .object({
+      type: z.literal("notifications-read"),
+      ids: z.array(z.string().min(1).max(600)).max(500),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("notification-dismiss"),
+      id: z.string().min(1).max(600),
+    })
+    .strict(),
   z.object({ type: z.literal("fixture") }).strict(),
   // A student-supplied UW GitLab project for a course the connector could not discover.
   z

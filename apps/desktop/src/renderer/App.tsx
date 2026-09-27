@@ -29,6 +29,7 @@ import { PersonalReport } from "./PersonalReport";
 import { Action, Disclosure } from "../../../../packages/ui/src";
 import { useDesktopNavigation, type DesktopView } from "./navigation";
 import { CourseSpaceDetails } from "./CourseSpaceDetails";
+import { NotificationsMenu } from "./NotificationsMenu";
 
 type View = DesktopView;
 // owner: T05b. Route slots, each rendering nothing until its task fills it: the notebook (T43),
@@ -404,6 +405,15 @@ export function App() {
         {(error || notice) && <div className={`desktop-feedback ${error ? "is-error" : ""}`} role={error ? "alert" : "status"}>
           <div><span>{error ? workspaceFailureMessage(error) : notice}</span>{error && <details><summary>Error details</summary><p>{error}</p></details>}</div><button aria-label={error ? "Dismiss error" : "Dismiss notice"} onClick={() => { setError(""); setNotice(""); }}>×</button>
         </div>}
+        <NotificationsMenu
+          feed={snapshot?.notifications}
+          busy={busy}
+          run={run}
+          canOpenResource={(id) => resources.some((resource) => resource.id === id)}
+          onOpenResource={(id) => setSelectedId(id)}
+          onOpenSources={() => setView("sources")}
+          onOpenPrivacy={() => setView("privacy")}
+        />
       </>}
       onCompose={() => {
         if (selected) { document.querySelector<HTMLElement>(".local-ai-panel")?.scrollIntoView({ behavior: "smooth" }); }
