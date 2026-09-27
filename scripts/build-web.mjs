@@ -15,7 +15,6 @@ const nav = [
   ["devs", "/pricing/#pipeline", "For devs"],
   ["about", "/about/", "About us"],
   ["faq", "/faq/", "FAQ"],
-  ["account", "/account/", "Account"],
 ];
 
 const head = `<link rel="icon" href="/assets/logo/favicon.svg" type="image/svg+xml" />
@@ -23,14 +22,29 @@ const head = `<link rel="icon" href="/assets/logo/favicon.svg" type="image/svg+x
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,300..500,100,0&family=Geist:wght@400;500;600;700&family=Geist+Mono&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/assets/tokens.css" />
-    <link rel="stylesheet" href="/assets/site.css" />`;
+    <link rel="stylesheet" href="/assets/site.css" />
+    <script src="/assets/config.js"></script>
+    <script type="module" src="/assets/account-menu.js"></script>`;
+
+const personIcon = `<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><circle cx="12" cy="8.5" r="3.75" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4.75 19.5c1.2-3.3 4-5 7.25-5s6.05 1.7 7.25 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
 
 const header = (current) => `<header class="site-header">
         <a class="brand" href="/"><img src="/assets/logo/head-color.svg" alt="" width="46" height="100" /><span>My Magic UW</span></a>
         <nav class="site-nav" aria-label="Main">${nav
           .map(([key, href, label]) => `<a href="${href}"${key === current && key !== "home" ? ' aria-current="page"' : ""}>${label}</a>`)
           .join("")}</nav>
-        <a class="btn btn-blue btn-sm" href="/#download">Download</a>
+        <div class="header-actions">
+          <a class="btn btn-blue btn-sm" href="/#download">Download</a>
+          <div class="account-menu" data-account-menu>
+            <a class="account-button" href="/account/" aria-label="Sign in" data-account-link${current === "account" ? ' aria-current="page"' : ""}>${personIcon}</a>
+            <button class="account-button" type="button" aria-label="Account" aria-expanded="false" aria-controls="account-popover" data-account-toggle data-signed-in hidden>${personIcon}</button>
+            <div class="account-popover" id="account-popover" data-account-popover hidden>
+              <p class="account-popover-email" data-account-email>Signed in</p>
+              <a href="/account/">Account details</a>
+              <button type="button" data-account-sign-out>Sign out</button>
+            </div>
+          </div>
+        </div>
       </header>`;
 
 const footer = `<footer class="site-footer">

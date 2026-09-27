@@ -105,7 +105,7 @@ async function start() {
     form.email.focus();
   });
   $('[data-action="sign-out"]').addEventListener("click", async () => {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "local" }); // leaves the desktop app signed in
     say("You're signed out.");
   });
 
@@ -124,6 +124,7 @@ async function start() {
   let explained = false;
   async function render(session) {
     current = session?.user ?? null;
+    window.dispatchEvent(new CustomEvent("magic:account", { detail: { email: current ? (current.email ?? "") : null } }));
     if (!explained) {
       explained = true;
       // A link that didn't sign in would otherwise just show the form again with no reason.
