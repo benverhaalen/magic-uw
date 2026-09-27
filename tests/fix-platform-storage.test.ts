@@ -114,7 +114,7 @@ test("the receipts migration is additive and idempotent: re-running it changes n
   const file = join(dir, "w.sqlite");
   createStore(file).close();
   const raw = new DatabaseSync(file);
-  raw.exec("PRAGMA user_version = 9"); // as if only main's v9 had run: this branch's step runs again
+  raw.exec(`PRAGMA user_version = ${SCHEMA_VERSION - 1}`); // as if only the steps before this one had run: it runs again
   raw.close();
   const again = createStore(file);
   again.close();

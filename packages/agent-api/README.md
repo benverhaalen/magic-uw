@@ -20,7 +20,7 @@ The read surface of the open academic data platform ([plan D42](../../docs/plans
 | `resource({ id })` | one id | the scrubbed item: an excerpt window, parts, deadline, citation (with a projection id for citation checks), freshness |
 | `searchPassages({ query, courseId?, limit? })` | ≤20 hits | passage search on the FTS index (BM25, OR); each hit is an excerpt around the match with its citation |
 | `assignments({ courseId?, days? })` | window in days | assignments with resolved due and planning dates, conflicts and completion, soonest first |
-| `agenda({ days? })` | | `status: "not_built"`: no core agenda query exists yet (TODO) |
+| `agenda({ days? })` | | `status: "not_built"` (TODO): the core agenda merges planning class meetings, which never leave through the platform; v1 waits for a planning-free variant |
 
 ```ts
 import { createStore } from "@magic/storage";

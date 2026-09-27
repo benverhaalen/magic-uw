@@ -351,8 +351,9 @@ export function createReadApi(store: Store, credentials: Credentials, options: S
           items: (n) => rows.slice(0, n).map((x) => x.r),
         };
       }),
-    // TODO(D42): the agenda needs a core agenda query (study blocks, events and due work per day);
-    // none exists on main yet. Until then v1 answers "not_built" rather than guessing.
+    // TODO(D42): the core agenda (packages/core/src/graph/agenda.ts) merges the planning enrollment's
+    // class meetings, and planning data never leaves through the platform. v1 answers "not_built"
+    // until a planning-free agenda variant exists, rather than guessing or leaking.
     agenda: (input) =>
       run("agenda", input, () => ({
         count: 0,
