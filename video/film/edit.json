@@ -1,0 +1,248 @@
+{
+  "note": "Short cut to the operator's 8-frame script (September 27, 10:00). Previous 2-minute cut: edit.v1.json. Whiz overlays: tools/whiz.mjs.",
+  "duration": 74,
+  "timeline": [
+    {
+      "kind": "footage",
+      "id": "skit-sean",
+      "file": "assets/film/skit-sean.mp4",
+      "start": 0,
+      "end": 13
+    },
+    {
+      "kind": "journey",
+      "id": "j1-day",
+      "take": "a",
+      "from": 0,
+      "to": 10,
+      "start": 13,
+      "end": 29.6,
+      "title": "Your Daily Brief",
+      "summaries": [
+        {
+          "step": "brief-top",
+          "text": "Most vital work first, preloaded."
+        },
+        {
+          "step": "upcoming-pset",
+          "text": "Ranked by due date and importance: code, not AI."
+        },
+        {
+          "step": "nav-study-learn",
+          "text": "Click once… and poof."
+        }
+      ]
+    },
+    {
+      "kind": "comp",
+      "id": "w-hello",
+      "start": 13,
+      "end": 16.4,
+      "track": 5
+    },
+    {
+      "kind": "comp",
+      "id": "w-click",
+      "start": 26.4,
+      "end": 29.6,
+      "track": 5
+    },
+    {
+      "kind": "journey",
+      "id": "j2-item",
+      "take": "a",
+      "from": 10,
+      "to": 18.2,
+      "start": 29.6,
+      "end": 36,
+      "title": "Everything, in one click",
+      "summaries": [
+        {
+          "step": "open-pset",
+          "text": "Assignment, lecture and syllabus together."
+        },
+        {
+          "step": "space-instructions",
+          "text": "The syllabus rule, quoted."
+        },
+        {
+          "step": "space-linked",
+          "text": "Every source linked, so he can check it."
+        }
+      ]
+    },
+    {
+      "kind": "footage",
+      "id": "sean-rejoice",
+      "file": "assets/film/sean-rejoice.mp4",
+      "start": 36,
+      "end": 42
+    },
+    {
+      "kind": "journey",
+      "id": "j3-study",
+      "take": "a",
+      "from": 22,
+      "to": 28.6,
+      "start": 42,
+      "end": 47,
+      "title": "Study, built from his class",
+      "summaries": [
+        {
+          "step": "tile-cards",
+          "text": "Flashcards from his own lectures."
+        },
+        {
+          "step": "tile-exam",
+          "text": "Create practice test."
+        }
+      ]
+    },
+    {
+      "kind": "comp",
+      "id": "w-study",
+      "start": 42,
+      "end": 46.8,
+      "track": 5
+    },
+    {
+      "kind": "journey",
+      "id": "j4-test",
+      "take": "a",
+      "from": 28.4,
+      "to": 35.4,
+      "start": 47,
+      "end": 55.5,
+      "title": "Ready in seconds",
+      "summaries": [
+        {
+          "step": "exam-start",
+          "text": "Built from his class sources, not AI slop."
+        },
+        {
+          "step": "exam-answer-1",
+          "text": "Every question cites its lecture or reading."
+        }
+      ]
+    },
+    {
+      "kind": "journey",
+      "id": "j5-hold",
+      "take": "a",
+      "from": 35.3,
+      "to": 36,
+      "start": 55.5,
+      "end": 61,
+      "title": "Checked by code. Correct.",
+      "summaries": [
+        {
+          "at": 0.4,
+          "text": "Practically zero cost: his course data is already on his laptop."
+        },
+        {
+          "at": 2.8,
+          "text": "Runs on his own Claude Code."
+        }
+      ]
+    },
+    {
+      "kind": "comp",
+      "id": "w-cheer",
+      "start": 47,
+      "end": 56,
+      "track": 5
+    },
+    {
+      "kind": "comp",
+      "id": "o-infra",
+      "start": 61,
+      "end": 71,
+      "track": 3
+    },
+    {
+      "kind": "comp",
+      "id": "c-end",
+      "start": 71,
+      "end": 74
+    }
+  ],
+  "sfx": [
+    {
+      "file": "sparkle",
+      "at": 13.9,
+      "vol": 0.45
+    },
+    {
+      "file": "whoosh-short",
+      "at": 26.5,
+      "vol": 0.3
+    },
+    {
+      "file": "pop",
+      "at": 29.4,
+      "vol": 0.45
+    },
+    {
+      "file": "sparkle",
+      "at": 29.45,
+      "vol": 0.4
+    },
+    {
+      "file": "click-soft",
+      "at": 29.7,
+      "vol": 0.3
+    },
+    {
+      "file": "whoosh",
+      "at": 42.1,
+      "vol": 0.3
+    },
+    {
+      "file": "pop",
+      "at": 46.4,
+      "vol": 0.4
+    },
+    {
+      "file": "riser",
+      "at": 47.2,
+      "vol": 0.25,
+      "dur": 1.6
+    },
+    {
+      "file": "click-soft",
+      "at": 53.1,
+      "vol": 0.3
+    },
+    {
+      "file": "chime",
+      "at": 54.9,
+      "vol": 0.45
+    },
+    {
+      "file": "sparkle",
+      "at": 54.4,
+      "vol": 0.4
+    },
+    {
+      "file": "whoosh-cinematic",
+      "at": 61.2,
+      "vol": 0.25,
+      "dur": 2.5
+    },
+    {
+      "file": "pop",
+      "at": 64.8,
+      "vol": 0.35
+    },
+    {
+      "file": "sparkle",
+      "at": 65.4,
+      "vol": 0.3
+    },
+    {
+      "file": "sparkle",
+      "at": 71.2,
+      "vol": 0.35
+    }
+  ]
+}

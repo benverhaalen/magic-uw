@@ -1,0 +1,101 @@
+{
+  "note": "The film's edit decision list, built to PRODUCTION-SCRIPT.md. tools/build.mjs turns it into index.html and compositions/j-*.html. Times in film seconds; journey from/to are take seconds. mask:right shows only the right 45% (for right-side composites over the presenter).",
+  "duration": 120,
+  "timeline": [
+    { "kind": "hf", "id": "hf-campus", "file": "assets/hf/campus.mp4", "start": 0, "end": 3, "standin": "c-hook" },
+    { "kind": "footage", "id": "skit-split", "file": "assets/film/skit-split.mp4", "start": 3, "end": 16 },
+    { "kind": "comp", "id": "o-names", "start": 3, "end": 10 },
+    { "kind": "comp", "id": "o-notify", "start": 10, "end": 16 },
+    { "kind": "footage", "id": "mic-click", "file": "assets/film/mic-click.mp4", "start": 16, "end": 22 },
+    { "kind": "hf", "id": "hf-whiz-sting", "file": "assets/hf/whiz-sting.mp4", "start": 22, "end": 26, "standin": "c-sting" },
+    { "kind": "hf", "id": "hf-spell", "file": "assets/hf/spell.mp4", "start": 26, "end": 30, "standin": "c-spell" },
+    {
+      "kind": "journey", "id": "j1-day", "take": "a", "from": 0, "to": 10, "start": 30, "end": 40,
+      "title": "Your day, handled",
+      "standin": { "x": 272, "y": 160, "w": 1310, "at": 0.4, "from": "Academic advising · Outlook", "text": "Registration hold: reply by Friday", "tag": "Stand-in · synthetic sample" },
+      "summaries": [
+        { "step": "brief-top", "text": "Advisor email, caught." },
+        { "step": "today-lecture", "text": "Lecture in an hour." },
+        { "step": "upcoming-pset", "text": "Then what's due next." }
+      ]
+    },
+    {
+      "kind": "journey", "id": "j2-item", "take": "a", "from": 10, "to": 20, "start": 40, "end": 50,
+      "title": "Everything this assignment needs",
+      "summaries": [
+        { "step": "open-pset", "text": "One click, all of it." },
+        { "step": "space-instructions", "text": "The syllabus rule, quoted." },
+        { "step": "space-linked", "text": "Sources you can check." }
+      ]
+    },
+    { "kind": "footage", "id": "sean-goof", "file": "assets/film/sean-goof.mp4", "start": 50, "end": 56 },
+    {
+      "kind": "journey", "id": "j4-aids", "take": "a", "from": 24, "to": 35, "start": 56, "end": 66,
+      "title": "Agentic Study Aids",
+      "summaries": [
+        { "step": "tile-cards", "text": "Cards in a whiz." },
+        { "step": "tile-exam", "text": "A practice test, real math." },
+        { "step": "exam-submit", "text": "Checked. Correct." }
+      ]
+    },
+    {
+      "kind": "journey", "id": "j5-deadlines", "take": "b", "from": 0, "to": 8, "start": 66, "end": 74,
+      "title": "Every deadline, one place",
+      "summaries": [
+        { "step": "calendar-month", "text": "Syllabus week to the final." },
+        { "step": "nav-study-learn", "text": "Every assessment, ranked." }
+      ]
+    },
+    {
+      "kind": "journey", "id": "j6-analytics", "take": "b", "from": 8, "to": 16, "start": 74, "end": 82,
+      "title": "Know where you stand",
+      "summaries": [
+        { "step": "grade-trend", "text": "From his real grades." },
+        { "step": "what-next", "text": "What to study next." }
+      ]
+    },
+    {
+      "kind": "journey", "id": "j7-plans", "take": "b", "from": 16, "to": 24, "start": 82, "end": 90,
+      "title": "Plans ahead",
+      "summaries": [
+        { "step": "nav-myuw", "text": "My UW, in one view." }
+      ]
+    },
+    { "kind": "footage", "id": "presenter", "file": "assets/film/presenter.mp4", "start": 90, "end": 120 },
+    { "kind": "comp", "id": "o-protocol", "start": 90, "end": 98 },
+    { "kind": "hf", "id": "hf-guard", "file": "assets/hf/guard.mp4", "start": 98, "end": 104, "standin": "c-guard", "mask": "right" },
+    { "kind": "comp", "id": "o-guard", "start": 98, "end": 104, "track": 4 },
+    { "kind": "comp", "id": "o-value", "start": 104, "end": 112 },
+    { "kind": "hf", "id": "hf-agents-spell", "file": "assets/hf/agents-spell.mp4", "start": 112, "end": 117, "standin": "c-agents", "mask": "right" },
+    { "kind": "comp", "id": "o-agents", "start": 112, "end": 117, "track": 4 },
+    { "kind": "comp", "id": "c-end", "start": 117, "end": 120 }
+  ],
+  "sfx": [
+    { "file": "whoosh-short", "at": 2.7, "vol": 0.3 },
+    { "file": "notification", "at": 10.3, "vol": 0.45 },
+    { "file": "click-soft", "at": 17.5, "vol": 0.4 },
+    { "file": "sparkle", "at": 22.2, "vol": 0.45 },
+    { "file": "whoosh-cinematic", "at": 26.2, "vol": 0.3, "dur": 3 },
+    { "file": "pop", "at": 29.2, "vol": 0.45 },
+    { "file": "sparkle", "at": 29.6, "vol": 0.35 },
+    { "file": "click-soft", "at": 38.6, "vol": 0.3 },
+    { "file": "click-soft", "at": 40.0, "vol": 0.3 },
+    { "file": "glitch-1", "at": 50.2, "vol": 0.3 },
+    { "file": "click-soft", "at": 56.2, "vol": 0.3 },
+    { "file": "whoosh-short", "at": 57.6, "vol": 0.35 },
+    { "file": "sparkle", "at": 60.2, "vol": 0.3 },
+    { "file": "chime", "at": 64.3, "vol": 0.45 },
+    { "file": "click-soft", "at": 66.6, "vol": 0.3 },
+    { "file": "click-soft", "at": 68.2, "vol": 0.3 },
+    { "file": "click-soft", "at": 71.4, "vol": 0.3 },
+    { "file": "click-soft", "at": 74.2, "vol": 0.3 },
+    { "file": "whoosh-short", "at": 75.8, "vol": 0.25 },
+    { "file": "click-soft", "at": 82.4, "vol": 0.3 },
+    { "file": "pop", "at": 91.0, "vol": 0.3 },
+    { "file": "impact-bass-1", "at": 98.8, "vol": 0.35 },
+    { "file": "whoosh-short", "at": 104.1, "vol": 0.3 },
+    { "file": "sparkle", "at": 112.3, "vol": 0.35 },
+    { "file": "whoosh-cinematic", "at": 113.2, "vol": 0.25, "dur": 3 },
+    { "file": "sparkle", "at": 117.2, "vol": 0.35 }
+  ]
+}

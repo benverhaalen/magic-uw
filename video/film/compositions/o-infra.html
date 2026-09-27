@@ -1,0 +1,85 @@
+<!doctype html>
+<!-- The infrastructure beat: one local store, sources streaming in, one open read-only protocol out to the student's agent. Every label is a shipped behaviour (see SOURCES.md). -->
+<html><head><meta charset="UTF-8" /></head><body>
+  <template>
+    <style>
+      @font-face { font-family: Karma; src: url("assets/fonts/Karma-Medium.ttf") format("truetype"); font-weight: 500; }
+      @font-face { font-family: Geist; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+      #oin-root { position: absolute; inset: 0; overflow: hidden; font-family: Geist, system-ui, sans-serif; color: #fff4ed;
+        background: radial-gradient(ellipse 70% 60% at 50% 55%, #7a2a2b 0%, transparent 70%), linear-gradient(155deg, #5c0b10, #2a0e10 60%, #1a0d0b); }
+      #oin-head { position: absolute; left: 0; right: 0; top: 70px; text-align: center; font-family: Karma, Georgia, serif; font-weight: 500; font-size: 64px; line-height: 1.1; }
+      #oin-sub { position: absolute; left: 0; right: 0; top: 160px; text-align: center; font-size: 28px; color: #ffe9dd; }
+      #oin-core { position: absolute; left: 760px; top: 400px; width: 400px; height: 250px; border-radius: 26px; background: #faf8f4; color: #29231f; display: grid; place-items: center; text-align: center; box-shadow: 0 0 0 3px #f7c440, 0 0 70px rgba(247, 196, 64, 0.55); }
+      #oin-core b { display: block; font-family: Karma, Georgia, serif; font-weight: 500; font-size: 40px; }
+      #oin-core span { display: block; font-size: 21px; color: #574424; margin-top: 8px; padding: 0 26px; }
+      .oin-src, .oin-ag { position: absolute; padding: 12px 20px; border-radius: 12px; font-size: 24px; font-weight: 600; white-space: nowrap; }
+      .oin-src { background: rgba(255, 244, 237, 0.1); border: 1px solid rgba(255, 244, 237, 0.3); }
+      .oin-src small, .oin-ag small { display: block; font-size: 17px; font-weight: 400; color: #ffe9dd; margin-top: 2px; }
+      .oin-ag { background: #f7c440; color: #3a2a0c; }
+      .oin-ag small { color: #574424; }
+      #oin-lines { position: absolute; inset: 0; }
+      #oin-lines path { fill: none; stroke: #f7c440; stroke-width: 3; stroke-linecap: round; }
+      #oin-lines path.out { stroke: #fff4ed; stroke-dasharray: 10 10; }
+      #oin-proto { position: absolute; left: 1500px; top: 800px; font-size: 20px; font-weight: 600; color: #f7c440; letter-spacing: 0.04em; text-transform: uppercase; }
+      .oin-fact { position: absolute; bottom: 64px; font-size: 24px; color: #fff4ed; background: rgba(255, 244, 237, 0.12); border-radius: 99px; padding: 8px 20px; }
+      #oin-whiz { position: absolute; left: 820px; top: 700px; width: 110px; height: 177px; }
+      #oin-whiz img { width: 100%; height: 100%; filter: drop-shadow(0 0 20px rgba(247, 196, 64, 0.6)); }
+      .oin-dot { position: absolute; width: 14px; height: 14px; border-radius: 50%; background: #f7c440; box-shadow: 0 0 14px #f7c440; }
+    </style>
+    <div id="oin-root" data-composition-id="o-infra" data-width="1920" data-height="1080">
+      <div id="oin-head">All his data, one local store.</div>
+      <div id="oin-sub">One open protocol his own AI plugs into.</div>
+      <svg id="oin-lines" viewBox="0 0 1920 1080">
+        <path id="oin-l1" d="M 420 300 C 600 300 640 470 760 480" />
+        <path id="oin-l2" d="M 420 470 C 580 470 640 510 760 510" />
+        <path id="oin-l3" d="M 420 640 C 580 640 640 560 760 560" />
+        <path id="oin-l4" d="M 420 810 C 600 810 640 610 760 600" />
+        <path id="oin-o1" class="out" d="M 1160 470 C 1300 470 1360 330 1500 330" />
+        <path id="oin-o2" class="out" d="M 1160 525 C 1300 525 1360 525 1500 525" />
+        <path id="oin-o3" class="out" d="M 1160 580 C 1300 580 1360 720 1500 720" />
+      </svg>
+      <div class="oin-src" id="oin-s1" style="left:150px;top:266px">Canvas<small>courses, files, due dates</small></div>
+      <div class="oin-src" id="oin-s2" style="left:150px;top:436px">Enrollment · DARS<small>schedule and degree audit</small></div>
+      <div class="oin-src" id="oin-s3" style="left:150px;top:606px">Outlook<small>course mail, calendar</small></div>
+      <div class="oin-src" id="oin-s4" style="left:150px;top:776px">Notes<small>Word · Google Drive</small></div>
+      <div id="oin-core"><div><b>My Magic UW</b><span>one local database on his laptop, encrypted at rest</span></div></div>
+      <div id="oin-proto">Open, read-only protocol</div>
+      <div class="oin-ag" id="oin-a1" style="left:1500px;top:296px">Claude Code<small>session opens with the app</small></div>
+      <div class="oin-ag" id="oin-a2" style="left:1500px;top:491px">Codex</div>
+      <div class="oin-ag" id="oin-a3" style="left:1500px;top:686px">Any MCP agent<small>per-course grants</small></div>
+      <div class="oin-dot" id="oin-d1" style="left:413px;top:293px"></div>
+      <div class="oin-dot" id="oin-d2" style="left:413px;top:463px"></div>
+      <div class="oin-dot" id="oin-d3" style="left:413px;top:633px"></div>
+      <div class="oin-dot" id="oin-d4" style="left:413px;top:803px"></div>
+      <div id="oin-whiz"><img src="assets/brand/mark-color.svg" alt="" /></div>
+      <div class="oin-fact" id="oin-f1" style="left:330px">Code does the exact work: dates, IDs, grades</div>
+      <div class="oin-fact" id="oin-f2" style="left:1010px">Your AI reads only what you allow</div>
+    </div>
+    <script>
+      (() => {
+        const tl = gsap.timeline({ paused: true });
+        const len = (id) => document.getElementById(id).getTotalLength();
+        ["oin-l1", "oin-l2", "oin-l3", "oin-l4", "oin-o1", "oin-o2", "oin-o3"].forEach((id) => gsap.set("#" + id, { strokeDasharray: id.startsWith("oin-o") ? "10 10" : len(id), strokeDashoffset: len(id) }));
+        tl.fromTo("#oin-head", { y: 26, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: "expo.out" }, 0.1);
+        tl.fromTo("#oin-core", { scale: 0.6, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.7, ease: "back.out(2)" }, 0.4);
+        ["#oin-s1", "#oin-s2", "#oin-s3", "#oin-s4"].forEach((s, i) => tl.fromTo(s, { x: -40, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5, ease: "expo.out" }, 0.8 + i * 0.18));
+        ["#oin-l1", "#oin-l2", "#oin-l3", "#oin-l4"].forEach((l, i) => tl.to(l, { strokeDashoffset: 0, duration: 0.8, ease: "power2.inOut" }, 1.2 + i * 0.15));
+        ["#oin-d1", "#oin-d2", "#oin-d3", "#oin-d4"].forEach((d, i) => {
+          tl.fromTo(d, { x: 0, y: 0, opacity: 0 }, { opacity: 1, duration: 0.1 }, 2.0 + i * 0.2);
+          tl.to(d, { x: 350, y: [190, 45, -75, -205][i], duration: 0.9, ease: "power1.in" }, 2.0 + i * 0.2);
+          tl.to(d, { opacity: 0, duration: 0.12 }, 2.88 + i * 0.2);
+        });
+        tl.fromTo("#oin-sub", { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "expo.out" }, 3.0);
+        tl.fromTo("#oin-proto", { opacity: 0 }, { opacity: 1, duration: 0.4 }, 3.2);
+        ["#oin-o1", "#oin-o2", "#oin-o3"].forEach((l, i) => tl.to(l, { strokeDashoffset: 0, duration: 0.7, ease: "power2.out" }, 3.3 + i * 0.15));
+        ["#oin-a1", "#oin-a2", "#oin-a3"].forEach((a, i) => tl.fromTo(a, { scale: 0.5, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.45, ease: "back.out(3)" }, 3.7 + i * 0.2));
+        tl.fromTo("#oin-whiz", { y: 60, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: "back.out(2)" }, 4.3);
+        tl.fromTo("#oin-whiz", { rotation: 0 }, { rotation: -10, duration: 0.3, yoyo: true, repeat: 3, ease: "sine.inOut", transformOrigin: "50% 90%" }, 5.0);
+        tl.fromTo("#oin-f1", { y: 18, opacity: 0 }, { y: 0, opacity: 1, duration: 0.45, ease: "expo.out" }, 5.4);
+        tl.fromTo("#oin-f2", { y: 18, opacity: 0 }, { y: 0, opacity: 1, duration: 0.45, ease: "expo.out" }, 6.0);
+        tl.to("#oin-root", { opacity: 1, duration: 0.01 }, 9);
+        window.__timelines["o-infra"] = tl;
+      })();
+    </script>
+  </template>
+</body></html>

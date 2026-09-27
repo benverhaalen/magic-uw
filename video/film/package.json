@@ -1,0 +1,19 @@
+{
+  "name": "my-magic-uw-film",
+  "private": true,
+  "type": "module",
+  "description": "My Magic UW 2-minute submission video: a HyperFrames project. Local renders only; never publish.",
+  "scripts": {
+    "capture": "tsx capture/capture.ts",
+    "placeholders": "node tools/placeholders.mjs",
+    "lint": "npx --yes hyperframes@0.8.79 lint",
+    "check": "npx --yes hyperframes@0.8.79 check",
+    "preview": "npx --yes hyperframes@0.8.79 render --quality draft -o out/preview.mp4",
+    "render": "npx --yes hyperframes@0.8.79 render --quality high -o out/final.mp4"
+  },
+  "devDependencies": {
+    "gsap": "3.15.0",
+    "playwright": "1.63.0",
+    "tsx": "4.20.6"
+  }
+}

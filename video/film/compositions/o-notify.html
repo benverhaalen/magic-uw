@@ -1,0 +1,31 @@
+<!doctype html>
+<html><head><meta charset="UTF-8" /></head><body>
+  <template>
+    <style>
+      @font-face { font-family: Geist; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+      /* A crisp phone notification over Sean's side of the skit (rebuilt, not filmed). */
+      #ont-root { position: absolute; inset: 0; font-family: Geist, system-ui, sans-serif; }
+      #ont-card { position: absolute; left: 220px; top: 120px; width: 560px; padding: 20px 24px; border-radius: 22px; background: rgba(250, 248, 244, 0.97); color: #29231f; box-shadow: 0 24px 60px rgba(10, 4, 3, 0.55); display: flex; gap: 16px; }
+      #ont-icon { width: 52px; height: 52px; flex: none; border-radius: 12px; background: #c5050c; display: flex; align-items: center; justify-content: center; }
+      #ont-icon svg { width: 30px; height: 30px; }
+      #ont-app { font-size: 17px; color: #746d66; }
+      #ont-t { font-size: 26px; font-weight: 700; margin-top: 2px; }
+      #ont-d { font-size: 19px; color: #3a342f; margin-top: 4px; }
+    </style>
+    <div id="ont-root" data-composition-id="o-notify" data-width="1920" data-height="1080">
+      <div id="ont-card">
+        <div id="ont-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg></div>
+        <div><div id="ont-app">Course announcement · now</div><div id="ont-t">Exam 2 moved to tomorrow</div><div id="ont-d">Same room. Coverage unchanged.</div></div>
+      </div>
+    </div>
+    <script>
+      (() => {
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo("#ont-card", { y: -120, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: "back.out(1.6)" }, 0.3);
+        tl.to("#ont-card", { x: 6, duration: 0.05, yoyo: true, repeat: 5 }, 0.9);
+        tl.to("#ont-card", { y: -120, opacity: 0, duration: 0.4, ease: "power2.in" }, 5.3);
+        window.__timelines["o-notify"] = tl;
+      })();
+    </script>
+  </template>
+</body></html>

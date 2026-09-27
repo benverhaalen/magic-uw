@@ -1,0 +1,110 @@
+{
+  "note": "Machine copy of the operator's 8-frame script (Sept 27). tts = TEMP guide voice text. caption:false = spoken, not burned in (the journey titles and facts carry the words). Previous: script.v1.json.",
+  "voices": {
+    "Ben": "am_michael"
+  },
+  "lines": [
+    {
+      "id": "v1",
+      "part": "skit",
+      "speaker": "Ben",
+      "kind": "vo",
+      "slot": [
+        0.3,
+        12.8
+      ],
+      "text": "For the past three weeks, Sean has spent hours scouring Canvas, textbooks and Outlook just to get set up on a single homework assignment. That is, until he joined the student revolution: My Magic UW.",
+      "tts": "For the past three weeks, Sean has spent hours scouring Canvas, textbooks and Outlook just to get set up on a single homework assignment. That is, until he joined the student revolution: My Magic U W."
+    },
+    {
+      "id": "v2",
+      "part": "features",
+      "speaker": "Ben",
+      "kind": "vo",
+      "caption": false,
+      "slot": [
+        13.2,
+        26.2
+      ],
+      "text": "Our friend Wiz has agreed to show us around. All Sean has to do is check his daily briefing. It's preloaded with his most vital work, based on due date and importance, all run through a deterministic algorithm.",
+      "tts": "Our friend Wiz has agreed to show us around. All Sean has to do is check his daily briefing. It's preloaded with his most vital work, based on due date and importance, all run through a deterministic algorithm."
+    },
+    {
+      "id": "v3",
+      "part": "features",
+      "speaker": "Ben",
+      "kind": "vo",
+      "caption": false,
+      "slot": [
+        26.5,
+        29.5
+      ],
+      "text": "All he has to do is click once… and poof.",
+      "tts": "All he has to do is click once... and poof."
+    },
+    {
+      "id": "v4",
+      "part": "features",
+      "speaker": "Ben",
+      "kind": "vo",
+      "caption": false,
+      "slot": [
+        30,
+        35.6
+      ],
+      "text": "All of his resources are at his fingertips, in one click.",
+      "tts": "All of his resources are at his fingertips, in one click."
+    },
+    {
+      "id": "v5",
+      "part": "skit",
+      "speaker": "Ben",
+      "kind": "vo",
+      "slot": [
+        36.2,
+        41.8
+      ],
+      "text": "Sean is now flying through his assignment so fast, he might even have some extra time to study.",
+      "tts": "Sean is now flying through his assignment so fast, he might even have some extra time to study."
+    },
+    {
+      "id": "v6",
+      "part": "features",
+      "speaker": "Ben",
+      "kind": "vo",
+      "caption": false,
+      "slot": [
+        42.2,
+        46.9
+      ],
+      "text": "Luckily, Wiz has got us covered. Let's check out his custom practice test.",
+      "tts": "Luckily, Wiz has got us covered. Let's check out his custom practice test."
+    },
+    {
+      "id": "v7",
+      "part": "features",
+      "speaker": "Ben",
+      "kind": "vo",
+      "caption": false,
+      "slot": [
+        47.3,
+        60.6
+      ],
+      "text": "Practice tests and other study materials are ready within seconds, at practically zero cost, because the data is already preloaded into My Magic UW, and built on all of his existing class sources, not some random AI slop.",
+      "tts": "Practice tests and other study materials are ready within seconds, at practically zero cost, because the data is already preloaded into My Magic U W, and built on all of his existing class sources, not some random AI slop."
+    },
+    {
+      "id": "v8",
+      "part": "features",
+      "speaker": "Ben",
+      "kind": "vo",
+      "caption": false,
+      "slot": [
+        61.3,
+        69.8
+      ],
+      "text": "And here's the real magic underneath: all of Sean's data lives in one local database on his laptop, with one open protocol his own Claude Code plugs straight into.",
+      "tts": "And here's the real magic underneath: all of Sean's data lives in one local database on his laptop, with one open protocol his own Claude Code plugs straight into."
+    }
+  ]
+}

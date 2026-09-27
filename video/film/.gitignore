@@ -1,0 +1,14 @@
+node_modules/
+out/
+snapshots/
+assets/ui/
+assets/vo/
+assets/sfx/
+assets/*.mp4
+assets/*.wav
+assets/*.PLACEHOLDER
+assets/*.TEMP
+.hyperframes/
+loops.html
+assets/hf/
+assets/presenter.mp4
