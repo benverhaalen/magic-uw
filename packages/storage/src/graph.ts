@@ -19,11 +19,22 @@ import {
 type Row = Record<string, string | number | bigint | Uint8Array | null>;
 type Prepare = (sql: string) => StatementSync;
 
+/**
+ * The v9 step. Guarded (IF NOT EXISTS, and the two columns only when absent) so a database that
+ * already holds any of these objects, such as a hand-downgraded test fixture, still upgrades.
+ */
+export function migrateGraph(db: { exec(sql: string): void; prepare(sql: string): StatementSync }): void {
+  const columns = new Set(
+    (db.prepare("SELECT name FROM pragma_table_info('material_facts')").all() as Row[]).map((r) => String(r.name)),
+  );
+  if (!columns.has("basis")) db.exec("ALTER TABLE material_facts ADD COLUMN basis TEXT NOT NULL DEFAULT 'text';");
+  if (!columns.has("quote")) db.exec("ALTER TABLE material_facts ADD COLUMN quote TEXT;");
+  db.exec(GRAPH_SCHEMA);
+}
+
 export const GRAPH_SCHEMA = `
-  ALTER TABLE material_facts ADD COLUMN basis TEXT NOT NULL DEFAULT 'text';
-  ALTER TABLE material_facts ADD COLUMN quote TEXT;
-  CREATE INDEX material_facts_kind ON material_facts(kind, value);
-  CREATE TABLE external_refs (
+  CREATE INDEX IF NOT EXISTS material_facts_kind ON material_facts(kind, value);
+  CREATE TABLE IF NOT EXISTS external_refs (
     id TEXT PRIMARY KEY, source_id TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
     account_scope TEXT NOT NULL, course_id TEXT NOT NULL, url TEXT NOT NULL, title TEXT,
     host TEXT NOT NULL, host_class TEXT NOT NULL, treatment TEXT NOT NULL,
@@ -31,9 +42,9 @@ export const GRAPH_SCHEMA = `
     first_seen TEXT NOT NULL, last_seen TEXT NOT NULL,
     UNIQUE (account_scope, course_id, url)
   );
-  CREATE INDEX external_refs_source ON external_refs(source_id);
-  CREATE INDEX external_refs_found_in ON external_refs(found_in_resource_id);
-  CREATE TABLE resource_refs (
+  CREATE INDEX IF NOT EXISTS external_refs_source ON external_refs(source_id);
+  CREATE INDEX IF NOT EXISTS external_refs_found_in ON external_refs(found_in_resource_id);
+  CREATE TABLE IF NOT EXISTS resource_refs (
     from_resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
     ord INTEGER NOT NULL, input_hash TEXT NOT NULL,
     to_resource_id TEXT REFERENCES resources(id) ON DELETE CASCADE,
@@ -41,8 +52,8 @@ export const GRAPH_SCHEMA = `
     target TEXT NOT NULL, kind TEXT NOT NULL, strength TEXT NOT NULL, reason TEXT NOT NULL,
     PRIMARY KEY (from_resource_id, ord)
   ) WITHOUT ROWID;
-  CREATE INDEX resource_refs_to ON resource_refs(to_resource_id);
-  CREATE INDEX resource_refs_external ON resource_refs(external_ref_id);
+  CREATE INDEX IF NOT EXISTS resource_refs_to ON resource_refs(to_resource_id);
+  CREATE INDEX IF NOT EXISTS resource_refs_external ON resource_refs(external_ref_id);
 `;
 
 const str = (v: Row[string] | undefined): string | null => (v === null || v === undefined ? null : String(v));

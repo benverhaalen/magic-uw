@@ -13,7 +13,7 @@ import { planningMigration, planningRepository } from "./planning";
 import { textHash } from "../../retrieval/src/index";
 import { COURSE_CORE_SCHEMA, courseCoreRepository } from "./course-core";
 import { createPassageIndex, scopeToken } from "./passages";
-import { GRAPH_SCHEMA, graphRepository } from "./graph";
+import { graphRepository, migrateGraph } from "./graph";
 import { LEARNING_SCHEMA } from "./learning";
 import { LEARNING_V8 } from "./learning-v8";
 import { createSqlLearningStore, type SqlLearningStore } from "../../learning/src/sql-store";
@@ -349,7 +349,13 @@ export function createStore(
   steps.push([7, () => db.exec(LEARNING_SCHEMA + "PRAGMA user_version = 7;")]);
   steps.push([8, () => db.exec(LEARNING_V8 + "PRAGMA user_version = 8;")]);
   // v9: the course graph (the material pipeline): external refs, resource refs, quoted facts.
-  steps.push([9, () => db.exec(GRAPH_SCHEMA + "PRAGMA user_version = 9;")]);
+  steps.push([
+    9,
+    () => {
+      migrateGraph(db);
+      db.exec("PRAGMA user_version = 9;");
+    },
+  ]);
   const migrationBackup = file ? migrationBackupPath(path) : null;
   const passageIndex = createPassageIndex(db, prepare);
   const courseScope = (accountScope: string, courseId: string) =>
