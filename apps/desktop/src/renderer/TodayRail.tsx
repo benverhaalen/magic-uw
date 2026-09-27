@@ -370,17 +370,21 @@ export function TodayRail({
               <button
                 key={e.id}
                 className={`rail-block event ${e.startOnly ? "start-only" : ""}`}
-                title={`${e.title} · ${e.endMin != null ? `${clock(e.startMin)}–${clock(e.endMin)}` : `${clock(e.startMin)}, start only`}`}
+                title={`${e.title} · ${e.endMin != null ? `${clock(e.startMin)}–${clock(e.endMin)}` : `${clock(e.startMin)}, start only`}${e.location ? ` · ${e.location}` : ""}`}
                 aria-label={`${e.title}, ${e.endMin != null ? `${clock(e.startMin)} to ${clock(e.endMin)}` : `${clock(e.startMin)}, start only`}. Open details`}
                 onClick={() => onSelect(e.id)}
                 style={{ top: top(e.startMin) + 1, height: height(e.startMin, end) }}
               >
-                <b>{e.title}</b>
+                <b>
+                  {e.onlineMeeting === "teams" ? <span className="rail-teams">Teams</span> : null}
+                  {e.title}
+                </b>
                 {height(e.startMin, end) >= 36 ? (
                   <span>
                     {e.endMin != null
                       ? `${clock(e.startMin)}–${clock(e.endMin)}`
                       : `${clock(e.startMin)} · start only`}
+                    {e.location && e.onlineMeeting !== "teams" ? ` · ${e.location}` : ""}
                   </span>
                 ) : null}
               </button>

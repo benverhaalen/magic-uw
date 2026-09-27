@@ -1648,3 +1648,26 @@ select {
 .rail-block.event:hover b {
   text-decoration: underline;
 }
+
+/* Outlook meetings in the rail, and the Outlook link field in Sources. */
+.rail-teams {
+  display: inline-block;
+  margin-right: 5px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: #e7e6f7;
+  color: #4b4a9c;
+  font-size: 9.5px;
+  font-weight: 600;
+  vertical-align: 1px;
+}
+.text-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 12px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+}

@@ -1015,6 +1015,88 @@ function Manifest({ manifest }: { manifest: ContextManifest }) {
   );
 }
 
+function OutlookCalendar({
+  busy,
+  onSync,
+}: {
+  busy: boolean;
+  onSync: () => unknown;
+}) {
+  const [connected, setConnected] = useState<boolean | null>(null);
+  const [link, setLink] = useState("");
+  const [status, setStatus] = useState("");
+  const available = Boolean(window.magic?.setOutlookCalendar);
+  useEffect(() => {
+    void window.magic?.outlookCalendarStatus?.().then((s) => setConnected(s.connected));
+  }, []);
+  const save = async (value: string | null) => {
+    setStatus("");
+    try {
+      const result = await window.magic.setOutlookCalendar!(value);
+      setConnected(result.connected);
+      setLink("");
+      setStatus(result.connected ? "Saved. Refreshing your calendar…" : "Outlook calendar disconnected.");
+      await onSync();
+    } catch (cause) {
+      setStatus(cause instanceof Error ? cause.message : "The link could not be saved.");
+    }
+  };
+  return (
+    <section className="settings-section">
+      <div className="section-heading">
+        <div>
+          <h2>Outlook calendar</h2>
+          <p>
+            Adds your meetings and appointments, including Microsoft Teams
+            meetings, to Today. In Outlook on the web: Settings → Calendar →
+            Shared calendars → Publish a calendar, choose “Can view titles and
+            locations,” then paste the ICS link here. Anyone with that link can
+            see those titles and locations, so it is stored encrypted on this
+            device and never shared. Published calendars don’t include Teams
+            join links; open the meeting in Outlook or Teams to join.
+          </p>
+        </div>
+      </div>
+      {!available ? (
+        <p className="small muted">Available in the desktop app.</p>
+      ) : connected ? (
+        <div className="inline-actions">
+          <span className="small">Connected</span>
+          <button className="subtle-button" disabled={busy} onClick={() => void save(null)}>
+            Disconnect
+          </button>
+        </div>
+      ) : (
+        <form
+          className="inline-actions"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void save(link);
+          }}
+        >
+          <input
+            className="text-input"
+            aria-label="Published Outlook calendar ICS link"
+            placeholder="https://outlook.office365.com/owa/calendar/…/calendar.ics"
+            value={link}
+            onChange={(e) => setLink(e.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <button className="button" type="submit" disabled={busy || !link.trim()}>
+            Connect
+          </button>
+        </form>
+      )}
+      {status ? (
+        <p className="small muted" role="status">
+          {status}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 function Sources({
   snapshot,
   run,
@@ -1093,6 +1175,7 @@ function Sources({
           Previously captured records remain available when a session expires.
         </p>
       </section>
+      <OutlookCalendar busy={busy} onSync={onSync} />
       <IngestionControls snapshot={snapshot} busy={busy} run={run} />
       <section className="settings-section">
         <h2>Captured sources</h2>

@@ -12,5 +12,7 @@ const bridge: AppBridge = {
   localAsk: (request) => ipcRenderer.invoke("magic:local-ask", request),
   cancelLocal: () => ipcRenderer.invoke("magic:local-cancel"),
   exportMcp: (id) => ipcRenderer.invoke("magic:mcp-export", id),
+  setOutlookCalendar: (url) => ipcRenderer.invoke("magic:outlook-calendar", url),
+  outlookCalendarStatus: () => ipcRenderer.invoke("magic:outlook-calendar-status"),
 };
 contextBridge.exposeInMainWorld("magic", bridge);

@@ -20,8 +20,12 @@ import {
   UwPlanningHttp,
 } from "../../../packages/connectors/src/uw-planning-http";
 import { syncUwPlanning } from "../../../packages/connectors/src/uw-planning-sync";
-import { readBounded } from "../../../packages/connectors/src/network";
+import {
+  isOutlookPublishedCalendar,
+  readBounded,
+} from "../../../packages/connectors/src/network";
 import { createSecretVault } from "./secrets";
+import sampleFixture from "../../../fixtures/course.json";
 import {
   commandSchema,
   captureBatchSchema,
@@ -219,7 +223,8 @@ app
             key.startsWith("calendar:") &&
             key.length < 1000 &&
             typeof value === "string" &&
-            value.length < 4000
+            value.length < 4000 &&
+            key !== "calendar:outlook"
           ) {
             const u = new URL(value);
             if (
@@ -697,6 +702,19 @@ app
         await closed;
       },
     );
+    ipcMain.handle("magic:outlook-calendar", async (event, value: unknown) => {
+      validateSender(event);
+      if (value !== null && (typeof value !== "string" || !isOutlookPublishedCalendar(value.trim())))
+        throw new Error(
+          "That isn't a published Outlook calendar link. In Outlook: Settings → Calendar → Shared calendars → Publish a calendar, then copy the ICS link.",
+        );
+      await vault.set("calendar:outlook", value === null ? "" : value.trim());
+      return { connected: value !== null };
+    });
+    ipcMain.handle("magic:outlook-calendar-status", async (event) => {
+      validateSender(event);
+      return { connected: Boolean(await vault.get("calendar:outlook")) };
+    });
     ipcMain.handle("magic:sync", async (event) => {
       validateSender(event);
       await ready;
@@ -850,7 +868,7 @@ app
           "window.magic.execute({type:'fixture'})",
         );
         if (
-          imported.snapshot.resources.length !== 2 ||
+          imported.snapshot.resources.length !== sampleFixture.resources.length ||
           !imported.snapshot.fixtureMode
         )
           throw new Error("Fixture import failed");

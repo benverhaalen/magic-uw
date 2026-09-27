@@ -226,8 +226,12 @@ export const calendarMetadataSchema = z
     lastModified: optionalInstant,
     assignmentExternalId: id.optional(),
     recurrenceId: z.string().max(200).optional(),
+    location: z.string().max(500).optional(),
+    onlineMeeting: z.enum(["teams"]).optional(),
   })
   .strict();
+/** Course id used for events from the student's published Outlook calendar (not a course). */
+export const OUTLOOK_CALENDAR_COURSE_ID = "outlook-calendar";
 export const crawlMetadataSchema = z
   .object({
     discoveredFrom: evidenceUrlSchema.optional(),
@@ -879,6 +883,10 @@ export interface AppBridge {
   syncPlanning?(): Promise<CommandResult>;
   syncCanvas?(): Promise<CommandResult>;
   signOutUW?(): Promise<void>;
+  /** Saves (or with null, removes) the published Outlook calendar link in the encrypted vault. */
+  setOutlookCalendar?(url: string | null): Promise<{ connected: boolean }>;
+  /** Whether a link is saved. The link itself is never returned to the renderer. */
+  outlookCalendarStatus?(): Promise<{ connected: boolean }>;
   localStatus?(): Promise<LocalStatus>;
   localAsk?(request: LocalQuestion): Promise<LocalAnswer>;
   cancelLocal?(): Promise<void>;

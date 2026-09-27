@@ -5,6 +5,7 @@ import {
   type CaptureBatch,
   type Connector,
   type ResourceInput,
+  OUTLOOK_CALENDAR_COURSE_ID,
 } from "@magic/contracts";
 import { contentHash } from "./external.ts";
 import { MaterialReadError, publicUrl, type PublicClient } from "./network.ts";
@@ -19,6 +20,8 @@ export interface CalendarConnectorOptions {
   client: PublicClient;
   assignmentUrls?: Map<string, string>;
   now?: () => Date;
+  /** Evidence link when an event has none. Defaults to the Canvas course page. */
+  defaultUrl?: string;
 }
 function value(input: unknown): string {
   return typeof input === "string"
@@ -98,7 +101,9 @@ export async function parseCalendar(
           severity: "warning",
         });
       const rawUrl = value(event.url);
-      let url = `${options.canvasOrigin}/courses/${encodeURIComponent(options.courseId)}`;
+      let url =
+        options.defaultUrl ??
+        `${options.canvasOrigin}/courses/${encodeURIComponent(options.courseId)}`;
       if (rawUrl) url = publicUrl(rawUrl).href;
       const parsedUrl = new URL(url);
       const assignmentPath = parsedUrl.pathname.match(
@@ -111,6 +116,9 @@ export async function parseCalendar(
           ? assignmentPath[2]
           : undefined);
       const timezone = (event.start as Date & { tz?: string }).tz;
+      const location = value(event.location).trim().slice(0, 500);
+      // Teams meetings are labeled in location or title; a published calendar omits the join link.
+      const teams = /microsoft teams/i.test(`${location} ${value(event.summary)}`);
       const cancelled = event.status === "CANCELLED";
       resources.push(
         resourceInputSchema.parse({
@@ -131,6 +139,8 @@ export async function parseCalendar(
             ...(timezone ? { timezone } : {}),
             lastModified: date(event.lastmodified) ?? null,
             ...(exact ? { assignmentExternalId: exact } : {}),
+            ...(location ? { location } : {}),
+            ...(teams ? { onlineMeeting: "teams" as const } : {}),
           },
           // DATE has no time or zone. Keep the date, without manufacturing a midnight deadline.
           deadlines:
@@ -216,6 +226,65 @@ export function calendarConnector(
               path: [],
               severity: "error",
             },
+          ],
+        });
+      }
+    },
+  };
+}
+
+export const OUTLOOK_CALENDAR_URL = "https://outlook.office.com/calendar/view/day";
+/** The student's own published Outlook calendar: meetings and appointments, not coursework. */
+export function outlookCalendarConnector(options: {
+  feedUrl: string;
+  accountScope: string;
+  client: PublicClient;
+  now?: () => Date;
+}): Connector {
+  const source: CaptureBatch["source"] = {
+    id: `calendar:outlook:${contentHash(options.accountScope).slice(0, 16)}`,
+    label: "Outlook calendar",
+    kind: "calendar",
+    accountScope: options.accountScope,
+    courseId: OUTLOOK_CALENDAR_COURSE_ID,
+    scope: "outlook_calendar",
+  };
+  return {
+    id: source.id,
+    async *pull(signal) {
+      const observedAt = (options.now ?? (() => new Date()))().toISOString();
+      const started = Date.now();
+      try {
+        if (!options.client.outlookFeed) throw new MaterialReadError("invalid_feed");
+        const text = await options.client.outlookFeed(options.feedUrl, signal);
+        const { resources, diagnostics } = await parseCalendar(text, {
+          // Outlook links never reach Canvas; no assignment matching applies.
+          canvasOrigin: "https://outlook.office.com",
+          accountScope: options.accountScope,
+          courseId: OUTLOOK_CALENDAR_COURSE_ID,
+          courseName: "Outlook calendar",
+          defaultUrl: OUTLOOK_CALENDAR_URL,
+          now: options.now,
+        });
+        yield captureBatchSchema.parse({
+          source,
+          observedAt,
+          resources,
+          diagnostics,
+          complete: !diagnostics.length,
+          status: diagnostics.length ? "partial" : "ok",
+          stats: { durationMs: Date.now() - started, records: resources.length, bytes: Buffer.byteLength(text) },
+        });
+      } catch (error) {
+        if (signal?.aborted) throw error;
+        yield captureBatchSchema.parse({
+          source,
+          observedAt,
+          resources: [],
+          complete: false,
+          status: "error",
+          diagnostics: [
+            { code: error instanceof MaterialReadError ? error.code : "outlook_calendar_unavailable", path: [], severity: "error" },
           ],
         });
       }

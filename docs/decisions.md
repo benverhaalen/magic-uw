@@ -121,7 +121,7 @@ Ben selected foundation/handoff before Electron implementation and described the
 
 ## 2026-09-26 — Today rail suggestions and day plan
 
-Implemented on `sean/today-calendar-rail`; **proposed for Ben's review, not accepted team direction.** Source: Sean, this project conversation, September 26 (original timestamps unavailable). Exact requests include:
+Implemented on `sean/today-calendar-rail`. **Aligned with Ben's accepted Today/Calendar contract** ([component contracts](design/component-contracts.md)): normal content is commitments and accepted study blocks, with suggestions on request; proposed and accepted minutes stay separate; one work projection (`projectWork`) feeds both Home's Upcoming and the rail. Sean confirmed on September 26: “build based on bens design docs, agree to what he has.” The ranking details below remain proposals for Ben's review. Source: Sean, this project conversation, September 26 (original timestamps unavailable). Exact requests include:
 
 > i dont want the calendar to feel crowded … look at priority of assignments and things to get a deeper understing on how to suggest ways to fill your day
 

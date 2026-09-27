@@ -29,6 +29,8 @@ export interface RailEvent {
   startMin: number;
   endMin: number | null;
   startOnly: boolean;
+  location?: string;
+  onlineMeeting?: "teams";
 }
 export interface RailDue {
   id: string;
@@ -239,6 +241,8 @@ export function buildTodayRail(
       startMin: start.min,
       endMin: end ? (end.date === today.date ? end.min : 24 * 60) : null,
       startOnly: !end,
+      ...(cal?.location ? { location: cal.location } : {}),
+      ...(cal?.onlineMeeting ? { onlineMeeting: cal.onlineMeeting } : {}),
     });
   }
   events.sort((a, b) => a.startMin - b.startMin);

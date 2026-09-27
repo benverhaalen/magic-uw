@@ -12,7 +12,11 @@ import {
   fetchCanvasActivitySummary,
 } from "../../../packages/connectors/src/canvas";
 import { CanvasHttp } from "../../../packages/connectors/src/canvas-http";
-import { calendarConnector } from "../../../packages/connectors/src/calendar";
+import {
+  calendarConnector,
+  outlookCalendarConnector,
+} from "../../../packages/connectors/src/calendar";
+import { OUTLOOK_CALENDAR_COURSE_ID } from "@magic/contracts";
 import {
   externalCourseConnector,
   contentHash,
@@ -155,6 +159,42 @@ export function createIngestion(store: Store, host: IngestionHost) {
         .join(":");
       changed ||= before !== after;
     }
+    // The student's published Outlook calendar, if they connected one.
+    const outlookHashes = () =>
+      store
+        .resources()
+        .filter((r) => r.courseId === OUTLOOK_CALENDAR_COURSE_ID && !r.deleted)
+        .map((r) => r.contentHash)
+        .sort()
+        .join(":");
+    const outlookBefore = outlookHashes();
+    const outlookUrl = secrets["calendar:outlook"];
+    const outlook = outlookCalendarConnector({
+      feedUrl: outlookUrl ?? "",
+      accountScope: "local",
+      client,
+      now,
+    });
+    if (outlookUrl) {
+      for await (const batch of outlook.pull(signal)) save(batch);
+    } else if (outlookBefore) {
+      // Disconnected: a complete empty read removes the old meetings instead of leaving stale ones.
+      save({
+        source: {
+          id: outlook.id,
+          label: "Outlook calendar",
+          kind: "calendar",
+          accountScope: "local",
+          courseId: OUTLOOK_CALENDAR_COURSE_ID,
+          scope: "outlook_calendar",
+        },
+        observedAt: now().toISOString(),
+        complete: true,
+        status: "ok",
+        resources: [],
+      });
+    }
+    changed ||= outlookBefore !== outlookHashes();
     return { changed };
   }
   async function documents(signal: AbortSignal) {
