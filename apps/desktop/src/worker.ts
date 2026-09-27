@@ -16,6 +16,7 @@ import { createLearningRouter, type StudyContext } from "../../../packages/learn
 import { createStudyContextResolver } from "./learning-context";
 import { createExamEvidence } from "../../../packages/learning/src/exam/evidence"; // owner: exam-prep
 import { dirname, join } from "node:path";
+import { homedir, platform as osPlatform } from "node:os";
 import {
   createLocalDocumentExtractor,
   createLocalOcrAdapter,
@@ -131,8 +132,8 @@ const generation = createPackHandler({ store, runner: generationRunner, brief: c
   const approach = createApproachHandler({ store, runner: generationRunner });
   const packs = generation.pack;
   Object.assign(generation, {
-    pack: (name: string, scope: PackScope, signal: AbortSignal): Promise<unknown> =>
-      name === APPROACH_PACK ? approach.run(scope, signal) : packs(name, scope, signal),
+    pack: (name: string, scope: PackScope, signal: AbortSignal, options?: { count?: number }): Promise<unknown> =>
+      name === APPROACH_PACK ? approach.run(scope, signal) : packs(name, scope, signal, options),
   });
 }
 // end owner: page-views
@@ -219,7 +220,7 @@ const intent = createIntentRouter({
 // end owner: intent
 // owner: notes. Session notes: batch scaffolds on the tick, "fill from slides" through the same
 // runner, and Google Docs sync through main (which alone holds the token). Microsoft waits for graph.ts.
-import { createNotesService, googleRemote, microsoftRemote, type NotesRemote } from "../../../packages/notes/src/index";
+import { createLocalNotesDrive, createNotesService, detectCloudFolders, googleRemote, microsoftRemote, type NotesRemote } from "../../../packages/notes/src/index";
 function notesHostCall(payload: unknown, timeoutMs: number): Promise<any> {
   const id = randomUUID();
   return new Promise((resolve, reject) => {
@@ -251,7 +252,14 @@ notesRemotes.microsoft = microsoftRemote(
   (request) => graphHost.transport(request),
   async () => graphScopes.includes("Files.ReadWrite.AppFolder"),
 );
-const notes = createNotesService({ store, runner: generationRunner, remotes: notesRemotes });
+// Notes saved straight to a folder the student's own OneDrive, Google Drive or iCloud client
+// already syncs: zero setup, no sign-in (see packages/notes/src/local-drive.ts). The chosen
+// folder and each note's last-written hash live in a small JSON file beside the workspace db.
+const localNotesDrive = createLocalNotesDrive({
+  statePath: join(dirname(process.env.MAGIC_DB_PATH!), "notes-local-drive.json"),
+  detect: () => detectCloudFolders({ platform: osPlatform(), env: process.env, home: homedir() }),
+});
+const notes = createNotesService({ store, runner: generationRunner, remotes: notesRemotes, localDrive: localNotesDrive });
 // end owner: notes
 // owner: agenda. The app's registry (owner: drain: only kinds that need a queue) plus agenda.estimate:
 // code estimates, then the student's own client on the background lane (one call per course
@@ -290,6 +298,7 @@ const core = createCore(store, {
   seams: { learning: createLearningRouter({
     store: store.learning,
     resolveContext: (resourceId): StudyContext | null => resolveStudyContext(resourceId),
+    resolveContexts: (resourceIds) => resolveStudyContext.many(resourceIds), // one workspace read per course scope
     // owner: analytics. One references port per analytics request, over the coursework store.
     // owner: pipeline: the material pipeline's adapter (it reuses analytics' adapter for exam dates
     // and course-map assessment rows).
@@ -745,7 +754,9 @@ port.on("message", async ({ data }: { data: any }) => {
         result: {
           ...(await core.execute({ type: "snapshot" })),
           message:
-            "Refresh finished. Source status shows any incomplete reads.",
+            // fix/sync-events: what a refresh reads: every course checked for changes, each current
+            // course's assignments and syllabus re-read, and any changed course read again.
+            "Refresh finished: every course was checked for changes, and each current course's assignments and syllabus were read again. Source status shows any incomplete reads.",
         },
       });
     } catch {
@@ -873,9 +884,13 @@ port.on("message", async ({ data }: { data: any }) => {
     });
     if (data.command?.type === "purge") {
       courseBriefs.purge(); // owner: course-facts
+      ingestion.purged(); // fix/sync-events: the saved refresh baselines go with the data
       ingestion.resume();
       pipeline.resume(); // owner: pipeline
     }
+    // fix/sync-events: a changed inclusion is probed afresh (a re-included course is read).
+    if (data.command?.type === "course-override" && typeof data.command.value?.courseId === "string")
+      ingestion.forget(data.command.value.courseId);
   } catch (error) {
     port.postMessage({
       kind: "response",

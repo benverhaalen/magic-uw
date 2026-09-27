@@ -13,7 +13,9 @@ import {
   utilityProcess,
   safeStorage,
   powerMonitor,
+  net,
   type IpcMainInvokeEvent,
+  type Session,
 } from "electron";
 import { readFile, writeFile, mkdir, stat, rm, appendFile, realpath } from "node:fs/promises";
 import { join, sep } from "node:path";
@@ -27,7 +29,6 @@ import {
 import { syncUwPlanning } from "../../../packages/connectors/src/uw-planning-sync";
 import {
   isOutlookPublishedCalendar,
-  readBounded,
 } from "../../../packages/connectors/src/network";
 import { checkedSpaceProbeUrl } from "../../../packages/connectors/src/space-hosts"; // owner: T05b
 // owner: acquisition
@@ -36,6 +37,7 @@ import {
   causeHeaders,
   fetchCanvasFile,
 } from "../../../packages/connectors/src/canvas-file-download";
+import { sessionHopFetch, sessionSourceResult } from "../../../packages/connectors/src/session-fetch";
 import { MaterialReadError } from "../../../packages/connectors/src/network";
 // end owner: acquisition
 import { clearSignOutSecrets, createSecretVault } from "./secrets";
@@ -203,6 +205,21 @@ app
     const data = app.getPath("userData");
     await mkdir(data, { recursive: true, mode: 0o700 });
     const studentSession = session.fromPartition("persist:uw");
+    // owner: acquisition. A read in an app-owned session that sees redirects (session-fetch.ts):
+    // Electron's session.fetch with redirect "manual" rejects every redirect instead. Same
+    // cookies, method, headers and Origin as session.fetch sent; no redirect is ever followed.
+    const sessionFetch = (ses: Session) =>
+      sessionHopFetch((url, init) =>
+        net.request({
+          url,
+          method: init.method,
+          session: ses,
+          credentials: "include",
+          redirect: "manual",
+          headers: init.headers,
+          ...(init.headers.origin ? { origin: init.headers.origin } : {}),
+        }),
+      );
     const planningScopePath = join(data, "planning-session-scope");
     let planningAccountScope: string;
     try {
@@ -213,7 +230,7 @@ app
       planningAccountScope = `uw-session:${randomUUID()}`;
     }
     const planningHttp = new UwPlanningHttp({
-      fetch: (url, init) => studentSession.fetch(url, init),
+      fetch: sessionFetch(studentSession), // owner: acquisition: not studentSession.fetch (session-fetch.ts)
     });
     const planningReads = new Set<string>();
     let planningCall: { id: string; promise: Promise<CommandResult> } | undefined;
@@ -651,7 +668,8 @@ app
           try {
             const file = await fetchCanvasFile(fileUrl, {
               origin: "https://canvas.wisc.edu",
-              session: (url, init) => studentSession.fetch(url, init),
+              // Not studentSession.fetch: it rejects every redirect, and every download is one.
+              session: sessionFetch(studentSession),
               plain: (url, init) => fetch(url, init),
               signal,
             });
@@ -757,12 +775,12 @@ app
             controller.signal,
             AbortSignal.timeout(30_000),
           ]);
-          const response = await (
+          const response = await sessionFetch(
             service === "gitlab" ||
             (service === "space" && new URL(target).hostname === "git.doit.wisc.edu")
               ? gitlabSession
-              : studentSession
-          ).fetch(target, {
+              : studentSession,
+          )(target, {
             method: "GET",
             credentials: "include",
             redirect: "manual",
@@ -774,34 +792,10 @@ app
             },
             signal,
           });
-          // owner: T05b: a space check needs only the status and a bounded start of the page.
-          const body =
-            service === "space"
-              ? await readBounded(response, 256 * 1024, signal).catch(() => "")
-              : await readBounded(response, 8 * 1024 * 1024, signal);
-          const headers = Object.fromEntries(
-            [
-              "content-type",
-              "link",
-              "retry-after",
-              "x-request-cost",
-              "x-rate-limit-remaining",
-              "x-next-page",
-            ].flatMap((key) =>
-              response.headers.has(key)
-                ? [[key, response.headers.get(key)!]]
-                : [],
-            ),
-          );
-          // owner: T05c (lead integration). The Canvas reader needs a redirect's target to tell a sign-in
-          // redirect from other redirects; only its origin and path cross, never the query.
-          const moved = response.headers.get("location");
-          if (moved) {
-            try {
-              const to = new URL(moved, target);
-              headers.location = to.origin + to.pathname;
-            } catch {}
-          }
+          // owner: T05b, T05c: the bounded body, fixed headers and a redirect's origin and path only
+          // (session-fetch.ts sessionSourceResult).
+          const result = await sessionSourceResult(response, target, service, signal);
+          const { body, headers } = result;
           // owner: T05e. A sync's profile read that confirms the session ended (spec A1): with
           // Remember my sign-in on and the student present, the app signs in again.
           if (
@@ -824,12 +818,7 @@ app
           worker.postMessage({
             kind: "source-response",
             id: message.id,
-            result: {
-              status: response.status,
-              url: response.url,
-              headers,
-              body,
-            },
+            result,
           });
         } catch {
           worker.postMessage({
@@ -1772,7 +1761,8 @@ app
             }
             return;
           }
-          const response = await loginSession.fetch(
+          // owner: acquisition: not loginSession.fetch, which rejects a redirect (session-fetch.ts).
+          const response = await sessionFetch(loginSession)(
             `${loginOrigin}${gitlab ? "/api/v4/user" : "/api/v1/users/self/profile"}`,
             {
               method: "GET",
