@@ -1,10 +1,10 @@
 % One-page Break Card for The Art of the Break (Badger BuildFest 2026).
 % Written in ASD-STE100 Simplified Technical English. Build with pdflatex break-card.tex
 \documentclass[10pt]{article}
-\usepackage[letterpaper,margin=0.5in,top=0.4in,bottom=0.35in]{geometry}
+\usepackage[letterpaper,margin=0.65in,top=0.5in,bottom=0.45in]{geometry}
 \usepackage[T1]{fontenc}
 \usepackage{lmodern}
-\usepackage{amsmath,amssymb,amsthm}
+\renewcommand{\familydefault}{\sfdefault}
 \usepackage{microtype}
 \usepackage{booktabs,tabularx}
 \usepackage{enumitem}
@@ -13,145 +13,75 @@
 
 \pagestyle{empty}
 \setlength{\parindent}{0pt}
-\setlength{\parskip}{1.8pt}
-\setlength{\abovedisplayskip}{2pt}\setlength{\belowdisplayskip}{2pt}
-\titleformat{\section}{\normalfont\scshape}{\thesection.}{0.5em}{}
-\titlespacing*{\section}{0pt}{5pt}{1pt}
-\setlist{nosep,leftmargin=1.6em,topsep=1pt,itemsep=0.5pt}
-
-\newtheoremstyle{card}{1.8pt}{1.8pt}{\normalfont}{}{\scshape}{.}{0.5em}{}
-\theoremstyle{card}
-\newtheorem{definition}{Definition}
-\newtheorem{claim}{Claim}
-\newtheorem{proposition}{Proposition}
-\newtheorem{corollary}{Corollary}
-\newtheorem*{remark}{Remark}
-\newtheorem*{observation}{Observation}
-\renewcommand{\qedsymbol}{$\blacksquare$}
+\setlength{\parskip}{3.5pt}
+\linespread{1.04}
+\titleformat{\section}{\normalfont\large}{}{0pt}{}
+\titlespacing*{\section}{0pt}{7pt}{1pt}
+\setlist{leftmargin=1.2em,topsep=1pt,itemsep=2pt,parsep=0pt}
 
 \newcommand{\repo}{https://github.com/benverhaalen/magic-uw/blob/9fe2f848144c6ff58830d6c5c870277833a679a3}
 \newcommand{\gh}[2]{\href{\repo/#1}{\underline{\texttt{#2}}}}
+\newcommand{\ghtext}[2]{\href{\repo/#1}{\underline{#2}}}
 \newcommand{\commit}[1]{\href{https://github.com/benverhaalen/magic-uw/commit/#1}{\underline{\texttt{#1}}}}
-\newcommand{\ci}[1]{\ [#1]}
 
 \begin{document}
 \small
 
 \begin{center}
-{\Large My Magic UW -- The Art of the Break}\\[3pt]
-{\itshape Checked quotes, unchecked sentences}\\[2pt]
-{\footnotesize Badger BuildFest 2026 \quad Live stress test on 27 September 2026 \quad \href{https://github.com/benverhaalen/magic-uw}{\underline{\texttt{github.com/benverhaalen/magic-uw}}}}
-\end{center}
-
-\section{The agent}
-
-\begin{definition}[Grounded answer]
-My Magic UW is a desktop study app for UW--Madison students. A student asks a question about a course. The student's own AI (Claude Code or Codex) writes the answer as short sentences $s_1,\dots,s_n$. Each sentence $s_i$ cites a quote $q_i$ from the course materials $P$. Code checks the answer before the student sees it. Our design rule is ``AI writes, code decides.''
-\end{definition}
-
-\begin{definition}[The old check]
-The function \gh{packages/core/src/intent/ask.ts\#L474}{checkAnswer} accepted a sentence when its quote was real, so $\text{accept}(s_i) \iff q_i \subseteq P$. It never compared the sentence $s_i$ with its quote $q_i$.
-\end{definition}
-
-\section{The failure}
-
-\begin{claim}
-The old check shows a false sentence to the student when the sentence cites a real quote. The real citation makes the false fact look more trustworthy.
-\end{claim}
-
-\vspace{-5pt}\begin{proof}[Proof by an example from the live test]
-The student asks ``How much is the final project worth?'' Our agent cites the real quote $q =$ ``final project 45\%'', so $q \subseteq P$. Its sentence starts ``The syllabus originally set the final project at 30\%'', and it corrects itself later in the same sentence. The old check accepts this sentence, because it tests only $q \subseteq P$. The student sees 30\% next to a working citation.
-\end{proof}
-\vspace{-5pt}
-
-\begin{remark}
-We searched our code for other checks that prove the evidence but not the conclusion. We found three more.
-(i) An email with a course code in its subject got the label ``Course staff'' from any sender.
-(ii) A Jev judgment (a hosted AI model) could raise any email to urgent, with no limit.
-(iii) A link that named the course number became the official course site, also when a student posted it in a discussion.
-\end{remark}
-
-\section{The stress test}
-
-\begin{definition}[Live test]
-We wrote 20 synthetic course scenarios to cause the failure. The five types are a changed syllabus date, room or weight, numbers near each other, arithmetic, weekdays, and two courses on one page. The student's Claude Code (\texttt{claude-sonnet-5}) answered each scenario 3 times through the real prompt, schema and client path of the app. We ran this on two builds, the first fix and the final fix. Code marked each sentence, and we read every sentence ourselves. In each run, 6 of the 60 answers correctly said ``Not in your materials'' and had no sentences.
-\end{definition}
-
-\begin{definition}[Targeted test]
-For each of the four weak checks, we generated 60 cases with a scripted fake model. Each case contains the trigger, so this test measures the fix and not the natural rate.
-\end{definition}
-
-\section{How often it happened}
-
-\begin{proposition}
-Our agent wrote 1 sentence that contradicts its own cited quote in 167 sentences (0.6\%). The old check shows it with a working citation. Before the fixes, each weak check failed in 60 of 60 targeted cases. Brackets give Wilson 95\% intervals.
-\end{proposition}
-
-\vspace{-6pt}
-\begin{center}
-\begin{tabularx}{\linewidth}{@{}X r r@{}}
-\toprule
-Live test on our agent & First fix (87 sentences) & Final fix (80 sentences) \\
-\midrule
-Sentences that contradict their own cited quote & 0/87 & 1/80\ci{0.2, 6.7}\% and caught \\
-Contradicting sentences that the student sees & 0/87 & 0/77\ci{0, 4.8}\% \\
-Answers where the check replaced a correct sentence & 15/60\ci{15.8, 37.2}\% & 2/60\ci{0.9, 11.4}\% \\
-\midrule
-Targeted test, 60 cases for each weak check & Before & After \\
-\midrule
-Wrong sentence shown next to a real quote & 60/60 & 0/60\ci{0, 6.0}\% \\
-Each of the three other weak checks (mail and site links) & 60/60 each & 0/60 each \\
-Correct results kept (staff mail urgent, real sites found) & 60/60 & 60/60 \\
-\bottomrule
-\end{tabularx}
+{\LARGE My Magic UW -- The Art of the Break}\\[5pt]
+{\footnotesize Badger BuildFest 2026 \quad Live stress test on 27 September 2026 \quad \href{https://github.com/benverhaalen/magic-uw}{\underline{github.com/benverhaalen/magic-uw}}}
 \end{center}
 \vspace{-4pt}
 
-\noindent\begin{minipage}[t]{0.52\linewidth}
-\section{What we did}
+\section*{Our agent}
+My Magic UW is a desktop study app for UW--Madison students. Its question agent answers questions about a student's courses. The model is the student's own Claude Code or Codex, with its tools off and a strict JSON output schema. The answer is a list of short sentences, and each sentence must cite an exact quote from course passages that code retrieved. Our rule is ``AI writes, code decides.'' The model writes the language, and deterministic code checks every fact before the student sees it.
 
-\begin{definition}[First fix, \commit{0f710ed}]
-Let $c(s)$ be the set of dates, weekdays, numbers and names in a text $s$. The new check \gh{packages/core/src/intent/ask.ts\#L438}{claimsMatch} requires
-\[
-\text{accept}(s_i) \iff q_i \subseteq P \ \text{ and } \ c(s_i) \subseteq c(q_i) .
-\]
-If $s_i$ fails, the app shows the quote $q_i$ word for word with its link. The student loses the wording but not the fact.
-\end{definition}
+\section*{The failure}
+Our verifier checked the evidence but not the claim. The function \gh{packages/core/src/intent/ask.ts\#L474}{checkAnswer} confirmed that each cited quote was really in the course material. It did not compare the sentence with its quote. Thus a wrong date, number or name passed the check when its quote was real, and the working citation made the wrong fact look more trustworthy.
 
-\begin{observation}
-The first fix passed every synthetic test. The live test then broke it. It replaced a correct sentence in 15 of 60 answers, and all 17 marked sentences were correct. The causes were numbers that the agent calculated (``175 points''), labels just outside the quote (``Homework 4''), and the room ``B10'' read as a name.
-\end{observation}
+Our agent wrote this type of sentence in the live test. For ``How much is the final project worth?'' it cited the real quote ``final project 45\%'' in a sentence that started ``The syllabus originally set the final project at 30\%.'' The old check accepted it.
 
-\begin{definition}[Final fix, \commit{459669c}]
-A calculated number $z \in c(s_i)$ is accepted only when $s_i$ shows the arithmetic $x \circ y = z$ with $x, y \in c(q_i)$, and code computes $x \circ y$ again. An example is ``$8 - 1 = 7$, so $7 \times 25 = 175$ points''. The prompt now tells the agent to show this. False rejects fell from 15/60 to 2/60.
-\end{definition}
+The same pattern was in three more checks. Any email with a course code in its subject got the label ``Course staff''. A Jev judgment (a small hosted classifier) could raise any email to urgent. A link that named the course number became the course site, also when a student posted it in a discussion.
 
-\begin{remark}
-We also fixed the three other checks. A course code in a subject now gives only the label ``Mentions \emph{course}''. Only known staff addresses can make mail urgent. A Jev judgment raises mail by one level at most. A link only in a discussion never becomes the course site.
-\end{remark}
+\section*{How we stress-tested it}
+We built an evaluation harness around the real agent, with 20 synthetic course scenarios that make the failure likely. They include changed syllabus dates, rooms and weights, numbers near each other, arithmetic, weekdays, and two courses on one page. Claude Code (\texttt{claude-sonnet-5}) answered each scenario 3 times through the same prompt, schema and client path as the app. We ran the harness on the first fix and on the final fix. Code scored each sentence, and we read all 167 sentences ourselves. For each of the four weak checks, we also generated 60 targeted cases with a scripted fake model. These cases always contain the trigger, so they measure the fix and not the natural rate.
 
-\end{minipage}\hfill
-\begin{minipage}[t]{0.45\linewidth}
-\section{What we learned}
+\section*{How often it happened}
+On the real agent, 1 sentence in 167 (0.6\%) contradicted its own cited quote. The rate is low, but the old check showed every such sentence with a real citation. Before the fix, each weak check failed in every targeted case.
 
-\begin{corollary}
-A verifier must check the claim and not only the evidence. A real citation on a wrong sentence is worse than no citation.
-\end{corollary}
-\begin{corollary}
-A check that passes on failures that we wrote can fail on real output. Ours passed every synthetic test and then rejected a correct sentence in 1 of 4 live answers. Measure the cost of a fix on the real agent.
-\end{corollary}
-\begin{corollary}
-Calculated claims need their own path. The AI shows the arithmetic, and code does it again.
-\end{corollary}
-\begin{corollary}
-When code confirms something, ask what it really proved. Each of our four checks proved less than the decision that used it.
-\end{corollary}
-\vspace{3pt}
+\vspace{2pt}
 {\footnotesize
-\textit{Limits.} All pages are synthetic, so we used no student data and no real course data. The live test has 60 answers from one model on one day.
-\par\textit{Evidence.} Links go to one fixed commit. See the live runner \gh{evals/break-live/run.ts}{run.ts}, the raw answers for the \gh{evals/break-live/results.json}{final fix} and the \gh{evals/break-live/results-shipped-0f710ed.json}{first fix}, the targeted cases \gh{tests/break-cases.ts}{break-cases.ts}, and the full write-up \gh{docs/break-card.md}{break-card.md}.
-\par\textit{Rerun.} \texttt{pnpm exec tsx evals/break-live/run.ts 3 5} and \texttt{pnpm exec tsx -{}-test tests/break-*.test.ts}.
-}
-\end{minipage}
+\begin{tabularx}{\linewidth}{@{}X r r@{}}
+\toprule
+Live test on our agent, Wilson 95\% intervals in brackets & First fix & Final fix \\
+\midrule
+Sentences that contradict their own cited quote & 0 of 87 & 1 of 80 [0.2, 6.7]\%, caught \\
+Contradicting sentences that the student sees & 0 of 87 & 0 of 77 [0, 4.8]\% \\
+Answers where the check replaced a correct sentence & 15 of 60 [15.8, 37.2]\% & 2 of 60 [0.9, 11.4]\% \\
+\midrule
+Targeted cases, 60 for each weak check & Before & After \\
+\midrule
+Wrong sentence shown next to a real quote & 60 of 60 & 0 of 60 \\
+Each of the three mail and site checks & 60 of 60 & 0 of 60 \\
+Correct results kept (staff mail urgent, real sites found) & 60 of 60 & 60 of 60 \\
+\bottomrule
+\end{tabularx}}
+
+\section*{What we did}
+Our first fix (\commit{0f710ed}) makes the verifier check the claim too. Every date, weekday, number and name in a sentence must now appear in its cited quote (\gh{packages/core/src/intent/ask.ts\#L438}{claimsMatch}). If one does not, the app shows the quote word for word in place of the sentence. This fix passed every synthetic test, but on the live agent it rejected correct sentences in 15 of 60 answers, mostly calculated numbers.
+
+Our final fix (\commit{459669c}) gives calculated numbers their own path. The prompt tells the agent to write the arithmetic from quoted numbers, for example ``8 $-$ 1 = 7, so 7 $\times$ 25 = 175 points.'' Code then does the arithmetic again. False rejects fell to 2 of 60 answers. In the other three checks, only known staff addresses can make mail urgent, a Jev judgment can raise mail by one level at most, and a link only in a discussion never becomes the course site.
+
+\section*{What we learned}
+\begin{itemize}
+\item A verifier must check the claim, not only the evidence. A real citation on a wrong sentence is worse than no citation.
+\item Failures that we write ourselves do not predict real model output. Our fix passed every synthetic test and then rejected correct sentences in 1 of 4 live answers. Measure every fix on the real agent.
+\item Let the model show its work, and let code check it again.
+\item When code confirms something, ask what it really proved.
+\end{itemize}
+
+\vspace{4pt}
+{\footnotesize
+All scenarios are synthetic, with no student data. See the \ghtext{evals/break-live/run.ts}{live harness}, raw answers for the \ghtext{evals/break-live/results.json}{final fix} and the \ghtext{evals/break-live/results-shipped-0f710ed.json}{first fix}, the \ghtext{tests/break-cases.ts}{targeted cases}, and the \ghtext{docs/break-card.md}{full write-up}.\par}
 
 \end{document}
