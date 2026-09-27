@@ -24,6 +24,7 @@ import { ConsentSetup, hasUwConsent, missingConsents } from "./consent/ConsentSe
 import { Onboarding, needsFirstRunSetup } from "./onboarding";
 import { CalendarPage } from "./CalendarPage";
 import { DesktopShell, Glyph } from "./DesktopShell";
+import { AccountCard } from "./account/AccountCard";
 import { Home, ObjectLink } from "./Home";
 import { SnapshotGate } from "./snapshot-gate";
 import { StartWork, preparedWorkRevision } from "./StartWork";
@@ -402,6 +403,7 @@ export function App() {
       courses={courseCards} selectedCourseKey={navigation.courseKey} sample={snapshot?.fixtureMode ?? false} busy={busy && signInStage === "idle"}
       canBack={navigation.canBack} canForward={navigation.canForward} onBack={navigation.back} onForward={navigation.forward}
       onNavigate={setView} onCourse={key => navigation.navigate("courses", null, key)}
+      renderAccount={snapshot ? open => <AccountCard snapshot={snapshot} open={open} onOpenSettings={() => setView("privacy")}/> : undefined}
       status={<>
         {snapshot?.sources.some(source => source.kind === "canvas" && source.status === "needs_sign_in") && window.magic.signInUW ?
           <button className="desktop-source-action" aria-label="Canvas needs sign-in. Sign in to check saved coursework for updates." aria-busy={signInStage !== "idle" || undefined} aria-disabled={busy || undefined} onClick={() => { if (!busy) void signIn(); }}>
