@@ -59,13 +59,18 @@ export function helpHasFlag(help: string, flag: string): boolean {
   return new RegExp(`(^|[\\s,\\[(])${flag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w-])`, "m").test(help);
 }
 /**
- * Codex features that give the model tools or pull in user customisations. Only the ones the
- * installed version lists are passed: an unknown name is a hard error ("Unknown feature flag").
+ * owner: client-detection (security review, 2026-09-27). The only Codex features left as they
+ * are: transport and auth plumbing that gives the model nothing to act with. Every other feature
+ * the installed version lists (tools, browsers, sleep, code mode, apps, plugins, memories, hooks …)
+ * is passed to `--disable`, whether or not it is on today, so a feature a newer version adds or
+ * the student's config turns on is off here too. Only listed names are passed: an unknown name is
+ * a hard error ("Unknown feature flag"). Keeping `secret_auth_storage` keeps the student's saved
+ * sign-in readable.
  */
-export const CODEX_TOOL_FEATURES = [
-  "shell_tool", "unified_exec", "apps", "plugins", "memories", "multi_agent", "browser_use",
-  "computer_use", "image_generation", "hooks", "view_image", "goals", "skill_search", "tool_suggest",
-] as const;
+export const CODEX_SAFE_FEATURES = new Set([
+  "enable_request_compression", "content_item_kinds", "compaction_image_budget",
+  "secret_auth_storage", "system_proxy_fallback", "unbounded_connection_retries",
+]);
 
 /** Claude Code instant mode adds only this to the runner's spec argv. */
 export const CLAUDE_INSTANT_ARGS = ["--safe-mode"] as const;
@@ -217,11 +222,11 @@ export async function instantSupport(id: ClientId, version: string | undefined, 
     const home = studentCodexHome(deps.env ?? process.env);
     const has = deps.exists ?? fileExists;
     const personal = (await has(join(home, "AGENTS.md"))) || (await has(join(home, "AGENTS.override.md")));
-    const features = await codexToolFeatures(help, deps);
-    // Security review, 2026-09-27: the model never gets tools, so a Codex that can't turn its
-    // shell off isn't run at all.
-    plan = !features.includes("shell_tool")
-      ? no(`This Codex${version ? ` (${version})` : ""} can't turn off its shell tool, and My Magic UW never lets the model use tools.`, ["--disable shell_tool"])
+    const features = await codexFeaturesToDisable(help, version, deps);
+    // Security review, 2026-09-27: the model never gets tools, so a Codex whose features can't be
+    // listed and turned off (the shell among them) isn't run at all.
+    plan = !features
+      ? no(`This Codex${version ? ` (${version})` : ""} can't turn off its shell and other tools, and My Magic UW never lets the model use tools.`, ["--disable shell_tool"])
       : {
           support: {
             available: true,
@@ -237,28 +242,56 @@ export async function instantSupport(id: ClientId, version: string | undefined, 
   return plan;
 }
 
-/** The tool features this Codex lists and can turn off (`--disable` must be in its `exec --help`). */
-async function codexToolFeatures(help: string, deps: InstantDeps): Promise<string[]> {
-  if (!helpHasFlag(help, "--disable")) return [];
-  const listed = listedFeatures(await (deps.features ?? (() => runText("codex", ["features", "list"], deps)))());
-  return CODEX_TOOL_FEATURES.filter((f) => listed.has(f));
+/** Every listed Codex feature not on the safe list (removed ones excluded), to pass to `--disable`. */
+export function featuresToDisable(listText: string): string[] {
+  return [...listedFeatures(listText)].filter((f) => !CODEX_SAFE_FEATURES.has(f));
+}
+
+const featureCache = new Map<string, string[] | null>();
+/**
+ * The features to turn off for this Codex, read from `codex features list` once per detected
+ * version (cached). Null (don't run) when `--disable` isn't in its `exec --help`, the list can't
+ * be read, or the shell tool isn't among the listed features.
+ */
+async function codexFeaturesToDisable(help: string, version: string | undefined, deps: InstantDeps): Promise<string[] | null> {
+  if (!helpHasFlag(help, "--disable")) return null;
+  const key = `${version ?? "?"}@${deps.userData}`;
+  if (featureCache.has(key) && !deps.features) return featureCache.get(key)!;
+  const list = await (deps.features ?? (() => runText("codex", ["features", "list"], deps)))().catch(() => "");
+  const off = featuresToDisable(list);
+  const result = off.includes("shell_tool") ? off : null;
+  if (!deps.features) featureCache.set(key, result);
+  return result;
 }
 
 /**
  * owner: client-detection (security review, 2026-09-27). The app's own Codex profile gets the
- * same tools-off arguments as instant mode (the tool features disabled, web search off, rules
- * ignored when listed); the read-only sandbox and `approval_policy="never"` are in the runner's
- * spec argv for both modes. Null when this Codex can't turn its shell off: then it isn't run.
+ * same tools-off arguments as instant mode (every non-safe feature disabled, web search off,
+ * rules ignored when listed); the read-only sandbox and `approval_policy="never"` are in the
+ * runner's spec argv for both modes. Null when this Codex can't turn its tools off: then it isn't run.
  */
-export async function codexToolsOffArgs(deps: InstantDeps): Promise<string[] | null> {
+export async function codexToolsOffArgs(deps: InstantDeps, version?: string): Promise<string[] | null> {
   const help = await (deps.help ?? ((c) => runText(c, ["exec", "--help"], deps)))("codex");
-  const features = await codexToolFeatures(help, deps);
-  if (!features.includes("shell_tool")) return null;
+  const features = await codexFeaturesToDisable(help, version, deps);
+  if (!features) return null;
   return [
     ...(helpHasFlag(help, "--ignore-rules") ? ["--ignore-rules"] : []),
     "-c", 'web_search="disabled"',
     ...features.flatMap((f) => ["--disable", f]),
   ];
+}
+
+/**
+ * owner: client-detection (security review, 2026-09-27). Quick chat's Codex arguments: the
+ * interactive CLI takes `--disable` and `-a never` (`codex --help`, 0.156.1: approval values are
+ * on-request and never; the old `-a untrusted` isn't one), so its tools are turned off exactly as
+ * in runs. Null when they can't be: then Codex has no Quick chat.
+ */
+export async function codexChatArgs(deps: InstantDeps, version?: string): Promise<string[] | null> {
+  const execHelp = await (deps.help ?? ((c) => runText(c, ["exec", "--help"], deps)))("codex");
+  const features = await codexFeaturesToDisable(execHelp, version, deps);
+  if (!features) return null;
+  return ["-s", "read-only", "-a", "never", "-c", 'approval_policy="never"', "-c", 'web_search="disabled"', ...features.flatMap((f) => ["--disable", f])];
 }
 
 /** The backend options for an instant-mode run: cwd, env and the extra argv. Creates app files only. */
@@ -284,12 +317,12 @@ export async function instantRunOptions(
 
 /**
  * Quick chat (the `chat` terminal purpose): the client's interactive session with tools, MCP and
- * user customisations off. Fixed per client; the renderer can't add to it.
+ * user customisations off. Fixed per client; the renderer can't add to it. Codex's arguments come
+ * from `codexChatArgs` (its features are read per version); without them there is no Codex chat.
  */
-export function chatArgs(id: ClientId, features: readonly string[] = []): string[] {
+export function chatArgs(id: ClientId, codex: readonly string[] | null = null): string[] {
   if (id === "claude") return ["--tools", "", "--strict-mcp-config", "--setting-sources", "project,local", ...CLAUDE_INSTANT_ARGS];
-  if (id === "codex")
-    return ["-s", "read-only", "-a", "untrusted", "-c", 'web_search="disabled"', ...features.flatMap((f) => ["--disable", f])];
+  if (id === "codex" && codex) return [...codex];
   throw new Error("This client has no chat.");
 }
 

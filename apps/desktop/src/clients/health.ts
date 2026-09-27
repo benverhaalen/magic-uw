@@ -183,13 +183,30 @@ async function isolatedStatus(id: "claude" | "codex", deps: HealthDeps): Promise
 export function clientDiagnostics(id: "claude" | "codex", deps: Pick<HealthDeps, "env" | "resolve" | "userData">): ClientDiagnostics {
   const env = deps.env ?? process.env;
   const home = env.USERPROFILE || env.HOME || "";
-  const tilde = (p: string) =>
-    home && p.toLowerCase().startsWith(home.toLowerCase()) ? `~${p.slice(home.length)}` : p;
+  const tilde = (p: string) => homeRelative(p, home);
   const command = resolveClient(id, { ...deps, userData: deps.userData });
   return {
     searched: cliSearchDirs(env).map(tilde),
     ...(command ? { found: tilde(command.prefixArgs.at(-1) && /\.(?:c|m)?js$/i.test(command.prefixArgs.at(-1)!) ? command.prefixArgs.at(-1)! : command.file) } : {}),
   };
+}
+
+/**
+ * owner: client-detection (security review). A path with the home folder shown as `~`, matched
+ * on a separator boundary after normalising (so `C:\Users\Sam` doesn't match `C:\Users\Samantha`),
+ * case-insensitively only where the file system is (Windows, macOS).
+ */
+export function homeRelative(path: string, home: string, platform: NodeJS.Platform = process.platform): string {
+  if (!home) return path;
+  const norm = (p: string) => p.replace(/[\\/]+/g, "/").replace(/\/+$/, "");
+  const [p, h] = [norm(path), norm(home)];
+  const same = platform === "linux" ? (a: string, b: string) => a === b : (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  if (same(p, h)) return "~";
+  if (p.length > h.length && p[h.length] === "/" && same(p.slice(0, h.length), h)) {
+    const rest = p.slice(h.length);
+    return `~${platform === "win32" ? rest.replace(/\//g, "\\") : rest}`;
+  }
+  return path;
 }
 
 export async function checkHealth(id: ClientId, requested: ClientMode | undefined, deps: HealthDeps): Promise<ClientHealth> {
@@ -308,7 +325,7 @@ export async function clientRunOptions(
   if (!options) return null;
   if (id === "codex") {
     // owner: client-detection (security): the app's own profile turns Codex's tools off too.
-    const off = await codexToolsOffArgs(deps);
+    const off = await codexToolsOffArgs(deps, health.version);
     if (!off) return null;
     return { mode: "isolated", options: { ...options, extraArgs: [...(options.extraArgs ?? []), ...off] }, check };
   }

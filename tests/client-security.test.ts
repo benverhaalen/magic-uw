@@ -151,3 +151,93 @@ test("env: planted provider keys and base URLs never reach a client process; eac
   const seen: string[] = JSON.parse(await readFile(join(dir, "env.json"), "utf8"));
   for (const k of Object.keys(planted)) assert.ok(!seen.some((s) => s.toUpperCase() === k), `${k} reached the client`);
 });
+
+// --- Security review, 2026-09-27: land-after-fixes items ------------------------------------------
+test("review 1: Codex Quick chat turns every non-safe feature off, never asks, and doesn't open when that can't be done", async () => {
+  const { codexChatArgs, chatArgs } = await import("../apps/desktop/src/clients/index.ts");
+  const userData = await tmp("magic-chat-");
+  const help = [...CODEX_REQUIRED_FLAGS, ...CODEX_OPTIONAL_FLAGS].map((f) => `      ${f} <x>`).join("\n");
+  const list = await readFile(join(import.meta.dirname, "fixtures", "codex-features-0.156.1.txt"), "utf8");
+  const args = await codexChatArgs({ userData, help: async () => help, features: async () => list });
+  assert.ok(args);
+  assert.ok(!args.includes("untrusted"));
+  assert.equal(args[args.indexOf("-a") + 1], "never");
+  assert.equal(args[args.indexOf("-s") + 1], "read-only");
+  const disabled = args.filter((_, i) => args[i - 1] === "--disable");
+  for (const f of ["shell_tool", "unified_exec", "sleep_tool", "in_app_browser", "browser_use", "browser_use_external", "browser_use_full_cdp_access", "code_mode_host"])
+    assert.ok(disabled.includes(f), f);
+  assert.deepEqual(chatArgs("codex", args), args);
+  assert.throws(() => chatArgs("codex", null), /no chat/);
+  assert.equal(await codexChatArgs({ userData, help: async () => help.replace("--disable", ""), features: async () => list }), null);
+});
+
+test("review 3: features from `codex features list` (real 0.156.1 output): everything off except the safe list; unreadable means don't run", async () => {
+  const { featuresToDisable, CODEX_SAFE_FEATURES, instantSupport } = await import("../apps/desktop/src/clients/index.ts");
+  const list = await readFile(join(import.meta.dirname, "fixtures", "codex-features-0.156.1.txt"), "utf8");
+  const off = featuresToDisable(list);
+  for (const f of ["sleep_tool", "in_app_browser", "browser_use", "browser_use_external", "browser_use_full_cdp_access", "code_mode_host", "shell_tool", "apps", "plugins", "hooks", "memories"])
+    assert.ok(off.includes(f), f);
+  for (const f of CODEX_SAFE_FEATURES) assert.ok(!off.includes(f), f);
+  assert.ok(!off.includes("apply_patch_freeform"), "removed features aren't passed");
+  const userData = await tmp("magic-feat-");
+  const help = [...CODEX_REQUIRED_FLAGS, ...CODEX_OPTIONAL_FLAGS].map((f) => `      ${f} <x>`).join("\n");
+  for (const bad of ["", "garbage\nnot a feature table\n", "apps stable true\n"]) {
+    const plan = await instantSupport("codex", "9.9.9", { userData, help: async () => help, features: async () => bad, exists: async () => false });
+    assert.equal(plan.support.available, false, JSON.stringify(bad));
+  }
+});
+
+test("review 2: the kill takes the whole process tree", async () => {
+  const dir = await tmp("magic-tree-");
+  const marker = join(dir, "grandchild-ran.txt");
+  const runner = createModelRunner({
+    backend: createClaudeBackend({
+      command: fake("claude"),
+      workDir: dir,
+      env: { FAKE_CLI_STATE: join(dir, "s"), FAKE_CLI_RESPONSES: JSON.stringify([{ grandchild: { marker, ms: 1500 }, events: [toolUse("Bash")], holdMs: 8000, output: { ok: true } }]) },
+    }),
+  });
+  await assert.rejects(runner.run(ask), (e: unknown) => e instanceof RunnerError && e.kind === "tool_use_blocked");
+  await new Promise((r) => setTimeout(r, 2500));
+  const { existsSync } = await import("node:fs");
+  assert.equal(existsSync(marker), false, "the grandchild was killed with the client");
+});
+
+test("review 4: fail-closed stream checks; UTF-8 split across chunks stays whole", async () => {
+  const { claudeStreamCheck, codexStreamCheck, runProcess } = await import("../packages/runner/src/index.ts");
+  assert.equal(claudeStreamCheck("Welcome! not json")?.kind, "invalid_output");
+  assert.equal(codexStreamCheck("WARNING something")?.kind, "invalid_output");
+  assert.equal(claudeStreamCheck(""), null);
+  assert.equal(claudeStreamCheck(JSON.stringify({ type: "rate_limit_event" })), null);
+  assert.equal(claudeStreamCheck(JSON.stringify({ type: "tool_progress", content: [{ type: "text" }] }))?.kind, "invalid_output");
+  assert.equal(claudeStreamCheck(JSON.stringify({ type: "brand_new_event", message: { content: [] } }))?.kind, "invalid_output");
+  assert.equal(claudeStreamCheck(JSON.stringify({ type: "brand_new_event", status: "ok" })), null);
+  assert.equal(codexStreamCheck(JSON.stringify({ type: "something.new", item: { type: "command_execution" } }))?.kind, "tool_use_blocked");
+  // A real call printing a non-JSON line is stopped as invalid_output (the runner then treats it as
+  // an unreadable answer, as before: retry, escalate, each attempt stopped the same way).
+  const dir = await tmp("magic-closed-");
+  const backend = createClaudeBackend({ command: fake("claude"), workDir: dir, env: { FAKE_CLI_STATE: join(dir, "s"), FAKE_CLI_RESPONSES: JSON.stringify([{ events: ["Loading plugins..."], output: { ok: true } }]) } });
+  await assert.rejects(
+    backend.call({ pack: ask.pack, systemPrompt: "S", input: "x", jsonSchema: { type: "object" }, tier: "pass", lane: "interactive", timeoutMs: 20_000 }),
+    (e: unknown) => e instanceof RunnerError && e.kind === "invalid_output",
+  );
+  // "é" (0xC3 0xA9) written as two chunks: the line check sees the whole character.
+  const script = join(dir, "split.mjs");
+  await writeFile(script, `process.stdout.write(Buffer.from([0x7b,0x22,0x61,0x22,0x3a,0x22,0xc3]));\nsetTimeout(() => process.stdout.write(Buffer.from([0xa9,0x22,0x7d,0x0a])), 200);\n`);
+  const lines: string[] = [];
+  await runProcess({ file: process.execPath, prefixArgs: [script] }, [], { cwd: dir, env: { PATH: process.env.PATH }, timeoutMs: 10_000, onStdoutLine: (l) => (lines.push(l), null) });
+  assert.deepEqual(lines, ['{"a":"é"}']);
+});
+
+test("review 6 and 7: home shown as ~ only on a separator boundary; receipts are sanitised names", async () => {
+  const { homeRelative } = await import("../apps/desktop/src/clients/index.ts");
+  assert.equal(homeRelative("C:\\Users\\Sam\\.local\\bin", "C:\\Users\\Sam", "win32"), "~\\.local\\bin");
+  assert.equal(homeRelative("C:\\Users\\Samantha\\.local\\bin", "C:\\Users\\Sam", "win32"), "C:\\Users\\Samantha\\.local\\bin");
+  assert.equal(homeRelative("c:/users/sam/", "C:\\Users\\Sam", "win32"), "~");
+  assert.equal(homeRelative("/home/sam/.bun/bin", "/home/sam/", "linux"), "~/.bun/bin");
+  assert.equal(homeRelative("/home/Sam/.bun/bin", "/home/sam", "linux"), "/home/Sam/.bun/bin");
+  assert.deepEqual(codexToolUse(JSON.stringify({ type: "item.started", item: { type: "evil\u001b[31m type<script>", server: "a b", tool: "c/../d" } })), {
+    event: "evil31mtypescript",
+    tool: "evil31mtypescript",
+  });
+});

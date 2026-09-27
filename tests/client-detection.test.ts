@@ -124,24 +124,31 @@ test("scenario mac-nvm: every nvm version is searched, newest first", async () =
 });
 
 // --- The login shell's PATH ------------------------------------------------------------------
-test("scenario mac-login-shell-path: PATH is read between markers; rc noise, ANSI and other variables are dropped", async () => {
-  const noisy = "\u001b[32mWelcome back!\u001b[0m\nnvm: using v22\n__MAGIC_PATH__HOME=/Users/s\nPATH=/Users/s/.nvm/versions/node/v22.3.0/bin:/usr/bin\nSECRET_TOKEN=x\n__MAGIC_PATH__goodbye\n";
+test("scenario mac-login-shell-path: only $PATH is printed, between markers; rc noise and relative entries are dropped; the shell gets the allowlist", async () => {
+  const noisy = "\u001b[32mWelcome back!\u001b[0m\nnvm: using v22\n__MAGIC_PATH__/Users/s/.nvm/versions/node/v22.3.0/bin:relative/bin:./x::/usr/bin__MAGIC_PATH__goodbye\n";
   assert.equal(parseShellPath(noisy), "/Users/s/.nvm/versions/node/v22.3.0/bin:/usr/bin");
-  assert.equal(parseShellPath("PATH=/evil/bin before any marker"), null);
+  assert.equal(parseShellPath("/evil/bin before any marker"), null);
   const calls: string[] = [];
   const path = await readLoginShellPath({
     platform: "darwin",
-    env: { SHELL: "/usr/local/bin/fish" },
+    env: { SHELL: "/usr/local/bin/fish", HOME: "/Users/s", ZDOTDIR: "/Users/s/.zsh", PATH: "/usr/bin", ANTHROPIC_API_KEY: "sk-planted", GITHUB_TOKEN: "planted", NODE_OPTIONS: "--require x" },
     run: async (shell, args, options) => {
       calls.push(shell);
       assert.equal(args[0], "-ilc");
+      assert.match(args[1], /"\$PATH"/, "prints $PATH only");
+      assert.doesNotMatch(args[1], /\benv\b/, "never prints the environment");
       assert.equal(options.env.DISABLE_AUTO_UPDATE, "true");
+      assert.deepEqual([options.env.SHELL, options.env.HOME, options.env.ZDOTDIR], ["/usr/local/bin/fish", "/Users/s", "/Users/s/.zsh"]);
+      for (const k of ["ANTHROPIC_API_KEY", "GITHUB_TOKEN", "NODE_OPTIONS"]) assert.equal(options.env[k], undefined, k);
       if (shell === "/usr/local/bin/fish") throw new Error("not POSIX");
       return noisy;
     },
   });
   assert.equal(path, "/Users/s/.nvm/versions/node/v22.3.0/bin:/usr/bin");
   assert.deepEqual(calls, ["/usr/local/bin/fish", "/bin/zsh"]);
+  // Lookups skip relative PATH entries on both platforms.
+  assert.deepEqual(cliSearchDirs({ PATH: "relative:/usr/bin", HOME: "/h" }, "darwin").slice(0, 1), ["/usr/bin"]);
+  assert.ok(!cliSearchDirs({ Path: "bin;C:\\Tools", USERPROFILE: "C:\\h" }, "win32").includes("bin"));
   assert.equal(await readLoginShellPath({ platform: "win32", run: async () => { throw new Error("must not run"); } }), null);
 });
 
@@ -165,14 +172,14 @@ test("scenario mac-login-shell-extend: the shell's folders and existing known fo
   const env: NodeJS.ProcessEnv = { PATH: "/usr/bin:/bin", HOME: home };
   const added = await extendPathForClients(env, {
     platform: "darwin",
-    run: async () => "__MAGIC_PATH__PATH=/opt/custom/bin:/usr/bin__MAGIC_PATH__",
+    run: async () => "__MAGIC_PATH__/opt/custom/bin:/usr/bin__MAGIC_PATH__",
     isDir: (p) => p === "/opt/homebrew/bin",
   });
   assert.deepEqual(added, ["/opt/custom/bin", "/opt/homebrew/bin"]);
   assert.equal(env.PATH, "/usr/bin:/bin:/opt/custom/bin:/opt/homebrew/bin");
   assert.deepEqual(loginShellDirs(), ["/opt/custom/bin", "/usr/bin"]);
   assert.ok(cliSearchDirs(env, "darwin").includes("/opt/custom/bin"));
-  assert.deepEqual(await extendPathForClients(env, { platform: "darwin", run: async () => "__MAGIC_PATH__PATH=/opt/custom/bin__MAGIC_PATH__", isDir: (p) => p === "/opt/homebrew/bin" }), []);
+  assert.deepEqual(await extendPathForClients(env, { platform: "darwin", run: async () => "__MAGIC_PATH__/opt/custom/bin__MAGIC_PATH__", isDir: (p) => p === "/opt/homebrew/bin" }), []);
 });
 
 // --- Instant mode by capability -------------------------------------------------------------------
@@ -212,7 +219,7 @@ test("scenario codex-older-without-optional-flags: without --ignore-rules Codex 
   const noDisable = await instantSupport("codex", "0.120.0", { userData, help: async () => help, exists: async () => false, features: async () => { throw new Error("not asked without --disable"); } });
   assert.equal(noDisable.support.available, false);
   assert.deepEqual(noDisable.support.missingFlags, ["--disable shell_tool"]);
-  assert.match(noDisable.support.reason!, /can't turn off its shell tool/);
+  assert.match(noDisable.support.reason!, /can't turn off its shell and other tools/);
   const withDisable = `${help}      --disable <FEATURE>\n`;
   const plan = await instantSupport("codex", "0.121.0", { userData, help: async () => withDisable, exists: async () => false, features: async () => "shell_tool   stable   true\nunified_exec   stable   true\n" });
   assert.equal(plan.support.available, true);

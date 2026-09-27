@@ -1,4 +1,5 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
+import { StringDecoder } from "node:string_decoder"; // owner: client-detection
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, posix, win32 } from "node:path";
 import { RunnerError } from "./types";
@@ -169,12 +170,16 @@ const ANSI = /\u001b\[[0-?]*[ -/]*[@-~]|\u001b\][^\u0007]*\u0007/g;
 export function parseShellPath(stdout: string): string | null {
   const parts = stdout.split(PATH_MARK);
   if (parts.length < 3) return null;
-  const line = parts[1]
-    .replace(ANSI, "")
-    .split(/\r?\n/)
-    .find((l) => l.startsWith("PATH="));
-  const value = line?.slice(5).trim();
+  // owner: client-detection (security review): the probe prints only $PATH between the markers;
+  // only absolute entries are kept (a relative one would resolve against the app's folder).
+  const value = absoluteEntries(parts[1].replace(ANSI, "").trim().split(":"), "darwin").join(":");
   return value ? value : null;
+}
+
+/** Only absolute path entries, by the target platform's rules. */
+function absoluteEntries(dirs: readonly string[], platform: NodeJS.Platform): string[] {
+  const absolute = platform === "win32" ? win32.isAbsolute : posix.isAbsolute;
+  return dirs.map((d) => d.trim()).filter((d) => d && absolute(d) && (platform !== "win32" || /^([A-Za-z]:[\\/]|\\\\)/.test(d)));
 }
 
 export type ShellRunner = (shell: string, args: string[], options: { env: NodeJS.ProcessEnv; timeoutMs: number }) => Promise<string>;
@@ -215,8 +220,22 @@ export async function readLoginShellPath(
   const deadline = Date.now() + (options.timeoutMs ?? 2000);
   const own = options.shell ?? envValue(env, "SHELL");
   const shells = [...new Set([own, "/bin/zsh", "/bin/bash"].filter((s): s is string => !!s && s.startsWith("/")))];
-  const script = `command printf '%s' ${PATH_MARK}; command env; command printf '%s' ${PATH_MARK}; exit`;
-  const shellEnv = { ...env, DISABLE_AUTO_UPDATE: "true", ZSH_TMUX_AUTOSTARTED: "true", ZSH_TMUX_AUTOSTART: "false" };
+  // owner: client-detection (security review): print $PATH only, never the whole environment, and
+  // start the shell with the allowlist plus what finding its own startup files needs.
+  const script = `command printf '%s%s%s' ${PATH_MARK} "$PATH" ${PATH_MARK}; exit`;
+  const pass = (name: string) => {
+    const value = envValue(env, name);
+    return value ? { [name]: value } : {};
+  };
+  const shellEnv: NodeJS.ProcessEnv = {
+    ...allowlistedEnv(env),
+    ...pass("SHELL"),
+    ...pass("ZDOTDIR"),
+    ...pass("HOME"),
+    DISABLE_AUTO_UPDATE: "true",
+    ZSH_TMUX_AUTOSTARTED: "true",
+    ZSH_TMUX_AUTOSTART: "false",
+  };
   for (const shell of shells) {
     const left = deadline - Date.now();
     if (left <= 0) break;
@@ -250,7 +269,7 @@ export async function extendPathForClients(
   const key = Object.keys(env).find((k) => k.toUpperCase() === "PATH") ?? "PATH";
   const current = (env[key] ?? "").split(sep).filter(Boolean);
   const shellPath = await readLoginShellPath({ env, platform, timeoutMs: options.timeoutMs, run: options.run });
-  shellDirs = shellPath ? shellPath.split(":").filter(Boolean) : [];
+  shellDirs = shellPath ? absoluteEntries(shellPath.split(":"), "darwin") : [];
   const isDir = options.isDir ?? ((p: string) => existsSync(p));
   const seen = new Set(current.map((d) => (platform === "win32" ? d.toLowerCase() : d)));
   const added: string[] = [];
@@ -266,7 +285,8 @@ export async function extendPathForClients(
 
 /** Every folder `resolveCli` looks in, in order (for the "Why wasn't my client found?" details). */
 export function cliSearchDirs(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string[] {
-  const pathDirs = (envValue(env, "PATH") ?? "").split(listSeparator(platform)).filter(Boolean);
+  // A relative PATH entry would resolve against the app's working folder: only absolute ones count.
+  const pathDirs = absoluteEntries((envValue(env, "PATH") ?? "").split(listSeparator(platform)), platform);
   return [...new Set([...pathDirs, ...shellDirs, ...knownCliDirs(env, platform)])];
 }
 
@@ -385,6 +405,26 @@ export interface ProcessOptions {
   onStdoutLine?: (line: string) => RunnerError | null;
 }
 
+/**
+ * owner: client-detection (security review). Kills a client and every process it started: on
+ * POSIX the child leads its own process group (spawned `detached`), so the group gets SIGKILL;
+ * on Windows `taskkill /T /F` ends the tree (run by its System32 path, no shell).
+ */
+export function killTree(child: Pick<ChildProcess, "pid" | "kill" | "exitCode" | "signalCode">): void {
+  if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) {
+    child.kill("SIGKILL");
+    return;
+  }
+  try {
+    if (process.platform === "win32") {
+      const root = process.env.SystemRoot || process.env.SYSTEMROOT || "C:\\Windows";
+      spawn(join(root, "System32", "taskkill.exe"), ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true, shell: false }).on("error", () => child.kill("SIGKILL"));
+    } else process.kill(-child.pid, "SIGKILL");
+  } catch {
+    child.kill("SIGKILL");
+  }
+}
+
 /** Runs a command without a shell. The prompt goes on stdin; argv holds only our flags and paths. */
 export function runProcess(
   command: CliCommand,
@@ -403,6 +443,8 @@ export function runProcess(
       shell: false,
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
+      // owner: client-detection: its own process group on POSIX, so a kill takes the whole tree.
+      detached: process.platform !== "win32",
     });
     const out: Buffer[] = [];
     const err: Buffer[] = [];
@@ -414,7 +456,7 @@ export function runProcess(
       clearTimeout(timer);
       options.signal?.removeEventListener("abort", onAbort);
       if (error) {
-        child.kill();
+        killTree(child); // owner: client-detection: the client and anything it started
         reject(error);
       } else resolve(result!);
     };
@@ -433,9 +475,10 @@ export function runProcess(
     // owner: client-detection: the tripwire reads stdout line by line as it streams.
     if (options.onStdoutLine) {
       let pending = "";
+      const decoder = new StringDecoder("utf8"); // a character split across chunks stays whole
       child.stdout.on("data", (chunk: Buffer) => {
         if (settled) return;
-        pending += chunk.toString("utf8");
+        pending += decoder.write(chunk);
         const lines = pending.split("\n");
         pending = lines.pop() ?? "";
         for (const line of lines) {
@@ -444,6 +487,7 @@ export function runProcess(
         }
       });
       child.stdout.on("end", () => {
+        pending += decoder.end();
         const blocked = pending && !settled ? options.onStdoutLine!(pending) : null;
         if (blocked) finish(blocked);
       });

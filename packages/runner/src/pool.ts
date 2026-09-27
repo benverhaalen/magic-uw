@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { z } from "zod";
 import { claudeOutcome, claudeResultSchema, inlineSchema, CLAUDE_TIER_MODELS, type ClaudeResult } from "./claude";
-import { cliEnvironment, type CliCommand } from "./process";
+import { cliEnvironment, killTree, type CliCommand } from "./process";
 import {
   RunnerError,
   type BackendCall,
@@ -11,10 +11,9 @@ import {
   type ModelBackend,
   type Tier,
   type Usage,
-  type ToolUseEvent,
 } from "./types";
 import { contentFile, formatAskHeader, jsonSchemaOf, sha256 } from "./util";
-import { DENY_TOOLS_SETTINGS, claudeToolUse, toolUseError } from "./tripwire"; // owner: client-detection
+import { DENY_TOOLS_SETTINGS, claudeStreamCheck } from "./tripwire"; // owner: client-detection
 
 /**
  * Appended to every pooled prefix, so a session knows the header and the union output.
@@ -138,7 +137,7 @@ class Session {
   lastUsed: number;
   private buffer = "";
   /** owner: client-detection: set when the tripwire killed this session. */
-  private blocked: ToolUseEvent | null = null;
+  private stopped: RunnerError | null = null;
   private pending: {
     resolve: (r: ClaudeResult) => void;
     reject: (e: RunnerError) => void;
@@ -162,6 +161,7 @@ class Session {
       shell: false,
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
+      detached: process.platform !== "win32", // owner: client-detection: its own process group
     });
     this.child.stdout!.setEncoding("utf8");
     this.child.stdout!.on("data", (chunk: string) => this.read(chunk));
@@ -182,22 +182,18 @@ class Session {
       const line = this.buffer.slice(0, newline).trim();
       this.buffer = this.buffer.slice(newline + 1);
       if (!line) continue;
-      // owner: client-detection (security): any tool use kills the session and fails the ask.
-      const blocked = claudeToolUse(line);
-      if (blocked) {
-        this.blocked = blocked;
+      // owner: client-detection (security): any tool use, non-JSON line or unknown event with
+      // content kills the session and fails the ask (fail-closed).
+      const stop = claudeStreamCheck(line);
+      if (stop) {
+        this.stopped = stop;
         const p = this.pending;
         this.pending = null;
         this.kill();
-        p?.reject(toolUseError(blocked));
+        p?.reject(stop);
         return;
       }
-      let raw: unknown;
-      try {
-        raw = JSON.parse(line);
-      } catch {
-        continue;
-      }
+      const raw: unknown = JSON.parse(line);
       const result = claudeResultSchema.safeParse(raw);
       if (result.success && this.pending) {
         const p = this.pending;
@@ -211,11 +207,11 @@ class Session {
     this.alive = false;
     const p = this.pending;
     this.pending = null;
-    p?.reject(this.blocked ? toolUseError(this.blocked) : new RunnerError("process_failed", "session ended"));
+    p?.reject(this.stopped ?? new RunnerError("process_failed", "session ended"));
     this.onExit(this);
   }
   ask(text: string, timeoutMs: number, signal?: AbortSignal): Promise<ClaudeResult> {
-    if (this.blocked) return Promise.reject(toolUseError(this.blocked)); // owner: client-detection
+    if (this.stopped) return Promise.reject(this.stopped); // owner: client-detection
     if (!this.alive) return Promise.reject(new RunnerError("process_failed", "session ended"));
     this.busy = true;
     return new Promise<ClaudeResult>((resolve, reject) => {
@@ -252,7 +248,7 @@ class Session {
     });
   }
   kill() {
-    if (this.alive) this.child.kill();
+    if (this.alive) killTree(this.child); // owner: client-detection: the whole tree
   }
 }
 

@@ -51,4 +51,5 @@ export {
   type ActivityEvent,
   type LaneStatus,
 } from "./pool";
-export { claudeToolUse, codexToolUse, toolUseError, DENY_TOOLS_SETTINGS, CLAUDE_ALLOWED_TOOLS } from "./tripwire"; // owner: client-detection
+export { claudeToolUse, codexToolUse, claudeStreamCheck, codexStreamCheck, toolUseError, DENY_TOOLS_SETTINGS, CLAUDE_ALLOWED_TOOLS } from "./tripwire"; // owner: client-detection
+export { killTree } from "./process"; // owner: client-detection

@@ -174,7 +174,7 @@ test("instant argv: Codex skips rules, git check, user instructions and tools; s
   const { userData, home, env } = await setup();
   const plan = await instantSupport("codex", "0.156.1", { userData, env, resolve: resolveFake, help: async () => codexHelp, features: async () => featureList, exists: noFile });
   assert.equal(plan.support.available, true);
-  assert.deepEqual(plan.features, ["shell_tool", "apps", "memories"]);
+  assert.deepEqual(plan.features, ["shell_tool", "apps", "multi_agent_v2", "memories"]);
   const options = await instantRunOptions("codex", fake("codex"), plan, { userData, env });
   const args = options.extraArgs;
   assert.ok(args.includes("--ignore-rules"));
@@ -183,7 +183,7 @@ test("instant argv: Codex skips rules, git check, user instructions and tools; s
   assert.ok(configs.some((c) => c.startsWith("model_instructions_file=") && c.includes(JSON.stringify(userData).slice(1, -1))));
   assert.ok(configs.some((c) => c.startsWith("sqlite_home=") && c.includes(JSON.stringify(userData).slice(1, -1))));
   assert.ok(configs.includes("project_doc_max_bytes=0") && configs.includes('web_search="disabled"'));
-  assert.deepEqual(args.filter((_, i) => args[i - 1] === "--disable"), ["shell_tool", "apps", "memories"]);
+  assert.deepEqual(args.filter((_, i) => args[i - 1] === "--disable"), ["shell_tool", "apps", "multi_agent_v2", "memories"]);
   const log = join(userData, "fake.log");
   const backend = createCodexBackend({ ...options, env: { ...options.env, FAKE_CLI_LOG: log, FAKE_CLI_STATE: join(userData, "st"), FAKE_CLI_RESPONSES: JSON.stringify([{ output: { ok: true } }]) } });
   await backend.call({ pack: { id: "p", version: "v1" }, systemPrompt: "S", input: "ask", jsonSchema: { type: "object" }, tier: "pass", lane: "interactive", timeoutMs: 20_000 } as BackendCall);

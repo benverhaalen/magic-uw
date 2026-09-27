@@ -62,8 +62,8 @@ The app finds the installed CLI, **reuses its existing sign-in** by running the 
 
 | Client (version seen 2026-09-26) | Call | Structured output |
 |---|---|---|
-| Claude Code 2.1.283 | `claude -p --output-format json --json-schema <schema> --tools "" --strict-mcp-config --setting-sources project,local --no-session-persistence`, with the prompt on stdin | `--json-schema` → `structured_output` |
-| Codex CLI 0.156.1 | `codex exec - --json --output-schema <file> --ephemeral -s read-only --ignore-user-config` | `--output-schema` |
+| Claude Code 2.1.283 | `claude -p --output-format stream-json --verbose --settings <deny-tools hook> --json-schema <schema> --tools "" --strict-mcp-config --setting-sources project,local --no-session-persistence --system-prompt-file <prompt>` (instant mode adds `--safe-mode`), with the ask on stdin | `--json-schema` → `structured_output` (through the built-in `StructuredOutput` tool) |
+| Codex CLI 0.156.1 | `codex exec - --json --output-schema <file> --ephemeral -s read-only --ignore-user-config --skip-git-repo-check -c approval_policy="never" -c web_search="disabled"` plus `--disable <feature>` for every listed feature not on the safe list | `--output-schema` |
 | Gemini CLI 0.61.0 (npm; not installed on the test machine) | `gemini -p … -o json`, with the system prompt through `GEMINI_SYSTEM_MD` | no schema flag found: zod validation and one retry |
 
 **Checked facts (vendor docs and `--help`, 2026-09-26):**
@@ -104,3 +104,15 @@ The app finds the installed CLI, **reuses its existing sign-in** by running the 
 - The provider that receives each request, and the exact context, shown before sending.
 - Codex: "not formally documented for third-party apps."
 - Gemini: paid keys only.
+
+## Capability detection and the tool-use tripwire
+
+Added 2026-09-27 (branch `fix/client-detection`, after a live report from teammates' machines and a security review).
+
+- **Instant mode by capability, not version.** Instant mode runs the student's own signed-in client with flags only. It is offered when the installed client's `--help` lists every required flag (whole-word match); the version the flags were measured on (Claude Code 2.1.283, Codex 0.156.1) is shown as information. A Claude Code without `--safe-mode` isn't offered instant mode (no other verified way keeps the student's CLAUDE.md out), and the separate sign-in stays available.
+- **Codex features.** `codex features list` is read once per detected version (cached). Every listed feature not on a small safe list (request compression, content item kinds, compaction image budget, secret auth storage, system proxy fallback, unbounded retries) is passed to `--disable`, in runs and in Quick chat, in both modes. A Codex that can't list its features, lacks `--disable`, or doesn't list `shell_tool` isn't run.
+- **The tripwire.** Runs stream (Claude `stream-json`, Codex JSONL); each line is checked as it arrives. A tool use (Claude `tool_use`/`server_tool_use`/`mcp_tool_use` other than the built-in `StructuredOutput`, or tools/MCP listed at init; any Codex item other than a message, reasoning or error) stops the run: the whole process tree is killed (POSIX process group; Windows `taskkill /T /F`), the output is discarded and the ledger keeps the event kind and tool name only. A non-JSON line, or a Claude event of an unknown type that carries content, stops the run as `invalid_output` (fail-closed).
+- **The deny hook.** Claude runs also get a PreToolUse hook that denies every tool (exit 2), through `--settings` from the app's run folder. `--safe-mode` disables it, so in instant mode the flags and the tripwire carry the guarantee.
+- **The environment.** Every client spawn gets an allowlist of non-secret system, XDG, proxy and certificate variables, plus only its mode's own config folder; provider keys and base URLs never pass.
+
+**Verified live on Windows 11 (2026-09-27, one tiny call each):** Claude instant and Codex instant runs with these arguments (Codex with 104 features disabled); a Claude run with Bash forced back on was stopped at startup and its marker file never written; the deny hook denies a Bash call without `--safe-mode` and is ignored with it. **In isolation only (tests with fake clients):** a tool use mid-stream, the process-tree kill, the fail-closed checks, the Codex Quick chat arguments, every macOS path (login-shell PATH, install folders, Keychain state).

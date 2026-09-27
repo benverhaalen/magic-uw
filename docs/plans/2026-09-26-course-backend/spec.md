@@ -671,12 +671,13 @@ The student can change any of them.
 
 | Client | Call |
 |---|---|
-| Claude, one-shot (the fallback) | `claude -p --output-format json --json-schema … --tools "" --strict-mcp-config --setting-sources project,local --no-session-persistence` |
-| Claude, warm session (plan D38) | `claude -p --input-format stream-json` (stream-json output) `--system-prompt-file <our prompt> --tools "" --json-schema …`; turns queue in one process |
-| Codex | `codex exec - --json --output-schema … --ephemeral -s read-only --ignore-user-config` |
+| Claude, one-shot (the fallback) | `claude -p --output-format stream-json --verbose --settings <deny-tools hook> --json-schema … --tools "" --strict-mcp-config --setting-sources project,local --no-session-persistence --system-prompt-file <our prompt>`; instant mode adds `--safe-mode` |
+| Claude, warm session (plan D38) | `claude -p --settings <deny-tools hook> --input-format stream-json` (stream-json output) `--system-prompt-file <our prompt> --tools "" --json-schema …`; turns queue in one process |
+| Codex | `codex exec - --json --output-schema … --ephemeral -s read-only --ignore-user-config --skip-git-repo-check -c approval_policy="never"`, plus `--disable` for every listed feature not on the safe list and `-c web_search="disabled"` (both modes; instant mode also replaces the base instructions and keeps state in the app folder) |
 | Gemini (API key only) | `-o json`, with zod validation and one retry |
 
 - **Never** `--dangerously-skip-permissions`, and never `--bare` on a subscription (bare mode "doesn't use your subscription login").
+- **Tools never, in depth (2026-09-27):** see [agent runtime: capability detection and the tool-use tripwire](../../notes/agent-runtime.md#capability-detection-and-the-tool-use-tripwire).
 - **Keys:** a stored key is passed only as the spawned process's environment (E6). An OpenRouter key drives Claude Code as `ANTHROPIC_AUTH_TOKEN`; whether it also reaches OpenAI and Google models through Claude Code is unverified (E6).
 
 **E3. Tiers:**

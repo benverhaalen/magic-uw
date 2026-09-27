@@ -59,7 +59,7 @@ const forbidden = [
   "--full-auto",
 ];
 
-test("claude one-shot: exact spec E2 argv, prompt only on stdin, byte-stable prefix file, usage parsed", async () => {
+test("claude one-shot: exact argv (spec E2, streamed, deny hook), prompt only on stdin, byte-stable prefix file, usage parsed", async () => {
   const h = await harness([{ output: { front: "Q", back: "A" } }]);
   const backend = createClaudeBackend({ command: fake("claude"), workDir: h.workDir, env: h.env });
   const ledger: LedgerEntry[] = [];
@@ -106,7 +106,7 @@ test("the same prefix maps to the same file; a different course gets a different
   assert.equal((await readdir(join(h.workDir, "prefix"))).length, 2);
 });
 
-test("codex one-shot: exact spec E2 argv, prefix leads stdin, strong tier adds effort, usage parsed", async () => {
+test("codex one-shot: exact argv (spec E2, no git check, never asks), prefix leads stdin, strong tier adds effort, usage parsed", async () => {
   const h = await harness([{ output: { front: "Q", back: "A" }, usage: { input_tokens: 500, cached_input_tokens: 400, output_tokens: 30 } }]);
   const backend = createCodexBackend({ command: fake("codex"), workDir: h.workDir, env: h.env });
   const runner = createModelRunner({ backend });

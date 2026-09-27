@@ -10,7 +10,7 @@ import {
   type Usage,
 } from "./types";
 import { contentFile, extractJson, failure } from "./util";
-import { DENY_TOOLS_SETTINGS, claudeToolUse, toolUseError } from "./tripwire"; // owner: client-detection
+import { DENY_TOOLS_SETTINGS, claudeStreamCheck } from "./tripwire"; // owner: client-detection
 
 /** Aliases resolve to the latest model of each family on the student's plan (`claude --help`). */
 export const CLAUDE_TIER_MODELS: Record<Tier, string> = { pass: "sonnet", strong: "opus" };
@@ -164,10 +164,7 @@ export function createClaudeBackend(options: ClaudeOptions): ModelBackend {
         timeoutMs: call.timeoutMs,
         signal: call.signal,
         // owner: client-detection (security): any tool use kills the run and discards its output.
-        onStdoutLine: (line) => {
-          const blocked = claudeToolUse(line);
-          return blocked ? toolUseError(blocked) : null;
-        },
+        onStdoutLine: claudeStreamCheck,
       });
       const result = parseClaudeJson(run.stdout);
       if (!result) {

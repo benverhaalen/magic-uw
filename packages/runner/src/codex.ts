@@ -9,7 +9,7 @@ import {
   type Tier,
 } from "./types";
 import { contentFile, extractJson, failure } from "./util";
-import { codexToolUse, toolUseError } from "./tripwire"; // owner: client-detection
+import { codexStreamCheck } from "./tripwire"; // owner: client-detection
 
 export interface CodexTierModel {
   /** Omitted: the CLI's built-in default, which the student's plan serves by construction. */
@@ -136,10 +136,7 @@ export function createCodexBackend(options: CodexOptions): ModelBackend {
         timeoutMs: call.timeoutMs,
         signal: call.signal,
         // owner: client-detection (security): any tool item kills the run and discards its output.
-        onStdoutLine: (line) => {
-          const blocked = codexToolUse(line);
-          return blocked ? toolUseError(blocked) : null;
-        },
+        onStdoutLine: codexStreamCheck,
       });
       try {
         return parseCodexEvents(run.stdout, tier.model ?? "");

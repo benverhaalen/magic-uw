@@ -165,7 +165,7 @@ export function healthCopy(h: ClientHealth, options: { chat?: boolean } = {}): H
       return {
         tone: "problem",
         title: `${name} tried to use a tool`,
-        cause: `My Magic UW never lets the model run commands, edit files or browse. ${name} started to, so that request was stopped and its answer discarded. Nothing it tried ran to completion.`,
+        cause: `My Magic UW never lets the model run commands, edit files or browse. ${name} started to, so the run was stopped and its answer discarded.`,
         next: "Try again. If it keeps happening, update the client or choose another AI, and tell us which version you have.",
         actions: [{ kind: "check_again" }, { kind: "switch" }],
       };

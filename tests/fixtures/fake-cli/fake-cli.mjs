@@ -32,7 +32,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // owner: client-detection. `events`: stream lines printed before the answer (a tool use, for the
 // tripwire tests); `holdMs`: a pause after them, so a test can tell the run was killed early.
 async function emitEvents(spec) {
-  for (const e of spec.events ?? []) process.stdout.write(`${JSON.stringify(e)}\n`);
+  // `grandchild: {marker, ms}`: a process this fake starts that writes `marker` after `ms` unless
+  // it was killed with the fake's whole tree (the kill-tree test).
+  if (spec.grandchild) {
+    const { spawn } = await import("node:child_process");
+    spawn(process.execPath, ["-e", `setTimeout(() => require("fs").writeFileSync(${JSON.stringify(spec.grandchild.marker)}, "x"), ${Number(spec.grandchild.ms)})`], { stdio: "ignore" });
+    await sleep(300);
+  }
+  for (const e of spec.events ?? []) process.stdout.write(`${typeof e === "string" ? e : JSON.stringify(e)}\n`);
   if (spec.holdMs) await sleep(spec.holdMs);
 }
 async function readAll() {
