@@ -2,6 +2,8 @@
 
 Magic UW's entry for **The Art of the Break**: one failure specific to how we built the app, how often it happened, what we did to stop it and what we learned.
 
+The one-page submission is [break-card.pdf](break-card.pdf) (source: [break-card.tex](break-card.tex), written in ASD-STE100 Simplified Technical English; build with `xelatex break-card.tex`).
+
 ## The failure
 
 A grounded answer in Magic UW is a set of short sentences. Each one cites a quote from the student's own course materials. The student's own AI (Claude Code or Codex) writes the sentences, and code checks the evidence. `checkAnswer` (`packages/core/src/intent/ask.ts`) confirmed that every cited quote was in its passage. It never compared the sentence with the quote.
