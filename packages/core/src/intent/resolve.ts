@@ -5,7 +5,7 @@
  * and partial slots (a resolved course, a date) go to the classify call as hints.
  */
 import type { IntentCandidate, IntentSlots } from "@magic/contracts";
-import { DATE_PATTERN } from "./dates";
+import { DATE_PATTERN, parseTime } from "./dates";
 import { findCourseMentions, narrow, norm, type IntentIndex } from "./courses";
 import type { ActionRegistry, AnyAction } from "./registry";
 import type { Resolve, ResolvedArgs, ResolvedCourse } from "./types";
@@ -87,7 +87,12 @@ export function resolveSlots(spec: AnyAction, slots: IntentSlots, resolve: Resol
     const d = resolve.date(slots.date);
     if (!d) return fail(`I couldn't read the date "${slots.date}". Which day do you mean?`);
     args.date = d;
-  } else if (needs.date === "required") return fail("For which day?");
+  } else if (needs.date === "required") return fail("For which day?", [], "choose");
+  if (needs.time) {
+    const t = parseTime(slots.time?.trim() || text);
+    if (t) args.time = t;
+    else if (needs.time === "required") return fail("What time?", [], "choose");
+  }
   if (slots.assignment?.trim() && needs.assignment) {
     const r = resolve.assignment(slots.assignment, args.course);
     if (r.status === "ok") args.assignment = r.value;
@@ -173,7 +178,7 @@ export function resolveCode(text: string, contextCourseId: string | undefined, d
       deadline();
       let groups: Record<string, string | undefined> | null = null;
       for (const p of spec.patterns ?? []) {
-        const m = p.exec(rest);
+        const m = p.exec(spec.matchOn === "raw" ? text.trim() : rest);
         if (m) {
           groups = { ...(m.groups ?? {}) };
           break;

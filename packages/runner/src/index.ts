@@ -36,6 +36,7 @@ export {
   unionSchema,
   POOL_PROTOCOL,
   type SessionPool,
+  type WarmRequest,
   type PoolOptions,
   type ActivityEvent,
   type LaneStatus,

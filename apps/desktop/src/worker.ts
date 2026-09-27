@@ -91,7 +91,8 @@ async function intentRunner(): Promise<ModelRunner | null> {
   intentRuntime = { client: chosen, runner: createModelRunner({ backend: pool }), pool };
   return intentRuntime.runner;
 }
-const intent = createIntentRouter({ store, runner: intentRunner });
+// prewarm (the bar opened) finds the client, then starts its pooled session with the catalogue prefix.
+const intent = createIntentRouter({ store, runner: intentRunner, warm: (request) => intentRuntime?.pool?.warm(request) ?? Promise.resolve(false) });
 // end owner: intent
 const core = createCore(store, {
   fixture: captureBatchSchema.parse(fixture),

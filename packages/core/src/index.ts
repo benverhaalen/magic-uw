@@ -23,7 +23,7 @@ import {
 } from "@magic/contracts";
 import { maySend, resolveDeadline } from "@magic/domain";
 import { JudgmentBudgetError, judgmentResultSchema, type JudgmentGateway } from "@magic/ai";
-import { contentCategories, courseIncluded } from "./access";
+import { contentCategories, courseIncluded, courseInclusion } from "./access";
 import { evidenceFor } from "./evidence";
 import { rebaseFixture } from "./fixture-dates";
 export { rebaseFixture } from "./fixture-dates";
@@ -56,7 +56,7 @@ const judgedHash = (r: Resource) => textHash(r.title, r.text);
 /** The Jev kind question reads the title, about 2,000 characters, and the item's own stated policy, clipped. */
 const JEV_TEXT_CHARS = 2000;
 const JEV_POLICY_CHARS = 500;
-import type { QueryRequest } from "@magic/contracts";
+import type { QueryRequest, QueryResult } from "@magic/contracts";
 import type {
   Correction,
   LearningRequest,
@@ -88,6 +88,8 @@ export interface CoreSeams {
   // its own workspace verbs and seams; the router adds no new path to data or the network.
   intent?: {
     handle(command: IntentCommand, host: IntentHost, signal: AbortSignal): Promise<IntentCommandResult>;
+    /** The live hint (the `intent.preview` query): the code resolver only, never the model. */
+    preview?(text: string, courseId?: string): IntentCommandResult;
   };
   // end owner: intent
 }
@@ -597,7 +599,9 @@ export function createCore(store: Store, options: CoreOptions) {
       const days = value.days ?? 7,
         start = Date.parse(now()),
         end = start + days * 86_400_000,
-        evidence = evidenceFor(store);
+        evidence = evidenceFor(store),
+        // One inclusion map for the whole list (it reads every resource); per item it was O(n²).
+        included = courseInclusion(store);
       const items = store
         .resources()
         .filter(
@@ -606,7 +610,7 @@ export function createCore(store: Store, options: CoreOptions) {
             !r.deleted &&
             !r.completed &&
             (!value.courseId || r.courseId === value.courseId) &&
-            courseIncluded(store, r),
+            included(r),
         )
         .flatMap((r) => {
           const at = resolveDeadline(evidence.deadlines(r)).dueAt;
@@ -1006,7 +1010,12 @@ export function createCore(store: Store, options: CoreOptions) {
           seamResult = { command: { status: "unavailable", reason: "The command bar isn't built yet.", path: "none", latencyMs: 0, tokens: { in: 0, cached: 0, out: 0 } } };
           break;
         }
-        const host: IntentHost = { workspace, learning: seams.learning, pack: seams.pack };
+        const host: IntentHost = {
+          workspace,
+          learning: seams.learning,
+          pack: seams.pack,
+          query: (request) => runQuery(store, request, { now, gatewayConfigured: !!options.gateway }),
+        };
         const mode = command.value.mode ?? "run";
         seamResult = {
           command: mode === "run" ? await seamCall((signal) => intent.handle(command.value, host, signal)) : await intent.handle(command.value, host, new AbortController().signal),
@@ -1038,8 +1047,12 @@ export function createCore(store: Store, options: CoreOptions) {
     saved, // owner: T05b
     jobs, // owner: T05b
     // owner: T15. A scoped query: reads only, never a command, never the whole workspace.
-    query(request: QueryRequest) {
+    query(request: QueryRequest): QueryResult {
       if (closed) throw new Error("Workspace is closed.");
+      // owner: intent. The command bar's live hint: code resolver only, 0 tokens, no snapshot.
+      if (request.view === "intent.preview" && seams.intent?.preview)
+        return { view: "intent.preview", preview: seams.intent.preview(request.text, request.courseId) };
+      // end owner: intent
       return runQuery(store, request, {
         now,
         gatewayConfigured: !!options.gateway,

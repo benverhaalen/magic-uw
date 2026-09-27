@@ -99,3 +99,39 @@ export function resolveDate(phrase: string, now: Date, timeZone: string): DateRa
   }
   return null;
 }
+
+/** A clock time or range said in words ("at 3pm", "2-3:30pm", "noon"); minutes after local midnight. */
+export interface TimeRange {
+  start: number;
+  end: number;
+}
+const TIME_RANGE = /\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:-|–|to|until|till)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i;
+const TIME_AT = /(?:\b(?:at|@)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b|\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b|\b(noon|midday)\b)/i;
+/** The phrase to strip from a title once its time is read. */
+export const TIME_PHRASE = new RegExp(`(?:\s*(?:from\s+)?${TIME_RANGE.source}|\s*${TIME_AT.source})`, "gi");
+function minutes(h: string, m: string | undefined, ampm: string | undefined, fallbackPm: boolean): number | null {
+  let hour = Number(h);
+  const min = m ? Number(m) : 0;
+  if (hour > 23 || min > 59) return null;
+  const mer = ampm?.toLowerCase() ?? (hour <= 12 && fallbackPm ? "pm" : undefined);
+  if (mer === "pm" && hour < 12) hour += 12;
+  if (mer === "am" && hour === 12) hour = 0;
+  return hour * 60 + min;
+}
+/** Code reads the time; a bare hour from 1 to 7 is afternoon (students rarely book 3 am). */
+export function parseTime(text: string, defaultMinutes = 60): TimeRange | null {
+  const r = TIME_RANGE.exec(text);
+  if (r) {
+    const endMer = r[6];
+    const end = minutes(r[4]!, r[5], endMer, false);
+    const startGuess = minutes(r[1]!, r[2], r[3] ?? endMer, false);
+    if (end === null || startGuess === null) return null;
+    const start = startGuess > end && !r[3] ? startGuess - 12 * 60 : startGuess;
+    return start >= 0 && end > start ? { start, end } : null;
+  }
+  const a = TIME_AT.exec(text);
+  if (!a) return null;
+  const start = a[7] ? 12 * 60 : a[1] ? minutes(a[1], a[2], a[3], Number(a[1]) >= 1 && Number(a[1]) <= 7) : minutes(a[4]!, a[5], a[6], false);
+  if (start === null) return null;
+  return { start, end: Math.min(start + defaultMinutes, 24 * 60 - 1) };
+}

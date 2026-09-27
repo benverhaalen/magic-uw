@@ -229,6 +229,12 @@ export function createResolve(store: IntentStore, index: () => IntentIndex, now:
   const byId = (courseId: string) => index().courses.filter((c) => c.courseId === courseId || c.ref === courseId);
   return {
     courses: () => index().courses.filter((c) => c.current).map(publicCourse),
+    courseOfResource(resourceId) {
+      const idx = index();
+      const ref = idx.assignments.find((a) => a.resourceId === resourceId)?.courseRef;
+      const c = ref ? idx.courses.find((x) => x.ref === ref) : undefined;
+      return c ? publicCourse(c) : null;
+    },
     anchors: (course) =>
       index()
         .assignments.filter((a) => a.courseRef === course.ref)

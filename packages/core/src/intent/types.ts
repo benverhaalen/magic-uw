@@ -5,6 +5,8 @@ import type {
   LearningRequest,
   LearningResult,
   PackScope,
+  QueryRequest,
+  QueryResult,
   Store,
   WorkspaceCommand,
   WorkspaceResult,
@@ -38,6 +40,8 @@ export interface ResolvedArgs {
   /** Topic words that matched no concept label; the router passes them on as a description. */
   topicText?: string;
   date?: DateRange;
+  /** Minutes after local midnight, read by code. */
+  time?: { start: number; end: number };
   query?: string;
   kind?: "cards" | "quiz";
   count?: number;
@@ -59,11 +63,15 @@ export interface Resolve {
   courses(): ResolvedCourse[];
   /** The course's assignments that anchor a practice scope (the learning router authorizes each). */
   anchors(course: ResolvedCourse): string[];
+  /** The course an assignment belongs to. */
+  courseOfResource(resourceId: string): ResolvedCourse | null;
 }
 
 /** What core hands the router for one command: its own seams, never a new network path. */
 export interface IntentHost {
   workspace(value: WorkspaceCommand): Promise<WorkspaceResult>;
+  /** Core's scoped read queries (mail search, guide views); reads only. */
+  query?(request: QueryRequest): QueryResult;
   learning?: { handle(request: LearningRequest, signal: AbortSignal): Promise<LearningResult> };
   pack?(pack: string, scope: PackScope, signal: AbortSignal): Promise<unknown>;
 }
@@ -75,6 +83,8 @@ export interface ActionContext {
   now: Date;
   timeZone: string;
   signal: AbortSignal;
+  /** What the student has open when they asked (the command's context). */
+  request: { courseId?: string; view?: string; noteId?: string };
   /** The grounded ask, for the `ask` action and adapters that answer questions. */
   ask(question: string, courses: ResolvedCourse[] | "all", signal: AbortSignal): Promise<AskResult>;
 }
@@ -98,8 +108,10 @@ export interface ActionSpec<A = ResolvedArgs> {
   /** Validates the resolved arguments (IDs and dates from code) before run. */
   argsSchema: z.ZodType<A>;
   examples: string[];
-  /** Code-path patterns over the normalised request; named groups fill slots. */
+  /** Code-path patterns; named groups fill slots. */
   patterns?: RegExp[];
+  /** `rest` (default): the normalised request with its course and date removed. `raw`: the request as typed. */
+  matchOn?: "rest" | "raw";
   /** The candidate's label, in the student's words. */
   label?(args: A): string;
   run(args: A, ctx: ActionContext): Promise<unknown>;

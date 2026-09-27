@@ -51,7 +51,7 @@ async function setup(responses: unknown[] = [{}], opts: { client?: boolean; acti
   return { store, core, router, run, calls, learning, packs, requests, ref };
 }
 
-const slots = (over: Record<string, unknown> = {}) => ({ course: null, assignment: null, topics: null, date: null, query: null, kind: null, count: null, scope: null, ...over });
+const slots = (over: Record<string, unknown> = {}) => ({ course: null, assignment: null, topics: null, date: null, time: null, query: null, kind: null, count: null, scope: null, ...over });
 const intent = (action: string, args: Record<string, unknown>, over: Record<string, unknown> = {}) => ({
   output: { action, args: slots(args), confidence: "high", alternatives: null, question: null, ...over },
 });
@@ -86,9 +86,11 @@ test("code path: common commands run at 0 tokens with no model call", async () =
   assert.deepEqual(h.packs[0], { pack: "cards", scope: { courseId: "c400", topicIds: [conceptId(h.ref, "concept", "Hash tables")] } });
   const agenda = await h.run("what's due tomorrow");
   assert.ok(agenda.status === "ran");
-  const items = (agenda.result as { items: { title: string }[] }).items.map((i) => i.title);
+  // The material pipeline's agenda is preferred over the D40 due verb when the store has it.
+  const result = agenda.result as { source: string; entries: { title: string; kind: string }[] };
+  assert.equal(result.source, "pipeline");
   // Both fall on Tuesday in Chicago; Homework 3 is due 23:59 local, after Problem Set 2 at 17:00.
-  assert.deepEqual(items, ["Problem Set 2", "Homework 3"]);
+  assert.deepEqual(result.entries.filter((e) => e.kind === "assignment").map((e) => e.title), ["Problem Set 2", "Homework 3"]);
   const open = await h.run("open homework 3 in cs 400");
   assert.ok(open.status === "ran" && (open.result as { url: string }).url.endsWith("/c400/Homework%203"));
   // Every command left a route row in the ledger with its path and latency.

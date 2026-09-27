@@ -7,26 +7,11 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { LearningRequest } from "@magic/contracts";
 import { localDay, isoDay } from "./dates";
-import type { ActionContext, ActionSpec, ResolvedArgs, ResolvedCourse } from "./types";
+import type { ActionContext, ActionSpec, ResolvedArgs } from "./types";
+import { baseArgs, courseLabel, withAssignment, withCourse, type WithCourse } from "./action-args";
+import { pipelineAgenda } from "./adapters/pipeline";
 
-const course = z.object({ ref: z.string(), accountScope: z.string(), courseId: z.string(), code: z.string().nullable(), name: z.string() }).strict();
-const range = z.object({ from: z.iso.date(), to: z.iso.date(), label: z.string() }).strict();
-const base = {
-  text: z.string(),
-  course: course.optional(),
-  assignment: z.object({ resourceId: z.string(), title: z.string() }).strict().optional(),
-  topicIds: z.array(z.string()).max(50).optional(),
-  topicText: z.string().max(500).optional(),
-  date: range.optional(),
-  query: z.string().max(500).optional(),
-  kind: z.enum(["cards", "quiz"]).optional(),
-  count: z.number().int().min(1).max(30).optional(),
-  scope: z.enum(["course", "all"]).optional(),
-};
-const args = z.object(base).strict();
-const withCourse = args.extend({ course });
-type WithCourse = z.infer<typeof withCourse>;
-const courseLabel = (c?: ResolvedCourse) => (c ? (c.code ?? c.name) : "");
+const args = baseArgs;
 // Trailing connectors are trimmed before matching, so "go to" may arrive as "go".
 const OPEN = "(?:open|go(?: to)?|goto|show me|show|take me(?: to)?|pull up|bring up|view|launch|jump to|switch to)";
 
@@ -60,7 +45,6 @@ export const openCourse: ActionSpec<WithCourse> = {
   },
 };
 
-const withAssignment = args.extend({ assignment: z.object({ resourceId: z.string(), title: z.string() }).strict() });
 export const openAssignment: ActionSpec<z.infer<typeof withAssignment>> = {
   name: "assignment.open",
   description: "Open one assignment by its title (in a course when named).",
@@ -148,6 +132,9 @@ export const agenda: ActionSpec<ResolvedArgs> = {
   ],
   label: (a) => `What's due${a.date ? ` ${a.date.label}` : " this week"}${a.course ? ` · ${courseLabel(a.course)}` : ""}`,
   async run(a, ctx) {
+    // The material pipeline's agenda (classes, events, exams and due work, deduplicated) when present.
+    const merged = pipelineAgenda(ctx, a);
+    if (merged) return merged;
     const today = localDay(ctx.now, ctx.timeZone);
     const from = a.date?.from ?? isoDay(today);
     const to = a.date?.to ?? isoDay(today + 6 * 86_400_000);
@@ -159,7 +146,7 @@ export const agenda: ActionSpec<ResolvedArgs> = {
       const d = local(i.dueAt);
       return d >= from && d <= to;
     });
-    return { range: { from, to, label: a.date?.label ?? "this week" }, items };
+    return { source: "due" as const, range: { from, to, label: a.date?.label ?? "this week" }, items };
   },
 };
 
@@ -198,6 +185,3 @@ export const ask: ActionSpec<ResolvedArgs> = {
     return { kind: "answer" as const, ...(await ctx.ask(a.query ?? a.text, scope, ctx.signal)) };
   },
 };
-
-/** Registration order is code-path priority: the first pattern that matches wins. */
-export const BUILTIN_ACTIONS: ActionSpec<ResolvedArgs>[] = [generate, flashcardsDue, learnRound, quizMe, agenda, openCourse, openAssignment, search, ask];

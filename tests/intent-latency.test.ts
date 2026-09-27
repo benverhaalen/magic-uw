@@ -25,7 +25,7 @@ const N = 24;
 const classify = {
   output: {
     kind: "intent-classify",
-    data: { action: "agenda.due", args: { course: null, assignment: null, topics: null, date: "tomorrow", query: null, kind: null, count: null, scope: null }, confidence: "high", alternatives: null, question: null },
+    data: { action: "agenda.due", args: { course: null, assignment: null, topics: null, date: "tomorrow", time: null, query: null, kind: null, count: null, scope: null }, confidence: "high", alternatives: null, question: null },
   },
   sleepMs: LATENCY_MS,
 };

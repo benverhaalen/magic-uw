@@ -15,6 +15,7 @@ export const slotsSchema = z
     assignment: z.string().max(300).nullable(),
     topics: z.array(z.string().min(1).max(120)).max(10).nullable(),
     date: z.string().max(80).nullable(),
+    time: z.string().max(40).nullable(),
     query: z.string().max(500).nullable(),
     kind: z.enum(["cards", "quiz"]).nullable(),
     count: z.number().int().min(1).max(30).nullable(),
@@ -53,6 +54,7 @@ export const SLOT_GLOSSARY = [
   "assignment: the assignment or item title words (null when none)",
   "topics: topic names to focus on, as the student said them",
   'date: the date or range as the student said it ("today", "next tuesday", "this week", "oct 3"); never compute a date',
+  'time: a clock time or range as said ("3pm", "2-3:30pm"), for calendar events',
   "query: search words or the full question",
   "kind: cards or quiz, for generating study material",
   "count: how many, when the student said a number",
@@ -70,7 +72,7 @@ export const CLASSIFY_SYSTEM = [
 
 export const classifyPack = definePack<ClassifyInput, ClassifyOutput>({
   id: "intent-classify",
-  version: "v1",
+  version: "v2",
   tier: "pass",
   system: CLASSIFY_SYSTEM,
   template: (i) =>

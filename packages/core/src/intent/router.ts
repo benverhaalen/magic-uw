@@ -14,11 +14,11 @@
  */
 import { randomUUID } from "node:crypto";
 import type { CommandOutcome, IntentCandidate, IntentCommand, IntentCommandResult, IntentSlots } from "@magic/contracts";
-import type { ModelRunner } from "../../../runner/src/index";
+import type { ModelRunner, WarmRequest } from "../../../runner/src/index";
 import { buildPrompt, memoryArtifactStore, memoryLedgerStore, type ArtifactStore, type CourseFrame, type LedgerStore } from "../../../packs/core/src/index";
 import { classifyPack, SLOT_GLOSSARY, type ClassifyInput, type ClassifyOutput, type ClassifySlots } from "../../../packs/intent/src/index";
 import { readPackArtifact, runPack } from "../jobs/pack";
-import { BUILTIN_ACTIONS } from "./actions";
+import { defaultActions } from "./adapters";
 import { groundedAsk } from "./ask";
 import { authorizer } from "./consent";
 import { buildIndex, createResolve, indexSignature, type IntentIndex } from "./courses";
@@ -34,10 +34,10 @@ export interface IntentRouterDeps {
   ledger?: LedgerStore;
   now?: () => Date;
   timeZone?: string;
-  /** Adapted actions from other lanes (intent/adapters.ts). */
+  /** Actions registered ahead of the built-ins (the notes lane's, via intent/adapters/notes.ts). */
   actions?: AnyAction[];
-  /** Readies the client for the classify prefix without sending (a warm pooled session). */
-  warm?: (call: { systemPrompt: string; pack: { id: string; version: string } }) => Promise<void>;
+  /** Starts the client for the classify prefix without sending anything (SessionPool.warm). */
+  warm?: (request: WarmRequest) => Promise<unknown>;
   speculation?: "gate" | "race";
   /** false skips the code resolver: the AI-only baseline, for measurement. */
   codePath?: boolean;
@@ -68,7 +68,7 @@ export function createIntentRouter(deps: IntentRouterDeps) {
   const timeZone = deps.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const artifacts = deps.artifacts ?? memoryArtifactStore();
   const ledger = deps.ledger ?? memoryLedgerStore();
-  const registry: ActionRegistry = createRegistry([...BUILTIN_ACTIONS, ...(deps.actions ?? [])]);
+  const registry: ActionRegistry = createRegistry(defaultActions(deps.actions));
   const speculation = deps.speculation ?? "gate";
 
   let cached: IntentIndex | null = null;
@@ -126,8 +126,9 @@ export function createIntentRouter(deps: IntentRouterDeps) {
     return { status: "failed", reason: result.message };
   }
 
-  function context(host: IntentHost, signal: AbortSignal, runnerP: Promise<ModelRunner | null>, spent: { tokens: Tokens }): ActionContext {
+  function context(host: IntentHost, signal: AbortSignal, runnerP: Promise<ModelRunner | null>, spent: { tokens: Tokens }, request: ActionContext["request"]): ActionContext {
     return {
+      request,
       store,
       host,
       resolve,
@@ -166,8 +167,8 @@ export function createIntentRouter(deps: IntentRouterDeps) {
     }
   }
 
-  function runAction(spec: AnyAction, args: ResolvedArgs, host: IntentHost, signal: AbortSignal, runnerP: Promise<ModelRunner | null>, spent: { tokens: Tokens }) {
-    return spec.run(args, context(host, signal, runnerP, spent));
+  function runAction(spec: AnyAction, args: ResolvedArgs, host: IntentHost, signal: AbortSignal, runnerP: Promise<ModelRunner | null>, spent: { tokens: Tokens }, request: ActionContext["request"] = {}) {
+    return spec.run(args, context(host, signal, runnerP, spent, request));
   }
 
   function outcomeOf(spec: AnyAction, args: ResolvedArgs, result: unknown) {
@@ -206,7 +207,7 @@ export function createIntentRouter(deps: IntentRouterDeps) {
       if (code.status === "hit") {
         aiAbort.abort();
         const spec = registry.get(code.action)!;
-        const result = await runAction(spec, code.args, host, signal, runnerP, spent);
+        const result = await runAction(spec, code.args, host, signal, runnerP, spent, command.context);
         return done(outcomeOf(spec, code.args, result), "code", spec.name, code.args.course);
       }
       if (code.status === "clarify") {
@@ -238,7 +239,7 @@ export function createIntentRouter(deps: IntentRouterDeps) {
       }
       const checked = resolveSlots(spec, slots, resolve, text, command.context?.courseId);
       if (!checked.ok) return done({ status: "clarify", question: checked.question, candidates: checked.candidates.length ? checked.candidates : alternatives }, path, spec.name, undefined, attempt.model);
-      const result = await runAction(spec, checked.args, host, signal, runnerP, spent);
+      const result = await runAction(spec, checked.args, host, signal, runnerP, spent, command.context);
       return done(outcomeOf(spec, checked.args, result), path, spec.name, checked.args.course, attempt.model);
     } finally {
       signal.removeEventListener("abort", onAbort);
@@ -266,7 +267,10 @@ export function createIntentRouter(deps: IntentRouterDeps) {
     const runner = await acquire();
     if (runner && deps.warm) {
       const prompt = buildPrompt(classifyPack, frame, { utterance: "", currentCourse: null, hints: [] }, []);
-      await deps.warm({ systemPrompt: prompt.systemPrompt, pack: { id: classifyPack.id, version: classifyPack.version } }).catch(() => undefined);
+      // The same lane, tier and prefix the classify call uses, so that call finds the session warm.
+      await deps
+        .warm({ systemPrompt: prompt.systemPrompt, pack: { id: classifyPack.id, version: classifyPack.version }, tier: classifyPack.tier, lane: "interactive", courseId: frame.courseId })
+        .catch(() => undefined);
     }
     return { status: "ready", ai: !!runner, path: "none", latencyMs: clock() - t0, tokens: zero() };
   }

@@ -1465,9 +1465,10 @@ export const intentCommandSchema = z
   .object({
     text: z.string().max(500),
     context: z
-      .object({ courseId: id.optional(), view: z.string().max(100).optional() })
+      .object({ courseId: id.optional(), view: z.string().max(100).optional(), noteId: id.optional() })
       .strict()
       .optional(),
+    /** `preview` here is deprecated: use the `intent.preview` query, which skips the snapshot. */
     mode: z.enum(["run", "preview", "prewarm"]).optional(),
   })
   .strict();
@@ -1478,6 +1479,8 @@ export interface IntentSlots {
   assignment?: string | null;
   topics?: string[] | null;
   date?: string | null;
+  /** A clock time or range as said ("3pm", "2-3:30pm"); code reads it. */
+  time?: string | null;
   query?: string | null;
   kind?: "cards" | "quiz" | null;
   count?: number | null;
@@ -1563,6 +1566,16 @@ export const queryRequestSchema = z.discriminatedUnion("view", [
     })
     .strict(),
   // end owner: guides
+  // owner: intent. The command bar's live hint while typing or dictating: the code resolver only,
+  // 0 tokens, never the model, and no snapshot recompute (the query channel).
+  z
+    .object({
+      view: z.literal("intent.preview"),
+      text: z.string().max(500),
+      courseId: id.optional(),
+    })
+    .strict(),
+  // end owner: intent
 ]);
 export type QueryRequest = z.infer<typeof queryRequestSchema>;
 /** A list row: a resource without its bodies (text, raw HTML, parts, document pages). */
@@ -1632,8 +1645,9 @@ export type QueryResult =
       message: string | null;
       modelCalls: 0;
       guide: unknown;
-    };
-// end owner: guides
+    }
+  // end owner: guides
+  | { view: "intent.preview"; preview: IntentCommandResult }; // owner: intent
 // end owner: T15
 export const commandSchema = z.discriminatedUnion("type", [
   z

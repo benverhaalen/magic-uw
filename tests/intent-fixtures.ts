@@ -44,22 +44,22 @@ export function workspace() {
   const batches = [
     batch("c400", CS, [
       res("c400", CS, "Programming III", "course"),
-      res("c400", CS, "Homework 3", "assignment", { deadlines: due("2026-09-30T04:59:00.000Z") }),
-      res("c400", CS, "Homework 4", "assignment", { deadlines: due("2026-10-07T04:59:00.000Z") }),
+      res("c400", CS, "Homework 3", "assignment", { dueAt: "2026-09-30T04:59:00.000Z", deadlines: due("2026-09-30T04:59:00.000Z") }),
+      res("c400", CS, "Homework 4", "assignment", { dueAt: "2026-10-07T04:59:00.000Z", deadlines: due("2026-10-07T04:59:00.000Z") }),
       res("c400", CS, "Syllabus", "material", { text: `Course policies. ${LATE} Exams are closed book.` }),
       res("c400", CS, "Recursion notes", "material", { text: "Recursion solves a problem by solving smaller instances of the same problem. Every recursive method needs a base case." }),
     ]),
     batch("c101", ECON, [
       res("c101", ECON, "Principles of Microeconomics", "course"),
-      res("c101", ECON, "Problem Set 2", "assignment", { deadlines: due("2026-09-29T22:00:00.000Z") }),
+      res("c101", ECON, "Problem Set 2", "assignment", { dueAt: "2026-09-29T22:00:00.000Z", deadlines: due("2026-09-29T22:00:00.000Z") }),
       res("c101", ECON, "Supply and demand", "material", { text: "Demand curves slope downward because consumers buy more at lower prices." }),
     ]),
     batch("c102", PHIL, [
       res("c102", PHIL, "Introduction to Philosophy", "course"),
-      res("c102", PHIL, "Essay 1", "assignment", { deadlines: due("2026-10-02T04:59:00.000Z") }),
+      res("c102", PHIL, "Essay 1", "assignment", { dueAt: "2026-10-02T04:59:00.000Z", deadlines: due("2026-10-02T04:59:00.000Z") }),
       res("c102", PHIL, "Utilitarianism reading", "material", { text: "Utilitarianism holds that the right action is the one that produces the greatest happiness." }),
     ]),
-    batch("c234", MATH, [res("c234", MATH, "Calculus--Functions of Several Variables", "course"), res("c234", MATH, "Quiz 1", "assignment", { deadlines: due("2026-10-01T04:59:00.000Z") })]),
+    batch("c234", MATH, [res("c234", MATH, "Calculus--Functions of Several Variables", "course"), res("c234", MATH, "Quiz 1", "assignment", { dueAt: "2026-10-01T04:59:00.000Z", deadlines: due("2026-10-01T04:59:00.000Z") })]),
     batch("c221", OLDMATH, [res("c221", OLDMATH, "Calculus and Analytic Geometry 1", "course")]),
   ];
   for (const b of batches) store.ingest(b);
