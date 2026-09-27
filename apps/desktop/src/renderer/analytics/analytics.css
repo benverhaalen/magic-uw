@@ -183,7 +183,10 @@
   margin-left: 8px;
 }
 .ca-chip {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: middle;
   padding: 1px 7px;
   border-radius: var(--magic-radius-tag-candidate);
   background: var(--chart-surface-quiet);

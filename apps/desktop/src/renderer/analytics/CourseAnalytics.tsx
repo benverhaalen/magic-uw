@@ -7,7 +7,9 @@ import type { FlashcardData, PracticeRoundData } from "../../../../../packages/l
 import { ChartFrame, Legend, LevelBar, LineChart, ProgressBar, RingChart, StackedBarChart, percentDomain, type Series } from "../charts";
 import { SessionRunner, type SessionStart } from "../backend/mastery/SessionRunner";
 import { operationId, type MasteryApi } from "../backend/mastery/api";
-import { Action } from "../../../../../packages/ui/src";
+import { Action, MagicGlyph, type MagicGlyphName } from "../../../../../packages/ui/src";
+
+const ACTION_GLYPH: Record<ActionCard["kind"], MagicGlyphName> = { review: "sources", quiz: "check", recall_check: "refresh", generate: "compose", start: "assignment" };
 import { loadAnalyticsInputs, localCourseData, type CourseRef } from "./load";
 import {
   COMPLETION,
@@ -177,10 +179,14 @@ function Prep({ view, onPrep, onCoursework }: { view: PrepView; onPrep: (id: str
             <li key={r.itemId} className="ca-prep-row">
               <div className="ca-prep-head">
                 <div>
-                  <span className="ca-chip">{r.kind}</span>
+                  <span className="ca-chip">
+                    <MagicGlyph name={r.kind === "Assignment" ? "assignment" : "exam"} size={13} />
+                    {r.kind}
+                  </span>
                   <strong className="ca-prep-title">{r.title}</strong>
                 </div>
                 <Action tone="quiet" intent="study" onClick={() => onPrep(r.itemId)} aria-label={`Prep for ${r.title}`}>
+                  <MagicGlyph name="prep" size={16} />
                   Prep
                 </Action>
               </div>
@@ -270,6 +276,7 @@ function Actions({ view, onAction, onCoursework, busy }: { view: ActionsView; on
                 <p className="ca-meta">{c.detail}</p>
                 {c.usesAi ? <p className="ca-cite">Uses your AI, with its consent and receipt.</p> : null}
                 <Action tone={i === 0 ? "primary" : "quiet"} intent={c.kind === "start" ? "coursework" : "study"} pending={busy} onClick={() => onAction(c)}>
+                  <MagicGlyph name={ACTION_GLYPH[c.kind]} size={16} />
                   {c.cta}
                 </Action>
               </div>

@@ -19,8 +19,8 @@ The Analytics tab lives in `apps/desktop/src/renderer/analytics/` (view model, l
 ## Design adoption record
 
 ```text
-System revision: origin/main at the merge into feat/course-analytics (b8495a4)
-Consumers: Action (packages/ui) for every button; tokens.css colours via chart tokens in charts/charts.css; uniform Geist 400 for emphasis; SessionRunner from backend/mastery for flashcards
+System revision: origin/main ccd21f8, merged into feat/course-analytics
+Consumers: Action and MagicGlyph (Hugeicons Stroke Rounded, packages/ui) for buttons and icons; tokens.css colours via chart tokens in charts/charts.css; uniform Geist 400 for emphasis; SessionRunner from backend/mastery for flashcards
 Exception/new pattern: charts (line, stacked columns, ring, segmented and level bars) are new, local to the renderer. tokens.css has no dark set yet, so dark chart values are scoped in charts.css under :root[data-theme="dark"] until the design integrator adds them.
 Observed: headless render tests only (renderToStaticMarkup); no Electron window or screenshot was taken for this change.
 Remaining: visual review in the running app, light and dark; the what-if band and letter wording with Ben.
