@@ -28,8 +28,8 @@ Keys go into Vercel and your local environment, never into Git or chat.
 
 1. Create a project. In **SQL Editor**, run both files in `supabase/migrations/`, in order. (Done for `my-magic-uw`.)
 2. **Authentication → URL Configuration**: Site URL `https://magic-uw-omega.vercel.app` (the current domain); Redirect URLs `https://magic-uw-omega.vercel.app/account/` and, for local testing, `http://localhost:4179/account/`.
-3. **Authentication → Emails → Magic Link**: keep the link and add `Or enter this code in the app: {{ .Token }}` so the desktop app can sign in with the code.
-4. Before real students: **Authentication → Emails → SMTP Settings** with a mail provider. Supabase's built-in sender is rate-limited and meant for testing.
+3. **Authentication → Emails → Confirm sign up** and **Magic link or OTP** (done September 27; both are sent, new accounts get the first): a **Sign in** button linking to `{{ .RedirectTo }}#token_hash={{ .TokenHash }}&amp;type=email`, and the code `{{ .Token }}` as backup. The account page spends the token only when the student presses **Finish signing in**, so a scanner opening the link can't use up the link or the code (they are one token).
+4. **Authentication → Emails → SMTP Settings**: custom SMTP is on with Resend (`smtp.resend.com`, port 465, user `resend`), sending from `onboarding@resend.dev`, which only delivers to the Resend account's own address. Before real students: verify the permanent domain in Resend and change the sender to it.
 
 **Lemon Squeezy** (test mode works before the store is approved)
 
