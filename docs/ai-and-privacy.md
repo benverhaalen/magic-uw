@@ -94,8 +94,8 @@ Cost per 10 KB payload (Windows 11, Node 24, a 42-person roster): the roster scr
 
 | Path | Call site | Protection applied |
 | --- | --- | --- |
-| Explain context and preview (Claude, ChatGPT, Gemini, OpenRouter) | `packages/core/src/index.ts:245` (`context`) | Per field at its class; citation projection; `validate-citations` `index.ts:926`; receipt counts `index.ts:308`, `:324` |
-| Jev gateway (assignment kind) | `index.ts:503` → `packages/ai/src/index.ts:100` | The same `context(…, "jev")` payload; receipt with counts |
+| Explain context and preview (Claude, ChatGPT, Gemini, OpenRouter) | `packages/core/src/index.ts:267` (`context`) | Per field at its class; citation projection; `validate-citations` `index.ts:833`; receipt counts `index.ts:330`, `:346` |
+| Jev gateway (assignment kind) | `packages/core/src/jobs/enrich.ts:72` → `packages/ai/src/index.ts:100` | The same `context(…, "jev")` payload; receipt with counts |
 | Packs: quiz, cards | `packages/core/src/pack-handler.ts:361`, sent at `packages/runner/src/runner.ts:182` | Each passage at its resource's class; labels and frame as teaching; the assembled prompt again in `beforeCall`; receipt counts `pack-handler.ts:435` |
 | Study guides (six kinds) | `packages/packs/guide/src/run.ts:129` | As packs; receipt counts `run.ts:216` |
 | `notes.fill` (fill from slides) | `packages/notes/src/fill.ts:122` | Slides at their class, the student's headings as personal, the prompt again in `beforeCall`; quotes mapped back to the original before `findQuote`; receipt counts `fill.ts:153` |
@@ -104,7 +104,7 @@ Cost per 10 KB payload (Windows 11, Node 24, a 42-person roster): the roster scr
 | Mail as a hosted prompt (`mail.gist`) | stub, `packages/core/src/jobs/mail-gist.ts:8` | `protectMail`: subject, preview and gist as personal text; sender name and address always pseudonymised (a retained instructor keeps their name); account-wide roster |
 | Notes sync to the student's own OneDrive or Google Drive | `packages/notes/src/remote.ts:51`, `:149`, `:159` | Sent verbatim by design: the student's own document to their own account, not an AI recipient. Rewriting it would corrupt their notes |
 | Planning | no path | Hard-blocked for every hosted recipient (`tests/egress.test.ts`, and the sweep) |
-| Dev trial log, startup errors, worker seal and backup lines | `apps/desktop/src/main.ts:133`, `:1769`; `apps/desktop/src/worker.ts:46`, `:415` | `redactForLog` |
+| Dev trial log, startup errors, worker seal and backup lines | `apps/desktop/src/main.ts:142`, `:1797`; `apps/desktop/src/worker.ts:45`, `:412` | `redactForLog` |
 
 `tests/privacy-canary-sweep.test.ts` seeds canaries across the resource kinds:
 
