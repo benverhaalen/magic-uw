@@ -30,7 +30,7 @@ import { pageViewRequestSchemas, type PageViewResult } from "./page-views";
 // end owner: page-views
 // owner: study-prep
 export * from "./study-prep";
-import { studyPrepRequestSchema, type StudyPrepResult } from "./study-prep";
+import { ITEM_TYPES, studyPrepRequestSchema, type StudyPrepResult } from "./study-prep";
 // end owner: study-prep
 import type {
   CourseIntelligence,
@@ -1438,6 +1438,9 @@ export const learningRequestSchema = z.discriminatedUnion("op", [
     difficulty: z.enum(["warmup", "normal", "push"]).optional(),
     ...practiceScope,
     operationId: id.optional(),
+    // owner: study-prep. Exactly these items (the cards or questions linked to an exam, an assignment
+    // or a module, as code resolved them); the pool never widens beyond them.
+    itemIds: ids(200).optional(),
   }),
   // T53 (spec H3): an assessment quiz sectioned by its chapters and modules.
   learningOp("practice.assessmentQuiz", {
@@ -1601,6 +1604,15 @@ export const correctionSchema = z.discriminatedUnion("subject", [
     })
     .strict(),
   // end owner: agenda
+  // owner: study-prep. The student's correction of an item's type (it wins over code and their AI).
+  z
+    .object({
+      subject: z.literal("item_type"),
+      courseId: id,
+      itemId: id,
+      type: z.enum(ITEM_TYPES),
+    })
+    .strict(),
 ]);
 export type Correction = z.infer<typeof correctionSchema>;
 export const packScopeSchema = z

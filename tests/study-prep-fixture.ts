@@ -182,6 +182,62 @@ export function signalsFixture(store: SignalsStore = createStore(":memory:")): S
   return { store, ref, ids, topics: { euler: "t-euler", dtft: "t-dtft", response: "t-response", nyquist: "t-nyquist", aliasing: "t-aliasing" } };
 }
 
+/** One synthetic item of every type, with the Canvas signals code types it by, and its links. */
+export const CATALOGUE = {
+  ps4: { title: "Problem Set 4", text: "Problem Set 4: Using the DTFT definition, find X(e^(jw)) for x[n] = delta[n] + delta[n - 1]. Then sample a 2 kHz tone at 5 kHz and find the sampling period. Upload a PDF.", due: "2026-10-12T05:00:00.000Z", subs: ["online_upload"], expect: "problem_set" },
+  essay: { title: "Reflection Essay: Signals in Everyday Life", text: "Write a 1000-word reflection on where sampling appears in daily life. Draw on Chapter 2 of the reading. Use IEEE citation style for every source.", due: "2026-10-20T05:00:00.000Z", subs: ["online_upload"], expect: "essay" },
+  lab: { title: "Lab 3: Sampling with the Oscilloscope", text: "Procedure: connect the function generator to channel 1 and sample the tone at three rates.\nWear safety goggles and keep liquids away from the equipment.\nRecord the aliased frequency you observe at each rate.", due: "2026-10-09T05:00:00.000Z", subs: ["online_upload"], expect: "lab" },
+  proposal: { title: "Final Project Proposal", text: "Propose a signal-processing project with a team of three. Name your dataset and your method.", due: "2026-10-18T05:00:00.000Z", subs: ["online_upload"], expect: "project" },
+  milestone: { title: "Final Project Milestone 1", text: "Show a working prototype of your pipeline.", due: "2026-11-05T05:00:00.000Z", subs: ["online_upload"], expect: "project" },
+  discussion: { title: "Discussion: Aliasing in Film", text: "After the Chapter 2 reading, post one example of aliasing you have seen on screen and reply to two classmates.", due: "2026-10-11T05:00:00.000Z", subs: ["discussion_topic"], expect: "discussion_post" },
+  talk: { title: "Presentation: Sampling Demo", text: "Give a five-minute talk demonstrating the sampling theorem.", due: "2026-10-22T05:00:00.000Z", subs: ["on_paper"], expect: "presentation" },
+  attendance: { title: "Attendance Week 6", text: "In-class attendance.", due: "2026-10-08T05:00:00.000Z", subs: ["none"], points: 0, expect: "participation" },
+  quiz3: { title: "Quiz 3", text: "Quiz 3 covers aliasing and the Nyquist rate. 20 minutes, taken on Canvas.", due: "2026-10-08T17:00:00.000Z", subs: ["online_quiz"], expect: "quiz" },
+} as const;
+export const READING = { title: "Reading: Chapter 2 Signals", text: "Chapter 2 introduces continuous and discrete signals.\nA discrete-time signal is a sequence x[n] defined for integer n.\nSampling a continuous signal every Ts seconds gives x[n] = x(nTs)." };
+
+export function addCatalogue(f: SignalsFixture): Record<keyof typeof CATALOGUE | "reading", string> {
+  const { store } = f;
+  const rubric = [
+    { description: "Thesis", longDescription: "A clear claim about where sampling appears.", points: 4, ratings: [{ description: "Clear", points: 4 }, { description: "Vague", points: 2 }] },
+    { description: "Evidence", longDescription: "Uses the Chapter 2 reading with IEEE citations.", points: 6, ratings: [] },
+  ];
+  store.ingest({
+    source: { id: "sig-catalogue", kind: "canvas", accountScope: "acct", courseId: COURSE.courseId, scope: "assignments-2", label: "Synthetic" },
+    observedAt: NOW.toISOString(),
+    complete: true,
+    status: "ok",
+    resources: Object.entries(CATALOGUE).map(([id, c]) =>
+      assignment(id, c.title, c.text, c.due, {
+        submissionTypes: [...c.subs],
+        ...("points" in c ? { points: c.points } : {}),
+        ...(id === "essay" || id === "talk" ? { rubric } : {}),
+        ...(id === "proposal" || id === "milestone" ? { assignmentGroupId: "g-project" } : {}),
+      }),
+    ),
+  });
+  store.ingest({
+    source: { id: "sig-readings", kind: "canvas", accountScope: "acct", courseId: COURSE.courseId, scope: "readings", label: "Synthetic" },
+    observedAt: NOW.toISOString(),
+    complete: true,
+    status: "ok",
+    resources: [material("reading", READING.title, READING.text)],
+  });
+  const ids = Object.fromEntries(store.resources().filter((r) => r.externalId in CATALOGUE || r.externalId === "reading").map((r) => [r.externalId, r.id])) as Record<keyof typeof CATALOGUE | "reading", string>;
+  const link = (from: string, to: string[]) => {
+    const r = store.resource(from)!;
+    const put = store.putResourceRefs(from, r.contentHash, to.map((t) => ({ toResourceId: t, externalRefId: null, target: store.resource(t)!.title, kind: "file" as const, strength: "named" as const, reason: "Named in the instructions" })));
+    assert.equal(put.ok, true, JSON.stringify(put));
+  };
+  link(ids.ps4, [f.ids.dtft!, f.ids.sampling!]);
+  link(ids.essay, [ids.reading]);
+  link(ids.lab, [f.ids.sampling!]);
+  link(ids.discussion, [ids.reading]);
+  link(ids.talk, [f.ids.sampling!]);
+  link(ids.proposal, [f.ids.dtft!]);
+  return ids;
+}
+
 /** The one passage of a fixture resource (each text is short enough to be one passage). */
 export function passageId(store: SignalsStore, resourceId: string): string {
   const list = store.passages(resourceId);

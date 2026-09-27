@@ -6,7 +6,7 @@ import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { StudyPrepCard, StudyPrepGuide, StudyPrepQuizItem, StudyPrepScopeItem, StudyPrepSource } from "@magic/contracts";
 import { checkAnswer, parseNumber } from "../apps/desktop/src/renderer/study-prep/quiz-check";
-import { effectiveSources } from "../apps/desktop/src/renderer/study-prep/StudyPrep";
+import { effectiveSources } from "../apps/desktop/src/renderer/study-prep/ItemSpace";
 import { CardsView, GuideView, QuizView } from "../apps/desktop/src/renderer/study-prep/views";
 
 // packages/ui compiles with the classic JSX runtime under tsx (as in tests/sources-page.test.ts).
@@ -77,13 +77,13 @@ test("the quiz shows one question at a time with TeX options; the cards deck sho
     { itemId: "q2", version: 1, kind: "numeric", stem: "Nyquist rate for $B = 4$ kHz?", options: null, key: 8, unit: "kHz", explanation: null, topics: [], source },
   ];
   const quiz = renderToStaticMarkup(React.createElement(QuizView, { items }));
-  assert.match(quiz, /1 \/ 2/);
+  assert.match(quiz, /Question 1 of 2/);
   assert.match(quiz, /role="radiogroup"/);
   assert.equal((quiz.match(/class="katex"/g) ?? []).length, 3, "the stem and both options render TeX");
   assert.doesNotMatch(quiz, /Nyquist/, "only the current question is shown");
   assert.doesNotMatch(quiz, /By definition/, "the explanation waits for the check");
-  const cards: StudyPrepCard[] = [{ cardId: "card-1", itemId: "i1", kind: "card", front: "Nyquist rate", back: "$2B$", topics: ["Sampling theorem"], due: null, source }];
-  const deck = renderToStaticMarkup(React.createElement(CardsView, { cards, courseId: "SIG203", assessmentId: "a-mid2", anchorIds: ["r-dtft"] }));
+  const cards: StudyPrepCard[] = [{ cardId: "card-1", itemId: "i1", kind: "card", front: "Nyquist rate", back: "$2B$", topics: ["Sampling theorem"], due: true, dueAt: null, source }];
+  const deck = renderToStaticMarkup(React.createElement(CardsView, { cards, courseId: "SIG203", anchorIds: ["r-dtft"], reviewItemIds: ["i1"], dueCount: 1 }));
   assert.match(deck, /Nyquist rate/);
   assert.doesNotMatch(deck, /katex/, "the back isn't shown until flipped");
   assert.match(deck, /aria-pressed="false"/);

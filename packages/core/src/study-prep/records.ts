@@ -11,8 +11,8 @@
  *   even when other course material shifts the search ranking.
  */
 import type { ArtifactKind, LearningStore } from "../../../learning/src/store";
-import type { StudyPrepGuide, StudyPrepKind } from "@magic/contracts";
-import { sha } from "./scope";
+import type { StudyPrepExam, StudyPrepExamProblem, StudyPrepGuide, StudyPrepKind, StudyPrepOutline } from "@magic/contracts";
+import { sha } from "./scope-hash";
 
 export interface PrepRecord {
   v: 1;
@@ -25,6 +25,9 @@ export interface PrepRecord {
   /** Every source in the selection, at the content it had when this was made. */
   sources: { resourceId: string; contentHash: string; title: string }[];
   guide: StudyPrepGuide | null;
+  exam?: StudyPrepExam | null;
+  problems?: StudyPrepExamProblem[] | null;
+  outline?: StudyPrepOutline | null;
   itemIds: string[];
   dropped: number;
   tokens: { in: number; cached: number; out: number };

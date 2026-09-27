@@ -135,6 +135,7 @@ function withStudyPrepAsk<R extends { handle(request: import("@magic/contracts")
       request.op === "notebook.ask" ? generation.studyPrep.ask(request, signal) : handle(request, signal),
   });
 }
+import { correctItemType } from "../../../packages/core/src/study-prep/correct";
 // end owner: study-prep
 // owner: page-views. The "page-approach" pack (the pages' optional "how to approach it"
 // paragraph) answers through the same pack seam; every other pack name goes on unchanged.
@@ -313,7 +314,9 @@ const core = createCore(store, {
     correct: (value, at) =>
       value.subject === "estimate"
         ? correctAgendaEstimate(store, value, at)
-        : "Corrections aren't built yet; nothing was changed.",
+        : value.subject === "item_type"
+          ? correctItemType(store, value, at) // owner: study-prep
+          : "Corrections aren't built yet; nothing was changed.",
     // end owner: agenda
     // owner: site-recipes. Opening an item reads its `read_once` links (the renderer's "open" event).
     uiEvent: (event) => void ingestion.onUiEvent(event),

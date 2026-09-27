@@ -119,7 +119,7 @@ const cardsPart = (p: Record<string, string>) => ({
   ],
 });
 const output = (p: Record<string, string>, kinds: ("guide" | "quiz" | "cards")[]) => ({
-  output: { guide: kinds.includes("guide") ? guidePart(p) : null, quiz: kinds.includes("quiz") ? quizPart(p) : null, cards: kinds.includes("cards") ? cardsPart(p) : null },
+  output: { guide: kinds.includes("guide") ? guidePart(p) : null, quiz: kinds.includes("quiz") ? quizPart(p) : null, cards: kinds.includes("cards") ? cardsPart(p) : null, exam: null, problems: null, outline: null },
 });
 
 async function setup(responses: (p: Record<string, string>) => unknown[]) {
@@ -140,7 +140,7 @@ async function setup(responses: (p: Record<string, string>) => unknown[]) {
   const calls = async () => (await lines()).filter((l) => l.argv).length;
   const prompts = async () => (await lines()).filter((l) => l.argv).map((l) => l.stdin ?? "");
   const query = (extra: Record<string, unknown> = {}) => {
-    const request = queryRequestSchema.parse({ view: "study.prep", courseId: "SIG203", assessmentId: "a-mid2", ...extra });
+    const request = queryRequestSchema.parse({ view: "study.prep", courseId: "SIG203", itemId: "a-mid2", ...extra });
     return studyPrepQuery(store, request as Extract<typeof request, { view: "study.prep" }>, NOW.toISOString());
   };
   const generate = async (kinds: ("guide" | "quiz" | "cards")[], scope: Record<string, unknown> = {}) =>
@@ -155,17 +155,20 @@ test("the pack name carries the kinds in a fixed order; other names aren't study
   assert.equal(studyPrepKinds("quiz"), null);
 });
 
-test("study.prep: the assessment, its coverage as sources, filter chips, a code-built overview and missing materials, at 0 tokens", async () => {
+test("study.prep: the exam's space: its type, coverage as sources, filter chips, a code-built overview and missing materials, at 0 tokens", async () => {
   const g = await setup(() => [{}]);
   try {
     const r = g.query();
     assert.equal(r.status, "ok");
     const ok = r as Ok;
     assert.equal(ok.modelCalls, 0);
-    assert.equal(ok.assessment.title, "Midterm 2");
-    assert.equal(ok.assessment.date, "2026-10-15");
-    assert.equal(ok.assessment.daysAway, 10);
-    assert.equal(ok.assessment.where, "held in Room 1100 Synthetic Hall", "the syllabus line naming Midterm 2 wins over 'in class'");
+    assert.equal(ok.item.title, "Midterm 2");
+    assert.equal(ok.item.type, "exam");
+    assert.equal(ok.item.typeBasis, "code");
+    assert.deepEqual(ok.config.actions.map((a) => a.label), ["Study guide", "Cards", "Practice exam"]);
+    assert.equal(ok.item.date, "2026-10-15");
+    assert.equal(ok.item.daysAway, 10);
+    assert.equal(ok.item.where, "held in Room 1100 Synthetic Hall", "the syllabus line naming Midterm 2 wins over 'in class'");
     const titles = ok.sources.map((s) => s.title);
     assert.deepEqual(titles, ["Lecture 7: The DTFT", "Lecture 9: Sampling", "Homework 5", "Midterm 2 Practice Exam", "Midterm 2 Practice Exam Solutions"]);
     assert.ok(!titles.includes("Lecture 1: Complex Exponentials"), "Module 1 is outside the stated scope");
@@ -194,7 +197,7 @@ test("study.prep: the assessment, its coverage as sources, filter chips, a code-
     const list = studyPrepQuery(g.store, { view: "study.prep", courseId: "SIG203" }, NOW.toISOString());
     assert.equal(list.status, "list");
     if (list.status === "list") assert.deepEqual(list.upcoming.map((a) => a.title), ["Midterm 2"], "past exams aren't listed");
-    assert.equal(g.query({ assessmentId: "nope" }).status, "missing");
+    assert.equal(g.query({ itemId: "nope" }).status, "missing");
   } finally {
     g.store.close();
   }
@@ -225,14 +228,14 @@ test("scope filtering: ticked sources and topics narrow the selection, unknown i
 
 test("the study-prep pack: strict schema, TeX rule in the prompt, and a kind-independent prefix before `## Write`", () => {
   assert.deepEqual(strictSchemaIssues(z.toJSONSchema(studyPrepOutputSchema, { io: "output" })), []);
-  const input: PrepInput = { kinds: ["guide"], counts: { quiz: 10, cards: 12 }, scope: "Midterm: Midterm 2", materials: ["Lecture 7"], sections: [], topics: ["DTFT"], focus: [], facts: [] };
+  const input: PrepInput = { kinds: ["guide"], counts: { quiz: 10, cards: 12, problems: 5 }, itemType: "exam", authored: false, scope: "Midterm: Midterm 2", materials: ["Lecture 7"], sections: [], topics: ["DTFT"], focus: [], facts: [], exam: null };
   const one = studyPrepPack.template(input);
   const three = studyPrepPack.template({ ...input, kinds: ["guide", "quiz", "cards"] });
   assert.ok(one.includes(MATH_RULE) && MATH_RULE.includes("$$") && MATH_RULE.includes("never rewritten as TeX"));
   assert.equal(one.slice(0, one.indexOf("## Write")), three.slice(0, three.indexOf("## Write")));
   assert.equal(prepContext(input), prepContext({ ...input, kinds: ["cards"] }));
-  assert.match(prepAsk(input), /Set `quiz` and `cards` to null/);
-  assert.ok(!prepAsk({ ...input, kinds: ["guide", "quiz", "cards"] }).includes("to null"));
+  assert.match(prepAsk(input), /Set `quiz`, `cards`, `exam`, `problems`, `outline` to null/);
+  assert.ok(!prepAsk({ ...input, kinds: ["guide", "quiz", "cards", "exam", "problems", "outline"] }).includes("to null"));
 });
 
 test("one call makes all three kinds: TeX survives in prose, quotes are checked verbatim, items and cards are stored, and the query shows them", async () => {
@@ -370,7 +373,7 @@ test("no client: nothing is sent, the kind reads failed with the reason, and a r
     const handler = createPackHandler({ store: f.store, runner: () => null, now: () => NOW });
     const r = (await handler.pack(studyPrepPackName(["guide"]), { courseId: "SIG203", assessmentId: "a-mid2" }, new AbortController().signal)) as StudyPrepRunResult;
     assert.equal(r.status, "no_client");
-    const q = studyPrepQuery(f.store, { view: "study.prep", courseId: "SIG203", assessmentId: "a-mid2" }, NOW.toISOString()) as Ok;
+    const q = studyPrepQuery(f.store, { view: "study.prep", courseId: "SIG203", itemId: "a-mid2" }, NOW.toISOString()) as Ok;
     assert.equal(q.materials.guide.status, "failed");
     assert.match(q.materials.guide.message ?? "", /Connect your AI/);
     const none = (await handler.pack(studyPrepPackName(["quiz"]), { courseId: "SIG203", assessmentId: "a-mid2", resourceIds: ["not-a-source"] }, new AbortController().signal)) as StudyPrepRunResult;

@@ -44,7 +44,6 @@ import { buildStrategy } from "../../packs/strategy/src/index";
 // end owner: mastery
 // owner: study-prep. The Studio's combined pack (`study-prep-<kinds>`) and the Sources panel's ask.
 import { studyPrepKinds } from "@magic/contracts";
-import { studyPrepPack } from "../../packs/study-prep/src/index";
 import { createStudyPrep } from "./study-prep/generate";
 // end owner: study-prep
 
@@ -605,7 +604,9 @@ export function generatePack(
 // owner: ai-paths
 /** Pack id → output schema for every generation pack: the warm pool's union schema. */
 export function generationKinds(): PoolOptions["kinds"] {
-  return Object.fromEntries([quizPack, cardsPack, problemsPack, ...Object.values(GUIDE_PACKS), courseFactsPack /* owner: course-facts */, studyPrepPack /* owner: study-prep */].map((p) => [p.id, p.schema as PoolOptions["kinds"][string]]));
+  // owner: study-prep: the study-prep pack is not in the pool: its schema would push the union past the
+  // command-line limit ("schema too large"), so it runs one-shot like any unlisted pack.
+  return Object.fromEntries([quizPack, cardsPack, problemsPack, ...Object.values(GUIDE_PACKS), courseFactsPack /* owner: course-facts */].map((p) => [p.id, p.schema as PoolOptions["kinds"][string]]));
 }
 /**
  * The Claude route with one warm session per lane (D38): a follow-up pack call reuses the live
