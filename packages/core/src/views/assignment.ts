@@ -18,7 +18,7 @@ import { effectiveCoursePolicy } from "../../../domain/src/course-intelligence";
 import { classifyHost } from "../../../connectors/src/space-hosts";
 import { canonicalAssessment, references, type Reference } from "../graph/references";
 import { normaliseUrl, type Res } from "../graph/course-index";
-import { approachFacts, readApproach } from "./approach";
+import { approachFacts, approachHash, readApproach } from "./approach";
 import {
   PageViewError,
   claimEvidence,
@@ -540,7 +540,8 @@ export function assignmentWorkspace(store: ViewStore, resourceId: string, now: s
     missing,
   };
   page.factHash = hashPage(page);
-  const approach = readApproach(ctx, page.factHash, approachFacts(page), { courseId: course.courseId, resourceIds: [a.id] });
+  const facts = approachFacts(page);
+  const approach = readApproach(ctx, approachHash(facts), facts, { courseId: course.courseId, resourceIds: [a.id] });
   return { ...page, approach };
 }
 

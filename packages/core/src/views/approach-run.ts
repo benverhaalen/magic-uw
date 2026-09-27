@@ -19,7 +19,7 @@ import { buildReceipt, egressFor, payloadHash } from "../egress";
 import { contentCategories } from "../access";
 import { payloadScrubber } from "../identity";
 import { effectiveCoursePolicy } from "../../../domain/src/course-intelligence";
-import { APPROACH_PACK, APPROACH_VERSION, approachFacts, approachKey, checkApproach, type ApproachFacts, type ApproachOutput } from "./approach";
+import { APPROACH_PACK, APPROACH_VERSION, approachFacts, approachHash, approachKey, checkApproach, type ApproachFacts, type ApproachOutput } from "./approach";
 import { assessmentPage } from "./assessment";
 import { assignmentWorkspace } from "./assignment";
 import { PageViewError, viewStore, type ViewStore } from "./common";
@@ -100,8 +100,8 @@ export function createApproachHandler(deps: ApproachDeps) {
       return { ...base, status: "unavailable", message: error instanceof PageViewError ? error.message : "This page couldn't be read." };
     }
     if (page.course.courseId !== scope.courseId) return { ...base, status: "unavailable", message: "That item isn't in this course." };
-    const factHash = page.factHash;
     const facts = approachFacts(page);
+    const factHash = approachHash(facts);
     const course = { accountScope: page.course.accountScope, courseId: page.course.courseId };
     const courseRef = `${course.accountScope}:${course.courseId}`;
     const resourceId = page.view === "assignment.workspace" ? page.header.resourceId : page.assessment.resourceId;
@@ -115,7 +115,7 @@ export function createApproachHandler(deps: ApproachDeps) {
     const ledger = deps.ledger ?? sqlLedgerStore(store, (ref) => (ref === courseRef ? course : null));
     const cacheKey = approachKey(factHash);
     // A change in the page's facts, the sources or the sharing settings between reading and the call blocks it.
-    const fingerprint = () => payloadHash({ factHash: build().factHash, privacy: store.privacy(), consents: store.consents?.() });
+    const fingerprint = () => payloadHash({ factHash: approachHash(approachFacts(build())), privacy: store.privacy(), consents: store.consents?.() });
     const first = fingerprint();
     const validate = () => {
       if (signal?.aborted || fingerprint() !== first) throw new ApproachBlocked("The page or your sharing settings changed. Try again with the current page.");

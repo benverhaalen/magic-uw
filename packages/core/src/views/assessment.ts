@@ -13,7 +13,7 @@ import type { AssessmentPage, CourseRef, PageEvidence, PageMissing, PageResource
 import { courseInclusion } from "../access";
 import { references, STRUCTURE_COVERS_WEIGHT } from "../graph/references";
 import { courseIndex, type Res } from "../graph/course-index";
-import { approachFacts, readApproach } from "./approach";
+import { approachFacts, approachHash, readApproach } from "./approach";
 import { hashPage } from "./assignment";
 import {
   PageViewError,
@@ -346,6 +346,7 @@ export function assessmentPage(store: ViewStore, assessmentId: string, now: stri
     missing,
   };
   page.factHash = hashPage(page);
-  const approach = readApproach(ctx, page.factHash, approachFacts(page), { courseId: course.courseId, assessmentId: s.id });
+  const facts = approachFacts(page);
+  const approach = readApproach(ctx, approachHash(facts), facts, { courseId: course.courseId, assessmentId: s.id });
   return { ...page, approach };
 }

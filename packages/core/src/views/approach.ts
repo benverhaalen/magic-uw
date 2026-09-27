@@ -7,7 +7,7 @@
 import type { AssessmentPage, AssignmentWorkspace, PageApproach } from "@magic/contracts";
 import { learningArtifactStore } from "../../../packs/core/src/learning-stores";
 import { payloadHash } from "../egress";
-import { clip, showDate, type ViewContext } from "./common";
+import { clip, factHash, showDate, type ViewContext } from "./common";
 
 export const APPROACH_PACK = "page-approach" as const;
 export const APPROACH_VERSION = "v1";
@@ -26,6 +26,9 @@ export interface ApproachOutput {
 
 /** The artifact's cache key: the page's fact hash and the pack version, nothing else. */
 export const approachKey = (hash: string) => payloadHash({ pack: APPROACH_PACK, version: APPROACH_VERSION, factHash: hash });
+
+/** The hash the paragraph is cached under: only the facts the paragraph receives, so it does not go stale at midnight. */
+export const approachHash = (facts: ApproachFacts) => factHash(facts);
 
 type Page = Omit<AssignmentWorkspace, "approach"> | Omit<AssessmentPage, "approach">;
 export function approachFacts(page: Page): ApproachFacts {
@@ -53,7 +56,8 @@ export function approachFacts(page: Page): ApproachFacts {
     lines.push(`Assessment: ${page.assessment.title}`, `Course: ${page.course.courseName}`);
     for (const d of page.details) if (d.value) lines.push(`${d.field.replace("_", " ")}: ${d.field === "date" ? at(d.value) : d.value}`);
     for (const r of page.materials.core) lines.push(`Core material: ${r.title} (${r.reason})`);
-    if (page.plan.status === "ok") lines.push(`Plan: ${page.plan.text}`);
+    // No study plan here: it is built from the student's deadlines in every included course, and
+    // planning data never goes to the student's AI (the page's own factHash still covers it locally).
     const scope = page.scope.quotes.map((q) => q.quote).join("\n");
     if (scope) passages.push({ sourceId: "scope", text: clip(scope, 4000) });
   }

@@ -16,6 +16,7 @@ import {
   contextFor,
   factHash,
   fieldEvidence,
+  included,
   localDay,
   noteSummary,
   officeHourLines,
@@ -69,6 +70,8 @@ export function lectureSession(store: ViewStore, request: LectureRequest, now: s
   const course = { accountScope, courseId: request.courseId };
   const ctx = contextFor(store, course, now, sources);
   if (!ctx.index.resources.size) throw new PageViewError("This course isn't in your workspace.");
+  const courseRes = [...ctx.index.resources.values()].find((r) => r.kind === "course");
+  if (courseRes && !included(ctx)(courseRes)) throw new PageViewError("This course is excluded. Include it in Sources to see this session.");
   const missing: PageMissing[] = [];
   const miss = (field: string, text: string) => missing.push({ field, text });
 

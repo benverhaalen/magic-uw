@@ -229,6 +229,26 @@ test("assessment.page: readiness per topic and a day-by-day plan into free days 
   assert.ok(p.plan.days.every((d) => d.date < "2026-10-20"));
   assert.equal(p.plan.days.flatMap((d) => d.topics).length, 2);
   assert.equal(p.plan.days.reduce((n, d) => n + d.minutes, 0), 60, "30 minutes per topic not yet seen");
+
+  // The assessment's study plan (built from deadlines in every included course) never reaches the student's AI.
+  store.setPrivacy({ ...defaultPrivacy, mode: "selective_cloud", hostedProvider: "claude", shareCourseText: true });
+  store.setConsent!({ action: "grant", recipient: "claude", disclosureVersion: CONSENT_DISCLOSURE_VERSION }, NOW);
+  const sent: string[] = [];
+  const planRunner = createModelRunner({ backend: { client: "claude", async call(...args: unknown[]) { sent.push(JSON.stringify(args)); return { value: { paragraph: "Review the core materials first.", quotes: [] }, usage: { in: 50, cached: 0, out: 20 }, model: "synthetic" }; } } });
+  const planned = await createApproachHandler({ store, runner: () => planRunner, now: () => new Date(NOW) }).run({ courseId: COURSE, assessmentId: mid });
+  assert.equal(planned.status, "done", planned.message);
+  assert.ok(sent.length > 0);
+  assert.ok(!approachFacts(p).lines.some((l) => l.startsWith("Plan:")));
+  for (const payload of sent) {
+    assert.ok(!payload.includes("Plan:"), "no plan line in the pack input");
+    assert.ok(!payload.includes(JSON.stringify(p.plan.text).slice(1, -1)), "no plan text in the pack input");
+  }
+
+  // The cached paragraph survives midnight: its hash covers only the facts it was written from.
+  const tomorrow = new Date(Date.parse(NOW) + 86_400_000).toISOString();
+  const nextDay = runQuery(store, queryRequestSchema.parse({ view: "assessment.page", assessmentId: mid }), { ...ctx, now: () => tomorrow }) as AssessmentPage;
+  assert.notEqual(nextDay.factHash, p.factHash, "the page's own facts moved with the day");
+  assert.equal(nextDay.approach.status, "ready", "the paragraph is still served the next day");
   store.close();
 });
 
@@ -349,6 +369,12 @@ test("page views: the request schema accepts the four views; an excluded course 
     assert.ok(queryRequestSchema.safeParse(request).success, request.view);
   assert.ok(!queryRequestSchema.safeParse({ view: "lecture.session", courseId: COURSE, date: "Sept 29" }).success);
   store.setCourseOverride({ accountScope: ACCOUNT, courseId: COURSE, included: false });
-  assert.throws(() => q(store, { view: "assignment.workspace", resourceId: idOf(store, "assignments", "3001") }), /excluded/);
+  for (const request of [
+    { view: "assignment.workspace", resourceId: idOf(store, "assignments", "3001") },
+    { view: "lecture.session", courseId: COURSE, date: "2026-09-29" },
+    { view: "assessment.page", assessmentId: idOf(store, "assignments", "3002") },
+    { view: "study.offers", courseId: COURSE },
+  ])
+    assert.throws(() => q(store, request), /excluded/, request.view);
   store.close();
 });
