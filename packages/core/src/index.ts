@@ -30,6 +30,7 @@ export { rebaseFixture } from "./fixture-dates";
 import { clearOutgoingProjections, outgoingProjection, payloadScrubber, validateCitations } from "./identity";
 export { scrubText, rosterFor, toOriginalSpan, validateCitations } from "./identity";
 import { pullGuideForSubject } from "../../connectors/src/planning-public";
+import { gitlabProjectFromUrl } from "../../connectors/src/gitlab";
 import {
   createPublicClient,
   type PublicClient,
@@ -195,6 +196,7 @@ export function createCore(store: Store, options: CoreOptions) {
       // owner: T06: the renderer routes on these and main's consent gate mirrors them.
       consents: store.consents?.() ?? [],
       dayPlan: store.dayPlan(),
+      gitlabLinks: store.gitlabLinks(),
     };
   }
   function context(
@@ -927,6 +929,25 @@ export function createCore(store: Store, options: CoreOptions) {
       }
       case "day-plan-remove":
         store.removeDayPlanEntry(command.key, command.date);
+        break;
+      case "gitlab-link": {
+        const projectPath = gitlabProjectFromUrl(command.url.trim());
+        if (!projectPath)
+          throw new Error(
+            "That isn't a UW GitLab project link. Copy the project's address from git.doit.wisc.edu, for example https://git.doit.wisc.edu/group/project.",
+          );
+        const accounts = new Map(store.sources().map((s) => [s.id, s.accountScope]));
+        const known = store
+          .resources()
+          .some((r) => !r.deleted && r.courseId === command.courseId && accounts.get(r.sourceId) === command.accountScope);
+        if (!known) throw new Error("That course isn't in your saved coursework, so a GitLab project can't be linked to it.");
+        store.setGitlabLink({ accountScope: command.accountScope, courseId: command.courseId, projectPath, addedAt: now() });
+        message = `GitLab project linked: ${projectPath}. It is read on the next refresh.`;
+        break;
+      }
+      case "gitlab-unlink":
+        store.removeGitlabLink(command.accountScope, command.courseId, command.projectPath);
+        message = "GitLab project unlinked. Work already saved from it stays until the next refresh.";
         break;
       case "outlook-disconnect": {
         // Only the student's Outlook calendar; coursework and other feeds are never touched here.
