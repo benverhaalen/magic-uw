@@ -11,6 +11,7 @@ import { createStore } from "@magic/storage";
 import { createIngestion, SYNC_CAP_MS } from "../apps/desktop/src/ingestion";
 import type { CanvasConnectorOptions } from "../packages/connectors/src/canvas";
 import { createRefreshCoordinator, type CourseProbe } from "../packages/core/src/refresh";
+import { canvasPill } from "../apps/desktop/src/renderer/canvas-pill";
 
 /** A read that never answers until its signal is aborted: a Canvas too slow to finish. */
 const hang = (signal: AbortSignal) =>
@@ -118,6 +119,11 @@ test("a capped Canvas sync ends near the cap, leaves no source reading, shows wh
       observedAt: new Date(2026, 8, 27, 11).toISOString(), status: "partial", complete: false, resources: [],
       progress: { phase: "reading", completed: 0 },
     });
+    // And one that genuinely failed: it stays visible.
+    store.ingest({
+      source: { id: `canvas:stale:999:files`, label: "Old · files", kind: "canvas", accountScope: "stale", courseId: "999", scope: "files" },
+      observedAt: new Date(2026, 8, 27, 11).toISOString(), status: "error", complete: false, resources: [],
+    });
     const started = performance.now();
     const run = await ingestion.tick("manual");
     const elapsed = performance.now() - started;
@@ -128,13 +134,21 @@ test("a capped Canvas sync ends near the cap, leaves no source reading, shows wh
     const sources = store.sources().filter((s) => s.kind === "canvas");
     assert.ok(sources.every((s) => s.progress?.phase !== "reading"), "no Canvas source is left reading");
     const stale = sources.find((s) => s.id === "canvas:stale:999:pages")!;
-    assert.equal(stale.status, "partial", "a source this run did not read only loses its reading phase");
+    assert.equal(stale.complete, true, "an unfinished read counts as populated after a capped sync");
+    assert.ok(stale.diagnostics?.some((d) => d.code === "sync_capped"));
+    assert.equal(sources.find((s) => s.id === "canvas:stale:999:files")!.status, "error", "a failed source stays failed");
     const assignments = sources.find((s) => s.courseId === "101" && s.scope === "assignments")!;
     assert.ok(assignments, "the partly read list was saved before the cap");
     assert.equal(assignments.status, "ok");
     assert.equal(assignments.complete, true, "shown as read");
     assert.ok(assignments.diagnostics?.some((d) => d.code === "sync_capped"), "the data still says the read was cut short");
     assert.ok(store.resources().some((r) => r.courseId === "101" && r.kind === "assignment"), "what was read is kept");
+    // The shell's Canvas pill no longer says it is refreshing.
+    const pill = canvasPill(
+      { sources: sources.filter((s) => s.accountScope !== "stale"), syncRuns: store.syncRuns(), planning: { records: [], sources: [] }, fixtureMode: false, resources: [] } as never,
+      { now: clock.at, online: true, signInStage: "idle" },
+    );
+    assert.equal(pill?.state, "up_to_date", `pill: ${pill?.label}`);
     const recorded = store.syncRuns()[0]!;
     assert.equal(recorded.status, "partial", "the sync run records the cap");
     assert.ok(recorded.diagnostics?.some((d) => d.code === "sync_capped"));

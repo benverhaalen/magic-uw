@@ -1917,14 +1917,14 @@ export function createIngestion(
       ),
     manual: (signal) => manualCheck(signal),
     capMs: host.syncCapMs ?? SYNC_CAP_MS, // sync-cap
-    // sync-cap: no Canvas source stays "reading" after a sync. After a capped run, the sources
-    // this run read but did not finish show as read, each marked capped.
+    // sync-cap: no Canvas source stays "reading" after a sync. After a capped run, every Canvas
+    // read left unfinished (ok or partial, incomplete) shows as read, each marked capped; a source
+    // that failed (sign-in, error, restricted, needs review) keeps its state.
     settle(capped) {
       const at = now().toISOString();
       for (const source of store.sources()) {
         if (source.kind !== "canvas") continue;
         const unfinished =
-          sourceIds.has(source.id) &&
           !source.complete &&
           (source.status === "ok" || source.status === "partial") &&
           capped;
