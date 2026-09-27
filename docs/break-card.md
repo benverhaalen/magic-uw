@@ -4,46 +4,66 @@ Magic UW's entry for **The Art of the Break**: one failure specific to how we bu
 
 ## The failure
 
-A grounded answer in Magic UW is a set of short sentences, each citing a quote from the student's own course materials. The model writes the sentences; code checks the evidence. `checkAnswer` in `packages/core/src/intent/ask.ts` found every cited quote in its passage and dropped any sentence whose quotes were missing. It never compared the sentence with the quote.
+A grounded answer in Magic UW is a set of short sentences. Each one cites a quote from the student's own course materials. The student's own AI (Claude Code or Codex) writes the sentences, and code checks the evidence. `checkAnswer` (`packages/core/src/intent/ask.ts`) confirmed that every cited quote was in its passage. It never compared the sentence with the quote.
 
-So an answer could cite *"The midterm exam is on October 14 in 1240 Humanities."* (a real quote that passes the check) and say *"Your midterm is on Oct 21."* The student saw the wrong date with a working citation beside it. The citation made the wrong sentence look more trustworthy.
+So an answer could cite *"The midterm exam is on October 14 in 1240 Humanities."* (a real quote that passes the check) and say *"Your midterm is on Oct 21."* The wrong date would reach the student with a working citation beside it, which made it look more trustworthy.
 
-This comes from our own design rule: "AI writes, code decides" (every quote, ID and date is checked by code). We trusted a code check that proved the quote was real, not that the answer said what the quote says. Reviewing the code for the same pattern turned up three more places where a check confirmed the evidence but not the claim built on it:
-
-- **B2, course mail.** `categorizeMail` (`packages/connectors/src/graph.ts`) linked mail to a course when the subject named the course code. The notification rules then labelled it "Course staff" and let a change keyword make it urgent, whoever sent it.
-- **B3, Jev raises.** A Jev judgment could raise mail but never lower it. Raising had no cap, so an unknown sender could go straight from "not notified" to urgent.
-- **B4, course sites.** `decideByCode` (`packages/core/src/site-triage.ts`) synced any host whose address named the course number, including a link a student posted in a discussion.
+This came from our own design rule: "AI writes, code decides." We trusted a check that proved the quote was real, not that the sentence said what the quote says. Reviewing the code for the same pattern found three more places where a check confirmed the evidence but not the claim built on it:
+- **B2:** course mail was labelled "Course staff" when its subject named the course code.
+- **B3:** an AI judgment could raise mail to urgent with no cap.
+- **B4:** any link that named the course number was synced as the course site, even one posted in a discussion.
 
 ## How often
 
-Each row is a set of generated synthetic cases: ordinary course passages, course mail and course links, a scripted fake model and fake Jev judgments. **There was no live model run and no real course data.** "Before" is the code at `7b9bdf9`; "after" is this change. The counts are over targeted cases, so "before" shows that the weakness fired every time its trigger was present. It is not a measure of how often a real model produces the trigger. The intervals are Wilson 95%.
+**Live stress test of our agent (2026-09-27).** The student's own Claude Code answered through the app's real ask prompt and schema, using the instant-mode client path the app uses. The model was `claude-sonnet-5`. We ran the build the fix shipped in (`0f710ed`). There were 20 synthetic course scenarios built to provoke the failure, each run 3 times: 60 answers with 87 sentences. The scenarios were:
+- an announcement that supersedes a syllabus date, room or weight
+- neighbouring numbers
+- answers that need arithmetic
+- weekdays
+- two courses side by side
 
-| | What is counted | N | Before | After |
-|---|---|---|---|---|
-| **B1** | Sentence contradicting its real quote is shown (date, number, name, weekday, room) | 60 | 60 (100%) [94.0, 100] | 0 (0%) [0, 6.0] |
-| B1 | Correct paraphrase rejected (false reject) | 60 | 0 (0%) [0, 6.0] | 0 (0%) [0, 6.0] |
-| **B2** | Outside sender with a course code in the subject labelled "Course staff" | 60 | 60 (100%) [94.0, 100] | 0 (0%) [0, 6.0] |
-| B2 | Same mail shown as urgent | 60 | 60 (100%) [94.0, 100] | 0 (0%) [0, 6.0] |
-| B2 | Known staff address, same subjects, still urgent (recall) | 60 | 60 (100%) | 60 (100%) [94.0, 100] |
-| **B3** | Unknown sender raised to urgent by a Jev "deadline due soon" judgment | 60 | 60 (100%) [94.0, 100] | 0 (0%) [0, 6.0] |
-| B3 | Staff mail with the same judgment still urgent (recall) | 60 | 60 (100%) | 60 (100%) [94.0, 100] |
-| **B4** | Discussion-only link naming the course number synced as the course site | 60 | 60 (100%) [94.0, 100] | 0 (0%) [0, 6.0] |
-| B4 | Same addresses linked from modules or the syllabus still synced (recall) | 60 | 60 (100%) | 60 (100%) [94.0, 100] |
+The intervals below are Wilson 95%.
 
-The first B1 run of the false-reject set rejected 8 of 60 correct sentences, because the claim check did not read plural weekdays ("Thursdays"). We fixed the parser, not the cases. The correct answers are phrased by us, so real model phrasing will vary more (for example "Rm 1240" or a first name only); expect some false rejects in use. A rejected sentence shows the quote itself, so the student loses wording, never the fact.
+| What is counted (live) | Result |
+|---|---|
+| Sentences stating a fact that their cited quote contradicts (the failure) | **0/87** [0, 4.2] |
+| Sentences with a date, number or name that isn't in their own quote; the old check showed these unexamined | 17/87 [12.6, 29.1] |
+| … of those, correct when a person reads them | 17/17 |
+| **Answers where the fix replaced a correct sentence with its quote (false reject)** | **15/60** [15.8, 37.2] |
+| … answers needing arithmetic / answers to an update / all others | 9/12 · 6/12 · 0/36 |
 
-Reproduce with `pnpm exec tsx --test tests/break-*.test.ts` (it prints the "after" rates). The generators are in `tests/break-cases.ts` and the measurements in `tests/break-measure.ts`.
+**Targeted cases (regression tests).** These use a scripted fake model and fake AI judgments, 60 generated cases per row. "Before" is `02c5c19` and "after" is `0f710ed`; we reran both today.
+
+| | What is counted | Before | After |
+|---|---|---|---|
+| B1 | Sentence contradicting its real quote is shown | 60/60 | 0/60 [0, 6.0] |
+| B2 | Outside sender with a course code in the subject labelled "Course staff" / urgent | 60/60 · 60/60 | 0/60 · 0/60 |
+| B3 | Unknown sender raised to urgent by an AI "deadline due soon" judgment | 60/60 | 0/60 |
+| B4 | Discussion-only link naming the course number synced as the course site | 60/60 | 0/60 |
+| recall | Known staff mail still urgent (B2, B3); linked course sites still synced (B4) | 60/60 | 60/60 |
+
+**How to read this:** the weakness fired every time its trigger was present. Our live agent never produced the trigger in 60 answers, which puts the rate for this model and these scenarios at or below 4.2%. That doesn't hold for every model or course. Our fix, meanwhile, cost a quarter of the live answers a correct sentence.
 
 ## What we did
 
-- **B1:** `checkAnswer` now also checks the claim (`claimsMatch` in `packages/core/src/intent/ask.ts`). Every month-day date, weekday, number and capitalized name in a sentence must appear in the quotes it cites. If one doesn't, the sentence is replaced by the cited quote, verbatim and still linked.
-- **B2:** mail matched only by its subject is labelled "Mentions <course>", at most important (`packages/domain/src/notifications.ts`, `subjectOnlyReasonPrefix`). "Course staff" and keyword urgency need a known staff address from `graph.ts`. Canvas notification mail was already handled by the Canvas change itself. There is a cost: nothing fills the course directory's `staffEmails` yet. Until something does, an instructor's email reaches important but not urgent.
-- **B3:** a Jev raise now moves at most one level (not notified counts as info), and only course staff can be raised to urgent (`notifications.ts`, the mail triage block).
-- **B4:** a host linked only from a discussion is `link_only` whatever its address names (`packages/core/src/site-triage.ts`). `locationOf` now labels discussion topics as discussions; before, they were counted as announcements.
-- Regression tests: `tests/break-ask-claims.test.ts`, `tests/break-mail-senders.test.ts` and `tests/break-site-links.test.ts`. They are free, run in CI and use only the fake model.
+- **B1:** `checkAnswer` now also checks the claim (`claimsMatch`): every month-day date, weekday, number and capitalized name in a sentence must appear in the quotes it cites. If one doesn't, the sentence is replaced by the cited quote, verbatim and still linked.
+- **B2–B4:**
+  - Mail matched only by its subject is labelled "Mentions <course>", and nothing more.
+  - An AI raise moves mail at most one level, and only course staff can reach urgent.
+  - A host linked only from a discussion is never synced as the course site.
+- **What the live run showed the fix gets wrong** (not fixed yet):
+  1. **Arithmetic** (11 of 17 flagged sentences). "63 days" between October 6 and December 8 isn't in any quote, so the student who asked "how many days?" sees only the two dates. The number they asked for is lost.
+  2. **Labels outside the quoted span** (3 of 17): "Homework 4" and "Sep 20" come from the passage, not from the quoted words.
+  3. **A parser bug** (3 of 17): the room code "B10" is read as the name "B".
 
 ## What we learned
 
 - A verifier must check the claim, not just the evidence. A real citation on a wrong sentence is worse than no citation.
-- Wherever code "confirms" something, ask what exactly it proved. Each of the four checks proved something narrower than the decision that relied on it.
-- Stopping the failure is not enough: measure the recall cost. When the fix rejects a sentence it shows the quote, and staff mail keeps its urgency.
+- **A verifier tuned on failures you wrote yourself over-fires on real output.** On our synthetic cases the fix wrongly rejected nothing; live it rejected a correct sentence in 15 of 60 answers, and none of the 17 sentences it flagged was actually wrong. Measure the cost on the real agent before you trust the fix.
+- A strict check needs a lane for computed claims. The model should show its arithmetic from quoted numbers, and code should re-derive the result.
+
+**Reproduce:**
+- Live (a signed-in Claude Code; 60 calls, about 170k input tokens, 144k of them cached): `pnpm exec tsx evals/break-live/run.ts 3 5`. The raw answers and per-sentence verdicts are in `evals/break-live/results.json`.
+- Targeted: `pnpm exec tsx --test tests/break-*.test.ts`.
+
+Every page is synthetic: no course data and no student data.
