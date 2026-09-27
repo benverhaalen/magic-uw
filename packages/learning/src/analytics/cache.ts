@@ -8,7 +8,7 @@
 import { createHash } from "node:crypto";
 import { CONFIG, type KnowledgeConfig } from "../config";
 import { conceptState, type KnowledgeEvidence } from "../knowledge/state";
-import type { Concept, ConceptStateRow, CourseRef, LearningStore } from "../store";
+import type { Concept, ConceptStateRow, CourseRef, LearningCard, LearningStore, StoredItem } from "../store";
 import type { ConceptCounts, ConceptStateName, Reason } from "../types";
 
 /** The internal per-topic model analytics needs. Never serialised to the student. */
@@ -37,17 +37,17 @@ const itemKey = (id: string, v: number) => `${id}@${v}`;
 const hash = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 16);
 
 /** The course's knowledge evidence, as the router's topic models build it. */
-export function courseEvidence(store: LearningStore, ref: CourseRef): KnowledgeEvidence {
+export function courseEvidence(store: LearningStore, ref: CourseRef, read: { items?: StoredItem[]; cards?: LearningCard[] } = {}): KnowledgeEvidence {
   const evidence = store.evidence(ref);
   return {
     ...evidence,
     items: new Map(
-      store.items({ courseRef: ref }).map((x) => [
+      (read.items ?? store.items({ courseRef: ref })).map((x) => [
         itemKey(x.item.id, x.item.version),
         { bPrior: x.item.bPrior, options: x.item.options?.length ?? 0, status: x.item.status },
       ]),
     ),
-    cards: new Map(store.cards({ courseRef: ref }).map((x) => [x.id, { conceptId: x.conceptId, isConceptTrack: x.isConceptTrack }])),
+    cards: new Map((read.cards ?? store.cards({ courseRef: ref })).map((x) => [x.id, { conceptId: x.conceptId, isConceptTrack: x.isConceptTrack }])),
   };
 }
 

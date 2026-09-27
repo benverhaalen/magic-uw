@@ -10,7 +10,7 @@ import { CONFIG, params, type KnowledgeConfig } from "../config";
 import { calibration } from "../insights/calibration";
 import { stateTransitions } from "../insights/changes";
 import { conceptPriority } from "../priority";
-import type { Concept, CourseRef, LearningStore, StoredItem } from "../store";
+import type { Concept, CourseRef, LearningCard, LearningStore, StoredItem } from "../store";
 import { STATE_LABEL, type ConceptStateName, type Reason } from "../types";
 import type {
   AgendaHint,
@@ -42,6 +42,9 @@ export interface AnalyticsInput {
   now: Date;
   /** Checked practice items the student can use now; defaults to the store's active items. */
   practiceItems?: StoredItem[];
+  /** The course's items and cards, when the caller already read them (one read per request). */
+  items?: StoredItem[];
+  cards?: LearningCard[];
   config?: KnowledgeConfig;
   analyticsConfig?: AnalyticsConfig;
 }
@@ -60,8 +63,8 @@ interface UpcomingExam extends ExamRef {
   resourceId: string | null;
 }
 
-/** Everything the three views share, computed once per request. */
-function context(input: AnalyticsInput) {
+/** Everything the three views share, computed once per request. Exported for course mastery (D57), which reads the same context. */
+export function context(input: AnalyticsInput) {
   const { store, ref, now } = input;
   const km = input.config ?? CONFIG;
   const an = input.analyticsConfig ?? ANALYTICS_CONFIG;
@@ -94,7 +97,8 @@ function context(input: AnalyticsInput) {
     );
   const topicIds = new Set(topics.map((t) => t.id));
 
-  const evidence = courseEvidence(store, ref);
+  const allItems = input.items ?? store.items({ courseRef: ref });
+  const evidence = courseEvidence(store, ref, { items: allItems, ...(input.cards ? { cards: input.cards } : {}) });
   const states = topicStates(store, ref, all, now, { config: km, evidence });
 
   // Topic → materials: the sources of items tagged with it, and the concept's own sources.
@@ -104,15 +108,14 @@ function context(input: AnalyticsInput) {
     if (!topicIds.has(t)) return;
     materialsOf.set(t, (materialsOf.get(t) ?? new Set()).add(resourceId));
   };
-  for (const x of store.items({ courseRef: ref })) for (const tag of x.tags) for (const s of x.sources) addMaterial(tag.conceptId, s.resourceId);
+  for (const x of allItems) for (const tag of x.tags) for (const s of x.sources) addMaterial(tag.conceptId, s.resourceId);
   for (const c of active) for (const s of c.sources) addMaterial(c.id, s.resourceId);
 
   // Practice items per topic (primary tag), latest version of each item.
   const pool =
     input.practiceItems ??
     [
-      ...store
-        .items({ courseRef: ref })
+      ...allItems
         .reduce((m, x) => (!m.has(x.item.id) || m.get(x.item.id)!.item.version < x.item.version ? m.set(x.item.id, x) : m), new Map<string, StoredItem>())
         .values(),
     ].filter((x) => x.item.status === "active" && !x.checks.some((c) => c.outcome === "fail"));
