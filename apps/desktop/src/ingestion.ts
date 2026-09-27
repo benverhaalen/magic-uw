@@ -93,8 +93,10 @@ import type { PlanningCrosslist, PlanningSubject } from "../../../packages/contr
 import {
   buildCourseIdentityTable,
   canonicalizeCourseKey,
+  decodeUwTerm,
   resolveCourseIdentity,
 } from "../../../packages/domain/src/planning";
+import { courseChoices } from "./renderer/onboarding/model";
 import {
   linkExactEvidence,
   evidenceFor,
@@ -1748,7 +1750,29 @@ export function createIngestion(
       r.kind === "enrollment_package" && r.enrollmentState === "enrolled" ? [r] : [],
     );
     if (!enrolled.length) return undefined;
-    const latest = enrolled.map((r) => r.termCode).sort().at(-1);
+    // The enrolled terms that aren't over: UW's own past flag on its term record, else the term
+    // code's approximate end (fall Dec 23, spring May 20, summer Aug 20) plus 14 days.
+    const pastFlag = new Map(
+      records.flatMap((r) => (r.kind === "term" && typeof r.past === "boolean" ? [[r.code, r.past] as const] : [])),
+    );
+    const notPast = (code: string) => {
+      const flag = pastFlag.get(code);
+      if (flag !== undefined) return !flag;
+      try {
+        const term = decodeUwTerm(code);
+        const end =
+          term.season === "fall"
+            ? Date.UTC(term.year, 11, 23)
+            : term.season === "spring"
+              ? Date.UTC(term.year, 4, 20)
+              : Date.UTC(term.year, 7, 20);
+        return end + 14 * 86400_000 >= now().getTime();
+      } catch {
+        return false;
+      }
+    };
+    const current = new Set(enrolled.map((r) => r.termCode).filter(notPast));
+    if (!current.size) return undefined;
     let table: ReturnType<typeof buildCourseIdentityTable>;
     try {
       table = buildCourseIdentityTable(
@@ -1760,7 +1784,7 @@ export function createIngestion(
     }
     const byKey = new Map(
       enrolled
-        .filter((r) => r.termCode === latest)
+        .filter((r) => current.has(r.termCode))
         .map((r) => [canonicalizeCourseKey(r.courseKey, table), r] as const),
     );
     return (course) => {
@@ -1775,17 +1799,52 @@ export function createIngestion(
     };
   }
   /**
-   * fix/current-courses-only. Canvas's nameless date-restricted rows are never kept as courses;
-   * a workspace that stored them before loses only those metadata rows (no coursework).
+   * fix/current-courses-only. Canvas's nameless `{id, access_restricted_by_date}` rows are no
+   * longer stored; a workspace that stored one before is repaired without losing history:
+   * - a course whose row an earlier version named (it became date-restricted and the nameless
+   *   observation overwrote its name) gets that named version back, marked restricted and not
+   *   included
+   * - only a row that never had a name and has no other source for its course is retired
+   * - anything else is left as it is (hidden from the course list, never deleted)
    */
-  function retireNamelessCourses() {
-    for (const r of store.resources())
-      if (
-        r.kind === "course" &&
-        r.course?.accessRestricted &&
-        /^Course \d+ \(name unavailable\)$/.test(r.courseName)
-      )
-        store.removeSource(r.sourceId);
+  const NAMELESS = /^Course \d+ \(name unavailable\)$/;
+  function repairNamelessCourses() {
+    const sources = store.sources();
+    for (const r of store.resources()) {
+      if (r.kind !== "course" || r.deleted || !NAMELESS.test(r.courseName)) continue;
+      const source = sources.find((s) => s.id === r.sourceId);
+      if (!source || source.kind !== "canvas" || source.scope !== "course") continue;
+      const named = store.resourceHistory?.(r.id).find((v) => v.resource.courseName && !NAMELESS.test(v.resource.courseName));
+      if (named) {
+        const restored = resourceInputSchema.parse({
+          ...named.resource,
+          course: {
+            ...named.resource.course,
+            accessRestricted: true,
+            accessState: "date_restricted",
+            selection: {
+              score: named.resource.course?.selection?.score ?? 0,
+              included: false,
+              reasons: ["Canvas now restricts this course by date; kept with its last known name"],
+            },
+          },
+        });
+        const { id, label, kind, accountScope, courseId, scope } = source;
+        save({
+          source: { id, label: `${restored.courseName.slice(0, 145)} · course`.slice(0, 200) || label, kind, accountScope, courseId, scope },
+          observedAt: now().toISOString(),
+          status: "ok",
+          complete: true,
+          resources: [restored],
+          diagnostics: [{ code: "restored_named_course_version", path: [], severity: "warning" }],
+        });
+        continue;
+      }
+      const siblings = sources.some(
+        (s) => s.id !== source.id && s.accountScope === source.accountScope && s.courseId === source.courseId,
+      );
+      if (!siblings) store.removeSource(source.id);
+    }
   }
   /**
    * fix/current-courses-only. Discovery before the first full read: the profile and the course
@@ -1796,7 +1855,19 @@ export function createIngestion(
     const settings = store.ingestionSettings();
     if (settings.awaitingCourseChoice !== value) store.setIngestionSettings({ ...settings, awaitingCourseChoice: value });
   };
+  /** The listable courses (onboarding's chooser rule): named, not past. */
+  const choiceCount = () =>
+    courseChoices({
+      sources: store.sources(),
+      resources: store.resources(),
+      courseOverrides: store.courseOverrides(),
+    } as unknown as Parameters<typeof courseChoices>[0]).length;
   async function discover(signal = new AbortController().signal) {
+    // Held before anything is read, and any run already under way (a background tick, the
+    // 30-second timer, a reconnect) is cancelled first, so no unconfirmed course is read.
+    holdForChoice(true);
+    if (reconnectBarrier) await reconnectBarrier;
+    await coordinator.cancelAndWait();
     const s = store.ingestionSettings();
     for await (const batch of canvasConnector({
       fetch: host.canvasFetch,
@@ -1809,8 +1880,14 @@ export function createIngestion(
       catalogOnly: true,
     }).pull(signal))
       save(batch);
-    retireNamelessCourses();
-    holdForChoice(true);
+    repairNamelessCourses();
+    // Nothing to choose from: no hold (the next sync reads nothing unconfirmed anyway).
+    if (!choiceCount()) holdForChoice(false);
+  }
+  /** "Start syncing": the student confirmed the course choice. The only way the hold is released. */
+  function confirmCourses() {
+    holdForChoice(false);
+    return tick("manual");
   }
   // owner: T33. One Canvas read: every included course (full), or only the given ones (warm).
   async function canvasRead(
@@ -1858,7 +1935,7 @@ export function createIngestion(
         else accountSignIn = true;
       }
     }
-    retireNamelessCourses(); // fix/current-courses-only
+    repairNamelessCourses(); // fix/current-courses-only
     if (needsSignIn && accountSignIn) markExpired();
     else {
       // documents() stops at its first sign-in answer (one request) if the session is gone.
@@ -1940,8 +2017,10 @@ export function createIngestion(
   ): ReturnType<typeof coordinator.tick> {
     if (reconnectBarrier) return reconnectBarrier.then(() => tick(trigger));
     // fix/current-courses-only: while the student chooses courses, only their own start reads.
-    if (trigger === "background" && store.ingestionSettings().awaitingCourseChoice) return Promise.resolve(undefined);
-    if (trigger === "manual") holdForChoice(false);
+    // While the student chooses, a background tick reads nothing and a manual one (the launch
+    // sign-in, a refresh) refreshes the course list only. confirmCourses() releases the hold.
+    if (store.ingestionSettings().awaitingCourseChoice)
+      return trigger === "manual" ? discover().then(() => undefined) : Promise.resolve(undefined);
     const generation = sessionGeneration;
     if (
       trigger === "manual" &&
@@ -1973,6 +2052,7 @@ export function createIngestion(
     tick, // owner: T17
     markExpired,
     discover, // fix/current-courses-only
+    confirmCourses, // fix/current-courses-only
     // owner: T05b
     reconnected() {
       sessionGeneration++;

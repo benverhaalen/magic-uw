@@ -99,13 +99,21 @@ export function courseTiming(
   if (course.restrict_enrollments_to_course_dates && (courseStart !== undefined || courseEnd !== undefined))
     window = { start: courseStart ?? termStart, end: courseEnd ?? termEnd };
   else if (termStart !== undefined || termEnd !== undefined) window = { start: termStart, end: termEnd };
+  // Canvas's own dates always beat a date guessed from the term's name.
+  else if (courseStart !== undefined || courseEnd !== undefined) window = { start: courseStart, end: courseEnd };
   else if (parsed) window = approximateTerm(parsed);
-  else window = { start: courseStart, end: courseEnd };
+  else window = {};
   const now = currentTime.getTime();
   if (window.start !== undefined && window.start > now) return "future";
   if (window.end !== undefined && window.end < now - TERM_GRACE_DAYS * DAY)
     return courseEnd !== undefined && courseEnd > now ? "extended" : "past";
   return window.start === undefined && window.end === undefined ? "unknown" : "current";
+}
+/** Canvas gives the term start and end, and they span no more than 400 days (not a catch-all term). */
+export function academicTermDates(course: SelectableCanvasCourse): boolean {
+  const start = Date.parse(course.term?.start_at ?? ""),
+    end = Date.parse(course.term?.end_at ?? "");
+  return Number.isFinite(start) && Number.isFinite(end) && end > start && end - start <= 400 * DAY;
 }
 /**
  * A UW Canvas course code's parts: "FA26 COMP SCI 400 001" → subject "COMP SCI", catalog "400",
@@ -179,6 +187,9 @@ export function courseSelection(
   if (course.workflow_state === "available") add(0.5, "Published course");
   const term = parseAcademicTerm(course.term?.name);
   if (term) add(2, "Academic term with year");
+  // A term whose name doesn't parse ("2026 Fall", "Academic Year 2026-2027", "Wintersession")
+  // is still an academic term when Canvas dates it like one: at most 400 days long.
+  else if (academicTermDates(course)) add(2, "Academic term dates");
   if (
     /\b[A-Z][A-Z &/]{1,30}[ -]?\d{3,4}[A-Z]?\b/.test(
       `${course.course_code ?? ""} ${course.name ?? ""}`,
@@ -249,7 +260,7 @@ export function courseSelection(
   } else if (timing === "extended") {
     included = false;
     reasons.push(COURSE_REASONS.stillOpen);
-  } else if (!term) {
+  } else if (!term && !academicTermDates(course)) {
     if (enrolled) {
       included = true;
       reasons.push(COURSE_REASONS.enrolled);

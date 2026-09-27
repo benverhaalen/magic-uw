@@ -1532,6 +1532,9 @@ app
       // fix/current-courses-only: discovery reads only the course lists (onboarding's chooser).
       const discover =
         !!options && typeof options === "object" && (options as { discover?: unknown }).discover === true;
+      // "Start syncing": the student's confirmation, the only message that releases the hold.
+      const confirm =
+        !!options && typeof options === "object" && (options as { confirm?: unknown }).confirm === true;
       if (!(await consentGate("magic:sync"))) throw new Error(consentRefused);
       await ready;
       const id = randomUUID();
@@ -1546,7 +1549,7 @@ app
           );
         }, 600_000);
         calls.set(id, { resolve, reject, timer });
-        worker.postMessage({ kind: "refresh", id, ...(discover ? { discover: true } : {}) });
+        worker.postMessage({ kind: "refresh", id, ...(confirm ? { confirm: true } : discover ? { discover: true } : {}) });
       });
     });
     ipcMain.handle("magic:planning-sync", async (event) => {

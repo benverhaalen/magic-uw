@@ -217,6 +217,8 @@ export function Onboarding(props: OnboardingProps) {
         onBack={back}
         onFinish={() => {
           update({ done: true });
+          // Finishing setup accepts the course choice if the step was never confirmed.
+          if (snapshot.ingestionSettings?.awaitingCourseChoice) void window.magic?.syncCanvas?.({ confirm: true });
           props.onFinish();
         }}
       />
@@ -494,7 +496,7 @@ function CoursesStep({
     void run({ type: "course-override", value: { accountScope: course.accountScope, courseId: course.courseId, included } });
   const start = () => {
     // The first full read, of the checked courses only; it continues while setup goes on.
-    if (window.magic?.syncCanvas) void window.magic.syncCanvas().then(() => run({ type: "snapshot" }));
+    if (window.magic?.syncCanvas) void window.magic.syncCanvas({ confirm: true }).then(() => run({ type: "snapshot" }));
     onNext();
   };
   return (

@@ -297,7 +297,7 @@ export function firstIncompleteStep(snapshot: Snapshot, progress: OnboardingProg
   if (!uwConsented(snapshot, hasConsent)) return "consent";
   const readSomething = snapshot.sources.length > 0;
   if (!readSomething && progress.uw !== "confirmed" && progress.uw !== "skipped") return "uw";
-  if (!progress.coursesDone && courseChoices(snapshot).length) return "courses";
+  if (!progress.coursesDone && snapshot.ingestionSettings?.awaitingCourseChoice) return "courses";
   if (progress.client === null || (progress.client !== "later" && !progress.clientConnected)) return "client";
   if (!progress.appearanceDone) return "appearance";
   if (!progress.connectionsDone) return "connections";
@@ -354,7 +354,7 @@ export function courseChoices(snapshot: Snapshot): CourseChoice[] {
       name: r.courseName,
       term: r.course.termName ?? null,
       group,
-      checked: override ?? (group === "this-term"),
+      checked: override ?? r.course.selection?.included === true,
     });
   }
   return out.sort((a, b) => (a.group === b.group ? a.name.localeCompare(b.name) : a.group === "this-term" ? -1 : 1));

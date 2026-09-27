@@ -1437,6 +1437,18 @@ export function createStore(
       const row = resourceRow(id);
       return row ? readResource(row) : undefined;
     },
+    resourceHistory(id) {
+      assertText(id, "resourceId");
+      return (
+        prepare(
+          "SELECT version, payload, captured_at FROM resource_versions WHERE resource_id=? ORDER BY version DESC LIMIT 50",
+        ).all(id) as Row[]
+      ).map((row) => ({
+        version: Number(row.version),
+        capturedAt: String(row.captured_at),
+        resource: decodePayload(row.payload) as ResourceInput,
+      }));
+    },
     sources() {
       return (
         prepare(
