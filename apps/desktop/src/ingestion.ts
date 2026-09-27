@@ -577,6 +577,7 @@ export function createIngestion(
       source: CaptureBatch["source"];
       priorFile?: Resource;
       urgent: boolean;
+      syllabus?: boolean; // owner: acquisition
       last: string;
     };
     const jobs: Job[] = [];
@@ -608,6 +609,18 @@ export function createIngestion(
       );
       const urgent = urgentFileIds(rows, origin, now().getTime());
       const ids = new Set(rows.flatMap((r) => referencedFileIds(r, origin)));
+      // owner: acquisition: syllabus files first (team packet backend/12): a file named or linked
+      // as the syllabus, or linked from the Canvas syllabus body, is urgent, ahead of due-soon.
+      const syllabusIds = new Set<string>();
+      for (const r of rows) {
+        if (/\/assignments\/syllabus$/.test(r.url) || /syllabus/i.test(r.title))
+          for (const id of referencedFileIds(r, origin)) syllabusIds.add(id);
+        for (const link of r.links ?? [])
+          if (typeof link !== "string" && /syllabus/i.test(`${link.text ?? ""} ${link.url}`)) {
+            const id = canvasFileId(link.url, origin, course.courseId);
+            if (id) syllabusIds.add(id);
+          }
+      }
       for (const id of ids) {
         const key = `${source.accountScope}:${course.courseId}:${id}`;
         if (attemptedFiles.has(key)) continue;
@@ -642,7 +655,8 @@ export function createIngestion(
           course,
           account: source.accountScope,
           source: fileSource,
-          urgent: urgent.has(id),
+          urgent: urgent.has(id) || syllabusIds.has(id),
+          syllabus: syllabusIds.has(id) || /syllabus/i.test(listRows.get(key)?.file?.displayName ?? ""),
           priorFile: listRows.get(key), // owner: acquisition: indexed once
           last: sources
             .get(fileSource.id)
@@ -660,8 +674,11 @@ export function createIngestion(
         (acquisition.textFirst ? documentWeight(a.priorFile) - documentWeight(b.priorFile) : 0) ||
         a.source.id.localeCompare(b.source.id),
     );
-    const urgent = jobs.filter((j) => j.urgent),
-      rest = jobs.filter((j) => !j.urgent),
+    const urgent = [
+        ...jobs.filter((j) => j.syllabus), // owner: acquisition: syllabus ahead of due-soon
+        ...jobs.filter((j) => j.urgent && !j.syllabus),
+      ],
+      rest = jobs.filter((j) => !j.urgent && !j.syllabus),
       ordered: Job[] = [];
     while (urgent.length || rest.length) {
       ordered.push(...urgent.splice(0, 3), ...rest.splice(0, 1));

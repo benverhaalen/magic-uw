@@ -43,8 +43,10 @@ const safeHost = (host: string | undefined) =>
 export function causeFromError(error: unknown): DocumentOutcome {
   if (error instanceof CanvasFailure) {
     if (error.status === "needs_sign_in") return { cause: "needs_sign_in" };
-    if (error.code === "not_authorized") return { cause: "http_401" };
-    if (error.code === "not_accessible") return { cause: "http_403" };
+    // canvas-http.ts: not_authorized is a 401 "unauthorized" or a 403; not_accessible a 404 or 410.
+    if (error.code === "not_authorized") return { cause: "http_403" };
+    if (error.code === "not_accessible") return { cause: "http_404" };
+    if (error.code === "file_locked") return { cause: "locked" };
     if (error.code === "response_byte_limit") return { cause: "too_large" };
     return { cause: "read_failed" };
   }

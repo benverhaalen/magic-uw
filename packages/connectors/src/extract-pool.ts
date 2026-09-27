@@ -99,8 +99,20 @@ export function createExtractPool(options: ExtractPoolOptions = {}): ExtractPool
     slot.worker.on("message", onMessage);
     slot.worker.once("exit", onExit);
     job.options.signal?.addEventListener("abort", onAbort, { once: true });
-    const { signal: _signal, ...plain } = job.options;
-    slot.worker.postMessage({ kind: "extract", id, file: job.file, options: plain });
+    // Only the extraction fields cross to the thread (the capture input also carries functions).
+    const { contentType, filename, dueSoon, opened } = job.options;
+    const plain = {
+      ...(contentType !== undefined ? { contentType } : {}),
+      ...(filename !== undefined ? { filename } : {}),
+      ...(dueSoon !== undefined ? { dueSoon } : {}),
+      ...(opened !== undefined ? { opened } : {}),
+    };
+    try {
+      slot.worker.postMessage({ kind: "extract", id, file: job.file, options: plain });
+    } catch {
+      finish();
+      job.resolve({ text: "", parts: [], pages: [], status: "error", diagnostics: ["extraction_failed"] });
+    }
   }
   function pump() {
     while (queue.length && !closed) {

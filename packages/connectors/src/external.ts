@@ -432,11 +432,14 @@ export function externalCourseConnector(
             });
             robots.set(origin, result.text);
           } catch (error) {
-            if (
-              error instanceof MaterialReadError &&
-              error.code === "not_found"
-            )
-              robots.set(origin, "");
+            // owner: acquisition: RFC 9309 §2.3.1.3: robots.txt "unavailable" (any 4xx) means no
+            // rules; §2.3.1.4: unreachable (5xx, network) stays disallowed.
+            const status =
+              error instanceof MaterialReadError
+                ? (error.detail.status ??
+                  (error.code === "not_found" ? 404 : error.code === "inaccessible" ? 403 : undefined))
+                : undefined;
+            if (status !== undefined && status >= 400 && status < 500) robots.set(origin, "");
             else throw error;
           }
         }
