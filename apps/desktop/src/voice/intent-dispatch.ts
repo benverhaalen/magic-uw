@@ -1,6 +1,6 @@
-import { intentCommandSchema, type CommandResult, type IntentCommandResult } from '@magic/contracts';
+import { intentCommandSchema, type CommandResult, type IntentCommandResult, type Snapshot } from '@magic/contracts';
 import type { VoiceDispatch } from './session';
-import { pageDestination } from '../../../../packages/core/src/intent/page-action';
+import { trialNavigation } from './trial-navigation';
 export const INTERACTIVE_ACTIONS = ['page.open', 'course.open', 'assignment.open', 'ask', 'agenda.due', 'materials.search'];
 export function createInteractiveDispatch(execute: (command: unknown, signal?: AbortSignal) => Promise<CommandResult>): VoiceDispatch {
   return async (text, context, operation): Promise<IntentCommandResult> => {
@@ -16,16 +16,15 @@ export function createInteractiveDispatch(execute: (command: unknown, signal?: A
 }
 
 /** Early local trial: no provider request or external action is reachable from speech. */
-export function createVoiceTrialDispatch(): VoiceDispatch {
+export function createVoiceTrialDispatch(snapshot: () => Snapshot | null = () => null): VoiceDispatch {
   return async (text, context, operation) => {
     operation.signal.throwIfAborted();
     if (!operation.current()) throw new Error('Request context changed.');
-    const destination = pageDestination(text);
-    if (!destination) return { status: 'unavailable', reason: 'This voice trial opens Home, Courses, Calendar, or My UW. Say “Open Calendar”. Connected-agent computer actions are still being connected.', path: 'none', latencyMs: 0, tokens: {in:0,cached:0,out:0} };
     // These exact local destinations need no worker snapshot or provider. In particular, a
     // queued workspace request must not turn a simple spoken page change into a timeout.
+    const outcome = trialNavigation(text, snapshot());
     operation.signal.throwIfAborted();
     if (!operation.current()) throw new Error('Request context changed.');
-    return { status: 'ran', action: 'page.open', args: { text, ...context }, result: { navigate: { view: destination } }, path: 'code', latencyMs: 0, tokens: {in:0,cached:0,out:0} };
+    return outcome.status === 'ran' ? { ...outcome, args: { ...outcome.args, ...context } } : outcome;
   };
 }

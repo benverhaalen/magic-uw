@@ -17,7 +17,7 @@ export interface LauncherHere { key: string; label: string }
 
 /** `unavailable`: this Mac cannot do voice, the mic only explains. `error`: the last session ended with a
  * problem; the reason is shown and pressing the mic tries again. */
-export type LauncherVoiceState = "unavailable" | "error" | "ready" | "starting" | "listening" | "processing";
+export type LauncherVoiceState = "unavailable" | "error" | "ready" | "starting" | "listening" | "transcribing" | "working";
 /** Supplied by the voice owner. The launcher never records, simulates or animates audio on its own. */
 export interface LauncherVoice {
   state: LauncherVoiceState;
@@ -156,12 +156,12 @@ export function ConversationLauncher<O extends { label: string }>({
     if (live.current.open) close(true);
     else if (note) setNote(null);
     else if (voiceProblem) setVoiceProblem(null);
-    else if (voice.state === "starting" || voice.state === "listening" || voice.state === "processing") voice.onStop?.();
+    else if (voice.state === "starting" || voice.state === "listening" || voice.state === "transcribing" || voice.state === "working") voice.onStop?.();
     else return;
     event.stopPropagation();
   };
 
-  const voiceActive = voice.state === "starting" || voice.state === "listening" || voice.state === "processing";
+  const voiceActive = voice.state === "starting" || voice.state === "listening" || voice.state === "transcribing" || voice.state === "working";
   const pressVoice = () => {
     if (voice.state === "unavailable") setVoiceProblem({ text: voice.reason ?? NO_VOICE.reason!, retry: false });
     else if (voice.state === "ready" || voice.state === "error") { setNote(null); setVoiceProblem(null); voice.onStart?.(); }
@@ -218,7 +218,7 @@ export function ConversationLauncher<O extends { label: string }>({
       {/* While typing, the colored Stop control carries the active voice state; levels return when collapsed. */}
       {!open && <VoiceStatus voice={voice}/>}
       <button ref={mic} type="button" className="cl-icon cl-mic"
-        aria-busy={voice.state === "starting" || voice.state === "processing" || undefined}
+        aria-busy={voice.state === "starting" || voice.state === "transcribing" || voice.state === "working" || undefined}
         aria-label={voice.state === "unavailable" ? "Voice unavailable" : voiceActive ? "Stop voice" : "Start voice"}
         title={voice.state === "unavailable" ? "Voice unavailable" : undefined} onClick={pressVoice}>
         <Glyph name={voiceActive ? "stop" : "mic"}/>
@@ -230,11 +230,11 @@ export function ConversationLauncher<O extends { label: string }>({
 /** Text for states without input, bars only from supplied levels. Nothing moves unless the input does. */
 function VoiceStatus({ voice }: { voice: LauncherVoice }): ReactNode {
   if (voice.state === "starting") return <span className="cl-voice-text">Starting</span>;
-  if (voice.state === "processing") return <span className="cl-voice-text">Working</span>;
+  if (voice.state === "transcribing") return <span className="cl-voice-text">Transcribing</span>;
+  if (voice.state === "working") return <span className="cl-voice-text">Working</span>;
   if (voice.state !== "listening") return null;
   const levels = voice.levels?.slice(-5) ?? [];
-  if (!levels.length) return <span className="cl-voice-text">Listening</span>;
-  return <span className="cl-levels" role="img" aria-label="Listening">
-    {levels.map((level, index) => <span key={index} style={{ transform: `scaleY(${Math.max(0.12, Math.min(1, level))})` }}/>)}
-  </span>;
+  return <><span className="cl-voice-text">{levels.some(level => level > 0.096) ? 'Hearing you' : 'Listening'}</span>{!!levels.length && <span className="cl-levels" role="img" aria-label="Microphone input level">
+    {levels.map((level, index) => <span key={index} style={{ transform: `scaleY(${Math.max(0.01, Math.min(1, level))})` }}/>)}
+  </span>}</>;
 }

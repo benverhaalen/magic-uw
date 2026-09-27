@@ -6,7 +6,7 @@ import type { LauncherVoice, LauncherVoiceState } from "../conversation-launcher
 
 export type VoiceSessionReason = "stopped" | "permission-denied" | "device-unavailable" | "transport-unavailable" | "disconnected" | "context-changed" | "too-long";
 export interface VoiceSessionView {
-  phase: "idle" | "starting" | "listening" | "processing" | "unavailable";
+  phase: "idle" | "starting" | "listening" | "transcribing" | "working" | "unavailable";
   reason?: VoiceSessionReason;
   levels: readonly number[];
 }
@@ -15,7 +15,7 @@ export const VOICE_REASON_TEXT: Record<VoiceSessionReason, string> = {
   stopped: "",
   "permission-denied": "Microphone access is off. Allow it in System Settings, then try again.",
   "device-unavailable": "The microphone is unavailable. Check your input device and try again.",
-  "transport-unavailable": "Local speech recognition didn't start on this Mac. Try again, or type instead.",
+  "transport-unavailable": "Local speech recognition failed on this Mac. Check setup and try again.",
   disconnected: "Voice stopped because its connection ended. Try again when you're ready.",
   "context-changed": "Voice stopped because your account or permissions changed.",
   "too-long": "That request was too long. Voice stopped without carrying it out. Try a shorter request.",
@@ -48,7 +48,8 @@ export function voiceAnnouncement(previous: LauncherVoiceState, next: LauncherVo
   if (previous === next) return null;
   if (next === "starting") return "Starting voice";
   if (next === "listening") return "Listening. Press Escape or Stop voice to stop.";
-  if (next === "processing") return "Working on your request";
+  if (next === "transcribing") return "Transcribing your speech";
+  if (next === "working") return "Working on your request";
   if (next === "ready" && previous !== "unavailable" && previous !== "error") return "Voice stopped";
   return null; // errors are announced by the alert that shows them
 }

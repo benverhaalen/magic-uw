@@ -61,6 +61,8 @@ import {
   courseOverrideSchema,
   mcpGrantSchema,
   dayPlanEntrySchema,
+  personalCalendarEventSchema,
+  type PersonalCalendarEvent,
   emptyNotificationState,
   notificationStateSchema,
   gitlabLinkSchema,
@@ -880,6 +882,18 @@ export function createStore(
       .map((e) => dayPlanEntrySchema.safeParse(e))
       .filter((r) => r.success)
       .map((r) => r.data);
+  }
+  function readPersonalCalendarEvents(): PersonalCalendarEvent[] {
+    const row = db.prepare("SELECT value FROM preferences WHERE key = 'personalCalendarEvents'").get();
+    if (!row) return [];
+    let saved: unknown;
+    try { saved = JSON.parse(String(row.value)); } catch { return []; }
+    return (Array.isArray(saved) ? saved : []).slice(0, 500)
+      .map(value => personalCalendarEventSchema.safeParse(value))
+      .filter(result => result.success).map(result => result.data);
+  }
+  function writePersonalCalendarEvents(events: PersonalCalendarEvent[]) {
+    db.prepare("INSERT INTO preferences VALUES ('personalCalendarEvents', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(events));
   }
   const DAY_PLAN_MAX_ENTRIES = 500;
   // Measured from today, never from the newest saved day, so one far-off date cannot erase the rest.
@@ -1862,6 +1876,16 @@ export function createStore(
     // end owner: T06
     dayPlan() {
       return readDayPlan();
+    },
+    personalCalendarEvents() { return readPersonalCalendarEvents(); },
+    setPersonalCalendarEvent(value) {
+      const event = personalCalendarEventSchema.parse(value);
+      const previous = readPersonalCalendarEvents();
+      if (!previous.some(item => item.id === event.id) && previous.length >= 500) throw new Error('The local calendar has reached 500 personal events.');
+      writePersonalCalendarEvents([...previous.filter(item => item.id !== event.id), event]);
+    },
+    removePersonalCalendarEvent(id) {
+      writePersonalCalendarEvents(readPersonalCalendarEvents().filter(item => item.id !== id));
     },
     setDayPlanEntry(value) {
       const entry = dayPlanEntrySchema.parse(value);

@@ -7,12 +7,13 @@ const TZ = 'America/Chicago';
 function item(id: string, fields: Partial<CalendarResource> = {}): CalendarResource {
   return { id, kind: 'event', accountScope: 'account', courseId: 'course', courseName: 'Course', title: id, completed: false, submitted: null, kindLabel: null, deadline: resolveDeadline([]), ...fields };
 }
-test('Monday weeks, leap month and year boundaries use calendar dates', () => {
-  assert.equal(weekStart('2026-09-27'), '2026-09-21');
+test('Sunday-first weeks, leap month and year boundaries use calendar dates', () => {
+  assert.equal(weekStart('2026-09-27'), '2026-09-27');
+  assert.equal(weekStart('2026-10-03'), '2026-09-27');
   assert.equal(addDays('2024-02-28', 1), '2024-02-29');
-  assert.deepEqual(visibleDates('2026-01-01', 'week'), ['2025-12-29', '2025-12-30', '2025-12-31', '2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04']);
+  assert.deepEqual(visibleDates('2026-01-01', 'week'), ['2025-12-28', '2025-12-29', '2025-12-30', '2025-12-31', '2026-01-01', '2026-01-02', '2026-01-03']);
   const month = visibleDates('2026-03-10', 'month');
-  assert.equal(month.length, 42); assert.equal(month.at(-1), '2026-04-05');
+  assert.equal(month.length, 35); assert.equal(month[0], '2026-03-01'); assert.equal(month.at(-1), '2026-04-04');
 });
 test('local midnights obey spring and autumn DST, not fixed UTC offsets', () => {
   assert.equal(startOfDate('2026-03-08', TZ).toISOString(), '2026-03-08T06:00:00.000Z');
@@ -46,6 +47,12 @@ test('accepted blocks retain snapshot identity; skipped/missing resources never 
   const entries = calendarItems([item('material', { kind: 'material' })], [entry, { ...entry, key: 'skipped', status: 'skipped' }], entry.date, TZ);
   assert.equal(entries.length, 1); assert.equal(entries[0].title, entry.block.title); assert.equal(entries[0].entry?.key, 'plan');
   assert.equal(calendarItems([], [entry], entry.date, TZ).length, 0);
+});
+test('exact Canvas quiz submission kind uses assessment filter while retaining its due evidence', () => {
+  const deadline = resolveDeadline([{ value: '2026-09-28T18:00:00Z', kind: 'due', quote: 'due', authority: 'structured', scopeConfirmed: true }]);
+  const quiz = item('quiz', { kind: 'assignment', submissionTypes: ['online_quiz'], deadline });
+  const result = calendarItems([quiz], [], '2026-09-28', TZ);
+  assert.equal(result[0].kind, 'exam'); assert.equal(result[0].precision, 'minute'); assert.match(result[0].detail, /Due/);
 });
 test('unknown end remains explicitly unknown; source timezone is converted to display timezone', () => {
   const event = item('meeting', { calendar: { uid: 'a', allDay: false, start: '2026-09-28T09:00:00-07:00', timezone: 'America/Los_Angeles' } });

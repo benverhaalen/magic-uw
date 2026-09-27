@@ -195,6 +195,15 @@ Aidan wrote "we"; Ben's agreement is as Aidan reported it and is not separately 
 - **Disclosure:** the setup agreement's Jev line and the Data & AI toggle now say the app contains our shared key and that announcements and email previews reach Jev with Course communications on. `CONSENT_DISCLOSURE_VERSION` moved to `setup-2026-09-27-jev`, so existing students accept again.
 - **Operating rules:** use a dedicated TypeSafe key for embedded builds, set account-side spend limits if TypeSafe offers them, and revoke and rebuild when a key is abused. Never commit or publicly publish `apps/desktop/dist/` from such a build.
 
+## 2026-09-27: Today rail block details on click
+
+Changed on `sean/rail-details`. Two problems on the rail's timeline:
+
+- **Stuck decision bar.** The Accept / Edit / Skip bar on a suggestion showed on `:hover` or `:focus-within`. A mouse click leaves focus on the block, so the bar stayed open after the pointer left, until the student clicked somewhere else. It now shows on hover or on keyboard focus only (`:has(:focus-visible)`), so keyboard access is unchanged.
+- **Clicking gave too little.** A suggestion click only swapped the small Next up card; an event click jumped straight to the event's page. Clicking any timeline block now opens a details card in the rail, in place of Next up: time range and length, course or calendar, the target assignment's due date, the effort range, the full reason (the old card kept it in a tooltip), every factor chip, where, online provider, the student's meeting answer, and what it overlaps. Facts the source did not supply are left out rather than shown as blank. The card carries the block's decisions as labeled buttons (the same actions as the hover bar), plus Open assignment or Open full details and Join. Clicking the block again, Close, or Escape hides it and returns focus to the block.
+
+Due today rows still open their item directly: that page already has the depth. The card uses the shared `Action` control. `railBlockFacts` and `railOverlaps` have 4 tests. Checked in the browser preview with the sample course: the clicked block keeps focus with its bar hidden; the suggestion and event cards show the facts above; Accept from the card saves and the card switches to Planned with Mark done / Edit / Remove; Escape and a second click close it and focus returns. Synthetic sample only.
+
 ## 2026-09-27: Today rail counts each Canvas assignment once
 
 Fixed on `sean/rail-dedupe-done`, found from a live student workspace where Due today showed 12 rows: the same three assignments three times each, plus two already submitted. Canvas lists one assignment in several places, and each is saved as its own resource (unique per source and Canvas id): the course's assignments list, the account to-do list, upcoming events, and recent activity. `projectWork` (`packages/domain/src/work.ts`), which feeds the Today rail's Due today, overdue, and suggestion candidates, listed every copy.

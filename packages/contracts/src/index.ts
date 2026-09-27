@@ -974,6 +974,22 @@ export const dayPlanEntrySchema = z
   })
   .strict();
 export type DayPlanEntry = z.infer<typeof dayPlanEntrySchema>;
+/** Student-created local calendar event. It never changes a UW, Canvas or external calendar. */
+export const personalCalendarEventSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string().trim().min(1).max(200),
+  date: z.iso.date(),
+  allDay: z.boolean(),
+  startsAt: instant.nullable(),
+  endsAt: instant.nullable(),
+  timeZone: z.string().min(1).max(100),
+  location: z.string().max(300),
+  notes: z.string().max(2000),
+}).strict().superRefine((event, ctx) => {
+  if (event.allDay ? event.startsAt !== null || event.endsAt !== null : !event.startsAt || !event.endsAt || Date.parse(event.endsAt) - Date.parse(event.startsAt) < 15 * 60_000)
+    ctx.addIssue({ code: 'custom', message: 'A timed event needs at least 15 minutes; an all-day event has no instants.' });
+});
+export type PersonalCalendarEvent = z.infer<typeof personalCalendarEventSchema>;
 /**
  * A UW GitLab project the student linked to a course by hand, for courses whose Canvas
  * material never links the project. `projectPath` is the namespace/project path.
@@ -1079,6 +1095,9 @@ export interface Store {
   dayPlan(): DayPlanEntry[];
   setDayPlanEntry(value: DayPlanEntry): void;
   removeDayPlanEntry(key: string, date: string): void;
+  personalCalendarEvents(): PersonalCalendarEvent[];
+  setPersonalCalendarEvent(value: PersonalCalendarEvent): void;
+  removePersonalCalendarEvent(id: string): void;
   /** Read and dismissed notification ids (local preference; cleared by purge). */
   notificationState?(): NotificationState;
   setNotificationState?(value: NotificationState): void;
@@ -1199,6 +1218,7 @@ export interface Snapshot {
   mcpGrants?: McpGrant[];
   consents?: ConsentRecord[];
   dayPlan?: DayPlanEntry[];
+  personalCalendarEvents?: PersonalCalendarEvent[];
   /** Local display only; excluded from AI/MCP contexts. Latest choice per issue, not the journal. */
   personalWorkReports?: PersonalWorkState[];
   personalReports?: PersonalReportState[];
@@ -2033,6 +2053,8 @@ export const commandSchema = z.discriminatedUnion("type", [
   z
     .object({ type: z.literal("day-plan"), entry: dayPlanEntrySchema })
     .strict(),
+  z.object({ type: z.literal('personal-calendar-save'), event: personalCalendarEventSchema }).strict(),
+  z.object({ type: z.literal('personal-calendar-remove'), id: z.string().uuid() }).strict(),
   z
     .object({
       type: z.literal("day-plan-remove"),

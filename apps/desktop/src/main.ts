@@ -1,7 +1,7 @@
 import { installDesktopVoice } from './voice/desktop-host';
 import { createInteractiveDispatch, createVoiceTrialDispatch } from './voice/intent-dispatch';
 import type { VoiceContext } from './voice/types';
-import { intentCommandSchema } from '@magic/contracts';
+import { intentCommandSchema, type Snapshot } from '@magic/contracts';
 import { judgmentFailure } from "./judgment-errors";
 import {
   app,
@@ -911,6 +911,7 @@ app
     });
     let desktopVoice: Awaited<ReturnType<typeof installDesktopVoice>> | undefined;
     let voiceAuthority: VoiceContext = { account: '', revision: '', allowed: false };
+    let voiceSnapshot: Snapshot | null = null;
     const interactiveCalls = new Map<string, AbortController>();
     const stopInteractive = () => {
       desktopVoice?.stop('context-changed');
@@ -969,6 +970,7 @@ app
       if (message?.kind !== "response") return;
       const snapshot = message.result?.snapshot;
       if (snapshot) {
+        voiceSnapshot = snapshot;
         const accounts = [...new Set((snapshot.sources ?? []).map((source: {accountScope: string}) => source.accountScope))].sort();
         const authority = { account: JSON.stringify(accounts), revision: JSON.stringify([snapshot.consents, snapshot.privacy, snapshot.courseOverrides, snapshot.ingestionSettings, accounts]), allowed: true };
         if (voiceAuthority.allowed && (authority.account !== voiceAuthority.account || authority.revision !== voiceAuthority.revision)) stopInteractive();
@@ -2099,7 +2101,7 @@ app
     });
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", (event) => event.preventDefault());
-    desktopVoice = await installDesktopVoice({ window, rendererURL, headless, context: () => voiceAuthority, dispatch: createVoiceTrialDispatch() });
+    desktopVoice = await installDesktopVoice({ window, rendererURL, headless, context: () => voiceAuthority, dispatch: createVoiceTrialDispatch(() => voiceSnapshot) });
     window.webContents.session.setPermissionRequestHandler(
       (sender, permission, callback, details) => callback(desktopVoice?.allowsPermission(sender, permission, details) ?? false),
     );

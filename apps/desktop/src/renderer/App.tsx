@@ -451,17 +451,21 @@ export function App() {
   // Voice (adopted from voice-shared-path): one session per account; each utterance captures the page on first speech,
   // runs through the same intent router as typed chat, and navigates immediately for ordinary page/course/item opens.
   const navigateFromIntent = (target: {view: string; resourceId?: string; courseId?: string; accountScope?: string}) => {
-    if (target.view === 'course') { const course = courseCards.find(card => card.courseId === target.courseId && chatCourse(card).accountScope === target.accountScope); if (course) navigation.navigate('courses', null, course.key); }
+    if (target.view === 'course') { const course = courseCards.find(card => card.courseId === target.courseId && chatCourse(card).accountScope === target.accountScope); if (!course) return false; navigation.navigate('courses', null, course.key); }
     else if (target.view === 'assignment' && target.resourceId) navigation.navigate('resource', target.resourceId);
     else if (['today','courses','calendar','myuw'].includes(target.view)) setView(target.view as View);
+    else return false;
+    return true;
   };
   const desktopVoice = useDesktopVoice(chatAccountKey, () => {
     const origin = captureChatOrigin(), courses = scopeCourses(origin.scope);
     return {origin: {chat: origin, followUpId: view === 'chat' ? selectedId ?? undefined : undefined}, context: {view: origin.view, ...(courses.length === 1 ? {courseId: courses[0]!.key} : {}), ...(origin.scope.kind === 'item' ? {resourceId: origin.scope.item.id} : {})}};
   }, (captured, event) => {
     if (!snapshot) return;
-    const chat = acceptVoiceResult({origin: captured.chat, prompt: event.text, idempotencyKey: event.operationId}, event.result, {bridge: window.magic, resources, sources: snapshot.sources, courses: courseCards.map(card => chatCourse(card)), now: new Date().toISOString(), onNavigate: navigateFromIntent}, captured.followUpId);
+    let navigated = false;
+    const chat = acceptVoiceResult({origin: captured.chat, prompt: event.text, idempotencyKey: event.operationId}, event.result, {bridge: window.magic, resources, sources: snapshot.sources, courses: courseCards.map(card => chatCourse(card)), now: new Date().toISOString(), onNavigate: target => { navigated = navigateFromIntent(target); }}, captured.followUpId);
     if (chat && !(event.result.status === 'ran' && ['page.open','course.open','assignment.open'].includes(event.result.action))) navigation.navigate('chat', chat.id);
+    if (event.result.status === 'ran' && event.result.action === 'page.open') return navigated ? 'Opened the requested page.' : 'That page is no longer available.';
   });
   // owner: T81. First run, or setup still incomplete: the onboarding flow replaces the shell
   // (and T06's in-Home consent entry) until the student opens the workspace.
@@ -498,7 +502,7 @@ export function App() {
         <ShellFeedback error={error} notice={notice} view={view} onDismiss={() => { setError(""); setNotice(""); }}/>
       </>}
       trailing={<NotificationsMenu feed={snapshot?.notifications} busy={busy} run={run} destinationOf={notificationTarget} onOpen={openNotification} onOpenSources={() => setView("sources")} onOpenPrivacy={() => navigation.navigate("privacy", null, null, undefined, snapshot?.privacy.mode === "local_only" ? undefined /* the mode choice at the top unlocks Jev */ : { focus: "privacy-jev", anchor: "privacy-models" })}/>}
-      launcher={snapshot ? <ConversationLauncher<ChatOrigin> key={chatAccountKey} voice={desktopVoice.voice} feedback={desktopVoice.transcript ? `Heard: ${desktopVoice.transcript}` : undefined} here={{key:`${view}:${selectedId ?? ''}:${navigation.courseKey ?? ''}`,label:pageTitle}} captureOrigin={captureChatOrigin} mode={view === 'chat' && selectedId ? 'follow-up' : 'new-chat'} chatId={view === 'chat' ? selectedId ?? undefined : undefined} onSubmit={entry => {
+      launcher={snapshot ? <ConversationLauncher<ChatOrigin> key={chatAccountKey} voice={desktopVoice.voice} feedback={desktopVoice.feedback || undefined} here={{key:`${view}:${selectedId ?? ''}:${navigation.courseKey ?? ''}`,label:pageTitle}} captureOrigin={captureChatOrigin} mode={view === 'chat' && selectedId ? 'follow-up' : 'new-chat'} chatId={view === 'chat' ? selectedId ?? undefined : undefined} onSubmit={entry => {
         const invalid = chatPromptError(entry.prompt); if (invalid) return {accepted:false,message:invalid};
         if (entry.destination.kind === 'follow-up') {
           if (!continueChat(entry.destination.chatId, entry.prompt, entry.idempotencyKey)) return {accepted:false,message:'This chat is no longer open. Start a new chat.'};
@@ -556,7 +560,7 @@ export function App() {
           selected ? <ResourceDetail key={selected.id} resource={selected} snapshot={snapshot} busy={busy} run={run} open={open} onClose={navigation.back} onSetup={() => openConsent()} onNotice={setNotice} />
             : <section className="initial-state"><h1 tabIndex={-1}>This item is no longer available.</h1><p>The saved item may have been removed or excluded. Your previous page is still available.</p><button className="button" onClick={navigation.back}>Go back</button></section>
         ) : view === "calendar" ? (
-          <section className="desktop-calendar"><CalendarPage resources={resources} sources={snapshot.sources} links={snapshot.links} aliases={snapshot.courseWorkAdmission?.aliases} plan={snapshot.dayPlan ?? []}
+          <section className="desktop-calendar"><CalendarPage resources={resources} sources={snapshot.sources} links={snapshot.links} aliases={snapshot.courseWorkAdmission?.aliases} plan={snapshot.dayPlan ?? []} planning={snapshot.planning} personalEvents={snapshot.personalCalendarEvents ?? []}
             state={navigation.calendarState} onStateChange={navigation.updateCalendar} restoreFocusId={navigation.calendarFocus}
             onSelect={navigation.openCalendarResource} formatCourseLabel={(id, fallback) => { const resource = resources.find(r => r.id === id); const account = resource && accountBySource.get(resource.sourceId); const card = resource && courseCards.find(c => c.key === courseKey(account ?? resource.sourceId, resource.courseId)); return card?.code ?? card?.courseName ?? fallback; }} onPlan={async command => { const result = await run(command); if (!result) throw new Error("Calendar change was not saved"); return result; }}/></section>
         ) : view === "myuw" ? (
