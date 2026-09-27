@@ -223,15 +223,51 @@ export function App() {
 
   useEffect(() => {
     mounted.current = true;
-    const stopPolling = startSnapshotPolling(() => refresh(false), {
-      hidden: () => document.hidden,
-      schedule: callback => window.setTimeout(callback, 2000),
-      cancel: timer => window.clearTimeout(timer),
-      onVisibility: callback => {
-        document.addEventListener('visibilitychange', callback);
-        return () => document.removeEventListener('visibilitychange', callback);
-      },
-    });
+    let stopPolling: () => void;
+    const onChanged = window.magic?.onChanged;
+    if (onChanged) {
+      // owner: stall-audit. The worker says when the workspace changed; read then, at most every
+      // 2 s (the gate keeps one read at a time and queues one behind it). Hidden, a change is read
+      // on return. Idle, nothing is read. Without onChanged, the idle-time poll below stays.
+      let pending = false,
+        lastRead = Date.now(),
+        trailing: number | undefined;
+      const pull = () => {
+        pending = true;
+        if (document.hidden || trailing !== undefined) return;
+        const wait = lastRead + 2000 - Date.now();
+        if (wait > 0) {
+          trailing = window.setTimeout(() => {
+            trailing = undefined;
+            if (pending) pull();
+          }, wait);
+          return;
+        }
+        pending = false;
+        lastRead = Date.now();
+        void refresh();
+      };
+      const onVisible = () => {
+        if (!document.hidden && pending) pull();
+      };
+      const unsubscribe = onChanged(pull);
+      document.addEventListener('visibilitychange', onVisible);
+      void refresh();
+      stopPolling = () => {
+        unsubscribe();
+        document.removeEventListener('visibilitychange', onVisible);
+        window.clearTimeout(trailing);
+      };
+    } else
+      stopPolling = startSnapshotPolling(() => refresh(false), {
+        hidden: () => document.hidden,
+        schedule: callback => window.setTimeout(callback, 2000),
+        cancel: timer => window.clearTimeout(timer),
+        onVisibility: callback => {
+          document.addEventListener('visibilitychange', callback);
+          return () => document.removeEventListener('visibilitychange', callback);
+        },
+      });
     return () => {
       mounted.current = false;
       snapshotGate.current.invalidate();

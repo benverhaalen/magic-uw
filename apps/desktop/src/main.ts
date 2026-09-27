@@ -458,6 +458,11 @@ app
         sourceReads.get(message.id)?.abort();
         return;
       }
+      // owner: stall-audit. The workspace changed: the window re-reads its snapshot (no poll).
+      if (message.kind === "changed") {
+        if (window && !window.isDestroyed()) window.webContents.send("magic:changed");
+        return;
+      }
       // owner: notes. The worker's Google Docs calls: status, the student's sign-in, and Drive requests.
       if (message.kind === "notes-google") {
         try {

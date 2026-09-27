@@ -2308,6 +2308,11 @@ export interface AppBridge {
   account?: AccountBridge;
   execute(command: ResultOnlyCommand): Promise<ResultOnlyCommandResult>;
   execute(command: Command): Promise<CommandResult>;
+  /**
+   * owner: stall-audit. Called when the workspace changed (at most once a second, never while
+   * idle); returns the unsubscribe. The window re-reads its snapshot then instead of polling.
+   */
+  onChanged?(listener: () => void): () => void;
   openExternal(url: string): Promise<void>;
   /** owner: T05b. A link card (D40): the default browser, https only. */
   openLink?(url: string): Promise<void>;
