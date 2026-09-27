@@ -75,3 +75,17 @@ Start with the audience, normal entry/default state, useful outcome and one comp
 One integrator owns a shared token/contract edit at a time. Workers name their system revision and own bounded surfaces; inspect relevant upstream changes before integration. A contribution records changed rule/recipe, affected consumers, before/after evidence and remaining uncertainty. Review its actual dependents and a representative sibling, not every unrelated screen.
 
 Use distinct claims: **proposed**, **accepted direction**, **demonstrated in isolation**, **integrated**, and **demonstrated in the real journey**. A passing screenshot does not prove source correctness, accessibility, framework portability or teammate adoption. Keep the smallest useful evidence and repair the producing rule when observed use contradicts it.
+
+## September 27, 2026 · chrome and control correction
+
+Latest user correction: “actually, decrease icon border outline size, increase the corner rounding of them a bit while also increasing the icon sizes.” This supersedes the earlier smaller-glyph direction. Glyph geometry is separate from the hit target: shared control/navigation glyphs are 18px, trailing glyphs 16px, and stroke is 1.35; existing comfortable button areas remain. Normal and hover feedback must not thicken icon outlines. Controls use 10px corners; this does not redefine card or pane shapes. Keyboard focus retains its distinct 2px outline.
+
+Ben also asked: “ensure font color is consistent or at least has a hierarchy.” Use primary, prose, secondary, and action ink roles; keep metadata readable instead of fading it. The shell is a deeper red with a 6px outer perimeter. Preserve saturated coursework colors, Geist400/normal, and exact Lora Medium500. A restrained shadow identifies filled actions; quiet text actions and ordinary navigation stay flat.
+
+The shell Canvas recovery action is white, visibly `Sign in to` followed by the official Canvas mark, accessible name `Sign in to Canvas`. Reuse the existing MIT Instructure asset and notice; pending labels reserve the same width. Global feedback stays compact in the red shell with details on demand, preserving dismissal and typed sign-in outcomes.
+
+Home follows: “put horizontal lines that separate briefing from upcoming from study and learn similar to how the vertical line looks on the right hand side.” Use the same 1px quiet rule on the continuous reading surface; no enclosing panels or left accent bars.
+
+Implementation lives in canonical tokens, shared Action/Glyph consumers, shell recovery, and Home section rules. Adoption requires actual default/hover/focus/pending/cancel/error screenshots at the normal window size, composed text contrast, and a fresh font sweep after integration. Source declarations alone do not establish compliance.
+
+The expanded sidebar course tree may use the explicitly requested faint vertical nesting guide from Courses toward My UW. This is a navigation hierarchy cue, ending before the next navigation icon; collapsed navigation has neither guide nor reserved gap. It does not authorize decorative left stripes in content.

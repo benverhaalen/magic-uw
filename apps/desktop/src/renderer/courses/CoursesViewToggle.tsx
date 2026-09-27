@@ -31,7 +31,7 @@ export function CoursesViewHeader({ termLabel, mode, onChange, evidence }: {
     <CoursesViewToggle mode={mode} onChange={onChange}/></header>;
 }
 
-// Lucide paths, ISC. Same 24px coordinate system and 1.65 stroke as DesktopShell Glyph.
+// Lucide paths, ISC. Same 24px coordinate system and shared stroke as DesktopShell Glyph.
 // Attribution: packages/ui/LICENSE.icons; no separate icon package or emoji substitution.
 export function WorkGlyph({ name }: { name: 'grid' | 'list' | 'lecture' | 'prep' | 'assignment' | 'exam' | 'chevron' | 'check' }) {
   const paths: Record<typeof name, ReactNode> = {
@@ -44,5 +44,5 @@ export function WorkGlyph({ name }: { name: 'grid' | 'list' | 'lecture' | 'prep'
     chevron: <path d="m9 18 6-6-6-6"/>,
     check: <path d="m20 6-11 11-5-5"/>,
   };
-  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="var(--magic-icon-stroke-seed)" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }

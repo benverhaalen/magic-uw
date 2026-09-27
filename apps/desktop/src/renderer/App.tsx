@@ -34,6 +34,7 @@ import { signInMessage } from "./sign-in";
 import { CalendarPage } from "./CalendarPage";
 import { canonicalHomeResources } from "./home/projection";
 import { DesktopShell, Glyph } from "./DesktopShell";
+import { CanvasMark } from "./prepared-work/canvas-mark";
 import { Home, ObjectLink } from "./Home";
 import { SnapshotGate } from "./snapshot-gate";
 import { startSnapshotPolling } from "./snapshot-poll";
@@ -43,6 +44,38 @@ import { PersonalReport } from "./PersonalReport";
 import { Action, Disclosure } from "../../../../packages/ui/src";
 import { useDesktopNavigation, type DesktopView } from "./navigation";
 import { CourseSpaceDetails } from "./CourseSpaceDetails";
+
+function ShellFeedback({ error, notice, view, onDismiss }: { error: string; notice: string; view: DesktopView; onDismiss: () => void }) {
+  const details = useRef<HTMLDetailsElement>(null);
+  const [open, setOpen] = useState(false);
+  const close = () => { if (details.current) details.current.open = false; };
+  useEffect(() => { close(); }, [view]);
+  useEffect(() => {
+    if (!open) return;
+    const outside = (event: PointerEvent) => { if (!details.current?.contains(event.target as Node)) close(); };
+    document.addEventListener("pointerdown", outside);
+    return () => document.removeEventListener("pointerdown", outside);
+  }, [open]);
+  if (!error && !notice) return null;
+  const message = error ? workspaceFailureMessage(error) : notice;
+  const summary = error ? message.split(". ")[0]
+    : notice === signInMessage({ status: "cancelled", service: "canvas" }) ? "Sign-in cancelled · nothing read"
+    : notice;
+  return <div className={`desktop-feedback ${error ? "is-error" : ""}`} role={error ? "alert" : "status"}>
+    <details ref={details} onToggle={event => setOpen(event.currentTarget.open)}
+      onBlur={event => { if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) close(); }}
+      onKeyDown={event => { if (event.key === "Escape" && event.currentTarget.open) { event.preventDefault(); close(); event.currentTarget.querySelector("summary")?.focus(); } }}>
+      <summary title={message}>{summary}</summary>
+      <div className="desktop-feedback-content"><span>{message}</span>{error && <details><summary>Error details</summary><p>{error}</p></details>}</div>
+    </details>
+    <button aria-label={error ? "Dismiss error" : "Dismiss notice"} onClick={event => {
+      const shell = event.currentTarget.closest(".desktop-chrome");
+      const target = shell?.querySelector<HTMLButtonElement>(".desktop-source-action") ?? shell?.querySelector<HTMLButtonElement>("button");
+      onDismiss();
+      target?.focus();
+    }}>×</button>
+  </div>;
+}
 import { ResourceDetailHeader, ResourceProvenance } from "./ResourceDetailHeader";
 import { effectiveCoursePolicy } from "../../../../packages/domain/src/course-policy";
 import { ResourceAssignment } from "./ResourceAssignment";
@@ -459,12 +492,10 @@ export function App() {
       onNavigate={setView} onCourse={key => navigation.navigate("courses", null, key)}
       status={<>
         {snapshot?.sources.some(source => source.kind === "canvas" && source.status === "needs_sign_in") && window.magic.signInUW ?
-          <button className="desktop-source-action" aria-label="Canvas needs sign-in. Sign in to check saved coursework for updates." aria-busy={signInStage !== "idle" || undefined} aria-disabled={busy || undefined} onClick={() => { if (!busy) void signIn(); }}>
-            <Glyph name="school"/><span>{signInStage === "signin" ? "Opening sign-in…" : signInStage === "checking" ? "Checking Canvas…" : "Canvas · Sign in"}</span>
+          <button className="desktop-source-action desktop-canvas-action" aria-label="Sign in to Canvas" aria-busy={signInStage !== "idle" || undefined} aria-disabled={busy || undefined} onClick={() => { if (!busy) void signIn(); }}>
+            <span>{signInStage === "signin" ? "Opening…" : signInStage === "checking" ? "Checking…" : "Sign in to"}</span><CanvasMark/>
           </button> : needsSignIn ? <button className="desktop-source-action" onClick={() => setView("sources")}><Glyph name="settings"/><span>Review sign-in</span></button> : null}
-        {(error || notice) && <div className={`desktop-feedback ${error ? "is-error" : ""}`} role={error ? "alert" : "status"}>
-          <div><span>{error ? workspaceFailureMessage(error) : notice}</span>{error && <details><summary>Error details</summary><p>{error}</p></details>}</div><button aria-label={error ? "Dismiss error" : "Dismiss notice"} onClick={() => { setError(""); setNotice(""); }}>×</button>
-        </div>}
+        <ShellFeedback error={error} notice={notice} view={view} onDismiss={() => { setError(""); setNotice(""); }}/>
       </>}
       launcher={snapshot ? <ConversationLauncher<ChatOrigin> key={chatAccountKey} here={{key:`${view}:${selectedId ?? ''}:${navigation.courseKey ?? ''}`,label:pageTitle}} captureOrigin={captureChatOrigin} mode={view === 'chat' && selectedId ? 'follow-up' : 'new-chat'} chatId={view === 'chat' ? selectedId ?? undefined : undefined} onSubmit={entry => {
         const invalid = chatPromptError(entry.prompt); if (invalid) return {accepted:false,message:invalid};

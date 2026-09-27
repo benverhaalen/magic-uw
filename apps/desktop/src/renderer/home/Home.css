@@ -5,7 +5,7 @@
 .home-work-due strong { font-size:var(--magic-type-compact-control); font-weight: inherit; }
 .home-work-flag { font-size:12px; font-weight: inherit; }
 .home-work-details { flex:0 0 38px; display:flex; align-items:center; justify-content:center; color:inherit; border-radius:0 var(--magic-radius-card) var(--magic-radius-card) 0; }
-.home-work-details svg { width:15px; height:15px; }
+.home-work-details svg { width:var(--magic-glyph-trailing); height:var(--magic-glyph-trailing); }
 .home-work-details { transition:background-color var(--magic-fb-duration) var(--magic-fb-ease); }
 .home-work-details:focus-visible { outline:2px solid var(--magic-focus); outline-offset:-2px; }
 .home-work-group { display:grid; gap:6px; }
@@ -27,7 +27,7 @@
 .home-study-action h3 { font:500 var(--magic-type-study-title)/1.3 var(--magic-font-editorial); margin:10px 0 8px; }
 .home-study-action p { font-size:var(--magic-type-meta); line-height:1.5; margin:0 0 9px; }
 .home-study-action>div { display:flex; justify-content:space-between; gap:12px; font-size:var(--magic-type-compact-control); margin-top:auto; padding-top:7px; align-items:center; }
-.home-study-action>div svg { width:14px; height:14px; }
+.home-study-action>div svg { width:var(--magic-glyph-trailing); height:var(--magic-glyph-trailing); }
 .home-reading .briefing-review .magic-ui-confirmation>p.magic-ui-meta { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
 .home-reading .briefing-review>.magic-ui-action { min-height:42px; }
 .home-reading .briefing-review .magic-ui-confirmation { padding:7px 10px; }
@@ -80,6 +80,10 @@
 .home-study-action:active { box-shadow:var(--magic-fb-card-press); transition-duration:0s; }
 .home-work-details:active { background-color:rgba(255,255,255,.42); transition-duration:0s; }
 .home-today .rail-allday--home:active { box-shadow:inset 0 0 0 999px var(--magic-fb-press-overlay); transition-duration:0s; }
+
+/* Fine rules separate reading sections on the continuous Home surface, matching Today. */
+.home-upcoming,.home-study { position:relative; }
+.home-upcoming::before,.home-study::before { content:""; position:absolute; top:-13px; inset-inline:0; height:1px; background:var(--magic-line-quiet); }
 
 /* Native grouped-work disclosure keeps DOM semantics and reverses from its current height.
  * Unsupported browsers retain the usable native details fallback. */

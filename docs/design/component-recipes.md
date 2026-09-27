@@ -95,3 +95,7 @@ A new variant must name its purpose, differing anatomy/state and a real consumer
 - A nonmodal navigation popover closes when focus leaves it. Escape restores its trigger; selecting a destination restores useful context.
 - Keep validation errors distinct from persistence failures. Associate both with the relevant field, but only invalid input receives aria-invalid.
 - Sample text contrast on the composed gradient at actual text positions. Palette acceptance does not establish accessible contrast.
+
+### Control chrome calibration · 2026-09-27
+
+Apply the [current chrome correction](../../DESIGN.md#september-27-2026--chrome-and-control-correction) in R1, R6 and R7: readable glyphs have independent hit areas; normal/hover outlines remain light; focus is distinct. Filled actions may use `--magic-shadow-action`, while quiet controls remain flat. Secondary ink is semantic rather than reduced opacity. Shell feedback is compact until requested. Home rules separate sections without making cards inside cards.

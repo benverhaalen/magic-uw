@@ -4,9 +4,9 @@
 .magic-ui-action, .magic-ui-confirmation, .magic-ui-popover, .magic-ui-link, .magic-ui-disclosure {
   font-family: var(--magic-font-interface); font-weight: var(--magic-font-interface-weight); letter-spacing: var(--magic-tracking); color: var(--magic-ink); box-sizing: border-box;
 }
-.magic-ui-action { display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; transition: background-color var(--magic-motion-overlay-enter) var(--magic-motion-ease-out); border: 0; border-radius: var(--magic-radius-control); min-height: 42px; padding: 10px 14px; font-size: var(--magic-type-control); line-height: 1.4; color: var(--magic-ink-action); background: var(--magic-fill-action); cursor: pointer; }
-.magic-ui-action--quiet { background: transparent; color: var(--magic-ink-link); text-decoration: none; }
-.magic-ui-action:disabled, .magic-ui-action[aria-disabled=true] { background: var(--magic-fill-disabled); color: var(--magic-ink-disabled); cursor: default; }
+.magic-ui-action { display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; box-shadow: var(--magic-shadow-action); transition: background-color var(--magic-motion-overlay-enter) var(--magic-motion-ease-out); border: 0; border-radius: var(--magic-radius-control); min-height: 42px; padding: 10px 14px; font-size: var(--magic-type-control); line-height: 1.4; color: var(--magic-ink-action); background: var(--magic-fill-action); cursor: pointer; }
+.magic-ui-action--quiet { box-shadow: none; background: transparent; color: var(--magic-ink-link); text-decoration: none; }
+.magic-ui-action:disabled, .magic-ui-action[aria-disabled=true] { box-shadow: none; background: var(--magic-fill-disabled); color: var(--magic-ink-disabled); cursor: default; }
 .magic-ui-action[aria-busy=true] { cursor: progress; }
 .magic-ui-action:active:not(:disabled):not([aria-disabled=true]) { box-shadow: inset 0 0 0 999px var(--magic-fill-pressed-overlay); }
 .magic-ui-link { color: var(--magic-ink-link); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
