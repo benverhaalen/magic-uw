@@ -24,6 +24,15 @@ import { createPipelineLoop } from "../../../packages/core/src/jobs/pipeline";
 import { agenda, courseGraph, createPipelineReferences, references } from "../../../packages/core/src/graph/index";
 import { graphQuerySchema } from "../../../packages/contracts/src/course-core";
 // end owner: pipeline
+// owner: planning-perf
+import { planningSourceId } from "../../../packages/storage/src/planning";
+import {
+  planningRefreshDue, publicSourceTermFresh, reconfirmedAuditCaptures, storedAuditReports, termFreshSearchSubjects,
+  type PlanningAddDropWindow,
+} from "../../../packages/core/src/planning";
+// Worker ≥ main: main's planning timer is 90 s and the native sync's soft deadline is 70 s.
+const PLANNING_WORKER_TIMEOUT_MS = 95_000;
+// end owner: planning-perf
 const port = process.parentPort;
 if (!port) throw new Error("Workspace must be started by the desktop app.");
 const pending = new Map<
@@ -154,6 +163,7 @@ function hostRead(
   kind: string,
   payload: unknown,
   signal?: AbortSignal,
+  timeoutMs = 60_000, // owner: planning-perf: planning refresh passes its longer budget
 ): Promise<any> {
   signal?.throwIfAborted();
   const id = randomUUID();
@@ -164,7 +174,7 @@ function hostRead(
       port.postMessage({ kind: "source-abort", id });
       reject(new Error("Read cancelled"));
     };
-    const timer = setTimeout(abort, 60_000);
+    const timer = setTimeout(abort, timeoutMs);
     signal?.addEventListener("abort", abort, { once: true });
     const finish = () => {
       clearTimeout(timer);
@@ -271,40 +281,60 @@ let planningAccountScope = /^uw-session:[a-f0-9-]{36}$/.test(process.env.MAGIC_P
   ? process.env.MAGIC_PLANNING_SCOPE! : `uw-session:${randomUUID()}`;
 let planningGeneration = 0;
 let planningRun: { controller: AbortController; promise: Promise<void> } | undefined;
+let planningPresent = false, planningAddDrop: PlanningAddDropWindow | null = null; // owner: planning-perf
 function cancelPlanning() {
   planningGeneration++;
   planningRun?.controller.abort();
 }
 
-function refreshPlanning(): Promise<void> {
+function refreshPlanning(trigger: "manual" | "scheduled" = "manual"): Promise<void> {
+  // owner: planning-perf. Incremental: stored complete DARS reports are reconfirmed without a
+  // download, term-fresh public reads are skipped, a slow sync keeps what arrived, and each
+  // sync's captures are written in one transaction.
   if (planningRun && !planningRun.controller.signal.aborted) return planningRun.promise;
   const generation = planningGeneration;
   const controller = new AbortController();
   const signal = controller.signal;
   const accountScope = planningAccountScope;
-  const save = (capture: PlanningCapture) => {
+  const live = () => {
     signal.throwIfAborted();
     if (generation !== planningGeneration) throw new Error("Planning refresh cancelled");
+  };
+  const save = (capture: PlanningCapture) => {
+    live();
     store.ingestPlanning(planningCaptureSchema.parse(capture));
   };
+  const saveBatch = (captures: PlanningCapture[]) => {
+    live();
+    if (captures.length) store.ingestPlanningBatch(captures.map((capture) => planningCaptureSchema.parse(capture)));
+  };
+  // One source by its ID, never a scan of every source.
   const observedAt = (source: PlanningCapture["source"], scope: PlanningCapture["scope"], account: string) => {
-    const previous = store.planningSources().find((entry) => entry.source === source && entry.accountScope === account && entry.scope.kind === scope.kind && entry.scope.key === scope.key);
+    const previous = store.planningSource(planningSourceId(source, account, scope));
     return new Date(Math.max(Date.now(), previous ? Date.parse(previous.observedAt) + 1 : 0)).toISOString();
   };
+  const nowIso = new Date().toISOString();
+  const termFresh = (scope: PlanningCapture["scope"]) =>
+    publicSourceTermFresh(store.planningSource(planningSourceId("uw_public", "public", scope)), nowIso);
   const promise = Promise.all([
     (async () => {
       let result: UwPlanningSyncResult;
-      try { result = await hostRead("planning-refresh", {}, signal); }
+      const hints = { storedAudits: storedAuditReports(store), freshSubjects: termFreshSearchSubjects(store, nowIso) ?? undefined, scheduled: trigger === "scheduled" };
+      try { result = await hostRead("planning-refresh", hints, signal, PLANNING_WORKER_TIMEOUT_MS); }
       catch {
         signal.throwIfAborted();
         result = { captures: [], invalidated: ["uw_enroll", "uw_myuw", "uw_dars"].map((source) => ({ source: source as "uw_enroll" | "uw_myuw" | "uw_dars", status: "failed", code: "refresh_failed" })) };
       }
       signal.throwIfAborted();
-      const refreshed = new Set(result.captures.map((capture) => JSON.stringify([capture.source, capture.accountScope, capture.scope])));
+      if (result.addDrop !== undefined) planningAddDrop = result.addDrop;
+      const reconfirmed = reconfirmedAuditCaptures(store, result.reconfirmed ?? [], new Date().toISOString());
+      const refreshed = new Set([...result.captures, ...reconfirmed].map((capture) => JSON.stringify([capture.source, capture.accountScope, capture.scope])));
+      const batch: PlanningCapture[] = [];
+      const privateSources = result.invalidated.length ? store.planningSources().filter((source) => source.accountScope !== "public") : [];
       for (const invalid of result.invalidated) {
-        for (const previous of store.planningSources().filter((source) => source.source === invalid.source && source.accountScope !== "public")) {
+        for (const previous of privateSources.filter((source) => source.source === invalid.source)) {
           if (refreshed.has(JSON.stringify([previous.source, previous.accountScope, previous.scope]))) continue;
-          save({ schemaVersion: 1, id: randomUUID(), source: previous.source, accountScope: previous.accountScope,
+          batch.push({ schemaVersion: 1, id: randomUUID(), source: previous.source, accountScope: previous.accountScope,
             scope: previous.scope, sourceUrl: previous.sourceUrl,
             observedAt: observedAt(previous.source, previous.scope, previous.accountScope),
             status: invalid.status, completeness: "unknown", records: [],
@@ -312,10 +342,11 @@ function refreshPlanning(): Promise<void> {
           });
         }
       }
-      for (const capture of result.captures) save(capture);
+      saveBatch([...batch, ...reconfirmed, ...result.captures]);
     })(),
     (async () => {
       const scope = { kind: "subjects" as const, key: "registrar-subjects" };
+      if (termFresh(scope)) return;
       try {
         save(await pullPublicSubjects(planningPublicClient, observedAt("uw_public", scope, "public"), signal));
       } catch {
@@ -329,6 +360,7 @@ function refreshPlanning(): Promise<void> {
     })(),
     (async () => {
       const scope = { kind: "terms" as const, key: "registrar-session-terms" };
+      if (termFresh(scope)) return;
       try {
         save(await pullPublicTerms(planningPublicClient, observedAt("uw_public", scope, "public"), signal));
       } catch {
@@ -346,6 +378,15 @@ function refreshPlanning(): Promise<void> {
   void promise.finally(() => { if (planningRun === run) planningRun = undefined; }).catch(() => {});
   return promise;
 }
+// owner: planning-perf. Scheduled planning refresh, gated on presence like ingestion: weekly during
+// add/drop (or when the window is unknown), once per term otherwise; the button stays manual.
+const planningCadence = setInterval(() => {
+  if (!planningPresent || planningRun) return;
+  if (!planningRefreshDue(store, new Date().toISOString(), planningAddDrop)) return;
+  void refreshPlanning("scheduled").catch(() => {});
+}, 10 * 60_000);
+planningCadence.unref();
+// end owner: planning-perf
 const refreshTimer = setInterval(() => {
   void ingestion.tick();
 }, 30_000);
@@ -387,6 +428,7 @@ port.on("message", async ({ data }: { data: any }) => {
     // Main's signal: OS input within 30 minutes and the screen unlocked. Gates signed-in reads.
     ingestion.presence(data.present === true);
     pipeline.presence(data.present === true); // owner: pipeline
+    planningPresent = data.present === true; // owner: planning-perf
     return;
   }
   // owner: pipeline. Graph reads: references, the agenda, a course's graph and coverage.
@@ -493,6 +535,7 @@ port.on("message", async ({ data }: { data: any }) => {
     clearTimeout(pipelineBackfill);
     await pipeline.stop();
     // end owner: pipeline
+    clearInterval(planningCadence); // owner: planning-perf
     await ingestion.stop();
     clearInterval(tick);
     clearInterval(notesTimer); // owner: notes

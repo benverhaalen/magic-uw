@@ -448,12 +448,20 @@ app
         sourceReads.set(message.id, controller);
         planningReads.add(message.id);
         try {
-          if (!planningCall || planningClears > 0) throw new Error("Planning read cancelled");
+          // owner: planning-perf. A presence-gated scheduled refresh (worker cadence) runs without
+          // an open button call; the consent gate above still applies.
+          const scheduled = message.payload?.scheduled === true;
+          if ((!planningCall && !scheduled) || planningClears > 0) throw new Error("Planning read cancelled");
           // The native orchestration owns fixed reads, identity validation, and raw
-          // response projection. The worker cannot supply URLs or private identities.
+          // response projection. The worker cannot supply URLs or private identities; its
+          // stored-report and fresh-subject hints are schema-checked inside the sync.
+          // Soft deadline 70 s < main's 90 s timer ≤ the worker's 95 s: a slow sync keeps what arrived.
           const result = await syncUwPlanning({
             http: planningHttp, accountSeed: planningAccountScope, signal: controller.signal,
+            deadline: AbortSignal.timeout(70_000),
+            storedAudits: message.payload?.storedAudits, freshSubjects: message.payload?.freshSubjects,
           });
+          // end owner: planning-perf
           controller.signal.throwIfAborted();
           worker.postMessage({ kind: "source-response", id: message.id, result });
         } catch {
