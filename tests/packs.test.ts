@@ -186,3 +186,14 @@ test("study time reads stored artifacts and never calls a model (spec §2)", asy
   assert.equal((await h.calls()).length, before);
   assert.equal(readPackArtifact.length, 5);
 });
+
+test('generic pack retries recheck permission immediately before sending', async () => {
+  let checks = 0;
+  const g = await setup([invented, good], undefined, {
+    authorize: () => ({ allowed: ++checks <= 2, reason: 'Permission revoked during first request.' }),
+  });
+  const result = await runPack(g.deps, pack, frame, { topic: 'stacks' }, passages, { lane: 'interactive' });
+  assert.equal(result.status, 'blocked');
+  assert.equal((await g.calls()).length, 1);
+  assert.equal(g.deps.artifacts.list().length, 0);
+});

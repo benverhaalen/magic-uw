@@ -179,7 +179,9 @@ export function createModelRunner(options: RunnerOptions): ModelRunner {
         const callStart = now();
         let result: BackendResult | null = null;
         try {
-          result = await backend.call(call);
+          const outgoing = request.beforeCall ? request.beforeCall(call) : call;
+          result = await backend.call(outgoing);
+          request.afterCall?.();
         } catch (error) {
           if (!(error instanceof RunnerError)) throw error;
           const outcome: LedgerOutcome =
