@@ -18,4 +18,6 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
+      # Performance budgets on their own, so the parallel suite's load doesn't skew the timings.
+      - run: pnpm test:budgets
       - run: pnpm build

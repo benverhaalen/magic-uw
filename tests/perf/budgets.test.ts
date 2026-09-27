@@ -7,7 +7,9 @@
  *   budget compares ratios, which travel across machines better than milliseconds.
  * - Every recorded metric fails when it worsens by more than 25% against evals/perf/budgets.json.
  *
- * Re-record after an intended change: MAGIC_BUDGETS_RECORD=1 npx tsx --test tests/budgets.test.ts
+ * Run on its own (`pnpm test:budgets`; CI runs it as a separate step after the suite), so the
+ * parallel suite's load doesn't skew its timings. Re-record after an intended change:
+ * MAGIC_BUDGETS_RECORD=1 pnpm test:budgets
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -20,17 +22,17 @@ import { DatabaseSync, StatementSync } from "node:sqlite";
 import { createStore } from "@magic/storage";
 import { createCore } from "@magic/core";
 import { captureBatchSchema } from "@magic/contracts";
-import { agenda, courseGraph, createPipelineReferences } from "../packages/core/src/graph/index";
-import { pipelineJobRegistry } from "../packages/core/src/jobs/default-registry";
-import { createLearningRouter } from "../packages/learning/src/router";
-import { createNotesService } from "../packages/notes/src/index";
-import { createStudyContextResolver } from "../apps/desktop/src/learning-context";
-import { syntheticCorpus, QUERIES, COURSES } from "../evals/perf/synthetic";
-import { recordSyntheticCanvas, replaySync } from "../evals/perf/canvas-replay";
-import { LIVE_SHAPE } from "../evals/perf/baseline";
-import fixture from "../fixtures/course.json";
+import { agenda, courseGraph, createPipelineReferences } from "../../packages/core/src/graph/index";
+import { pipelineJobRegistry } from "../../packages/core/src/jobs/default-registry";
+import { createLearningRouter } from "../../packages/learning/src/router";
+import { createNotesService } from "../../packages/notes/src/index";
+import { createStudyContextResolver } from "../../apps/desktop/src/learning-context";
+import { syntheticCorpus, QUERIES, COURSES } from "../../evals/perf/synthetic";
+import { recordSyntheticCanvas, replaySync } from "../../evals/perf/canvas-replay";
+import { LIVE_SHAPE } from "../../evals/perf/baseline";
+import fixture from "../../fixtures/course.json";
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const BUDGETS = join(root, "evals", "perf", "budgets.json");
 const RECORD = process.env.MAGIC_BUDGETS_RECORD === "1";
 const TOLERANCE = 0.25;
@@ -188,13 +190,9 @@ function hotOperations(w: Workspace): Record<string, { run: () => unknown; scale
     "graph.agenda": {
       run: () => agenda(w.store, { date: TODAY, tz: TZ, days: 14, now: NOW }),
       scaleFree: false,
-      todo: "courseInclusion (packages/core/src/access.ts) reads ingestionSettings once per resource checked",
+      todo: "three reads per agenda entry (the assignment, its stored references, its covering facts); batching needs GraphStore methods (contracts)",
     },
-    "workspace.due": {
-      run: () => w.core.execute({ type: "workspace", value: { verb: "due", days: 7 } }),
-      scaleFree: false,
-      todo: "courseInclusion (packages/core/src/access.ts) reads ingestionSettings once per resource checked",
-    },
+    "workspace.due": { run: () => w.core.execute({ type: "workspace", value: { verb: "due", days: 7 } }), scaleFree: true },
   };
 }
 
@@ -307,7 +305,7 @@ function budgets(): Budgets | undefined {
 test("record budgets (MAGIC_BUDGETS_RECORD=1 only)", { skip: !RECORD }, async () => {
   const m = await measure();
   const record: Budgets = {
-    note: "Synthetic MT1 at 1,000 resources. ratios: an operation's time over a reference run back to back with it (least of several pairs). searchP50/P95: across 24 queries, over a fixed SQLite+zlib+JSON read workload. agendaP95 (across 8 days) and summary: in full resource reads of the same workspace. ingestRate: resources per unit of a fixed SQLite write workload (higher is better). Re-record: MAGIC_BUDGETS_RECORD=1 npx tsx --test tests/budgets.test.ts",
+    note: "Synthetic MT1 at 1,000 resources. ratios: an operation's time over a reference run back to back with it (least of several pairs). searchP50/P95: across 24 queries, over a fixed SQLite+zlib+JSON read workload. agendaP95 (across 8 days) and summary: in full resource reads of the same workspace. ingestRate: resources per unit of a fixed SQLite write workload (higher is better). Re-record: MAGIC_BUDGETS_RECORD=1 pnpm test:budgets",
     recordedAt: new Date().toISOString(),
     machine: { calibrationMs: Number(m.calibrationMs.toFixed(3)) },
     size: SIZE,

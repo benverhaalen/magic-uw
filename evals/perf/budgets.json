@@ -1,23 +1,23 @@
 {
-  "note": "Synthetic MT1 at 1,000 resources. ratios: an operation's time over a reference run back to back with it (least of several pairs). searchP50/P95: across 24 queries, over a fixed SQLite+zlib+JSON read workload. agendaP95 (across 8 days) and summary: in full resource reads of the same workspace. ingestRate: resources per unit of a fixed SQLite write workload (higher is better). Re-record: MAGIC_BUDGETS_RECORD=1 npx tsx --test tests/budgets.test.ts",
-  "recordedAt": "2026-09-27T07:16:22.989Z",
+  "note": "Synthetic MT1 at 1,000 resources. ratios: an operation's time over a reference run back to back with it (least of several pairs). searchP50/P95: across 24 queries, over a fixed SQLite+zlib+JSON read workload. agendaP95 (across 8 days) and summary: in full resource reads of the same workspace. ingestRate: resources per unit of a fixed SQLite write workload (higher is better). Re-record: MAGIC_BUDGETS_RECORD=1 pnpm test:budgets",
+  "recordedAt": "2026-09-27T08:24:45.756Z",
   "machine": {
-    "calibrationMs": 9.947
+    "calibrationMs": 10.532
   },
   "size": 1000,
   "tolerance": 0.25,
   "ratios": {
-    "ingestRate": 171.4683,
-    "searchP95": 0.1453,
-    "searchP50": 0.0752,
-    "agendaP95": 2.9369,
-    "summary": 1.0441
+    "ingestRate": 153.7927,
+    "searchP95": 0.1191,
+    "searchP50": 0.073,
+    "agendaP95": 1.7682,
+    "summary": 0.9918
   },
   "values": {
     "summaryBytes": 9580,
-    "snapshotBytes": 6573832,
+    "snapshotBytes": 6574412,
     "searchZeroHitShare": 0.0417,
-    "dbBytesPer1000": 10145792,
+    "dbBytesPer1000": 10117120,
     "syncRequests": 65,
     "syncBytes": 176959,
     "syncReplayMisses": 0,
@@ -26,16 +26,16 @@
   },
   "statements": {
     "store.resources": 1,
-    "query.summary": 22,
+    "query.summary": 18,
     "query.resources (course page)": 5,
     "query.resource": 7,
     "store.searchPassages": 4,
-    "core.context (local)": 14,
-    "core.snapshot": 30,
+    "core.context (local)": 11,
+    "core.snapshot": 32,
     "notes.tree": 5,
-    "learning.knowledge.state (10 anchors)": 199,
+    "learning.knowledge.state (10 anchors)": 169,
     "graph.courseGraph": 332,
-    "graph.agenda": 2248,
-    "workspace.due": 431
+    "graph.agenda": 249,
+    "workspace.due": 40
   }
 }
