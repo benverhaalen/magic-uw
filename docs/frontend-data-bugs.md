@@ -14,7 +14,7 @@ Follow-up:
 
 | ID | Finding | Status |
 | --- | --- | --- |
-| [FDB-001](#fdb-001-assignment-grade-share-lacks-account-and-capture-coverage-boundaries) | Assignment grade share lacks account and capture-coverage boundaries | Reproduced with synthetic inputs |
+| [FDB-001](#fdb-001-assignment-grade-share-lacks-account-and-capture-coverage-boundaries) | Assignment grade share lacks account and capture-coverage boundaries | Backend fix `0f7ac36`, tested in isolation; frontend adoption pending |
 | [FDB-002](#fdb-002-sign-in-bridge-discards-the-cancelled-outcome) | Sign-in bridge discards the cancelled outcome | Code-inspected; live authentication not reproduced |
 
 Existing syllabus discovery, extraction, and capture gaps remain in [backend packet 12](../.agents/team/packets/backend/12-syllabus-discovery.md); that investigation belongs to Nathaniel and is not duplicated here.
@@ -49,6 +49,17 @@ Private coursework, account identifiers, captures, logs, credentials, and sessio
 **Proposed backend owner:** Nate/Nathaniel, pending acceptance. **Next action:** determine the required account/source and completeness contract, plus behavior for partial, duplicate, dropped-score, and unweighted cases. See existing [syllabus investigation](../.agents/team/packets/backend/12-syllabus-discovery.md) for separately owned course-evidence gaps.
 
 **Resolution proof:** tests must demonstrate account isolation and conservative partial-capture behavior, followed by a frontend check showing the resulting evidence-qualified wording. No fix is claimed here.
+
+**Resolution (backend, `0f7ac36` on `feat/critical-agenda`, not yet on `main`):** tested in isolation by `tests/grade-share.test.ts` (account isolation, partial capture, dropped scores, excused work, unweighted, mis-totalled, duplicate and missing groups). The frontend check is still open.
+
+- `gradeShareDetail(resources, options?)` returns `{ basis, percent, groupWeight, groupTitle, accountScope, reason, text }`:
+  - `basis: "listed"`: `percent` is the Canvas group weight as listed (the group's share, not the assignment's). `reason` says why no assignment share was computed: `partial_capture`, `drop_rules`, `excused` or `no_points`.
+  - `basis: "computed"`: this assignment's share, only when `options.complete(accountScope, courseId)` confirms every assignment of that account's course was captured, the group has no drop rules and nothing in it is excused. Siblings count once per Canvas ID.
+  - `basis: "unknown"`: `percent: null` with `reason` `no_group`, `group_not_captured`, `unweighted`, `weights_do_not_total_100`, `duplicate_group` or `zero_weight_group`.
+- Groups, totals and siblings are keyed by `accountScope` plus course ID. `RailResource` and the new `GradeShareResource` gain an optional `accountScope`; rows without one count as a single account, as before.
+- `gradeShare` keeps its call shape for the Today rail and adds `basis` and `reason` to the returned object; it returns null for `unknown`. Without `options.complete`, which the rail doesn't pass yet, it never computes: the rail now shows the listed group weight ("Counts in Homework, 40% of the … grade (the group's weight as listed in Canvas)") where it used to show a computed "About N%".
+- The critical-action agenda (D49) ranks only on `listed` or `computed` and falls back to points for `unknown`.
+- **Frontend next step:** pass `accountScope` on rail resources and label the figure by its `basis`.
 
 ## FDB-002: Sign-in bridge discards the cancelled outcome
 
