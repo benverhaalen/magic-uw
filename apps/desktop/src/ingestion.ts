@@ -1747,6 +1747,7 @@ export function createIngestion(
     const candidatesFor = accessCandidateIndex(store.resources());
     for (const [key, list] of spaces) {
       await yieldToEvents(); // serve port messages between courses
+      signal.throwIfAborted();
       const [accountScope, courseId] = [
         key.slice(0, key.lastIndexOf(":")),
         key.slice(key.lastIndexOf(":") + 1),
