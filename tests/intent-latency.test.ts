@@ -14,6 +14,10 @@
 //   10 KB text. 6.5x is the 1 ms budget over that reference's p95 on the laptop it was set on
 //   (0.155 ms), so the budget scales with the machine instead of failing on a slower CI runner.
 //   The protected-vs-unprotected dispatch difference is reported alongside;
+// - the fallback's added end-to-end time over AI-only with the model answering in 800 ms, judged on
+//   the median of paired differences (each fallback run against the AI-only run right after it in
+//   the same round): <= 10 ms. One scheduling stall does not decide it, as it would a difference of
+//   two independent p95s;
 // - a code hit sends nothing and does no protection work.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -164,6 +168,7 @@ test("fallback adds <= 2 ms p95 of dispatch time over AI-only and privacy <= 1 m
   const { fb, ai, bare, reference } = d;
   const ratio = p95(fb.privacy) / p95(reference);
   const resolverRatio = p95(fb.resolver) / p95(reference);
+  const pairedMedian = p50(t.fb.ms.map((ms, i) => ms - t.ai.ms[i]!));
   const numbers = {
     mode: "gate",
     dispatch: { fakeLatencyMs: DISPATCH_LATENCY_MS, n: DISPATCH_N, fallback: stats(fb.dispatch, 2), aiOnly: stats(ai.dispatch, 2), unprotectedFallback: stats(bare.dispatch, 2) },
@@ -171,12 +176,16 @@ test("fallback adds <= 2 ms p95 of dispatch time over AI-only and privacy <= 1 m
     resolverCriticalPath: { ...stats(fb.resolver, 3), ratio: +resolverRatio.toFixed(2), budgetRatio: RESOLVER_BUDGET_RATIO },
     privacyDispatchP95Ms: +(p95(fb.dispatch) - p95(bare.dispatch)).toFixed(2),
     privacyCriticalPath: { ...stats(fb.privacy, 3), referenceP95Ms: +p95(reference).toFixed(3), ratio: +ratio.toFixed(2), budgetRatio: PROTECTION_BUDGET_RATIO.teaching },
-    endToEnd: { fakeLatencyMs: LATENCY_MS, n: E2E_N, fallback: stats(t.fb.ms), aiOnly: stats(t.ai.ms), unprotectedFallback: stats(t.bare.ms), addedP95Ms: +(p95(t.fb.ms) - p95(t.ai.ms)).toFixed(1) },
+    endToEnd: { fakeLatencyMs: LATENCY_MS, n: E2E_N, fallback: stats(t.fb.ms), aiOnly: stats(t.ai.ms), unprotectedFallback: stats(t.bare.ms), addedP95Ms: +(p95(t.fb.ms) - p95(t.ai.ms)).toFixed(1), addedPairedMedianMs: +pairedMedian.toFixed(1) },
     codeHit: { ...stats(hits, 2), billedCalls: billed, protectionWork: hitWork },
   };
   console.log(`INTENT-LATENCY ${JSON.stringify(numbers)}`);
   assert.equal(billed, 0, "a code hit sends nothing to the model");
   assert.equal(hitWork, 0, "a code hit does no protection work");
+  assert.ok(
+    pairedMedian <= 10,
+    `fallback adds ${pairedMedian.toFixed(1)} ms end to end (median of paired differences; p95 ${p95(t.fb.ms).toFixed(1)} vs ${p95(t.ai.ms).toFixed(1)} ms)`,
+  );
   assert.ok(
     p95(fb.resolver) <= RESOLVER_BUDGET_RATIO * p95(reference),
     `the fallback's resolver pass p95 ${p95(fb.resolver).toFixed(3)} ms > ${RESOLVER_BUDGET_RATIO}x reference ${p95(reference).toFixed(3)} ms`,
