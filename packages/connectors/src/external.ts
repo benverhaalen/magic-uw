@@ -432,11 +432,14 @@ export function externalCourseConnector(
             });
             robots.set(origin, result.text);
           } catch (error) {
-            if (
-              error instanceof MaterialReadError &&
-              error.code === "not_found"
-            )
-              robots.set(origin, "");
+            // owner: acquisition: RFC 9309 §2.3.1.3: robots.txt "unavailable" (any 4xx) means no
+            // rules; §2.3.1.4: unreachable (5xx, network) stays disallowed.
+            const status =
+              error instanceof MaterialReadError
+                ? (error.detail.status ??
+                  (error.code === "not_found" ? 404 : error.code === "inaccessible" ? 403 : undefined))
+                : undefined;
+            if (status !== undefined && status >= 400 && status < 500) robots.set(origin, "");
             else throw error;
           }
         }
@@ -455,7 +458,9 @@ export function externalCourseConnector(
             continue;
           }
           const cached = previous.get(next.url);
-          const fetchedAt = cached?.crawl?.observedAt;
+          // owner: acquisition: a document records `fetchedAt`, a page `observedAt`; reading only
+          // `observedAt` made every course-site PDF re-download on every crawl.
+          const fetchedAt = cached?.crawl?.observedAt ?? cached?.crawl?.fetchedAt;
           if (
             !options.force &&
             cached &&
@@ -489,6 +494,10 @@ export function externalCourseConnector(
           attempts++;
           const fetched = await options.client.get(next.url, {
             signal,
+            // owner: acquisition: a stored document with a Last-Modified is asked for only if newer.
+            ...(!options.force && cached?.document?.updatedAt && cached.document.extractionStatus === "ok"
+              ? { conditional: { lastModified: new Date(cached.document.updatedAt).toUTCString() } }
+              : {}),
             onRedirect: async (target) => {
               if (options.client.isCanvas(target)) {
                 await options.onCanvasLink?.(target);
@@ -503,6 +512,15 @@ export function externalCourseConnector(
               return true;
             },
           });
+          if (fetched.notModified && cached) {
+            // owner: acquisition: unchanged since the stored copy; keep it and restart its window.
+            pages++;
+            resources.push({
+              ...cached,
+              crawl: { ...cached.crawl, fetchedAt: now.toISOString() },
+            });
+            continue;
+          }
           if (fetched.url !== next.url && seen.has(fetched.url)) {
             await fetched.response.body?.cancel();
             continue;

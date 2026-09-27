@@ -337,7 +337,7 @@ test("a database newer than this schema is refused and left alone", () => {
     const db = new DatabaseSync(file);
     db.exec(`PRAGMA user_version = ${SCHEMA_VERSION + 1}`);
     db.close();
-    assert.throws(() => createStore(file), /newer Magic Canvas version/);
+    assert.throws(() => createStore(file), /newer My Magic UW version/);
     const again = new DatabaseSync(file, { readOnly: true });
     assert.equal(again.prepare("PRAGMA user_version").get()!.user_version, SCHEMA_VERSION + 1);
     again.close();
@@ -399,7 +399,8 @@ test("purge enumerates every table: zero rows everywhere, FTS empty, backup dele
       store.notes.setSyncSetting({ provider: "google", enabled: true, enabledAt: t(9), lastCheckAt: null, message: null });
       assert.ok(store.migrationBackup());
       for (const [table, n] of Object.entries(counts(file)))
-        if (!["preferences", "life_items", "course_briefs", "mcp_grants"].includes(table) && !table.startsWith("learning_")) assert.ok(n > 0, `${table} is populated before purge`);
+        // platform-fix: observations and source_observations were never read and are no longer written.
+        if (!["preferences", "life_items", "course_briefs", "mcp_grants", "observations", "source_observations"].includes(table) && !table.startsWith("learning_")) assert.ok(n > 0, `${table} is populated before purge`);
 
       const onDisk = () =>
         [file, `${file}-wal`, migrationBackupPath(file)]
