@@ -63,6 +63,42 @@ async function generationRunner(): Promise<ModelRunner | null> {
 }
 const generation = createPackHandler({ store, runner: generationRunner });
 // end owner: generation
+// owner: notes. Session notes: batch scaffolds on the tick, "fill from slides" through the same
+// runner, and Google Docs sync through main (which alone holds the token). Microsoft waits for graph.ts.
+import { createNotesService, googleRemote, microsoftRemote, type NotesRemote } from "../../../packages/notes/src/index";
+function notesHostCall(payload: unknown, timeoutMs: number): Promise<any> {
+  const id = randomUUID();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      hostRequests.delete(id);
+      reject(new Error("Google Docs didn't answer in time."));
+    }, timeoutMs);
+    hostRequests.set(id, {
+      resolve(value) { clearTimeout(timer); resolve(value); },
+      reject(error) { clearTimeout(timer); reject(error); },
+    });
+    port.postMessage({ kind: "notes-google", id, payload });
+  });
+}
+const notesRemotes: { microsoft?: NotesRemote; google?: NotesRemote & { connect(): Promise<boolean> } } = process.env.MAGIC_GOOGLE_CLIENT_ID
+  ? {
+      google: {
+        ...googleRemote(
+          (request) => notesHostCall({ op: "request", request }, 90_000),
+          async () => Boolean((await notesHostCall({ op: "status" }, 10_000))?.connected),
+        ),
+        connect: async () => Boolean((await notesHostCall({ op: "connect" }, 330_000))?.connected),
+      },
+    }
+  : {};
+// Word online: the app folder through main's Graph proxy (T30). Connected once the student's
+// Microsoft sign-in granted Files.ReadWrite.AppFolder. graphHost is defined below; called later.
+notesRemotes.microsoft = microsoftRemote(
+  (request) => graphHost.transport(request),
+  async () => graphScopes.includes("Files.ReadWrite.AppFolder"),
+);
+const notes = createNotesService({ store, runner: generationRunner, remotes: notesRemotes });
+// end owner: notes
 const core = createCore(store, {
   fixture: captureBatchSchema.parse(fixture),
   courseExtractor: createLocalCourseExtractor(),
@@ -78,7 +114,7 @@ const core = createCore(store, {
     // and course-map assessment rows).
     analyticsReferences: () => createPipelineReferences(store),
     // end owner: analytics
-  }), pack: generation.pack /* owner: generation */ },
+  }), pack: generation.pack /* owner: generation */, notes /* owner: notes */ },
   ...(process.env.MAGIC_GATEWAY_URL
     ? {
         gateway: {
@@ -316,6 +352,18 @@ const refreshTimer = setInterval(() => {
 refreshTimer.unref();
 const tick = setInterval(() => core.wake(), 30000);
 tick.unref();
+// owner: notes. The rolling window's scaffolds (skipped when nothing changed) and the sync check.
+function notesTick() {
+  try {
+    notes.refresh();
+  } catch (error) {
+    console.error("Notes refresh failed:", error instanceof Error ? error.name : "unknown");
+  }
+  notes.syncTick().catch((error) => console.error("Notes sync failed:", error instanceof Error ? error.name : "unknown"));
+}
+const notesTimer = setInterval(notesTick, 30_000);
+notesTimer.unref();
+// end owner: notes
 port.on("message", async ({ data }: { data: any }) => {
   if (data.kind === "source-response") {
     const request = hostRequests.get(data.id);
@@ -447,6 +495,7 @@ port.on("message", async ({ data }: { data: any }) => {
     // end owner: pipeline
     await ingestion.stop();
     clearInterval(tick);
+    clearInterval(notesTimer); // owner: notes
     local.cancel();
     await core.close();
     port.postMessage({ kind: "closed" });
@@ -534,3 +583,4 @@ port.on("message", async ({ data }: { data: any }) => {
 });
 core.wake();
 port.postMessage({ kind: "ready" });
+setTimeout(notesTick, 0); // owner: notes
