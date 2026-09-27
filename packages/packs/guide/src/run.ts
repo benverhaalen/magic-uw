@@ -21,6 +21,7 @@ import { GUIDE_PACKS } from "./packs";
 import { reviewAny, type ConceptMapDoc, type DropCode, type GuideDoc, type GuideDrop, type ReviewStats } from "./review";
 import { personalize, type ConceptMapView, type GuideView, type PersonalSignals } from "./personalize";
 import { selectGuideInputs, type GuideSelection, type GuideStore } from "./inputs";
+import type { CoursePrefixSource } from "../../../core/src/course-facts/prefix"; // owner: course-facts
 import { changedSources, putLatest, readLatest, withoutChangedSpans, type SourceChange } from "./latest";
 import type { ConceptMapOutput, GuideInput, GuideKind, GuideOutput } from "./schema";
 
@@ -49,6 +50,8 @@ export interface GuideDeps {
   artifacts: ArtifactStore;
   ledger: LedgerStore;
   now?: () => Date;
+  /** owner: course-facts. The course prefix (brief + pack catalogue); absent: the old prefix. */
+  prefix?: CoursePrefixSource | null;
 }
 
 const empty = (pack: GuideKind, status: GuideRunStatus, message: string, courseRef: string | null = null): GuideRunResult => ({
@@ -101,7 +104,7 @@ export async function generateGuide(
   const now = deps.now ?? (() => new Date());
   const at = () => now().toISOString();
   const signal = options.signal;
-  const picked = selectGuideInputs(store, kind, scope, options.passageTokenBudget);
+  const picked = selectGuideInputs(store, kind, scope, options.passageTokenBudget, deps.prefix ?? null); // owner: course-facts: prefix
   if (!picked.ok) return empty(kind, picked.status, picked.message, picked.courseRef);
   const sel = picked.selection;
   store.learning.course(sel.accountScope, sel.courseId, sel.label);
@@ -145,7 +148,7 @@ export async function generateGuide(
   };
   const passages = sel.passages.map((p) => ({ ...p, text: frozen.get(p.sourceId)!.result.text }));
   const input: GuideInput = { ...sel.input, scope: scrub(sel.input.scope), materials: sel.input.materials.map(scrub), topics: sel.input.topics.map(scrub), facts: sel.input.facts.map(scrub) };
-  const frame = { ...sel.frame, course: scrub(sel.frame.course), skeleton: scrub(sel.frame.skeleton), policy: scrub(sel.frame.policy) };
+  const frame = { ...sel.frame, course: scrub(sel.frame.course), skeleton: scrub(sel.frame.skeleton), policy: scrub(sel.frame.policy), ...(sel.frame.brief !== undefined ? { brief: scrub(sel.frame.brief) } : {}) }; // owner: course-facts: brief
   const prompt = buildPrompt(pack, frame, input, passages);
   const cacheKey = payloadHash({ version: "guide-projection-v1", route: runner?.client ?? store.privacy().hostedProvider, fingerprint, key: packCacheKey(pack, prompt.systemPrompt, input, passages) });
 
@@ -198,7 +201,9 @@ export async function generateGuide(
   const lane = options.lane ?? "interactive";
   const authorize = (recipient: string, categories: string[], payload?: unknown) => {
     validate();
-    categories = [...new Set([...categories, ...sel.resources.flatMap(contentCategories)])];
+    // owner: course-facts: the brief's sources are sent too, so their categories are checked and receipted.
+    const briefResources = sel.briefResourceIds.flatMap((id) => store.resource(id) ?? []);
+    categories = [...new Set([...categories, ...sel.resources.flatMap(contentCategories), ...briefResources.flatMap(contentCategories)])];
     const parsed = aiRecipientSchema.safeParse(recipient);
     if (!parsed.success) return { allowed: false, reason: "This recipient is not supported." };
     const permission = maySend(store.privacy(), recipient, categories);
@@ -208,7 +213,7 @@ export async function generateGuide(
       recipient: parsed.data,
       purpose: `Generate a ${NOUN[kind]} from course materials`,
       categories,
-      resourceIds: sel.resources.map((r) => r.id),
+      resourceIds: [...new Set([...sel.resources.map((r) => r.id), ...sel.briefResourceIds])],
       characters: JSON.stringify(payload ?? {}).length,
       allowed: permission.allowed,
       reason: permission.reason,

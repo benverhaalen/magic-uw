@@ -15,6 +15,7 @@ const methodLabels: Record<CourseClaim["method"], string> = {
   structured: "structured field",
   literal: "quoted text",
   local_model: "local model, quote checked",
+  client_model: "your AI client, quote checked",
 };
 
 export function CourseFactsPreview({

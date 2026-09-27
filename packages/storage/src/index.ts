@@ -41,6 +41,7 @@ import {
   compileCourseIntelligence,
   courseInputHash,
   courseIntelligenceId,
+  selectSyllabus, // owner: course-facts
 } from "../../domain/src/course-intelligence";
 import type {
   CourseIntelligence,
@@ -725,6 +726,22 @@ export function createStore(
       SourceHealth,
       "id" | "kind" | "scope"
     >[];
+    // owner: course-facts. The syllabus sources code selects (D34), with the material pipeline's
+    // `syllabus` role (material_facts, current text only) as one more signal.
+    let syllabusRoles = new Set<string>();
+    try {
+      syllabusRoles = new Set(
+        (
+          prepare(
+            `SELECT DISTINCT f.resource_id FROM material_facts f JOIN resources r ON r.id = f.resource_id
+            JOIN sources s ON s.id = r.source_id WHERE s.account_scope = ? AND s.course_id = ? AND r.deleted = 0
+            AND f.kind = 'role' AND f.value = 'syllabus' AND f.text_hash = r.text_hash`,
+          ).all(account, course) as Row[]
+        ).map((r) => String(r.resource_id)),
+      );
+    } catch {
+      /* no material_facts table: selection by the resources alone */
+    }
     const profile = compileCourseIntelligence(
       account,
       course,
@@ -733,7 +750,9 @@ export function createStore(
       previous,
       extraction,
       sourceRoles,
+      selectSyllabus(resources, sourceRoles, { at, roles: syllabusRoles }).selected,
     );
+    // end owner: course-facts
     if (
       extraction &&
       previous?.extraction?.resultHash === profile.extraction?.resultHash
@@ -2022,6 +2041,19 @@ export function createStore(
         }
       });
     },
+    // owner: course-facts. The heartbeat for long (model-backed) jobs: only the live holder renews.
+    renewLease(job, now, leaseMs) {
+      const time = timestamp(now);
+      if (!Number.isSafeInteger(leaseMs) || leaseMs < 1 || leaseMs > 3_600_000)
+        throw new Error("Invalid job lease duration.");
+      const until = new Date(Date.parse(time) + leaseMs).toISOString();
+      const changed = prepare(
+        `UPDATE jobs SET lease_until = MAX(lease_until, ?) WHERE id = ? AND status = 'running'
+         AND lease_token = ? AND lease_until > ?`,
+      ).run(until, job.id, job.leaseToken, time).changes;
+      return Number(changed) > 0 ? until : false;
+    },
+    // end owner: course-facts
     jobCooldown(kind) {
       return (prepare("SELECT value FROM preferences WHERE key = ?").get(`jobCooldown:${kind}`) as Row | undefined)?.value as string | undefined;
     },

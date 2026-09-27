@@ -662,6 +662,15 @@ export function courseCoreRepository(
         return { ok: true };
       });
     },
+    syllabusRoleIds(course) {
+      return (
+        prepare(
+          `SELECT DISTINCT f.resource_id FROM material_facts f JOIN resources r ON r.id = f.resource_id
+           JOIN sources s ON s.id = r.source_id WHERE s.account_scope = ? AND s.course_id = ? AND r.deleted = 0
+           AND f.kind = 'role' AND f.value = 'syllabus' AND f.text_hash = r.text_hash ORDER BY f.resource_id`,
+        ).all(course.accountScope, course.courseId) as Row[]
+      ).map((r) => String(r.resource_id));
+    },
     materialFacts(resourceId) {
       return (
         prepare(

@@ -1166,7 +1166,7 @@ app
           // already cleared the cache; purge did not), and every app-owned folder goes.
           await purgeHostData({
             sessions: [studentSession, gitlabSession],
-            folders: [join(data, "clients"), join(data, "documents"), join(data, "mcp")], // clients: owner T80
+            folders: [join(data, "clients"), join(data, "documents"), join(data, "mcp"), join(data, "courses") /* owner: course-facts: syllabus.md briefs */], // clients: owner T80
             remove: (path) => rm(path, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }),
             also: [resetPlanningScope()],
           });
