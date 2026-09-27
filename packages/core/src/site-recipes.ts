@@ -32,7 +32,7 @@ import {
   type Store,
 } from "@magic/contracts";
 import { maySend } from "@magic/domain";
-import { JudgmentBudgetError, type JudgmentGateway, type KindJudgment } from "@magic/ai";
+import { JudgmentBudgetError, judgmentResultSchema, type JudgmentGateway, type KindJudgment } from "@magic/ai";
 import type { ExtractionAnchors } from "../../domain/src/deadline-extraction";
 import { identifiersIn } from "../../domain/src/deadline-extraction";
 import { RunnerError, type BackendCall, type ClientId, type ModelRunner } from "../../runner/src/index";
@@ -62,6 +62,7 @@ import {
   type StoredRecipe,
 } from "../../connectors/src/recipes";
 import { isBlockedContentHost, isLoginHtml } from "../../connectors/src/external";
+import { classifyHost } from "../../connectors/src/space-hosts";
 import { contentCategories } from "./access";
 import { termFromName } from "./deadline-evidence";
 import { buildReceipt, egressFor } from "./egress";
@@ -206,6 +207,10 @@ export function createSiteRecipes(deps: SiteRecipeDeps) {
       courseRecord?.startAt && courseRecord.endAt && Date.parse(courseRecord.endAt) > Date.parse(courseRecord.startAt)
         ? { start: courseRecord.startAt, end: courseRecord.endAt }
         : termFromName(courseRecord?.termName ?? undefined);
+    const courseName = all.find((r) => inCourse(r) && r.kind === "course" && !r.deleted)?.courseName ?? pages[0]!.courseName;
+    // Course numbers (564 in "COMP SCI 564" or a cross-listing "CS/ECE 552"): a course's own site
+    // names one in its address or title.
+    const numbers = [...new Set(`${courseRecord?.courseCode ?? ""} ${courseName}`.match(/(?<!\d)\d{3}(?!\d)/g) ?? [])];
 
     const byHost = new Map<string, Resource[]>();
     for (const page of pages) {
@@ -236,6 +241,13 @@ export function createSiteRecipes(deps: SiteRecipeDeps) {
           report.pages.push({ ...base, reason: "The course does not link this host." });
           continue;
         }
+        // A known platform (Piazza, Box, YouTube...) stays a link; an unknown host (a GitHub Pages
+        // or personal course site) is exactly what recipes are for.
+        const hostClass = classifyHost(host);
+        if (!hostClass.jev && hostClass.rule.treatment === "link") {
+          report.pages.push({ ...base, reason: "A platform the app links to (D40); its pages are not organized." });
+          continue;
+        }
         if (isLoginHtml(page.rawHtml!)) {
           report.pages.push({ ...base, reason: "The stored page is a sign-in page." });
           continue;
@@ -252,10 +264,23 @@ export function createSiteRecipes(deps: SiteRecipeDeps) {
           ...(term ? { term } : {}),
           ...(page.crawl?.observedAt ?? page.crawl?.fetchedAt ? { sourceDate: (page.crawl?.observedAt ?? page.crawl?.fetchedAt)! } : {}),
         };
+        // Code gates before any recipe call: nothing structured to map, or (for a layout with no
+        // recipe yet) a page that does not name this course, such as a UW service page a syllabus
+        // links to. Those stay stored as plain pages by the crawler, as before.
+        if (!snap.blocks.length) {
+          keep();
+          pageReport.reason = "No tables, lists or sections to organize.";
+          continue;
+        }
         const stored = store.extractionRecipe(host, snap.layoutHash);
         const parsed = stored ? storedRecipeSchema.safeParse(stored.recipe) : null;
         let recipe: { id: string; version: number; recipe: StoredRecipe } | null =
           stored && parsed?.success ? { id: stored.id, version: stored.version, recipe: parsed.data } : null;
+        if (!recipe && numbers.length && !namesCourse(page, snap, numbers)) {
+          keep();
+          pageReport.reason = "The page's address and title do not name this course.";
+          continue;
+        }
         const prevDigest = previousByPage.get(page.url)?.find((r) => r.externalId.startsWith("digest:"));
 
         // Unchanged page and the same valid recipe: nothing to do, not even a replay.
@@ -432,9 +457,14 @@ export function createSiteRecipes(deps: SiteRecipeDeps) {
     const passages = [{ sourceId: passage.sourceId, text: passage.text }];
     const prompt = buildPrompt(pack, frame, input, passages);
     let calls = 0;
+    let usage = zero();
     const counting: LedgerStore = {
       append(r: LedgerRecord) {
-        if (!("outcome" in r && r.outcome === "cache_hit")) calls++;
+        // Every attempt's provider usage, including a retry and an answer that failed the checks.
+        if (!("outcome" in r && r.outcome === "cache_hit")) {
+          calls++;
+          usage = add(usage, r.usage);
+        }
         ledger.append(r);
       },
       list: (f) => ledger.list(f),
@@ -457,11 +487,11 @@ export function createSiteRecipes(deps: SiteRecipeDeps) {
         passages,
         { lane: "background", scope: "site", ...(signal ? { signal } : {}) },
       );
-      return { result, calls, promptTokens };
+      return { result, calls, usage, promptTokens };
     } catch (error) {
-      if (error instanceof GiveUp) return { result: { status: "gave_up" as const }, calls, promptTokens };
-      if (error instanceof Blocked) return { result: { status: "blocked" as const, reason: error.message }, calls, promptTokens };
-      if (error instanceof RunnerError) return { result: { status: "failed" as const, message: error.studentMessage }, calls, promptTokens };
+      if (error instanceof GiveUp) return { result: { status: "gave_up" as const }, calls, usage, promptTokens };
+      if (error instanceof Blocked) return { result: { status: "blocked" as const, reason: error.message }, calls, usage, promptTokens };
+      if (error instanceof RunnerError) return { result: { status: "failed" as const, message: error.studentMessage }, calls, usage, promptTokens };
       throw error;
     }
   }
@@ -481,19 +511,16 @@ export function createSiteRecipes(deps: SiteRecipeDeps) {
     | { ok: false; reason: string; stored: boolean; checkErrors?: string[]; tokens: SitePageReport["tokens"]; calls: number; promptTokens: number }
   > {
     let lastErrors: string[] = [];
-    let lastItems: SiteItem[] = [];
     const check = (answer: RecipeAnswer) => {
       const compiled = compileRecipe(answer, snap);
       if (!compiled.recipe) return (lastErrors = compiled.errors);
-      const replay = applyRecipe(snap.root, compiled.recipe, anchors);
-      lastItems = replay.items;
-      return (lastErrors = replay.errors);
+      return (lastErrors = applyRecipe(snap.root, compiled.recipe, anchors).errors);
     };
     const pack = { ...recipePack, checks: [(o: RecipeAnswer) => check(o)] };
     const sent = await sendPack(runner, pack, page, course, { outline: snap.text }, { sourceId: "page", text: snap.text }, "Map a course website page's layout to a reusable extraction recipe", receiptIds, signal);
     const id = `rcp_${sha(`${host}|${snap.layoutHash}|${version}`).slice(0, 24)}`;
     const r = sent.result;
-    const tokens = r.status === "done" && !r.cached ? r.artifact.usage : zero();
+    const tokens = sent.usage;
     if (r.status === "done") {
       const compiled = compileRecipe(r.artifact.output, snap);
       if (compiled.recipe) {
@@ -513,7 +540,6 @@ export function createSiteRecipes(deps: SiteRecipeDeps) {
     // The answer failed code's checks twice: remember that, so the next syncs don't pay again.
     const failed: StoredRecipe = { format: RECIPE_FORMAT, status: "failed", pageKind: "other", collections: [], generatedBy: null, tokens: { in: 0, out: 0 }, failedAt: now().toISOString() };
     store.putExtractionRecipe({ id, host, layoutHash: snap.layoutHash, version, recipe: failed, validatedAt: null });
-    void lastItems;
     return { ok: false, reason: "The page's layout could not be mapped; it stays a link.", stored: true, checkErrors: lastErrors, tokens, calls: sent.calls, promptTokens: sent.promptTokens };
   }
 
@@ -577,7 +603,7 @@ export function createSiteRecipes(deps: SiteRecipeDeps) {
         const timer = setTimeout(abort, 20_000);
         try {
           report.jevCalls++;
-          const judgment = await deps.jev.evaluate(payload, call.signal);
+          const judgment = judgmentResultSchema.parse(await deps.jev.evaluate(payload, call.signal));
           const kind = placeFromJev(judgment);
           placed.set(item, kind);
           remember(item, kind, judgment.model, { jev: judgment.kind, p: judgment.probabilities[judgment.kind] });
@@ -605,9 +631,9 @@ export function createSiteRecipes(deps: SiteRecipeDeps) {
       const text = pending.map((item, i) => `r${i}: ${item.text.replace(/\s+/g, " ").slice(0, 300)}`).join("\n");
       const sent = await sendPack(runner, rowsPack, page, course, { ids }, { sourceId: "rows", text }, "Place course website rows that code could not", report.receiptIds, signal);
       report.modelCalls += sent.calls;
+      report.tokens = add(report.tokens, sent.usage);
       const r = sent.result;
       if (r.status === "done") {
-        if (!r.cached) report.tokens = add(report.tokens, r.artifact.usage);
         const answer = r.artifact.output as RowsAnswer;
         pending.forEach((item, i) => {
           const kind = answer.items.find((x) => x.id === `r${i}`)?.kind ?? "none";
@@ -752,6 +778,13 @@ function lineFor(item: SiteItem, kind: SiteItemKind | "unplaced"): string {
   if (kind === "staff") return `- ${item.title}${item.detail && item.detail !== item.title ? `: ${item.detail}` : ""}`;
   if (kind === "unplaced") return `- ${item.title}`;
   return `- ${item.title}${when ? ` (${when})` : ""}`;
+}
+
+/** The page's address, title or first heading carries one of the course's numbers. */
+function namesCourse(page: Resource, snap: { title: string; text: string }, numbers: string[]): boolean {
+  const firstHeading = /^h[1-6] (.*)$/m.exec(snap.text)?.[1] ?? "";
+  const where = `${decodeURIComponent(new URL(page.url).pathname)} ${snap.title} ${page.title} ${firstHeading}`;
+  return numbers.some((n) => new RegExp(`(?<!\\d)${n}(?!\\d)`).test(where));
 }
 
 /** Provenance names the recipe that organized the page (a MIME parameter on the page's type). */

@@ -28,10 +28,12 @@ import { listSite, pagesSite, scheduleTableSite } from "./site-recipes-fixtures"
 const here = dirname(fileURLToPath(import.meta.url));
 const fake: CliCommand = { file: process.execPath, prefixArgs: [join(here, "fixtures", "fake-cli", "fake-cli.mjs"), "claude"] };
 const ACCOUNT = "acct";
+const SERVICE = "https://www.uhs.wisc.edu/mental-health/";
+const PLATFORM = "https://piazza.com/wisc/fall2026/cs564/resources";
 const COURSE = "564";
 const TABLE = "https://a-table.example.edu/cs564/schedule.html";
-const LIST = "https://b-list.example.edu/~prof/cs777/index.html";
-const PAGES = "https://c-pages.example.io/cs544/calendar/";
+const LIST = "https://b-list.example.edu/~prof/cs564/index.html";
+const PAGES = "https://c-pages.github.io/cs564/calendar/";
 const observed = (day: number) => `2026-09-${String(day).padStart(2, "0")}T15:00:00.000Z`;
 
 type Store = ReturnType<typeof createStore>;
@@ -183,6 +185,26 @@ test("three layouts: one recipe call each, then code replays at 0 model calls an
   console.log(`replay: ${second.pages.length} pages in ${second.durationMs} ms, ${second.modelCalls} model calls`);
 });
 
+test("code decides which pages are worth a call: platforms, pages with no structure, and pages that don't name the course get none", async () => {
+  const store = createStore(":memory:");
+  canvas(store);
+  consent(store);
+  const table = scheduleTableSite();
+  const service = `<!DOCTYPE html><html><head><title>Mental health services | UHS</title></head><body><main><h1>Mental health</h1>
+<ul><li>Counseling: call 608-265-5600</li><li>Crisis support, 24/7</li><li>Groups and workshops</li></ul></main></body></html>`;
+  const platform = `<!DOCTYPE html><html><head><title>CS 564 resources | Piazza</title></head><body><ul><li>Lecture notes</li><li>Homework 1</li></ul></body></html>`;
+  const prose = `<!DOCTYPE html><html><head><title>CS 564 policies</title></head><body><p>Late work loses 10% per day.</p></body></html>`;
+  crawl(store, [webPage(TABLE, table, 3), webPage(SERVICE, service, 3), webPage(PLATFORM, platform, 3), webPage(`${TABLE.replace("schedule", "policies")}`, prose, 3, 1)], 3);
+  const fakeAi = await fakeRunner([tableRecipe(table)]);
+  const report = await createSiteRecipes({ store, runner: () => fakeAi.runner, now: () => new Date(observed(3)) }).ingestCourse({ accountScope: ACCOUNT, courseId: COURSE });
+  const byUrl = new Map(report.pages.map((p) => [p.url, p]));
+  assert.equal(byUrl.get(TABLE)!.route, "generated");
+  assert.match(byUrl.get(SERVICE)!.reason!, /do not name this course/);
+  assert.match(byUrl.get(PLATFORM)!.reason!, /platform/);
+  assert.match(byUrl.get(TABLE.replace("schedule", "policies"))!.reason!, /No tables, lists or sections/);
+  assert.deepEqual([report.modelCalls, await fakeAi.calls()], [1, 1]);
+});
+
 test("a layout change costs one regeneration; a recipe that stops fitting is regenerated once, then the page keeps its items", async () => {
   const store = createStore(":memory:");
   canvas(store);
@@ -214,6 +236,7 @@ test("a layout change costs one regeneration; a recipe that stops fitting is reg
   assert.equal(drift.pages[0]!.route, "link_only", JSON.stringify(drift.pages[0]));
   assert.equal((await fakeAi.calls()) - calls, 2, "the call and its one retry with the failed checks; never a stronger model");
   assert.ok(drift.pages[0]!.checkErrors!.some((e) => /date/.test(e)));
+  assert.ok(drift.tokens.in > 0 && drift.pages[0]!.tokens.in === drift.tokens.in, "a failed mapping still reports what both attempts cost");
   const layout = snapshotPage(table, TABLE).layoutHash;
   const latest = store.extractionRecipe("a-table.example.edu", layout)!;
   assert.deepEqual([latest.version, storedRecipeSchema.parse(latest.recipe).status], [2, "failed"]);

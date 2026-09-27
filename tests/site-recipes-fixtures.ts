@@ -92,8 +92,8 @@ export function listSite(opts: { homework?: number } = {}): string {
   const readings = Array.from({ length: 10 }, (_, i) => `<li>Read chapter ${i + 1} of the textbook: ${TOPICS[i]}</li>`).join("\n");
   const slides = Array.from({ length: 12 }, (_, i) => `<li><a href="slides/lecture${i + 1}.pdf">Lecture ${i + 1}: ${TOPICS[i]}</a></li>`).join("\n");
   return page(
-    "CS 777 Course Page",
-    `<main><h1>CS 777: Advanced Data Systems</h1>
+    "CS 564 Course Page",
+    `<main><h1>CS 564: Database Systems</h1>
 <p>Welcome! All course materials are posted here. Submit homework on Canvas.</p>
 <h2>Homework</h2><ul>${homework}</ul>
 <h2>Readings</h2><ul>${readings}</ul>
@@ -116,8 +116,8 @@ export function pagesSite(opts: { weeks?: number } = {}): string {
 </ul>`);
   }
   return page(
-    "Calendar | CS 544",
-    `<div class="main" id="top"><div id="main-header" class="main-header"><div class="search"><input type="text" id="search-input" placeholder="Search CS 544"></div></div>
+    "Calendar | CS 564",
+    `<div class="main" id="top"><div id="main-header" class="main-header"><div class="search"><input type="text" id="search-input" placeholder="Search CS 564"></div></div>
 <div id="main-content-wrap" class="main-content-wrap"><div id="main-content" class="main-content"><main>
 <h1 id="calendar">Calendar</h1>
 <p>Lecture slides are posted by 9am on the day of class.</p>
