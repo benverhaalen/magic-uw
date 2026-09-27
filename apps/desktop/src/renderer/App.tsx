@@ -19,6 +19,7 @@ import { ConsentSetup, hasUwConsent, missingConsents } from "./consent/ConsentSe
 import { Onboarding, needsFirstRunSetup } from "./onboarding";
 import { CourseSpaceDetails } from "./CourseSpaceDetails";
 import { TodayRail } from "./TodayRail";
+import { MasteryView } from "./backend/mastery"; // owner: mastery (D57)
 
 type View =
   | "today"
@@ -31,7 +32,8 @@ type View =
   | "notebook"
   | "practice"
   | "insights"
-  | "settings";
+  | "settings"
+  | "mastery"; // owner: mastery (D57): a Preview tab until the integrated UI lands
 // owner: T05b. Route slots, each rendering nothing until its task fills it: the notebook (T43),
 // practice and insights (P17), settings (T40) and the workspace command bar (D40).
 function NotebookSlot(_: { snapshot: Snapshot | null }) {
@@ -96,7 +98,7 @@ function formatDate(value: string | null, full = false): string {
 function Icon({
   name,
 }: {
-  name: "today" | "courses" | "myuw" | "sources" | "privacy" | "search" | "arrow" | "file" | "check";
+  name: "today" | "courses" | "myuw" | "sources" | "privacy" | "search" | "arrow" | "file" | "check" | "mastery";
 }) {
   if (name === "myuw") return <img className="uw-nav-mark" src={new URL("./assets/uw-crest.svg", import.meta.url).href} alt="" aria-hidden="true" />;
   const paths = {
@@ -136,6 +138,7 @@ function Icon({
       </>
     ),
     check: <path d="m4 10 4 4 8-8" />,
+    mastery: <path d="M4 16V11m6 5V7m6 9V4" />, // owner: mastery
   };
   return (
     <svg
@@ -387,6 +390,7 @@ export function App() {
               ["myuw", "My UW"],
               ["sources", "Sources"],
               ["privacy", "Data & AI"],
+              ["mastery", "Mastery"], // owner: mastery (D57)
             ] as const
           ).map(([key, label]) => (
             <button
@@ -400,6 +404,7 @@ export function App() {
               {key === "today" && openItems > 0 ? (
                 <span className="nav-count">{openItems}</span>
               ) : null}
+              {key === "mastery" ? <span className="badge">Preview</span> /* owner: mastery */ : null}
             </button>
           ))}
         </nav>
@@ -427,7 +432,7 @@ export function App() {
               ? "Your workspace"
               : view === "sources"
                 ? "Connected sources"
-                : view === "privacy" ? "Privacy & models" : view === "myuw" ? "My UW" : "Your courses"}
+                : view === "privacy" ? "Privacy & models" : view === "myuw" ? "My UW" : view === "mastery" ? "Course mastery · Preview" /* owner: mastery */ : "Your courses"}
           </span>
           <div className="topbar-end">
             {snapshot?.fixtureMode ? (
@@ -672,7 +677,9 @@ export function App() {
           <InsightsSlot snapshot={snapshot} />
         ) : view === "settings" ? (
           <SettingsSlot snapshot={snapshot} />
-        ) : /* end owner: T05b */ view === "sources" ? (
+        ) : /* end owner: T05b */ view === "mastery" ? (
+          <MasteryView snapshot={snapshot} onOpenPrivacy={() => setView("privacy")} /* owner: mastery (D57) */ />
+        ) : view === "sources" ? (
           <Sources
             snapshot={snapshot}
             run={run}

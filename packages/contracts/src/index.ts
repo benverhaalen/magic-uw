@@ -1396,6 +1396,16 @@ export const learningRequestSchema = z.discriminatedUnion("op", [
     anchorIds: z.array(id).min(1).max(50),
   }),
   // end owner: analytics
+  // owner: mastery (D57). Course mastery, 0 tokens. Course-scoped like analytics: the anchors are
+  // required and each is authorized by the worker's trusted resolver.
+  learningOp("course.mastery", { courseId: id, anchorIds: z.array(id).min(1).max(50) }),
+  learningOp("mastery.assessment", { courseId: id, anchorIds: z.array(id).min(1).max(50), assessmentId: id }),
+  learningOp("mastery.forItems", { courseId: id, anchorIds: z.array(id).min(1).max(50), itemIds: z.array(id).min(1).max(100) }),
+  learningOp("mastery.history", { courseId: id, anchorIds: z.array(id).min(1).max(50) }),
+  learningOp("mastery.claim", { courseId: id, anchorIds: z.array(id).min(1).max(50), topicId: id, operationId: id }),
+  learningOp("mastery.hide", { courseId: id, anchorIds: z.array(id).min(1).max(50), topicId: id, hidden: z.boolean() }),
+  learningOp("course.grades", { courseId: id, anchorIds: z.array(id).min(1).max(50) }),
+  // end owner: mastery
 ]);
 export type LearningRequest = z.infer<typeof learningRequestSchema>;
 export type LearningOp = LearningRequest["op"];

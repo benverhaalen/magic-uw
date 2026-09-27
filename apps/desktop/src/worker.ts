@@ -194,6 +194,7 @@ const core = createCore(store, {
     // and course-map assessment rows).
     analyticsReferences: () => createPipelineReferences(store),
     // end owner: analytics
+    coursework: () => store, // owner: mastery: captured Canvas scores for grades and past exams (D57)
   }), pack: generation.pack /* owner: generation */, notes /* owner: notes */, intent /* owner: intent */ },
   ...(process.env.MAGIC_GATEWAY_URL
     ? {

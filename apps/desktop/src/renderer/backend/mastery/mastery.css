@@ -1,0 +1,484 @@
+/* Course mastery (D57). Only design-system tokens (docs/design/tokens.css); geometry is local.
+   State colours map onto existing roles, no new values:
+   - Mastered, Getting there: the learning role's warm gold ramp (ink at full strength, then the study fill);
+   - Iffy: the warning status candidate, with a hatch so it never depends on hue alone;
+   - Not seen yet: the quiet surface with its line.
+   Actions follow the Study & Learn recipe (gold study surface for the one next step) and the
+   review recipe (blue) for secondary actions. */
+@import "../../../../../../docs/design/tokens.css";
+
+.mastery {
+  font-family: var(--magic-font-interface);
+  color: var(--magic-ink-prose);
+  background: var(--magic-surface-workspace);
+  max-width: 880px;
+  padding: 28px 36px 48px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.mastery h1,
+.mastery h2 {
+  font-family: var(--magic-font-editorial);
+  font-weight: 400;
+  color: var(--magic-ink);
+  letter-spacing: var(--magic-tracking);
+}
+.mastery h1 {
+  font-size: var(--magic-type-section);
+  margin: 0;
+}
+.mastery h2 {
+  font-size: var(--magic-type-study-title);
+  margin: 0 0 12px;
+}
+.mastery p {
+  margin: 0 0 8px;
+}
+.mastery button {
+  font: inherit;
+}
+.mastery :focus-visible {
+  outline: 2px solid var(--magic-focus);
+  outline-offset: 2px;
+}
+.mastery-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.mastery-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.mastery-course select,
+.mastery-field input {
+  font: inherit;
+  color: var(--magic-ink);
+  background: var(--magic-surface-raised);
+  border: 0;
+  box-shadow: inset 0 0 0 1px var(--magic-line-quiet);
+  border-radius: var(--magic-radius-control);
+  padding: 6px 10px;
+}
+.mastery-course-name,
+.mastery-muted,
+.mastery-since,
+.mastery-meta,
+.mastery-footnote,
+.mastery-source {
+  color: var(--magic-ink-muted);
+  font-size: 13px;
+}
+.mastery-footnote {
+  margin-top: 24px;
+}
+
+.mastery-section {
+  padding: 20px 0 24px;
+  border-top: 1px solid var(--magic-line-quiet);
+}
+.mastery-summary {
+  border-top: 0;
+  padding-top: 4px;
+}
+.mastery-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* The stacked state bar */
+.mastery-bar {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+  border-radius: var(--magic-radius-tag-candidate);
+  overflow: hidden;
+}
+.mastery-statebar--mini .mastery-bar {
+  height: 6px;
+  width: 120px;
+  gap: 1px;
+}
+.mastery-seg {
+  display: block;
+  min-width: 4px;
+}
+.mastery-seg--solid {
+  background: var(--magic-ink-study);
+}
+.mastery-seg--getting_there {
+  background: var(--magic-fill-study);
+}
+.mastery-seg--iffy {
+  background:
+    repeating-linear-gradient(135deg, transparent 0 3px, var(--magic-ink-status-warning-candidate) 3px 4px),
+    var(--magic-fill-status-warning-candidate);
+}
+.mastery-seg--not_seen,
+.mastery-seg--empty {
+  background: var(--magic-surface-quiet);
+  box-shadow: inset 0 0 0 1px var(--magic-line-quiet);
+}
+.mastery-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 10px;
+  font-size: 13px;
+  color: var(--magic-ink-muted);
+}
+.mastery-legend strong {
+  color: var(--magic-ink);
+  font-weight: 550;
+}
+.mastery-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+
+/* The one next step: the Study & Learn action */
+.mastery-study {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 16px;
+  width: 100%;
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: var(--magic-radius-card);
+  background: var(--magic-fill-study);
+  color: var(--magic-ink-study);
+  text-align: left;
+  cursor: pointer;
+}
+.mastery-study:disabled,
+.mastery-secondary:disabled {
+  cursor: default;
+  color: var(--magic-ink-disabled-candidate);
+}
+.mastery-study-label {
+  font-family: var(--magic-font-editorial);
+  font-size: var(--magic-type-study-title);
+  grid-column: 1;
+}
+.mastery-study-detail {
+  font-size: 13px;
+  grid-column: 1;
+}
+.mastery-arrow {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+.mastery-secondary,
+.mastery-action {
+  border: 0;
+  border-radius: var(--magic-radius-control);
+  padding: 7px 12px;
+  cursor: pointer;
+  background: var(--magic-fill-review);
+  color: var(--magic-ink-review);
+}
+.mastery-secondary:hover:not(:disabled),
+.mastery-action:hover:not(:disabled) {
+  background: var(--magic-fill-review-hover);
+}
+.mastery-action {
+  background: var(--magic-fill-study);
+  color: var(--magic-ink-study);
+}
+.mastery-prep {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0 12px;
+  width: 100%;
+  text-align: left;
+  margin-top: 6px;
+}
+.mastery-prep .mastery-study-label {
+  font-family: var(--magic-font-interface);
+  font-size: 13px;
+  font-weight: 550;
+}
+.mastery-prep .mastery-study-detail {
+  font-size: 12px;
+}
+.mastery-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--magic-ink-link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+/* Topics by module */
+.mastery-modules,
+.mastery-topics,
+.mastery-exams,
+.mastery-plain-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.mastery-plain-list li {
+  margin: 4px 0;
+}
+.mastery-module + .mastery-module {
+  border-top: 1px solid var(--magic-line-quiet);
+}
+.mastery-module-row,
+.mastery-topic-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 4px;
+  border: 0;
+  background: none;
+  color: var(--magic-ink);
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--magic-radius-control);
+}
+.mastery-module-row:hover,
+.mastery-topic-row:hover {
+  background: var(--magic-surface-quiet);
+}
+.mastery-chevron {
+  width: 12px;
+  color: var(--magic-ink-muted);
+}
+.mastery-module-label {
+  font-weight: 550;
+}
+.mastery-module-counts {
+  flex: 1;
+  color: var(--magic-ink-muted);
+  font-size: 13px;
+}
+.mastery-topics {
+  padding: 0 0 8px 24px;
+}
+.mastery-topic-label {
+  flex: 1;
+}
+.mastery-chip {
+  font-size: 12px;
+  padding: 1px 8px;
+  border-radius: var(--magic-radius-tag-candidate);
+  white-space: nowrap;
+}
+.mastery-chip--solid {
+  background: var(--magic-ink-study);
+  color: var(--magic-surface-raised);
+}
+.mastery-chip--getting_there {
+  background: var(--magic-fill-study);
+  color: var(--magic-ink-study);
+}
+.mastery-chip--iffy {
+  background: var(--magic-fill-status-warning-candidate);
+  color: var(--magic-ink-status-warning-candidate);
+  box-shadow: inset 0 0 0 1px var(--magic-ink-status-warning-candidate);
+}
+.mastery-chip--not_seen {
+  background: var(--magic-surface-quiet);
+  color: var(--magic-ink-muted);
+  box-shadow: inset 0 0 0 1px var(--magic-line-quiet);
+}
+.mastery-due {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--magic-ink-muted);
+  white-space: nowrap;
+}
+.mastery-due-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--magic-accent-current-time);
+}
+.mastery-topic-detail {
+  margin: 2px 0 10px 4px;
+  padding: 10px 14px;
+  border-left: 2px solid var(--magic-line-quiet);
+}
+.mastery-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin: 10px 0 4px;
+}
+.mastery-hidden {
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+/* Assessments */
+.mastery-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--magic-radius-control);
+  background: var(--magic-surface-quiet);
+  box-shadow: inset 0 0 0 1px var(--magic-line-quiet);
+}
+.mastery-tab {
+  border: 0;
+  background: none;
+  padding: 4px 10px;
+  border-radius: 6px;
+  color: var(--magic-ink-muted);
+  cursor: pointer;
+  font-size: 13px;
+}
+.mastery-tab[aria-selected="true"] {
+  background: var(--magic-surface-raised);
+  color: var(--magic-ink);
+  box-shadow: inset 0 0 0 1px var(--magic-line-quiet);
+}
+.mastery-panel {
+  padding-top: 12px;
+}
+.mastery-exam {
+  padding: 10px 0;
+}
+.mastery-exam + .mastery-exam {
+  border-top: 1px solid var(--magic-line-quiet);
+}
+.mastery-exam-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.mastery-exam-title {
+  font-weight: 550;
+  color: var(--magic-ink);
+}
+.mastery-strategy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin: 14px 0 8px;
+}
+.mastery-strategy-result {
+  padding: 10px 14px;
+  border-left: 2px solid var(--magic-line-quiet);
+  margin-bottom: 10px;
+}
+
+/* Feedback and the in-place runner */
+.mastery-error {
+  color: var(--magic-ink-status-error-candidate);
+}
+.mastery-notice {
+  color: var(--magic-ink-confirmation);
+  background: var(--magic-fill-confirmation);
+  padding: 8px 12px;
+  border-radius: var(--magic-radius-control);
+}
+.mastery-empty {
+  color: var(--magic-ink-muted);
+  padding: 24px 0;
+}
+.mastery-runner-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.mastery-question fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.mastery-stem {
+  font-family: var(--magic-font-editorial);
+  font-size: var(--magic-type-study-title);
+  color: var(--magic-ink);
+  margin-bottom: 12px;
+  padding: 0;
+}
+.mastery-back {
+  padding: 10px 14px;
+  background: var(--magic-surface-raised);
+  box-shadow: inset 0 0 0 1px var(--magic-line-quiet);
+  border-radius: var(--magic-radius-card);
+}
+.mastery-options {
+  display: grid;
+  gap: 6px;
+}
+.mastery-option {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: var(--magic-radius-control);
+  background: var(--magic-surface-raised);
+  box-shadow: inset 0 0 0 1px var(--magic-line-quiet);
+  cursor: pointer;
+}
+.mastery-option.is-chosen {
+  box-shadow: inset 0 0 0 2px var(--magic-focus);
+}
+.mastery-field {
+  display: grid;
+  gap: 6px;
+  max-width: 420px;
+}
+.mastery-feedback {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: var(--magic-radius-control);
+  background: var(--magic-fill-confirmation);
+  color: var(--magic-ink-confirmation);
+}
+.mastery-feedback--incorrect {
+  background: var(--magic-fill-status-error-candidate);
+  color: var(--magic-ink-status-error-candidate);
+}
+.mastery-lead {
+  font-family: var(--magic-font-editorial);
+  font-size: var(--magic-type-study-title);
+  color: var(--magic-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mastery * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+@media (max-width: 720px) {
+  .mastery {
+    padding: 20px 18px 36px;
+  }
+  .mastery-statebar--mini {
+    display: none;
+  }
+}

@@ -58,6 +58,12 @@ import {
 import { createAnalytics, refreshTopics, type ReferencesPort } from "./analytics";
 import type { AnalyticsOp, AnalyticsResult } from "./router-types";
 // end owner: analytics
+// owner: mastery (D57). Course mastery ops: code only, 0 tokens.
+import { createMastery, createMasteryMemo, MASTERY_CONFIG } from "./mastery";
+import { courseGradesData } from "./strategy/inputs";
+import type { GradeSources } from "./grades";
+import { memoReferences, referenceFingerprint, type FingerprintSource, type ReferencesMemo } from "./mastery/references-memo";
+// end owner: mastery
 
 export interface StudyResource {
   id: string;
@@ -87,6 +93,10 @@ export interface LearningRouterDependencies {
   // owner: analytics. A fresh references port per analytics request (the pipeline's, or the current adapter).
   analyticsReferences?: () => ReferencesPort;
   // end owner: analytics
+  // owner: mastery. The coursework store's read side, for captured Canvas scores (grades and past
+  // exam scores). Absent: grades answer `not_built` and past exams show no score.
+  coursework?: () => GradeSources & FingerprintSource & { resource(id: string): Resource | undefined };
+  // end owner: mastery
 }
 export interface LearningRouter {
   handle(
@@ -283,9 +293,9 @@ export function createLearningRouter(
       return null;
     return { p, c };
   }
-  function currentPool(c: StudyContext, courseRef: string) {
+  function currentPool(c: StudyContext, courseRef: string, items: StoredItem[] = deps!.store.items({ courseRef })) {
     const latest = new Map<string, StoredItem>();
-    for (const item of deps!.store.items({ courseRef }))
+    for (const item of items)
       if (
         !latest.has(item.item.id) ||
         latest.get(item.item.id)!.item.version < item.item.version
@@ -514,9 +524,9 @@ export function createLearningRouter(
     return new Map<string, ConceptModel>(models.map((m) => [m.conceptId, m]));
   }
   /** Latest eligible card-capable versions: card items, and recall items whose key is the back. */
-  function cardPool(c: StudyContext, ref: string) {
+  function cardPool(c: StudyContext, ref: string, items: StoredItem[] = deps!.store.items({ courseRef: ref })) {
     const latest = new Map<string, StoredItem>();
-    for (const item of deps!.store.items({ courseRef: ref }))
+    for (const item of items)
       if (
         !latest.has(item.item.id) ||
         latest.get(item.item.id)!.item.version < item.item.version
@@ -840,7 +850,126 @@ export function createLearningRouter(
     }
   }
   // end owner: analytics
-  return {
+  // owner: mastery (D57). Course mastery: states with the delayed-recall tier, due-for-review,
+  // one next step, per-exam slices, agenda roll-ups, past exams, grades, claims and hides.
+  const masteryMemo = createMasteryMemo();
+  const referencesMemo = new Map<string, ReferencesMemo>();
+  let handleRef: LearningRouter["handle"] | null = null;
+  const MASTERY_OPS = new Set(["course.mastery", "mastery.assessment", "mastery.forItems", "mastery.history", "mastery.claim", "mastery.hide", "course.grades"]);
+  type MasteryRequest = Extract<LearningRequest, { op: "course.mastery" | "mastery.assessment" | "mastery.forItems" | "mastery.history" | "mastery.claim" | "mastery.hide" | "course.grades" }>;
+  async function mastery(request: MasteryRequest, signal: AbortSignal): Promise<LearningResult> {
+    const op = request.op;
+    if (!deps!.analyticsReferences) return fail(op, "Course references aren't connected yet.", "not_built");
+    const scope = practiceScope(request.courseId, request.anchorIds);
+    if (typeof scope === "string") return fail(op, scope);
+    const { c, ref } = scope;
+    const store = deps!.store;
+    if (op === "mastery.hide") {
+      const topic = store.concepts(ref).find((t) => t.id === request.topicId && t.kind === "concept");
+      if (!topic) return fail(op, "That topic isn't in this course's map.");
+      if (request.hidden ? topic.status !== "active" : topic.status !== "hidden")
+        return fail(op, request.hidden ? "That topic is already hidden or merged." : "That topic isn't hidden.");
+      if (signal.aborted) return fail(op, "Study request cancelled.");
+      store.editConcept(topic.id, { kind: request.hidden ? "hide" : "restore" });
+      const name = topic.studentLabel ?? topic.label;
+      return {
+        op,
+        status: "ok",
+        data: {
+          topicId: topic.id,
+          hidden: request.hidden,
+          message: request.hidden
+            ? `${name} is hidden from this course's mastery. Your answers on it are kept; show it again any time.`
+            : `${name} is back in this course's mastery.`,
+        },
+      };
+    }
+    // One read of the course's items and cards per request, shared by the pools, the evidence and the rules.
+    const items = store.items({ courseRef: ref });
+    const cards = store.cards({ courseRef: ref });
+    const questionPool = currentPool(c, ref, items);
+    const pool = new Map<string, StoredItem>();
+    for (const x of [...questionPool, ...cardPool(c, ref, items)]) pool.set(x.item.id, x);
+    const coursework = deps!.coursework?.();
+    const course = { accountScope: c.accountScope, courseId: c.courseId };
+    const input = {
+      store,
+      ref,
+      courseId: c.courseId,
+      references: memoReferences(deps!.analyticsReferences(), referenceFingerprint(coursework, course), referencesMemo, ref),
+      now: time(),
+      practiceItems: [...pool.values()],
+      items,
+      cards,
+    };
+    if (op === "mastery.claim") {
+      const topic = store.concepts(ref).find((t) => t.id === request.topicId && t.kind === "concept" && t.status === "active");
+      if (!topic) return fail(op, "That topic isn't in this course's map.");
+      const m = createMastery(input, masteryMemo);
+      const view = m.topic(topic.id)!;
+      // The claim is kept as what the student said (a self-rating, which never moves the state); code checks it.
+      const ratingId = `claim:${request.operationId}`;
+      if (!store.evidence(ref).selfRatings.some((s) => s.id === ratingId)) {
+        const at = time();
+        store.addSelfRating({ id: ratingId, conceptId: topic.id, rating: "know_it", delayed: view.lastEvidenceDay !== null && view.lastEvidenceDay < localDay(at), localDay: localDay(at), createdAt: at.toISOString() });
+      }
+      const families = new Set(questionPool.filter((x) => primaryConcept(x) === topic.id).map((x) => x.item.familyId)).size;
+      const name = topic.studentLabel ?? topic.label;
+      if (!families)
+        return {
+          op,
+          status: "ok",
+          data: {
+            topicId: topic.id,
+            recorded: "know_it",
+            check: null,
+            message: `Noted. ${name} has no practice items yet, so there's nothing to check it with. Generate some to confirm it.`,
+            generate: { type: "pack", pack: "quiz", scope: { courseId: c.courseId, topicIds: [topic.id] } },
+          },
+        };
+      const count = Math.min(MASTERY_CONFIG.claimCheck, families);
+      const started = await handleRef!(
+        { op: "practice.target", courseId: c.courseId, anchorIds: request.anchorIds, topicIds: [topic.id], mode: "test", count, operationId: request.operationId },
+        signal,
+      );
+      if (started.status !== "ok") return { ...started, op };
+      return {
+        op,
+        status: "ok",
+        data: {
+          topicId: topic.id,
+          recorded: "know_it",
+          check: started.data,
+          message: `Noted. Answer ${count === 1 ? "this question" : `these ${count} questions`} to confirm it; the results update ${name} like any practice.`,
+          generate: null,
+        },
+      };
+    }
+    try {
+      if (op === "course.grades") {
+        if (!coursework) return fail(op, "Captured grades aren't connected yet.", "not_built");
+        return { op, status: "ok", data: courseGradesData(input, coursework, c.accountScope, masteryMemo).data };
+      }
+      const m = createMastery(input, masteryMemo);
+      if (op === "course.mastery") return { op, status: "ok", data: m.course() };
+      if (op === "mastery.assessment") {
+        const data = m.assessment(request.assessmentId);
+        return data ? { op, status: "ok", data } : fail(op, "That isn't an upcoming exam in this course.");
+      }
+      if (op === "mastery.forItems") return { op, status: "ok", data: m.forItems(request.itemIds) };
+      const scoreOf = (resourceId: string) => {
+        const r = coursework?.resource(resourceId);
+        if (!r || r.deleted || r.courseId !== c.courseId || !coursework!.sources().some((s) => s.id === r.sourceId && s.accountScope === c.accountScope)) return null;
+        const score = r.submission?.score;
+        return typeof score === "number" && typeof r.points === "number" && r.points > 0 ? { earned: score, possible: r.points } : null;
+      };
+      return { op, status: "ok", data: m.history(scoreOf) };
+    } catch {
+      return fail(op, "Course mastery could not be computed. Try again after the course refreshes.", "failed");
+    }
+  }
+  // end owner: mastery
+  const router: LearningRouter & AnalyticsRouter = {
     analytics,
     async handle(raw, signal) {
       const parsed = learningRequestSchema.safeParse(raw);
@@ -855,6 +984,9 @@ export function createLearningRouter(
       if (op === "analytics.assignment" || op === "analytics.course" || op === "analytics.agendaHints")
         return analytics(request, signal);
       // end owner: analytics
+      // owner: mastery
+      if (MASTERY_OPS.has(op)) return mastery(request as MasteryRequest, signal);
+      // end owner: mastery
       const store = deps.store;
       try {
         if (op === "study.sessions") {
@@ -1782,4 +1914,6 @@ export function createLearningRouter(
       }
     },
   };
+  handleRef = (request, signal) => router.handle(request, signal); // owner: mastery: the claim check starts a practice session
+  return router;
 }
