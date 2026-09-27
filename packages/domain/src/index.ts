@@ -4,6 +4,7 @@ import type {
   PrivacyPreferences,
 } from "@magic/contracts";
 export * from "./today-rail";
+export * from "./work";
 export function resolveDeadline(claims: DeadlineClaim[]): DeadlineResolution {
   const due = claims.filter((c) => c.kind === "due" && c.scopeConfirmed);
   if (!due.length)

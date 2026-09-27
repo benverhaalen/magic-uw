@@ -1,3 +1,4 @@
+import { projectWork } from "./work";
 import type { DayPlanEntry, DeadlineResolution, ResourceInput } from "@magic/contracts";
 
 export interface RailResource {
@@ -93,8 +94,10 @@ export interface TodayRail {
   suggestions: RailSuggestion[];
   hours: { start: number; end: number };
   hasCalendarSource: boolean;
-  /** Total suggested minutes. Suggestions stop at a daily cap so the day keeps free time. */
+  /** Minutes the student accepted or edited onto today's plan. */
   plannedMin: number;
+  /** Minutes still only suggested. Kept separate so proposals never read as plans. */
+  suggestedMin: number;
 }
 
 const DAY_END = 22 * 60;
@@ -111,7 +114,7 @@ const BREAK_MIN = 15;
 // Titles that name a class meeting. Office hours, exams, and other events get no prep block.
 const CLASS_SESSION = /\b(lecture|class|workshop|lab|seminar|section|recitation)\b/i;
 
-function local(iso: string, timeZone: string) {
+export function localTime(iso: string, timeZone: string) {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("en-CA", {
       timeZone,
@@ -210,7 +213,7 @@ export function buildTodayRail(
   timeZone: string,
   plan: PlanEntry[] = [],
 ): TodayRail {
-  const today = local(now, timeZone);
+  const today = localTime(now, timeZone);
   const live = resources.filter((r) => !r.deleted);
   const eventResources = live.filter((r) => r.kind === "event");
 
@@ -226,9 +229,9 @@ export function buildTodayRail(
     }
     const startIso = cal?.start ?? r.deadline.claims.find((c) => c.kind === "event")?.value;
     if (!startIso) continue;
-    const start = local(startIso, timeZone);
+    const start = localTime(startIso, timeZone);
     if (start.date !== today.date) continue;
-    const end = cal?.end ? local(cal.end, timeZone) : null;
+    const end = cal?.end ? localTime(cal.end, timeZone) : null;
     events.push({
       id: r.id,
       title: r.title,
@@ -240,12 +243,15 @@ export function buildTodayRail(
   }
   events.sort((a, b) => a.startMin - b.startMin);
 
-  const open = live.filter((r) => r.kind === "assignment" && !done(r) && r.deadline.planningAt);
-  const due: RailDue[] = open
-    .map((r) => ({ r, at: local(r.deadline.planningAt!, timeZone) }))
-    .filter(({ at }) => at.date === today.date)
-    .map(({ r, at }) => ({ id: r.id, title: r.title, courseName: r.courseName, dueMin: at.min, conflict: r.deadline.conflict }))
-    .sort((a, b) => a.dueMin - b.dueMin);
+  // Due items and suggestion candidates come from the same projection as Home's Upcoming.
+  const work = projectWork(resources, now, timeZone);
+  const due: RailDue[] = work.dueToday.map((w) => ({
+    id: w.id,
+    title: w.title,
+    courseName: w.courseName,
+    dueMin: w.dueMin,
+    conflict: w.conflict,
+  }));
 
   // Free time from now until the evening, around timed events.
   let gaps: [number, number][] = [[Math.ceil(Math.max(today.min + BREAK_MIN, 8 * 60) / 15) * 15, DAY_END]];
@@ -298,10 +304,11 @@ export function buildTodayRail(
       id: `prep:${e.id}`,
       type: "prep",
       resourceId: material.id,
-      title: `Review ${material.title}`,
+      title: `Prep for ${e.title}`,
       courseName: e.courseName,
-      reason: `Before ${e.title} at ${fmt(e.startMin)}. Latest material saved for this course.`,
-      factors: [`Before class at ${fmt(e.startMin)}`, "Latest course material"],
+      // Recency alone does not establish assigned or relevant reading; say so.
+      reason: `Before ${e.title} at ${fmt(e.startMin)}. Newest saved course material is “${material.title}”; it isn't confirmed as assigned for this session.`,
+      factors: [`Before class at ${fmt(e.startMin)}`, "Newest material, not confirmed assigned"],
       startMin: slot.start,
       endMin: slot.end,
       effort: null,
@@ -315,11 +322,11 @@ export function buildTodayRail(
   const nowMs = Date.parse(now);
   const dayMs = 86400000;
   const share = gradeShare(live);
-  const candidates = open
-    .filter((r) => !r.submission?.excused)
-    .map((r) => {
-      const ms = Date.parse(r.deadline.planningAt!);
-      const band = effortBand(r);
+  const candidates = [...work.overdue, ...work.dueToday, ...work.upcoming]
+    .map((w) => {
+      const r = w.resource;
+      const ms = Date.parse(w.dueAt);
+      const band = w.effort;
       const lockMs = r.lockAt ? Date.parse(r.lockAt) : null;
       const hoursLeft = (ms - nowMs) / 3600000;
       const overdue = ms <= nowMs;
@@ -335,12 +342,8 @@ export function buildTodayRail(
               : 4;
       return { r, ms, band, lockMs, hoursLeft, overdue, tight, tier, weight: share(r) };
     })
-    .filter(
-      (c) =>
-        (c.overdue
-          ? (c.lockMs == null || c.lockMs > nowMs) && nowMs - c.ms <= HORIZON_DAYS * dayMs
-          : c.ms - nowMs <= HORIZON_DAYS * dayMs),
-    )
+    // Overdue items are already limited by the projection; plan only the coming week.
+    .filter((c) => c.overdue || c.ms - nowMs <= HORIZON_DAYS * dayMs)
     .sort(
       (a, b) =>
         a.tier - b.tier ||
@@ -353,7 +356,7 @@ export function buildTodayRail(
     if (suggestions.filter((s) => s.type !== "prep").length + acceptedWork.length >= MAX_WORK) break;
     if (decided.has(`exam:${c.r.id}`) || decided.has(`work:${c.r.id}`)) continue;
     const { r, band, hoursLeft, overdue, tier, weight } = c;
-    const at = local(r.deadline.planningAt!, timeZone);
+    const at = localTime(r.deadline.planningAt!, timeZone);
     const isExam = band?.category === "exam";
     const days = Math.max(1, Math.ceil(hoursLeft / 24));
     const sessions = Math.min(days, 3);
@@ -368,7 +371,7 @@ export function buildTodayRail(
     const factors: string[] = [];
     const sentences: string[] = [];
     if (overdue) {
-      const lock = c.lockMs ? local(r.lockAt!, timeZone) : null;
+      const lock = c.lockMs ? localTime(r.lockAt!, timeZone) : null;
       factors.push("Overdue");
       sentences.push(
         lock
@@ -451,6 +454,11 @@ export function buildTodayRail(
       end: Math.max(18, ...spans.map(([, e]) => Math.ceil(e! / 60))),
     },
     hasCalendarSource: eventResources.length > 0,
-    plannedMin: suggestions.reduce((n, s) => n + s.endMin - s.startMin, 0),
+    plannedMin: suggestions
+      .filter((s) => s.state !== "suggested")
+      .reduce((n, s) => n + s.endMin - s.startMin, 0),
+    suggestedMin: suggestions
+      .filter((s) => s.state === "suggested")
+      .reduce((n, s) => n + s.endMin - s.startMin, 0),
   };
 }

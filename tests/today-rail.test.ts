@@ -333,7 +333,8 @@ test("suggestions leave breathing room: a daily cap and breaks between blocks", 
   for (const r of [rail, buildTodayRail(many, NOW, TZ)]) {
     const work = r.suggestions.filter((s) => s.type !== "prep");
     assert.ok(work.reduce((n, s) => n + s.endMin - s.startMin, 0) <= 180);
-    assert.equal(r.plannedMin, r.suggestions.reduce((n, s) => n + s.endMin - s.startMin, 0));
+    // Proposed and accepted minutes stay distinct (Ben's platform review).
+    assert.equal(r.plannedMin + r.suggestedMin, r.suggestions.reduce((n, s) => n + s.endMin - s.startMin, 0));
     const blocks = [...r.suggestions].sort((a, b) => a.startMin - b.startMin);
     for (let i = 1; i < blocks.length; i++)
       if (blocks[i - 1]!.type !== "prep" && blocks[i]!.type !== "prep")
