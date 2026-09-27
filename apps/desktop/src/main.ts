@@ -130,6 +130,12 @@ import {
   type CommandResult,
 } from "@magic/contracts";
 const headless = process.env.MAGIC_HEADLESS === "1";
+// A generation command (packs and guides, study prep, the learning ask, notes fill) waits on the
+// student's AI: measured live with Claude Code, 25-84 s per study-prep kind and 30 s for a briefing.
+// The runner bounds each call itself (180 s, and one stronger-model retry), so main doesn't cut a
+// run short; every other command keeps the 30 s workspace timeout.
+const GENERATION_COMMANDS = new Set(["pack", "learning", "notes"]);
+const GENERATION_TIMEOUT_MS = 2 * 180_000 + 30_000;
 if (headless) {
   app.commandLine.appendSwitch("headless");
   void app.dock?.hide();
@@ -1030,7 +1036,7 @@ app
           calls.delete(id); finish();
           worker.postMessage({ kind: "cancel-command", id });
           reject(new Error("Local workspace request timed out."));
-        }, 30000);
+        }, GENERATION_COMMANDS.has(parsed.type) ? GENERATION_TIMEOUT_MS : 30000);
         const abort = () => {
           clearTimeout(timer); calls.delete(id); finish();
           worker.postMessage({ kind: "cancel-command", id });
