@@ -453,6 +453,16 @@ const stateWords: Record<ClientHealth["state"], string> = {
   offline: "Can't connect",
 };
 
+/** A tile's real status: what the client on this computer says, in its saved mode. Signs nothing in. */
+function tileStatus(id: ClientId, h: ClientHealth | undefined): string {
+  if (id === "gemini") return h?.state === "ok" ? "Your key is saved" : "Uses your API key";
+  if (!h) return "Not checked";
+  if (h.mode === "isolated" && h.state === "not_signed_in") return "Sign in once here";
+  if (h.mode === "instant" && h.state === "installed" && !h.instant.available) return "Needs an update";
+  if (h.state === "ok") return h.plan ? `Signed in · ${h.plan[0].toUpperCase()}${h.plan.slice(1)}` : "Signed in";
+  return stateWords[h.state];
+}
+
 function ClientStep(props: {
   heading: Heading;
   clients: ClientsBridge;
@@ -500,8 +510,9 @@ function ClientStep(props: {
     void check();
   }, [check]);
   const current = selected && health ? health[selected] : undefined;
+  // Instant unless the student opted into a separate sign-in before (operator, 2026-09-27).
   useEffect(() => {
-    if (current) setMode(current.modes.includes(current.mode) ? current.mode : current.modes[0]);
+    if (current) setMode(current.mode);
   }, [current]);
   const recommended = health ? recommendedClient(health) : null;
 
@@ -554,23 +565,9 @@ function ClientStep(props: {
                     onChange={() => setSelected(id)}
                   />
                   <span className="onb-tile-name">{info.name}</span>
-                  <span className="onb-tile-meta">
-                    {id === "gemini"
-                      ? h?.state === "ok"
-                        ? "Your key is saved"
-                        : "Uses your API key"
-                      : !h
-                        ? "Not checked"
-                        : h.state === "not_signed_in" && h.mode === "isolated"
-                          ? "Sign in once here"
-                          : stateWords[h.state]}
-                  </span>
+                  <span className="onb-tile-meta">{tileStatus(id, h)}</span>
                   {h?.version && id !== "gemini" ? <span className="onb-tile-meta">Version {h.version}</span> : null}
-                  {h && id !== "gemini" && h.state !== "not_installed" ? (
-                    <span className={`chn-mode${h.instant.available ? " instant" : ""}`}>
-                      {h.instant.available ? "Instant" : "Separate profile"}
-                    </span>
-                  ) : null}
+                  {h && id !== "gemini" && h.mode === "isolated" ? <span className="chn-mode">Separate sign-in</span> : null}
                   {recommended === id ? <span className="chn-recommended">Recommended</span> : null}
                   <span className="onb-tile-check" aria-hidden="true">
                     {checked ? <Icon name="check" /> : null}
@@ -591,35 +588,32 @@ function ClientStep(props: {
           })}
         </div>
       )}
-      {current && selected !== "gemini" ? (
+      {current && selected !== "gemini" && current.state !== "not_installed" ? (
         <div className="chn-modes">
-          {current.modes.length > 1 ? (
-            <fieldset className="chn-mode-choice">
-              <legend>How My Magic UW uses {clientInfo[current.id].name}</legend>
-              {current.modes.map((m) => (
-                <label key={m} className={`chn-mode-option${mode === m ? " selected" : ""}`}>
-                  <input type="radio" name="onb-mode" value={m} checked={mode === m} onChange={() => setMode(m)} />
-                  <span className="chn-mode-name">{m === "instant" ? "Use it as it is" : "Separate profile"}</span>
-                  <span className="chn-mode-detail">
-                    {m === "instant"
-                      ? `Instant: no sign-in here. Runs your signed-in ${clientInfo[current.id].name} with the app's settings passed in; your own settings aren't changed.`
-                      : `Sign in once inside My Magic UW. The app keeps its own ${clientInfo[current.id].name} profile, apart from yours.`}
-                  </span>
-                </label>
-              ))}
-            </fieldset>
-          ) : current.state !== "not_installed" && current.instant.reason ? (
-            <p className="onb-note">{current.instant.reason}</p>
-          ) : null}
-          {current.state !== "ok" && !(current.state === "not_signed_in" && mode === "isolated") ? (
+          {mode === "instant" && current.state !== "ok" ? (
             <ClientHealthNotice
               health={current}
               openExternal={props.openExternal}
               onCheckAgain={() => void check()}
               onSwitch={() => setSelected(clientOrder.find((id) => id !== current.id && selectable(id, health?.[id])) ?? "gemini")}
-              onUseProfile={current.modes.includes("isolated") ? () => setMode("isolated") : undefined}
             />
           ) : null}
+          {mode === "instant" && current.instant.note ? <p className="onb-note">{current.instant.note}</p> : null}
+          <details className="chn-advanced" open={mode === "isolated"}>
+            <summary>Advanced</summary>
+            <label className="chn-check">
+              <input
+                type="checkbox"
+                checked={mode === "isolated"}
+                onChange={(event) => setMode(event.target.checked ? "isolated" : "instant")}
+              />
+              <span>Use a separate sign-in for My Magic UW</span>
+            </label>
+            <p className="onb-note">
+              The app keeps its own {clientInfo[current.id].name} profile, apart from yours, and you sign in to it once inside
+              My Magic UW.
+            </p>
+          </details>
         </div>
       ) : null}
       {props.preview && health ? (
@@ -631,7 +625,12 @@ function ClientStep(props: {
         </button>
         <button
           className="onb-primary"
-          disabled={!selected || !selectable(selected, current) || current?.state === "not_installed"}
+          disabled={
+            !selected ||
+            !selectable(selected, current) ||
+            current?.state === "not_installed" ||
+            (mode === "instant" && current?.state === "installed" && !current.instant.available)
+          }
           onClick={() => {
             if (!selected) return;
             props.onChosen(selected);

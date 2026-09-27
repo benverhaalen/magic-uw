@@ -199,9 +199,10 @@ test("instant mode is offered only when this version was checked and keeps the s
   const old = await instantSupport("claude", "2.0.1", { ...deps, help: async () => claudeHelp });
   assert.equal(old.support.available, false);
   assert.match(old.support.reason!, /2\.1\.283/);
+  // Codex always sends a global AGENTS.md; instant is still the default (operator), with a note.
   const agents = await instantSupport("codex", "0.157.0", { ...deps, help: async () => codexHelp, exists: async (p) => p.endsWith("AGENTS.md") });
-  assert.equal(agents.support.available, false);
-  assert.match(agents.support.reason!, /AGENTS\.md/);
+  assert.equal(agents.support.available, true);
+  assert.match(agents.support.note!, /AGENTS\.md/);
   assert.equal((await instantSupport("gemini", "1.0.0", { ...deps })).support.available, false);
   assert.deepEqual([...listedFeatures(featureList)].sort(), ["apps", "memories", "multi_agent_v2", "shell_tool"]);
 });
@@ -213,20 +214,24 @@ test("instant env: the allowlist plus the student's own config variable, never t
 });
 
 // --- Health checks and the gate -----------------------------------------------------------------------
-test("checkHealth: instant or isolated by what this device supports; not installed, signed out, offline", async () => {
+test("checkHealth: instant by default, isolated only when opted in; not installed, signed out, offline, needs update", async () => {
   const { userData, env } = await setup();
   const deps = { userData, env, resolve: resolveFake, help: async (id: "claude" | "codex") => (id === "claude" ? claudeHelp : codexHelp), features: async () => featureList, exists: noFile, online: async () => true };
   const ok = await checkHealth("claude", "instant", { ...deps, status: async () => ({ signedIn: true, method: "subscription", plan: "max" }) });
   assert.deepEqual([ok.state, ok.mode, ok.plan, ok.modes, ok.version], ["ok", "instant", "max", ["instant", "isolated"], "2.1.283"]);
-  const out = await checkHealth("codex", undefined, { ...deps, status: async () => ({ signedIn: false, method: null, plan: null }) });
-  assert.deepEqual([out.state, out.mode], ["not_signed_in", "isolated"]);
+  const seen: string[] = [];
+  const out = await checkHealth("codex", undefined, { ...deps, status: async (_c, m) => (seen.push(m), { signedIn: false, method: null, plan: null }) });
+  assert.deepEqual([out.state, out.mode], ["not_signed_in", "instant"]);
+  const optedIn = await checkHealth("codex", "isolated", { ...deps, status: async (_c, m) => (seen.push(m), { signedIn: false, method: null, plan: null }) });
+  assert.deepEqual([optedIn.state, optedIn.mode], ["not_signed_in", "isolated"]);
+  assert.deepEqual(seen, ["instant", "isolated"], "the status command ran against the student's own config by default");
   const missing = await checkHealth("claude", "instant", { ...deps, resolve: () => null });
   assert.equal(missing.state, "not_installed");
   const offline = await checkHealth("claude", "instant", { ...deps, status: async () => ({ signedIn: null, method: null, plan: null }), online: async () => false });
   assert.equal(offline.state, "offline");
-  // A saved instant mode that this version no longer supports runs isolated.
+  // A version that can't run instant safely is reported (update), never silently moved to the app's profile.
   const downgraded = await checkHealth("claude", "instant", { ...deps, help: async () => "", status: async () => ({ signedIn: true, method: "subscription", plan: "pro" }) });
-  assert.deepEqual([downgraded.mode, downgraded.modes], ["isolated", ["isolated"]]);
+  assert.deepEqual([downgraded.state, downgraded.mode, downgraded.modes, downgraded.instant.available], ["installed", "instant", ["isolated"], false]);
 });
 
 function fakeBackend(results: (Error | object)[]): ModelBackend & { calls: number } {
@@ -319,10 +324,10 @@ test("Quick chat: fixed argv with tools off, in the saved mode's environment and
     return { pid: 1, onData: () => undefined, onExit: () => undefined, write: () => undefined, resize: () => undefined, kill: () => undefined } as PtyProcess;
   };
   const clients = createClients({ userData, env: { ...env, CLAUDE_CONFIG_DIR: own }, resolve: resolveFake, consented: async () => true, pty, events: { data: () => undefined, exit: () => undefined } });
+  await clients.terminal.open("owner", "claude", "chat"); // default: instant
+  await writeClientMode("claude", "isolated", userData); // the advanced opt-in
   await clients.terminal.open("owner", "claude", "chat");
-  await writeClientMode("claude", "instant", userData);
-  await clients.terminal.open("owner", "claude", "chat");
-  const [isolated, instant] = spawned;
+  const [instant, isolated] = spawned;
   assert.deepEqual(isolated.args, [fakeScript, "claude", ...chatArgs("claude")]);
   assert.deepEqual(chatArgs("claude"), ["--tools", "", "--strict-mcp-config", "--setting-sources", "project,local", "--safe-mode"]);
   assert.equal(isolated.env.CLAUDE_CONFIG_DIR, profileDir(userData, "claude"));

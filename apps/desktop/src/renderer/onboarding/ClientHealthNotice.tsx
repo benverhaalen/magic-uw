@@ -26,6 +26,19 @@ export interface ClientHealthNoticeProps {
   compact?: boolean;
 }
 
+/** The next step with its command, if any, shown as code (a real command, not decoration). */
+function nextStep(text: string, command?: string): ReactNode {
+  if (!command || !text.includes("{command}")) return text;
+  const [before, after] = text.split("{command}");
+  return (
+    <>
+      {before}
+      <code className="chn-command">{command}</code>
+      {after}
+    </>
+  );
+}
+
 export function ClientHealthNotice(props: ClientHealthNoticeProps) {
   const { health } = props;
   const copy = healthCopy(health, { chat: !!props.onQuickChat });
@@ -127,7 +140,7 @@ export function ClientHealthNotice(props: ClientHealthNoticeProps) {
         </h2>
       </div>
       <p className="chn-cause">{copy.cause}</p>
-      {copy.tone !== "ok" ? <p className="chn-next">{copy.next}</p> : null}
+      {copy.tone !== "ok" ? <p className="chn-next">{nextStep(copy.next, copy.command)}</p> : null}
       {actions.length ? <div className="chn-actions">{actions}</div> : null}
       {chatProblem ? <p className="chn-error-text">{chatProblem}</p> : null}
       {chat ? (

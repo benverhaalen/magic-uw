@@ -175,13 +175,17 @@ export async function checkHealth(id: ClientId, requested: ClientMode | undefine
     };
   }
   const saved = requested ?? (await modeOf(id, deps.userData));
+  const mode: "instant" | "isolated" = saved === "isolated" ? "isolated" : "instant";
   const detected = await detectClient(id, deps);
   const base = { id, checkedAt, ...(detected.version ? { version: detected.version } : {}) };
   if (!detected.installed || detected.problem)
-    return { ...base, state: "not_installed", mode: saved === "instant" ? "instant" : "isolated", source: "detect", instant: { available: false }, modes: ["isolated"] };
+    return { ...base, state: "not_installed", mode, source: "detect", instant: { available: false }, modes: ["instant", "isolated"] };
   const plan = await instantSupport(id, detected.version, deps);
   const modes: ClientMode[] = plan.support.available ? ["instant", "isolated"] : ["isolated"];
-  const mode: "instant" | "isolated" = saved === "instant" && plan.support.available ? "instant" : "isolated";
+  // Instant is the default, but this version can't run it safely: say so (the notice asks for an
+  // update); the app's own profile stays an opt-in, never a silent fallback.
+  if (mode === "instant" && !plan.support.available)
+    return { ...base, state: "installed", mode, source: "detect", instant: plan.support, modes };
   const auth = await (deps.status ?? ((c, m) => (m === "instant" ? instantStatus(c, deps) : isolatedStatus(c, deps))))(id, mode);
   const { state, plan: planName } = stateFromAuth(id, auth);
   if (state === "installed" && !(await (deps.online ?? providerReachable)(id)))
@@ -260,6 +264,7 @@ export async function clientBackend(
   }
   if (health.state === "not_installed") return null;
   if (health.mode === "instant") {
+    if (!health.instant.available) return null;
     const command = resolveClient(id, deps);
     if (!command) return null;
     const plan = await instantSupport(id, health.version, deps);

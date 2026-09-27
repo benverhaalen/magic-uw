@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { ClientId, ClientMode, InstantSupport } from "@magic/contracts";
 import { RunnerError, runProcess, type CliCommand } from "@magic/runner";
-import { allowedEnv, clientIdSchema, isIsolated, resolveClient, type ClientsDeps } from "./profiles";
+import { allowedEnv, clientIdSchema, resolveClient, type ClientsDeps } from "./profiles";
 
 /**
  * owner: client-health (D50). Instant mode: the student's own, already signed-in Claude Code or
@@ -21,9 +21,10 @@ import { allowedEnv, clientIdSchema, isIsolated, resolveClient, type ClientsDeps
  *   plugins, hooks, MCP servers … disabled … Auth … work[s] normally") loaded neither: 1,298.
  * - Codex 0.156.1: `codex exec` refuses a folder outside a git repository without
  *   `--skip-git-repo-check`. It always reads `$CODEX_HOME/AGENTS.md` (no flag or setting turns it
- *   off; `--ignore-user-config` skips only config.toml), so instant mode is offered for Codex only
- *   when the student has no global AGENTS.md. The overrides below cut a run from 21,424 to 6,373
- *   input tokens, and `sqlite_home`/`log_dir` keep Codex's databases and logs in the app's folder.
+ *   off; `--ignore-user-config` skips only config.toml). Instant mode is still offered, because it
+ *   is the default the operator chose (2026-09-27), with a note saying so; answers are checked by
+ *   code either way. The overrides below cut a run from 21,424 to 6,373 input tokens, and
+ *   `sqlite_home`/`log_dir` keep Codex's databases and logs in the app's folder.
  */
 
 /** The newest versions the flag set was measured against. Older versions aren't offered instant mode. */
@@ -184,12 +185,14 @@ export async function instantSupport(id: ClientId, version: string | undefined, 
   else {
     const home = studentCodexHome(deps.env ?? process.env);
     const has = deps.exists ?? fileExists;
-    if ((await has(join(home, "AGENTS.md"))) || (await has(join(home, "AGENTS.override.md"))))
-      plan = no("Codex always adds your personal AGENTS.md to every request, so the app uses its own Codex profile instead.");
-    else {
-      const listed = listedFeatures(await (deps.features ?? (() => runText("codex", ["features", "list"], deps)))());
-      plan = { support: { available: true }, features: CODEX_TOOL_FEATURES.filter((f) => listed.has(f)) };
-    }
+    const personal = (await has(join(home, "AGENTS.md"))) || (await has(join(home, "AGENTS.override.md")));
+    const listed = listedFeatures(await (deps.features ?? (() => runText("codex", ["features", "list"], deps)))());
+    plan = {
+      support: personal
+        ? { available: true, note: "Codex adds your personal AGENTS.md to each request. My Magic UW still checks every answer." }
+        : { available: true },
+      features: CODEX_TOOL_FEATURES.filter((f) => listed.has(f)),
+    };
   }
   cache.set(key, plan);
   return plan;
@@ -241,8 +244,12 @@ export async function readClientModes(userData: string): Promise<Partial<Record<
     return {};
   }
 }
-/** The default when nothing was saved: Gemini's key route, else the app's own profile. */
-export const defaultMode = (id: ClientId): ClientMode => (id === "gemini" ? "api_key" : isIsolated(id) ? "isolated" : "api_key");
+/**
+ * The default when nothing was saved: the student's own client (operator, 2026-09-27: "it should
+ * just auto invoke your machines authenticated claude code"), or Gemini's key. The app's own
+ * profile is only ever an explicit opt-in.
+ */
+export const defaultMode = (id: ClientId): ClientMode => (id === "gemini" ? "api_key" : "instant");
 export async function modeOf(id: ClientId, userData: string): Promise<ClientMode> {
   return (await readClientModes(userData))[id] ?? defaultMode(id);
 }

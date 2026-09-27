@@ -6,9 +6,11 @@ import type { ClientId } from "./index";
  */
 
 /**
- * - `instant`: the student's own signed-in client, run with the app's configuration as flags
- *   only; nothing is written to their settings. Offered per client and version after a check.
- * - `isolated`: the app-owned profile (D45), signed in once in the built-in terminal.
+ * - `instant` (the default; operator, 2026-09-27): the student's own signed-in client, run with
+ *   the app's configuration as flags only; nothing is written to their settings. Offered per
+ *   client and version after a check. The app never signs it in.
+ * - `isolated`: the app-owned profile (D45), signed in once in the built-in terminal. An
+ *   advanced opt-in only ("Use a separate sign-in for My Magic UW").
  * - `api_key`: the student's own key, stored encrypted by the app (Gemini's only route, D36).
  */
 export type ClientMode = "instant" | "isolated" | "api_key";
@@ -33,6 +35,8 @@ export interface InstantSupport {
   available: boolean;
   /** Plain words, shown to the student when instant mode is not offered. */
   reason?: string;
+  /** Plain words about what instant mode can't keep out, shown when it is offered anyway. */
+  note?: string;
 }
 
 export interface ClientHealth {

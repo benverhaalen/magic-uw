@@ -41,7 +41,8 @@ test("every state renders its title, cause and next step, marked with the state"
       assert.match(html, new RegExp(`data-health-state="${state}"`));
       assert.ok(text(html).includes(copy.title), `${id}/${state}: ${copy.title}`);
       assert.ok(text(html).includes(copy.cause), `${id}/${state}: cause`);
-      if (state !== "ok") assert.ok(text(html).includes(copy.next), `${id}/${state}: next step`);
+      const next = copy.command ? copy.next.replace("{command}", ` ${copy.command} `).replace(/\s+/g, " ") : copy.next;
+      if (state !== "ok") assert.ok(text(html).includes(next), `${id}/${state}: next step`);
       assert.match(html, state === "ok" ? /role="status"/ : copy.tone === "problem" ? /role="alert"/ : /role="status"/);
     }
 });
@@ -69,10 +70,19 @@ test("Quick chat is offered where checking the account helps, and never for Gemi
   assert.doesNotMatch(render(health("claude", "installed"), { onQuickChat: undefined }), /Quick chat/);
 });
 
-test("signed out: instant mode points to the app's own profile; Gemini asks for a key", () => {
-  const instant = text(render(health("claude", "not_signed_in", "instant")));
-  assert.match(instant, /Sign in here/);
-  assert.match(instant, /your settings stay as they are/);
+test("signed out: the app says how to sign in on this computer and never signs in itself; Gemini asks for a key", () => {
+  // Operator, 2026-09-27: "unless not authenticated, in which case it tells the user to authenticate".
+  const claudeHtml = render(health("claude", "not_signed_in", "instant"));
+  const instant = text(claudeHtml);
+  assert.match(instant, /Claude Code isn't signed in on this computer/);
+  assert.match(instant, /Open a terminal and run claude , sign in, then click Check again\./);
+  assert.match(claudeHtml, /<code class="chn-command">claude<\/code>/);
+  assert.match(claudeHtml, /Check again/);
+  assert.match(claudeHtml, /Quick chat/);
+  assert.doesNotMatch(instant, /Sign in here/);
+  assert.match(render(health("codex", "not_signed_in", "instant")), /<code class="chn-command">codex login<\/code>/);
+  // The separate sign-in is the advanced opt-in; only there does the notice offer signing in here.
+  assert.match(text(render(health("claude", "not_signed_in", "isolated"))), /Sign in here/);
   const gemini = text(render(health("gemini", "not_signed_in")));
   assert.match(gemini, /Paste an API key/);
   assert.match(gemini, /Google AI Studio/);

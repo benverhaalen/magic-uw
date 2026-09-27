@@ -101,8 +101,8 @@ export const selectable = (id: ClientId, health: ClientHealth | undefined): bool
 
 /**
  * The browser-preview fixture (no `window.magic.clients`). Always labelled as a preview in the
- * UI; its sign-in "completes" a few seconds after the terminal opens so the flow can be walked.
- * Claude Code is signed in and offers instant mode; Codex only its own profile.
+ * UI. Instant is the default: the sample Claude Code is signed in on "this computer", the sample
+ * Codex isn't. The opt-in separate sign-in "completes" a few seconds after its terminal opens.
  */
 export function createPreviewClients(signInDelayMs = 4000): ClientsBridge {
   const statuses: Record<ClientId, ClientStatus> = {
@@ -124,17 +124,16 @@ export function createPreviewClients(signInDelayMs = 4000): ClientsBridge {
     const instant =
       id === "claude"
         ? { available: true }
-        : { available: false, reason: "Codex always adds your personal AGENTS.md to every request, so the app uses its own Codex profile instead." };
-    const chosen = mode ?? modes[id] ?? (instant.available ? "instant" : "isolated");
-    const m = chosen === "instant" && instant.available ? "instant" : "isolated";
-    const ok = m === "instant" || signedIn(id);
+        : { available: true, note: "Codex adds your personal AGENTS.md to each request. My Magic UW still checks every answer." };
+    const m = (mode ?? modes[id] ?? "instant") === "isolated" ? "isolated" : "instant";
+    const ok = m === "instant" ? id === "claude" : signedIn(id);
     return {
       id,
       state: ok ? "ok" : "not_signed_in",
       mode: m,
       source: "status",
       instant,
-      modes: instant.available ? ["instant", "isolated"] : ["isolated"],
+      modes: ["instant", "isolated"],
       version: statuses[id].version,
       ...(ok && id === "claude" ? { plan: "pro" } : {}),
       checkedAt,

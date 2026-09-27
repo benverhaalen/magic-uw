@@ -18,9 +18,13 @@ export interface HealthCopy {
   tone: "ok" | "wait" | "problem";
   title: string;
   cause: string;
+  /** The exact next step. `{command}` marks where `command` is shown as code. */
   next: string;
+  command?: string;
   actions: NoticeAction[];
 }
+/** The command that signs each client in on this computer, in the student's own terminal. */
+export const SIGN_IN_COMMANDS: Partial<Record<ClientId, string>> = { claude: "claude", codex: "codex login" };
 
 const names: Record<ClientId, { name: string; provider: string; plan: string }> = {
   claude: { name: "Claude Code", provider: "Anthropic", plan: "Claude plan" },
@@ -72,6 +76,14 @@ export function healthCopy(h: ClientHealth, options: { chat?: boolean } = {}): H
         actions: [],
       };
     case "installed":
+      if (h.mode === "instant" && !h.instant.available)
+        return {
+          tone: "problem",
+          title: `Update ${name} to use it here`,
+          cause: h.instant.reason ?? `This version of ${name} can't be run with My Magic UW's settings.`,
+          next: `Update ${name}, then check again. Or choose another AI.`,
+          actions: [{ kind: "link", label: `How to update ${name}`, url: INSTALL_URLS[h.id] }, { kind: "check_again" }, { kind: "switch" }],
+        };
       return {
         tone: "wait",
         title: `${name} didn't confirm your sign-in`,
@@ -97,12 +109,14 @@ export function healthCopy(h: ClientHealth, options: { chat?: boolean } = {}): H
           actions: [{ kind: "add_key" }, { kind: "link", label: "Get a key in Google AI Studio", url: GEMINI_KEY_URL }],
         };
       if (h.mode === "instant")
+        // Operator, 2026-09-27: never start a sign-in from the app; say how, then check again.
         return {
           tone: "problem",
-          title: `Your ${name} isn't signed in`,
-          cause: `My Magic UW doesn't sign in to your own ${name} for you, so your settings stay as they are.`,
-          next: `Sign in once in a separate ${name} profile for this app, or sign in to ${name} yourself and check again.`,
-          actions: [{ kind: "use_profile" }, { kind: "check_again" }],
+          title: `${name} isn't signed in on this computer`,
+          cause: `My Magic UW uses the ${name} already on this computer and never signs in for you.`,
+          next: "Open a terminal and run {command}, sign in, then click Check again.",
+          command: SIGN_IN_COMMANDS[h.id],
+          actions: [{ kind: "check_again" }, ...chat(h)],
         };
       return {
         tone: "problem",
