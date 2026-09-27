@@ -19,7 +19,9 @@ import { NOW, TZ, workspace } from "./intent-fixtures";
 const here = dirname(fileURLToPath(import.meta.url));
 const fake: CliCommand = { file: process.execPath, prefixArgs: [join(here, "fixtures", "fake-cli", "fake-cli.mjs"), "claude"] };
 const LATENCY_MS = 800;
-const N = 12;
+// 24 interleaved pairs: the nearest-rank p95 is the 23rd of 24, so one scheduling outlier from
+// other test files running in parallel does not decide the comparison on its own.
+const N = 24;
 const classify = {
   output: {
     kind: "intent-classify",
@@ -54,7 +56,7 @@ async function rig(speculation: "gate" | "race" = "gate") {
   return { pool, make, sent, timed };
 }
 
-test("fallback p95 is within 10 ms of AI-only p95; a code hit sends nothing (gate)", { timeout: 120_000 }, async () => {
+test("fallback p95 is within 10 ms of AI-only p95; a code hit sends nothing (gate)", { timeout: 180_000 }, async () => {
   const h = await rig("gate");
   try {
     const fallback = h.make();

@@ -206,7 +206,7 @@ export function findCourseMentions(index: IntentIndex, text: string): CourseMent
   for (const c of current)
     for (const t of c.nameTokens) {
       if (counts.get(t) !== 1) continue;
-      const re = new RegExp(`(?:\\b(?:my|the|in|for|from|of) )${word(t)}(?: (?:class|course))?|${word(t)} (?:class|course)`, "g");
+      const re = new RegExp(`(?:\\b(?:my|the|in|for|from|of|to) )${word(t)}(?: (?:class|course))?|${word(t)} (?:class|course)`, "g");
       for (const m of text.matchAll(re)) add(m.index!, m.index! + m[0].length, [c]);
     }
   return out.sort((a, b) => a.start - b.start);

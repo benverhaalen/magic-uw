@@ -152,17 +152,19 @@ export function extractSlots(index: IntentIndex, n: string, deadline: () => void
 
 export function resolveCode(text: string, contextCourseId: string | undefined, deps: ResolverDeps): CodeOutcome {
   const clock = deps.clock ?? (() => performance.now());
-  const started = clock();
   const budget = deps.budgetMs ?? 20;
   let slots: IntentSlots = {};
+  let started = clock();
   const deadline = () => {
     if (clock() - started > budget) throw new BudgetError();
   };
   try {
     const n = normaliseUtterance(text);
     if (!n) return { status: "miss", slots, reason: "no_match" };
+    // The index is cached state (prewarm builds it when the bar opens); a rebuild after a sync is
+    // data preparation, not resolution, so the budget starts once it's ready.
     const index = deps.index();
-    deadline();
+    started = clock();
     const extracted = extractSlots(index, n, deadline);
     slots = extracted.slots;
     const { rest } = extracted;
