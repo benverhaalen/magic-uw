@@ -416,6 +416,8 @@ export function CoursePageView({
   detail,
   schedule,
   typeHueOf,
+  tabs,
+  tabBody,
 }: {
   page: CoursePageModel;
   selectedId: string | null;
@@ -435,6 +437,9 @@ export function CoursePageView({
    * mapper from its own verified groups (identical for rows from the groups' own source).
    */
   typeHueOf?: (r: { sourceId: string; courseId: string; assignmentGroupId?: string | null }) => AssignmentTypeHue | null;
+  /** owner: course-analytics. A tab strip under the heading, and the active tab's body in place of the layout. */
+  tabs?: ReactNode;
+  tabBody?: ReactNode;
 }) {
   const syllabus = page.syllabus;
   const work = courseWork(page);
@@ -567,6 +572,8 @@ export function CoursePageView({
           </span>
         </p>
       </div>
+      {tabs}
+      {tabBody ?? (
       <div className={`course-layout ${selectedId ? "has-detail" : overview ? "has-overview" : ""}`}>
         <section className="course-section course-next-section" aria-labelledby="course-next">
           <h2 id="course-next">Next up</h2>
@@ -668,6 +675,7 @@ export function CoursePageView({
         </section>
         {selectedId ? detail : null}
       </div>
+      )}
     </>
   );
 }

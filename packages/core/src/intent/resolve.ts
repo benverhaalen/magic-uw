@@ -24,6 +24,42 @@ const POLITE = /^(?:(?:hey|hi|ok|okay|so|please|pls|can you|can u|could you|coul
 const CONNECTOR = /^(?:(?:in|for|from|on|of|my|the|about|at|to|with|and)\s+)+|(?:\s+(?:in|for|from|on|of|my|the|about|at|to|with|and|class|course|please|pls))+$/g;
 const ALL_COURSES = /\b(?:across |in |for |from )?(?:all|every|any)(?: of)? (?:my )?(?:courses|classes)\b/;
 
+const NUMBER_WORDS: Record<string, number> = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13,
+  fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20, "twenty five": 25, thirty: 30,
+};
+const N = `(\\d{1,3}|${Object.keys(NUMBER_WORDS).sort((a, b) => b.length - a.length).join("|")})`;
+const THINGS = "(?:questions?|items?|problems?|flash ?cards?|cards?)";
+/**
+ * Where a count sits decides what goes with it, so each action's own pattern still reads the rest:
+ * - "a 10 question quiz": the count and its noun go, the quiz stays;
+ * - "make 12 cards on …", "12 flashcards due": only the number goes (the noun is the action's word);
+ * - "with 5 questions", "using 12 cards", or a count after the topic ("… hash tables, 5 questions"): the whole phrase goes.
+ */
+const COUNT_RULES: { re: RegExp; whole: boolean }[] = [
+  { re: new RegExp(`\\b${N}[ -](?:question|item|problem)s? (?=quiz|test)`), whole: true },
+  { re: new RegExp(`(?:^|\\b(?:make|generate|create|build|write|give me|review|study|do)(?: me)?(?: (?:some|a|an|new|more|my|the))? )${N} (?=${THINGS}\\b)`), whole: false },
+  { re: new RegExp(`\\b(?:with|using) ${N} ${THINGS}\\b|(?:,| ) ?\\b${N} ${THINGS}$`), whole: true },
+  { re: new RegExp(`\\b${N} (?=${THINGS}\\b)`), whole: false },
+];
+/** How many the student asked for, clamped to what a pack makes (1–30). */
+export const clampCount = (n: number) => Math.min(30, Math.max(1, Math.round(n)));
+
+/** The count the request states, and the request without it. Code reads it; the model never does. */
+export function extractCount(text: string): { rest: string; count: number | null } {
+  for (const { re, whole } of COUNT_RULES) {
+    const m = re.exec(text);
+    if (!m) continue;
+    const said = m.slice(1).find((g) => g !== undefined)!;
+    const n = /^\d/.test(said) ? Number(said) : NUMBER_WORDS[said]!;
+    // Keep what the match holds before the number (a verb) when only the number goes.
+    const at = whole ? m.index : m.index + m[0].lastIndexOf(said);
+    const end = whole ? m.index + m[0].length : at + said.length;
+    return { rest: `${text.slice(0, at)} ${text.slice(end)}`.replace(/\s+/g, " ").trim(), count: clampCount(n) };
+  }
+  return { rest: text, count: null };
+}
+
 export function normaliseUtterance(text: string): string {
   return norm(text.replace(/[?!.]+\s*$/, "")).replace(POLITE, "").trim();
 }
@@ -112,7 +148,7 @@ export function resolveSlots(spec: AnyAction, slots: IntentSlots, resolve: Resol
   else if (needs.query === "required") return fail("What should I search for?");
   if (slots.kind && needs.kind) args.kind = slots.kind;
   else if (needs.kind === "required") return fail("Flashcards or a quiz?", (["cards", "quiz"] as const).map((k) => candidate(spec, { ...slots, kind: k })));
-  if (slots.count && needs.count) args.count = slots.count;
+  if (slots.count && needs.count) args.count = clampCount(slots.count);
   const parsed = spec.argsSchema.safeParse(args);
   if (!parsed.success) return fail("I need a bit more detail to do that.");
   return { ok: true, args: parsed.data };
@@ -177,15 +213,24 @@ export function resolveCode(text: string, contextCourseId: string | undefined, d
     slots = extracted.slots;
     const { rest } = extracted;
     const question = /\?\s*$/.test(text.trim());
+    // A stated count ("with 5 questions", "12 cards") is read only for the actions that take one, so
+    // another action's words ("open homework 3 problems") are never cut.
+    const counted = extractCount(rest);
     for (const spec of deps.registry.list()) {
       deadline();
       let groups: Record<string, string | undefined> | null = null;
-      for (const p of spec.patterns ?? []) {
-        const m = p.exec(spec.matchOn === "raw" ? text.trim() : rest);
-        if (m) {
-          groups = { ...(m.groups ?? {}) };
-          break;
+      let count: number | null = null;
+      const tries = spec.slots.count && counted.count !== null && spec.matchOn !== "raw" ? [counted.rest, rest] : [spec.matchOn === "raw" ? text.trim() : rest];
+      for (const [i, on] of tries.entries()) {
+        for (const p of spec.patterns ?? []) {
+          const m = p.exec(on);
+          if (m) {
+            groups = { ...(m.groups ?? {}) };
+            if (tries.length === 2 && i === 0) count = counted.count;
+            break;
+          }
         }
+        if (groups) break;
       }
       // An exact example claims the request even when no pattern does.
       if (!groups && spec.examples.some((e) => normaliseUtterance(e) === n)) groups = {};
@@ -196,7 +241,8 @@ export function resolveCode(text: string, contextCourseId: string | undefined, d
       if (groups.topics) s.topics = groups.topics.split(/\s*(?:,|\band\b|&|\bplus\b)\s*/).map(clean).filter(Boolean).slice(0, 10);
       if (groups.assignment) s.assignment = clean(groups.assignment);
       if (groups.query) s.query = clean(groups.query);
-      if (groups.count) s.count = Math.min(30, Math.max(1, Number(groups.count)));
+      if (count !== null) s.count = count;
+      if (groups.count) s.count = clampCount(Number(groups.count));
       if (groups.kind) s.kind = /quiz|question/.test(groups.kind) ? "quiz" : "cards";
       if (spec.name === "ask") s.query = text.trim().slice(0, 500);
       const checked = resolveSlots(spec, s, deps.resolve, text.trim(), contextCourseId);

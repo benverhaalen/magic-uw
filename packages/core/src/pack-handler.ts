@@ -414,7 +414,7 @@ export function createPackHandler(deps: PackHandlerDeps) {
 
   async function execute<O>(
     pack: PackSpec<GenerationInput, O>,
-    toDrafts: (output: O) => Draft[],
+    toDrafts: (output: O, passages?: readonly Passage[]) => Draft[],
     name: GenerationPackName,
     scope: PackScope,
     s: Scoped,
@@ -446,7 +446,9 @@ export function createPackHandler(deps: PackHandlerDeps) {
     const frozen = new Map(passages.map((p) => [p.sourceId, {
       original: p.text, result: scrubber.text(p.text, s.courseId, passageClass(p.sourceId)),
     }]));
-    const draftsOf = (output: O) => toDrafts(output).slice(0, input.count).map((d) => {
+    // The passages as the model saw them: an abbreviated quote is restored against these.
+    const seen = [...frozen].map(([sourceId, f]) => ({ sourceId, text: f.result.text }));
+    const draftsOf = (output: O) => toDrafts(output, seen).slice(0, input.count).map((d) => {
       const p = frozen.get(d.sourceId);
       const start = p?.result.text.indexOf(d.quote) ?? -1;
       if (!p || !d.quote || start < 0 || p.result.text.indexOf(d.quote, start + 1) >= 0)
@@ -583,8 +585,8 @@ export function createPackHandler(deps: PackHandlerDeps) {
     guides, // owner: guides
     coursePrefix, // owner: course-facts: the same prefix for ask
     /** The CoreSeams.pack signature. */
-    pack: (packName: string, scope: PackScope, signal: AbortSignal) =>
-      (packName === "strategy" ? strategy(scope, signal) /* owner: mastery */ : null) ?? prepPack(packName, scope, signal) /* owner: study-prep */ ?? guides(packName, scope, signal) /* owner: guides */ ?? run(packName, scope, signal),
+    pack: (packName: string, scope: PackScope, signal: AbortSignal, options?: { count?: number }) =>
+      (packName === "strategy" ? strategy(scope, signal) /* owner: mastery */ : null) ?? prepPack(packName, scope, signal) /* owner: study-prep */ ?? guides(packName, scope, signal) /* owner: guides */ ?? run(packName, scope, signal, options?.count ? { count: options.count } : {}),
   };
 }
 
@@ -615,7 +617,9 @@ export function generationKinds(): PoolOptions["kinds"] {
 export function pooledClaudeBackend(options: { command: CliCommand; workDir: string; env?: Record<string, string>; extraArgs?: readonly string[] /* owner: client-health */ }): SessionPool {
   // One pool per process: a new one (a client or profile change) closes the previous sessions.
   void currentPool?.close();
-  currentPool = createSessionPool({ ...options, kinds: generationKinds(), fallback: createClaudeBackend(options) });
+  // Generation keeps its session's turns (the pool's behaviour before `turns: "fresh"` became the
+  // command bar's default); whether earlier generations should be re-sent is a separate decision.
+  currentPool = createSessionPool({ ...options, kinds: generationKinds(), fallback: createClaudeBackend(options), turns: "conversation" });
   return currentPool;
 }
 let currentPool: SessionPool | null = null;

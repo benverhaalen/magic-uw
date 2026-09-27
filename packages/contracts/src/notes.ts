@@ -169,6 +169,19 @@ export interface NotesSyncStatus {
   }[];
 }
 
+/** A cloud-sync folder found on disk (OneDrive, Google Drive, iCloud): zero setup, no sign-in. */
+export interface DetectedLocalFolder {
+  id: string;
+  label: string;
+  path: string;
+}
+export interface LocalFolderStatus {
+  /** The folder the student picked, or null when notes aren't saved to a local folder. */
+  folder: string | null;
+  folders: DetectedLocalFolder[];
+  lastError: string | null;
+}
+
 const notesOp = <T extends string, S extends z.ZodRawShape>(op: T, shape: S) =>
   z.object({ op: z.literal(op), ...shape }).strict();
 export const notesRequestSchema = z.discriminatedUnion("op", [
@@ -188,6 +201,10 @@ export const notesRequestSchema = z.discriminatedUnion("op", [
   notesOp("notes.sync.status", {}),
   /** The student asks for this note in Word or Google Docs: the only way a remote file is created. */
   notesOp("notes.sync.export", { noteId: id, provider: noteSyncProviderSchema }),
+  /** OneDrive, Google Drive or iCloud folders already syncing on this device: zero setup. */
+  notesOp("notes.localFolders.detect", {}),
+  notesOp("notes.localFolders.status", {}),
+  notesOp("notes.localFolders.choose", { folder: z.string().max(1000).nullable() }),
 ]);
 export type NotesRequest = z.infer<typeof notesRequestSchema>;
 
@@ -224,6 +241,8 @@ export type NotesResult =
   | { op: "notes.templates"; status: "ok"; templates: NoteTemplateInfo[] }
   | { op: "notes.sync.enable" | "notes.sync.disable" | "notes.sync.status"; status: "ok"; sync: NotesSyncStatus }
   | { op: "notes.sync.export"; status: "ok"; webUrl: string; note: NoteDetail }
+  | { op: "notes.localFolders.detect"; status: "ok"; folders: DetectedLocalFolder[] }
+  | { op: "notes.localFolders.status" | "notes.localFolders.choose"; status: "ok"; local: LocalFolderStatus }
   | {
       op: NotesRequest["op"];
       status: NotesFailure;

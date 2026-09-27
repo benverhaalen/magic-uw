@@ -1,0 +1,368 @@
+/* Chart tokens. Light values map onto the design tokens (docs/design/tokens.css); tokens.css has no
+   dark set yet, so the dark values live here, scoped to the charts, until the design integrator
+   adds them. Components use only these variables: no colour is written in a component. */
+:root {
+  --chart-ink: var(--magic-ink);
+  --chart-muted: var(--magic-ink-muted);
+  --chart-grid: var(--magic-line-quiet);
+  --chart-surface: var(--magic-surface-raised);
+  --chart-surface-quiet: var(--magic-surface-quiet);
+  --chart-line: var(--magic-ink-link);
+  --chart-band: var(--magic-fill-confirmation);
+  --chart-band-edge: var(--magic-line-action-candidate);
+  --chart-ref: var(--magic-line-tag-candidate);
+  --chart-on-time: var(--magic-ink-link);
+  --chart-late: var(--attention);
+  --chart-missing: var(--magic-accent-current-time);
+  --chart-upcoming: var(--magic-line-quiet);
+  --chart-solid: var(--magic-ink-study);
+  --chart-getting-there: var(--magic-fill-study);
+  --chart-iffy: var(--magic-fill-status-warning-candidate);
+  --chart-iffy-hatch: var(--magic-ink-status-warning-candidate);
+  --chart-not-seen: var(--magic-surface-quiet);
+  --chart-radius: var(--magic-radius-card);
+  --chart-ease: cubic-bezier(0.16, 1, 0.3, 1); /* easeOutExpo */
+  --chart-duration: 380ms;
+}
+:root[data-theme="dark"] {
+  --chart-ink: #efe9e2;
+  --chart-muted: #a39b92;
+  --chart-grid: #3a3531;
+  --chart-surface: #211e1b;
+  --chart-surface-quiet: #2a2622;
+  --chart-line: #8fb4e6;
+  --chart-band: #25324299;
+  --chart-band-edge: #5f7fa8;
+  --chart-ref: #4a433d;
+  --chart-on-time: #8fb4e6;
+  --chart-late: #d9a560;
+  --chart-missing: #e0806b;
+  --chart-upcoming: #4a433d;
+  --chart-solid: #e8c77c;
+  --chart-getting-there: linear-gradient(115deg, #8a7443, #a08a55);
+  --chart-iffy: #4a3a1c;
+  --chart-iffy-hatch: #d9a560;
+  --chart-not-seen: #2a2622;
+}
+
+.chart-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.chart-frame {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.chart-frame-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.chart-frame-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: var(--magic-font-interface-weight);
+  color: var(--chart-ink);
+}
+.chart-frame-body {
+  position: relative;
+  min-width: 0;
+}
+.chart-table-toggle {
+  align-self: flex-start;
+  border: 0;
+  background: none;
+  padding: 2px 0;
+  font-size: 12px;
+  color: var(--chart-muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.chart-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  color: var(--chart-ink);
+  font-variant-numeric: tabular-nums;
+}
+.chart-table th,
+.chart-table td {
+  text-align: left;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--chart-grid);
+  font-weight: 400;
+}
+.chart-table thead th {
+  color: var(--chart-muted);
+  font-weight: var(--magic-font-interface-weight);
+}
+
+.chart-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.chart-grid line {
+  stroke: var(--chart-grid);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+.chart-grid text,
+.chart-xtick {
+  fill: var(--chart-muted);
+}
+.chart-ref line {
+  stroke: var(--chart-ref);
+  stroke-dasharray: 2 4;
+}
+.chart-ref text {
+  fill: var(--chart-muted);
+  font-size: 10.5px;
+  font-weight: var(--magic-font-interface-weight);
+}
+.chart-line {
+  fill: none;
+  stroke: var(--chart-line);
+  stroke-width: 2.25;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  animation: chart-draw var(--chart-duration) var(--chart-ease) both;
+}
+.chart-band {
+  fill: var(--chart-band);
+  stroke: var(--chart-band-edge);
+  stroke-width: 1.25;
+  stroke-dasharray: 5 4;
+  animation: chart-fade var(--chart-duration) var(--chart-ease) 120ms both;
+}
+.chart-dot {
+  fill: var(--chart-surface);
+  stroke: var(--chart-line);
+  stroke-width: 2;
+  cursor: pointer;
+  outline: none;
+  transition: r 120ms var(--chart-ease);
+  animation: chart-fade 240ms var(--chart-ease) both;
+}
+.chart-dot:not(.chart-dot--hollow) {
+  fill: var(--chart-line);
+}
+.chart-dot.is-active,
+.chart-dot:focus-visible {
+  stroke: var(--chart-ink);
+}
+.chart-line-wrap {
+  position: relative;
+}
+.chart-tooltip {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 12px));
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 10px;
+  border-radius: var(--chart-radius);
+  background: var(--chart-ink);
+  color: var(--chart-surface);
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4px 14px #0000001f;
+  z-index: 2;
+}
+.chart-tooltip span {
+  opacity: 0.82;
+}
+
+.chart-col {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: chart-grow-y var(--chart-duration) var(--chart-ease) both;
+}
+.chart-fill--on_time {
+  fill: var(--chart-on-time);
+  background: var(--chart-on-time);
+}
+.chart-fill--late {
+  fill: var(--chart-late);
+  background: var(--chart-late);
+}
+.chart-fill--missing {
+  fill: var(--chart-missing);
+  background: var(--chart-missing);
+}
+.chart-fill--upcoming {
+  fill: var(--chart-upcoming);
+  background: var(--chart-upcoming);
+}
+.chart-fill--solid {
+  background: var(--chart-solid);
+}
+.chart-fill--getting_there {
+  background: var(--chart-getting-there);
+}
+.chart-fill--iffy {
+  background:
+    repeating-linear-gradient(135deg, transparent 0 3px, var(--chart-iffy-hatch) 3px 4px),
+    var(--chart-iffy);
+}
+.chart-fill--not_seen {
+  background: var(--chart-not-seen);
+  box-shadow: inset 0 0 0 1px var(--chart-grid);
+}
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--chart-muted);
+}
+.chart-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.chart-legend strong {
+  color: var(--chart-ink);
+  font-weight: var(--magic-font-interface-weight);
+  font-variant-numeric: tabular-nums;
+}
+.chart-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.chart-ring {
+  display: block;
+  width: 132px;
+  height: 132px;
+  flex: none;
+}
+.chart-ring-track {
+  fill: none;
+  stroke: var(--chart-surface-quiet);
+  stroke-width: 12;
+}
+.chart-ring-seg {
+  fill: none;
+  stroke-width: 12;
+  animation: chart-fade var(--chart-duration) var(--chart-ease) both;
+}
+.chart-stroke--on_time {
+  stroke: var(--chart-on-time);
+}
+.chart-stroke--late {
+  stroke: var(--chart-late);
+}
+.chart-stroke--missing {
+  stroke: var(--chart-missing);
+}
+.chart-stroke--upcoming {
+  stroke: var(--chart-upcoming);
+}
+.chart-ring-center {
+  fill: var(--chart-ink);
+  font-size: 20px;
+  font-weight: var(--magic-font-interface-weight);
+  font-variant-numeric: tabular-nums;
+}
+.chart-ring-caption {
+  fill: var(--chart-muted);
+  font-size: 9.5px;
+}
+
+.chart-progress {
+  position: relative;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--chart-surface-quiet);
+}
+.chart-progress-seg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  transform-origin: left;
+  animation: chart-grow-x var(--chart-duration) var(--chart-ease) both;
+}
+.chart-progress-seg + .chart-progress-seg {
+  border-left: 2px solid var(--chart-surface);
+}
+.chart-progress-seg--empty {
+  background: var(--chart-surface-quiet);
+}
+.chart-level {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3px;
+  width: 100%;
+}
+.chart-level-step {
+  height: 8px;
+  border-radius: 2px;
+  background: var(--chart-surface-quiet);
+  transform-origin: left;
+  animation: chart-grow-x var(--chart-duration) var(--chart-ease) both;
+}
+
+@keyframes chart-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes chart-grow-y {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+@keyframes chart-grow-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+@keyframes chart-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chart-line,
+  .chart-band,
+  .chart-dot,
+  .chart-col,
+  .chart-ring-seg,
+  .chart-progress-seg,
+  .chart-level-step {
+    animation: none;
+    transition: none;
+  }
+}

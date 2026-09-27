@@ -3,7 +3,8 @@
 // the session; each redirect is followed here, inside main, only to a host `canvasFileHost` allows
 // (see network.ts for the canvas-lms source lines), and every non-Canvas hop is fetched without
 // cookies. The worker never sees a redirect target, a verifier or a token.
-import { canvasFileHost, MaterialReadError, type CanvasFileHostClass } from "./network.ts";
+import { canvasFileHost, MaterialReadError, readBounded, type CanvasFileHostClass } from "./network.ts";
+import { classifyCanvasAuth } from "./canvas-http.ts";
 
 /** `/courses/:cid/files/:id/download` on the Canvas origin, with only `download_frd`. */
 export function canvasFileDownloadUrl(input: string, origin: string): string | undefined {
@@ -30,7 +31,8 @@ export function canvasFileDownloadPath(origin: string, courseId: string, fileId:
 }
 export interface CanvasFileFetchDeps {
   origin: string;
-  /** The app-owned Canvas session (cookies); used only for the Canvas origin. */
+  /** The app-owned Canvas session (cookies); used only for the Canvas origin. In the app this is
+   * `sessionHopFetch` over net.request, never `session.fetch` (session-fetch.ts). */
   session(url: string, init: RequestInit): Promise<Response>;
   /** A cookie-less fetch for the files domain, inst-fs and signed S3 hops. */
   plain(url: string, init: RequestInit): Promise<Response>;
@@ -97,6 +99,20 @@ export async function fetchCanvasFile(
       await response.body?.cancel().catch(() => {});
       throw new MaterialReadError("login_page", { status: 401 });
     }
+    // Canvas itself refusing the file: not available to this student, not a failure to retry;
+    // a 403 is read as the API's are (classifyCanvasAuth: a rate limit or a login page is not a
+    // refusal). A file host's 4xx stays http_error: an expired signed URL is signed again on the
+    // next check, which starts at Canvas.
+    if (hostClass === "canvas" && [403, 404, 410].includes(response.status)) {
+      const verdict =
+        response.status === 403
+          ? classifyCanvasAuth(403, await readBounded(response, 64 * 1024, deps.signal).catch(() => ""))
+          : "inaccessible";
+      if (response.status !== 403) await response.body?.cancel().catch(() => {});
+      if (verdict === "rate_limited") throw new MaterialReadError("http_error", { status: 429, host: new URL(url).hostname });
+      if (verdict === "suspect") throw new MaterialReadError("login_page"); // no status: needs_sign_in
+      throw new MaterialReadError("inaccessible", { status: response.status });
+    }
     if (!response.ok) {
       await response.body?.cancel().catch(() => {});
       throw new MaterialReadError("http_error", {
@@ -116,7 +132,49 @@ export function causeHeaders(error: unknown): Record<string, string> {
       ...(error.detail.host ? { "x-magic-cause-host": error.detail.host } : {}),
       ...(error.detail.status ? { "x-magic-cause-status": String(error.detail.status) } : {}),
     };
+  // main's time limit (AbortSignal.timeout) is its own cause, not a network error.
+  if (error instanceof Error && error.name === "TimeoutError") return { "x-magic-cause": "timeout" };
   return { "x-magic-cause": "network_error" };
+}
+/** A failure worth another try in the same check: the connection, main's time limit, or a file
+ * service that is briefly unavailable. A refusal, a missing file, a limit or sign-in is not. */
+export function transientFileError(error: unknown): boolean {
+  if (!(error instanceof MaterialReadError)) return false;
+  if (error.code === "network_error" || error.code === "timeout") return true;
+  return error.code === "http_error" && [408, 425, 429, 500, 502, 503, 504].includes(error.detail.status ?? 0);
+}
+/** The waits before the second and third tries of one file (ingestion's session download). */
+export const FILE_RETRY_DELAYS_MS = [1_000, 4_000];
+/** Runs one file read, again after each delay while the failure is transient; stops on abort. */
+export async function retryTransientFile<T>(
+  run: () => Promise<T>,
+  options: { signal?: AbortSignal; delaysMs?: readonly number[]; sleep?: (ms: number, signal?: AbortSignal) => Promise<void> } = {},
+): Promise<T> {
+  const delays = options.delaysMs ?? FILE_RETRY_DELAYS_MS,
+    sleep = options.sleep ?? abortableSleep;
+  for (let attempt = 0; ; attempt++) {
+    options.signal?.throwIfAborted();
+    try {
+      return await run();
+    } catch (error) {
+      if (options.signal?.aborted || attempt >= delays.length || !transientFileError(error)) throw error;
+      await sleep(delays[attempt]!, options.signal);
+    }
+  }
+}
+function abortableSleep(ms: number, signal?: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason);
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", stop);
+      resolve();
+    }, ms);
+    const stop = () => {
+      clearTimeout(timer);
+      reject(signal!.reason);
+    };
+    signal?.addEventListener("abort", stop, { once: true });
+  });
 }
 /** The worker's side: turns main's cause headers back into the error. */
 export function throwIfCause(response: Response) {
