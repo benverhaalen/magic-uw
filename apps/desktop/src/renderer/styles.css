@@ -156,7 +156,7 @@ a {
 .planning-audit { margin: 22px 0; }
 .planning-audit details { padding: 12px 0; border-bottom: 1px solid var(--border); }
 .planning-audit summary { display: flex; gap: 12px; align-items: baseline; cursor: pointer; }
-.planning-audit blockquote { margin: 12px 0; padding-left: 14px; border-left: 2px solid var(--border); color: var(--muted); }
+.planning-audit blockquote { margin: 12px 0; padding-left: 14px; color: var(--muted); }
 .nav-button:hover {
   background: #eeeee9;
 }
@@ -616,7 +616,6 @@ a {
 }
 .evidence-note {
   padding: 10px 12px;
-  border-left: 2px solid #c4a576;
   background: #faf6ed;
   font-size: 11px;
   line-height: 1.6;
@@ -1296,13 +1295,6 @@ select {
   border-radius: 7px;
   background: #fff;
   border: 1px solid #ecece6;
-  border-left: 3px solid #c9a24a;
-}
-.rail-next.exam {
-  border-left-color: #c2553f;
-}
-.rail-next.prep {
-  border-left-color: #6b86cf;
 }
 .rail-next-title {
   padding: 0;
@@ -1380,7 +1372,6 @@ select {
   line-height: 1.35;
   overflow: hidden;
   border: 0;
-  border-left: 3px solid;
   text-align: left;
   color: inherit;
 }
@@ -1406,7 +1397,6 @@ select {
 .rail-block.suggestion {
   background: transparent;
   border: 1px dashed #d6c9a6;
-  border-left: 3px solid #c9a24a;
   color: #6b604a;
   cursor: pointer;
 }
@@ -1415,11 +1405,9 @@ select {
 }
 .rail-block.suggestion.exam {
   border-color: #e2bdb4;
-  border-left-color: #c2553f;
 }
 .rail-block.suggestion.prep {
   border-color: #c6d2ee;
-  border-left-color: #6b86cf;
 }
 .rail-block.suggestion.focused {
   background: #fff;

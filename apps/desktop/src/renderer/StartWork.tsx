@@ -1,13 +1,17 @@
-import { useEffect, useId, useRef, useState } from "react";
-import type { ResourceView, WorkLaunchReceipt, WorkSet } from "@magic/contracts";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import type { ResourceView, WorkLaunchReceipt, WorkSet, Snapshot } from "@magic/contracts";
 import { Action, Disclosure } from "../../../../packages/ui/src";
 import "./StartWork.css";
 
+export function preparedWorkRevision(snapshot: Snapshot) {
+  return JSON.stringify([snapshot.sources.map(source => [source.id, source.lastAttemptAt, source.status]), snapshot.links, snapshot.privacy, snapshot.consents]);
+}
+type Props = { resource: ResourceView; refreshKey: string; compact?: { className: string; summary: ReactNode } };
 /** Keep each assignment's pending work and receipt scoped to that assignment. */
-export function StartWork(props: { resource: ResourceView; refreshKey: string }) {
+export function StartWork(props: Props) {
   return <PreparedWork key={props.resource.id} {...props} />;
 }
-function PreparedWork({ resource, refreshKey }: { resource: ResourceView; refreshKey: string }) {
+function PreparedWork({ resource, refreshKey, compact }: Props) {
   const heading = useId();
   const [set, setSet] = useState<WorkSet | null>(null);
   const [error, setError] = useState("");
@@ -25,7 +29,7 @@ function PreparedWork({ resource, refreshKey }: { resource: ResourceView; refres
       const next = result.workSet ?? null;
       if (previewHash.current !== next?.previewHash) setReceipt(null);
       previewHash.current = next?.previewHash ?? null;
-      setSet(next);
+      setSet(next); setError("");
     }).catch(cause => {
       if (!current) return;
       setSet(null); setReceipt(null); previewHash.current = null;
@@ -50,9 +54,11 @@ function PreparedWork({ resource, refreshKey }: { resource: ResourceView; refres
       if (mounted.current) setError(cause instanceof Error ? cause.message : "Could not open this work. Try again.");
     } finally { busy.current = false; if (mounted.current) setPending(false); }
   };
-  return <section className="magic-start-work" aria-labelledby={heading}>
-    <h3 id={heading}>Start work</h3>
-    {set ? <>
+  return <section className={compact ? 'magic-start-work magic-start-work--compact' : 'magic-start-work'} aria-label={compact ? `Prepared work: ${resource.title}` : undefined} aria-labelledby={compact ? undefined : heading} data-place-anchor={compact ? `work-${resource.id}` : undefined}>
+    {!compact && <h3 id={heading}>Start work</h3>}
+    {compact ? <button className={`home-work-row ${compact.className}`} data-focus-key={`work-${resource.id}`} aria-label={`Start work on ${resource.title}`} aria-busy={pending || undefined} aria-disabled={pending || undefined} disabled={!set || !window.magic.startWork} onClick={() => void launch()}>
+      <span className="home-work-main">{compact.summary}<span className="home-work-destinations">{set ? <>Open {set.items.map(item => `${item.title} (${item.target.kind === 'file' ? 'saved document' : 'browser'})`).join(' + ')}</> : error ? 'Destinations unavailable' : 'Preparing destinations…'}</span><span className="home-work-launch">{pending ? 'Opening…' : 'Start work →'}</span></span>
+    </button> : set ? <>
       <ol className="magic-start-work__destinations" aria-label="Destinations prepared to open">
         {set.items.map(item => <li key={item.resourceId}><span>{item.title}</span><small>
           {item.role === "instructions" ? "Assignment page · opens in front" : item.target.kind === "file" ? "Saved document in its usual app" : "Course page in your browser"}

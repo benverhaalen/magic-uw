@@ -4,7 +4,7 @@ September 26, 2026. Owner: desktop frontend integration lane. Selective port of 
 
 ## Entry and contract
 
-Home Upcoming opens the named assignment detail. Mount `StartWork` from `apps/desktop/src/renderer/StartWork.tsx` below its instructions with `{resource, refreshKey}`. The component fetches the prepared set, shows the actual destinations and their evidence basis, then offers one launch. A compact Home launch affordance may navigate to that same detail section; avoid embedding the whole preview into every card.
+Home Upcoming precomputes the current WorkSet and shows its exact destination labels before activation. Its compact whole-row **Start work** button launches that displayed set directly with its previewHash; no mandatory detail/chooser step. Receipts and retry controls are separate siblings. Named briefing object links still open detail for inspection, where the full StartWork component is an alternate entry below instructions. Both variants share the same preparation/launch engine.
 
 - `execute({type: "work-set", id})` returns `workSet` with `previewHash`.
 - `startWork(id, previewHash, onlyFailedIds?)` returns a per-target receipt. The hash is mandatory; the earlier two-argument retry API is superseded.

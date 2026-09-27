@@ -19,6 +19,8 @@ import { Onboarding, needsFirstRunSetup } from "./onboarding";
 import { TodayRail } from "./TodayRail";
 import { DesktopShell, Glyph } from "./DesktopShell";
 import { Home, ObjectLink } from "./Home";
+import { SnapshotGate } from "./snapshot-gate";
+import { StartWork, preparedWorkRevision } from "./StartWork";
 import { PersonalReport } from "./PersonalReport";
 import { Action, Disclosure } from "../../../../packages/ui/src";
 import { useDesktopNavigation, type DesktopView } from "./navigation";
@@ -157,7 +159,7 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
 
-  const requestVersion = useRef(0);
+  const snapshotGate = useRef(new SnapshotGate());
   const busyRef = useRef(false);
   const mounted = useRef(true);
 
@@ -168,22 +170,26 @@ export function App() {
   }, [navigation]);
 
   const refresh = useCallback(async () => {
-    const version = ++requestVersion.current;
+    const version = snapshotGate.current.beginRead();
+    if (version === null) return;
     try {
       if (!window.magic)
         throw new Error(
-          "The desktop connection is unavailable. Open Magic Canvas from the desktop app.",
+          "The desktop connection is unavailable. Open My Magic UW from the desktop app.",
         );
       const result = await window.magic.execute({ type: "snapshot" });
-      if (mounted.current && version === requestVersion.current)
+      if (mounted.current && snapshotGate.current.accepts(version))
         setSnapshot(result.snapshot);
     } catch (cause) {
-      if (mounted.current && version === requestVersion.current)
+      if (mounted.current && snapshotGate.current.accepts(version))
         setError(
           cause instanceof Error
             ? cause.message
             : "Could not read local data. Try again.",
         );
+    } finally {
+      snapshotGate.current.endRead();
+      if (mounted.current && snapshotGate.current.takeQueued()) void refresh();
     }
   }, []);
 
@@ -195,7 +201,7 @@ export function App() {
     }, 2000);
     return () => {
       mounted.current = false;
-      requestVersion.current++;
+      snapshotGate.current.invalidate();
       window.clearInterval(timer);
     };
   }, [refresh]);
@@ -210,12 +216,13 @@ export function App() {
       setBusy(true);
       setError("");
       setNotice("");
-      requestVersion.current++;
+      snapshotGate.current.beginMutation();
+      let suppliedSnapshot = false;
       try {
         const result = await operation();
         if (!mounted.current) return;
         if (result) {
-          requestVersion.current++;
+          suppliedSnapshot = true;
           setSnapshot(result.snapshot);
         }
         if (result?.message || message)
@@ -231,10 +238,14 @@ export function App() {
         return undefined;
       } finally {
         busyRef.current = false;
-        if (mounted.current) setBusy(false);
+        snapshotGate.current.endMutation(!suppliedSnapshot);
+        if (mounted.current) {
+          setBusy(false);
+          if (snapshotGate.current.takeQueued()) void refresh();
+        }
       }
     },
-    [],
+    [refresh],
   );
 
   const run: Run = useCallback(
@@ -796,6 +807,7 @@ function ResourceDetail({
           <p className="muted">No instructions were found in this capture.</p>
         )}
       </section>
+      {resource.kind === "assignment" && <StartWork resource={resource} refreshKey={preparedWorkRevision(snapshot)}/> }
       {links.length ? (
         <section className="detail-section">
           <h3>Related material</h3>
@@ -1116,7 +1128,7 @@ function Sources({
             <p>
               Sign in in the app’s browser. The session stays on this device.
               Reading content may mark it viewed or satisfy a “must view”
-              requirement in Canvas. Magic Canvas does not submit work, post,
+              requirement in Canvas. My Magic UW does not submit work, post,
               enroll, or send explicit completion commands.
             </p>
           </div>
@@ -1560,7 +1572,7 @@ function KeepSignedInToggle({ busy }: { busy: boolean }) {
   return (
     <SettingToggle
       label="Keep me signed in"
-      description="Closing the window keeps Magic Canvas running, and it starts with your computer, so your UW session stays open. Quit or Sign out ends the session."
+      description="Closing the window keeps My Magic UW running, and it starts with your computer, so your UW session stays open. Quit or Sign out ends the session."
       checked={value}
       disabled={busy || saving}
       onChange={(next) => {

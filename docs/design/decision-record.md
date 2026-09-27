@@ -128,3 +128,22 @@ Ben, current conversation; exact message timestamps not recovered:
 > “opus ones”
 
 **Application:** original-source review and scoped live testing are separate evidence. Deep Emil craft and applicable public-post mechanisms receive explicit coverage; current requests specify actual Opus5.5 workers. Keep review packets bounded by a coherent uncertainty, use independent browser sessions, verify execution identity and inspect useful output. Do not equate every source with a mandatory worker or new universal design rule. Preserve Home's accepted language and record source/date/limits; raw X research stays private. See the [direct-source audit](audit-v3-direct-sources.md).
+
+
+### Current desktop corrections — recorded September 27, 2026 (original message timestamps unknown)
+
+Ben, active build conversation, relayed verbatim by the driver:
+
+> “Use My Magic UW”
+
+The visible product name is **My Magic UW**, preserving Cooper and no logo. Internal application identity and user-data paths remain stable.
+
+> “you know when a component has like a vertical line on the left side. never do that. also use more color like the original picture”
+
+Remove decorative left-edge accent stripes from notices, quoted blocks and schedule items. Semantic full outlines and calendar/layout grid dividers remain distinct. Restore the near-approved Home's varied filled actions and warm gradient through meaningful course/task selection; do not fake course variety or color arbitrary positional rows. This checkpoint removes stripes; broader compactness/color calibration remains pending actual-data selection work.
+
+Ben's audit direction, same active build conversation:
+
+> “also when auditing have it try to find ways to fix data ingestion using llms or even just really good regex to make the information less messy. im mainly looking at course titles. also just keeping information as simple and as magic as the ui ref does and the planning skill says”
+
+Audit the full source → data → UI path. Investigate structured metadata, targeted parsing or bounded model assistance where it improves course labels; preserve raw titles and stable account/course identity. Select a useful compact label instead of treating CSS ellipsis as normalization. The next Home/course integration leaf owns this investigation; this renderer checkpoint does not claim it implemented.

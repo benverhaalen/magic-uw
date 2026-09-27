@@ -208,3 +208,10 @@ Ben’s later assessment — “the thing we made earlier is like 95% of what id
 Newest navigation instruction: “on the side with the Home and Courses, My UW, and Calendar should be things too.” This supersedes the previous omission of a separate Calendar destination. Sean’s unmerged code supplies a Today rail; a full Calendar page has not been built. Ben subsequently accepted week/month views with suggestions on request; detailed interactions still require design. Follow the platform review for reusable code and material gaps.
 
 Generation and independent judging may proceed autonomously within accepted intent. Human checkpoints occur for a meaningful new surface/visual family, a first complete coded journey, or a material departure/conflicting opinion. Continue unaffected work while awaiting input. A generated image is not a runtime test; reviewers must receive controlling original excerpts and inspect the actual output. See the [decision record](design/decision-record.md) and [iteration process](../.agents/skills/magic-design/references/iteration-and-review.md).
+
+
+## Active build correction — recorded September 27, 2026 (original message timestamps unknown)
+
+Ben: “Use My Magic UW”. Visible identity adopts this name, preserving Cooper/no logo and stable internal app/user-data identity.
+
+Ben: “you know when a component has like a vertical line on the left side. never do that. also use more color like the original picture”. Remove decorative left-edge accents. Color belongs in the original Home's filled actions, course surfaces and shell gradient; semantic full outlines and calendar grid lines remain useful. Actual-data Upcoming must be compact and meaningfully varied so Study stays visible; do not invent courses or recolor rows by position. See the [decision record](design/decision-record.md).

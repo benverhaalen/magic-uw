@@ -2,6 +2,9 @@ import type { ReactNode } from 'react';
 import type { Command, ResourceView, Snapshot } from '@magic/contracts';
 import { projectWork } from '@magic/domain';
 import { Action, EvidenceLink } from '../../../../packages/ui/src';
+import { deadlineReportEvidence } from './PersonalReport';
+import { personalReportIssue, personalReportState, personalReportVersion } from '@magic/contracts';
+import { StartWork, preparedWorkRevision } from './StartWork';
 import { TodayRail } from './TodayRail';
 import { Glyph } from './DesktopShell';
 import { resourceHref } from './navigation';
@@ -17,9 +20,12 @@ export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPl
   snapshot: Snapshot; resources: ResourceView[]; onSelect: (id: string) => void; onCourses: () => void; onSources: () => void;
   onPlan: (command: Command) => Promise<unknown>; report?: (resource: ResourceView) => ReactNode;
 }) {
+  const refreshKey = preparedWorkRevision(snapshot);
   const work = projectWork(resources, new Date().toISOString(), Intl.DateTimeFormat().resolvedOptions().timeZone);
   const upcoming = [...work.overdue, ...work.upcoming].slice(0, 4);
   const conflict = resources.find(r => r.deadline.conflict && !r.completed && !r.submitted);
+  const conflictEvidence = conflict && deadlineReportEvidence(conflict, snapshot);
+  const conflictHandled = conflictEvidence && personalReportState(snapshot.personalReports, personalReportIssue('deadline-review', conflictEvidence.map(item => item.resourceId)), personalReportVersion(conflictEvidence)).record;
   const next = [...work.dueToday, ...work.upcoming, ...work.overdue].find(r => r.id !== conflict?.id);
   const nextResource = resources.find(r => r.id === next?.id);
   const update = resources.filter(r => r.text && r.id !== next?.id && r.id !== conflict?.id && r.kind === 'message').sort((a,b) => b.observedAt.localeCompare(a.observedAt))[0];
@@ -32,7 +38,7 @@ export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPl
   return <div className="home-layout"><div className="home-reading">
     <section className="home-briefing" aria-labelledby="briefing-title" data-place-anchor="briefing"><h1 id="briefing-title" tabIndex={-1}>Briefing</h1>
       {nextResource && <div className="briefing-passage"><p><ObjectLink resource={nextResource}/> is {next?.dueAt && Date.parse(next.dueAt) < Date.now() ? 'past its saved deadline' : 'coming up'} in {nextResource.courseName}{nextResource.deadline.planningAt ? <> — <strong>{dueLabel(nextResource.deadline.planningAt)}</strong></> : null}. {nextResource.text ? excerpt(nextResource.text) : 'Open the saved requirements and check the original source before beginning.'}</p><div className="briefing-action"><Action data-focus-key={`review-${nextResource.id}`} onClick={() => onSelect(nextResource.id)}>Review requirements <Glyph name="forward"/></Action></div></div>}
-      {conflict && <div className="briefing-passage"><p>The saved dates for <ObjectLink resource={conflict}/> disagree. {conflict.deadline.planningAt && <>Plan for <strong>{dueLabel(conflict.deadline.planningAt)}</strong> until you confirm the date. </>}Review the source evidence before deciding which deadline applies.</p><div className="briefing-action briefing-review"><Action data-focus-key={`review-${conflict.id}`} onClick={() => onSelect(conflict.id)}>Review dates <Glyph name="forward"/></Action>{report?.(conflict)}</div></div>}
+      {conflict && <div className="briefing-passage"><p>{conflictHandled ? <>You reported handling the date disagreement for <ObjectLink resource={conflict}/>. Your report is saved for these sources; their dates remain available to inspect.</> : <>The saved dates for <ObjectLink resource={conflict}/> disagree. {conflict.deadline.planningAt && <>Plan for <strong>{dueLabel(conflict.deadline.planningAt)}</strong> until you confirm the date. </>}Review the source evidence before deciding which deadline applies.</>}</p><div className="briefing-action briefing-review"><Action data-focus-key={`review-${conflict.id}`} onClick={() => onSelect(conflict.id)}>Review dates <Glyph name="forward"/></Action>{report?.(conflict)}</div></div>}
       {update && <div className="briefing-passage"><p>In <ObjectLink resource={update}/>, {update.courseName} shares an update: {excerpt(update.text)}</p></div>}
       {!nextResource && !conflict && !update && <p>There isn’t enough saved context for a useful briefing yet. Your coursework is available in Courses; refresh your sources to bring in requirements and materials.</p>}
       <div className="home-provenance"><span>From saved course sources{incomplete ? ' · some coverage is incomplete' : ''}.</span><button onClick={onSources}>Inspect sources <Glyph name="chevron"/></button></div>
@@ -40,9 +46,7 @@ export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPl
     <section className="home-upcoming" aria-labelledby="upcoming-title" data-place-anchor="upcoming"><div className="home-section-heading"><h2 id="upcoming-title">Upcoming</h2><button onClick={onCourses}>View all</button></div>
       <div className="home-work-list">{upcoming.map(item => {
         const resource = resources.find(r => r.id === item.id)!;
-        return <a className={`home-work-row tone-${courseTone(`${resource.sourceId}:${resource.courseId}`)}`} key={item.id} href={resourceHref(item.id)} data-place-anchor={`work-${item.id}`}>
-          <div><div className="home-work-meta">{item.courseName}{item.points !== null && <span>{item.points} pts</span>}</div><h3>{item.title}</h3></div><div className="home-work-due"><strong>{Date.parse(item.dueAt) < Date.now() ? 'Past due · ' : ''}{new Intl.DateTimeFormat(undefined,{weekday:'short',month:'short',day:'numeric'}).format(new Date(item.dueAt))}</strong><span>{new Intl.DateTimeFormat(undefined,{hour:'numeric',minute:'2-digit'}).format(new Date(item.dueAt))}{item.conflict ? ' · dates disagree' : ''}</span></div><Glyph name="chevron"/>
-        </a>;
+        return <StartWork key={item.id} resource={resource} refreshKey={refreshKey} compact={{className: `tone-${courseTone(`${resource.sourceId}:${resource.courseId}`)}`, summary: <span className="home-work-summary"><span><span className="home-work-meta">{item.courseName}{item.points !== null && <span>{item.points} pts</span>}</span><span className="home-work-name">{item.title}</span></span><span className="home-work-due"><strong>{Date.parse(item.dueAt) < Date.now() ? 'Past due · ' : ''}{new Intl.DateTimeFormat(undefined,{weekday:'short',month:'short',day:'numeric'}).format(new Date(item.dueAt))}</strong><span>{new Intl.DateTimeFormat(undefined,{hour:'numeric',minute:'2-digit'}).format(new Date(item.dueAt))}{item.conflict ? ' · dates disagree' : ''}</span></span></span>}}/>;
       })}</div>
       {!upcoming.length && <p className="home-empty">No upcoming dated work in the saved capture. {work.dueToday.length ? 'Today’s deadlines are in the Today panel.' : 'Undated assignments and other materials are in Courses.'} {incomplete ? 'Some sources still need checking.' : ''}</p>}
     </section>

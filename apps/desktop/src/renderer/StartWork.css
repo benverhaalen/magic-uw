@@ -1,4 +1,3 @@
-@import '../../../../packages/ui/src/styles.css';
 .magic-start-work { color:var(--magic-ink); font-family:var(--magic-font-interface); margin-block:1.25rem; }
 .magic-start-work h3 { font:400 1.2rem/1.35 var(--magic-font-editorial); margin:0 0 .75rem; }
 .magic-start-work__destinations { list-style:none; padding:0; display:grid; gap:.6rem; margin:0 0 1rem; }
@@ -7,3 +6,14 @@
 .magic-start-work__note { margin:.6rem 0; }
 .magic-start-work__receipt { padding-inline-start:1.25rem; font-size:.9rem; line-height:1.5; }
 .magic-start-work p,.magic-start-work li { overflow-wrap:anywhere; }
+
+.magic-start-work--compact { margin:0; }
+.magic-start-work--compact .home-work-row { width:100%; text-align:left; border:0; cursor:pointer; color:inherit; }
+.magic-start-work--compact .home-work-row:disabled { cursor:default; }
+.home-work-main { display:block; width:100%; }
+.home-work-summary { display:flex; align-items:center; justify-content:space-between; gap:14px; }
+.home-work-name { display:block; font:400 var(--magic-type-work-title)/1.25 var(--magic-font-editorial); }
+.home-work-destinations { display:block; margin-top:6px; font-size:11px; line-height:1.5; overflow-wrap:anywhere; }
+.home-work-launch { display:block; margin-top:5px; font-size:12px; font-weight:550; }
+.magic-start-work--compact [role=status]:empty { display:none; }
+.magic-start-work--compact [role=status] { font-size:13px; }
