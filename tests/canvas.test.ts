@@ -181,40 +181,48 @@ test("Canvas preserves a successful page when pagination drifts across origins o
   }
 });
 
+const signedOut = () =>
+  new Response(
+    JSON.stringify({ status: "unauthenticated", errors: [{ message: "user authorization required" }] }),
+    { status: 401, headers: { "content-type": "application/json" } },
+  );
 test("Canvas rejects login redirects, HTML login pages and authorization failures without following them", async () => {
-  for (const response of [
-    new Response(null, {
-      status: 302,
-      headers: { location: "https://login.wisc.edu/" },
-    }),
-    new Response("<html>NetID</html>", {
-      headers: { "content-type": "text/html" },
-    }),
-    new Response(null, { status: 401 }),
-    new Response(null, { status: 403 }),
-  ]) {
+  for (const [reply, status] of [
+    [() => new Response(null, { status: 302, headers: { location: "https://login.wisc.edu/" } }), "needs_sign_in"],
+    [() => new Response('<html><title>NetID Login</title><input type="password"></html>', { headers: { "content-type": "text/html" } }), "needs_sign_in"],
+    [() => new Response(null, { status: 401 }), "partial"],
+    [signedOut, "needs_sign_in"],
+    [() => new Response(null, { status: 403 }), "inaccessible"],
+  ] as const) {
     let calls = 0;
     const batches = await pull(async () => {
       calls++;
-      return response;
+      return reply();
     });
+    // The first read is the profile, so it is its own confirmation: one call, nothing followed.
     assert.equal(calls, 1);
     assert.equal(batches.length, 1);
-    assert.equal(batches[0]!.status, "needs_sign_in");
+    assert.equal(batches[0]!.status, status);
     assert.equal(batches[0]!.complete, false);
     assert.deepEqual(batches[0]!.resources, []);
   }
 });
 
 test("Canvas marks an expired session mid-course and retains its validated earlier page", async () => {
-  const mock = transport((url) =>
-    url.searchParams.has("page")
-      ? new Response(null, { status: 401 })
-      : json([assignment()], {
-          link: `<${origin}/api/v1/courses/42/assignments?page=2>; rel="next"`,
-        }),
+  let expired = false;
+  const mock = transport((url) => {
+    if (!url.searchParams.has("page"))
+      return json([assignment()], {
+        link: `<${origin}/api/v1/courses/42/assignments?page=2>; rel="next"`,
+      });
+    expired = true;
+    return signedOut();
+  });
+  const batches = await pull(async (input, init) =>
+    expired && new URL(input).pathname === "/api/v1/users/self/profile"
+      ? signedOut()
+      : mock.fetch(input, init),
   );
-  const batches = await pull(mock.fetch);
   const batch = assignments(batches);
   assert.equal(batch.complete, false);
   assert.equal(batch.status, "needs_sign_in");

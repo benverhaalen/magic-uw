@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
-import { createStore } from "@magic/storage";
+import { createStore, SCHEMA_VERSION } from "@magic/storage";
 import {
   captureBatchSchema,
   resourceInputSchema,
@@ -253,7 +253,7 @@ test("field observations distinguish never seen, omitted and explicit null witho
               "SELECT COUNT(*) AS count FROM field_observations WHERE resource_id=? AND field='submission.score'",
             )
             .get(id)!.count,
-        ) >= 4,
+        ) === 1, // D4 (schema v6): the latest observation per field is kept, not every sync
       );
     } finally {
       db.close();
@@ -491,7 +491,9 @@ test("v2 migration preserves history and missing provenance; settings, grants an
     store.close();
     const legacy = new DatabaseSync(path);
     legacy.exec(
-      "DROP TABLE course_intelligence; DROP TABLE planning_versions; DROP TABLE planning_records; DROP TABLE planning_captures; DROP TABLE planning_sources; DROP TABLE field_observations; DROP TABLE resource_changes; DROP TABLE scope_baselines; DROP TABLE course_overrides; DROP TABLE sync_runs; DROP TABLE mcp_grants; ALTER TABLE sources DROP COLUMN details; PRAGMA user_version=2;",
+      // Schema v6 objects first, so the file matches what a v2 database held.
+      "DROP TABLE passage_vocab; DROP TABLE passage_fts; DROP TABLE passages; DROP TABLE counters; DROP TABLE assessment_scope; DROP TABLE assessments; DROP TABLE course_sessions; DROP TABLE map_links; DROP TABLE course_spaces; DROP TABLE extraction_recipes; DROP TABLE course_briefs; DROP TABLE material_facts; DROP TABLE life_items; DROP TABLE compile_runs; DROP TABLE ledger; DROP TABLE ui_events; DROP INDEX judgments_resource; DROP INDEX links_from; DROP INDEX links_to; DROP INDEX sources_course; ALTER TABLE resources DROP COLUMN text_hash; ALTER TABLE resource_versions DROP COLUMN text_hash; CREATE VIRTUAL TABLE resource_search USING fts5(resource_id UNINDEXED, title, course_name, body); " +
+        "DROP TABLE course_intelligence; DROP TABLE planning_versions; DROP TABLE planning_records; DROP TABLE planning_captures; DROP TABLE planning_sources; DROP TABLE field_observations; DROP TABLE resource_changes; DROP TABLE scope_baselines; DROP TABLE course_overrides; DROP TABLE sync_runs; DROP TABLE mcp_grants; ALTER TABLE sources DROP COLUMN details; PRAGMA user_version=2;",
     );
     legacy.close();
     store = createStore(path);
@@ -561,7 +563,7 @@ test("v2 migration preserves history and missing provenance; settings, grants an
     assert.deepEqual(store.privacy(), defaultPrivacy);
     const db = new DatabaseSync(path, { readOnly: true });
     try {
-      assert.equal(db.prepare("PRAGMA user_version").get()!.user_version, 5);
+      assert.equal(db.prepare("PRAGMA user_version").get()!.user_version, SCHEMA_VERSION);
       for (const table of [
         "course_intelligence",
         "field_observations",

@@ -1,0 +1,78 @@
+{
+  "synthetic": true,
+  "course": "SYN101",
+  "answerable": [
+    {
+      "id": "q01",
+      "question": "What does Big-O notation describe?",
+      "gold": [{ "resource": "syn101-lecture-1", "quote": "Big-O notation gives an upper bound on the growth of a function." }],
+      "answer": "An upper bound on the growth of a function."
+    },
+    {
+      "id": "q02",
+      "question": "When does Big-Theta hold?",
+      "gold": [{ "resource": "syn101-lecture-1", "quote": "Big-Theta holds when both the upper and the lower bound hold." }],
+      "answer": "When both the upper and the lower bound hold."
+    },
+    {
+      "id": "q03",
+      "question": "How long do two nested loops that each run n times take?",
+      "gold": [{ "resource": "syn101-lecture-1", "quote": "Two nested loops that each run n times take Theta(n^2) time." }],
+      "answer": "Theta(n^2) time."
+    },
+    {
+      "id": "q04",
+      "question": "What recurrence does merge sort satisfy?",
+      "gold": [{ "resource": "syn101-lecture-2", "quote": "Its running time satisfies T(n) = 2T(n/2) + n." }],
+      "answer": "T(n) = 2T(n/2) + n."
+    },
+    {
+      "id": "q05",
+      "question": "Why does merge sort run in n log n time?",
+      "gold": [{ "resource": "syn101-lecture-2", "quote": "The recursion tree has log n levels and each level does n work" }],
+      "answer": "The recursion tree has log n levels, each doing n work."
+    },
+    {
+      "id": "q06",
+      "question": "What is the running time of binary search?",
+      "gold": [{ "resource": "syn101-lecture-2", "quote": "Its recurrence is T(n) = T(n/2) + 1, which solves to Theta(log n)." }],
+      "answer": "Theta(log n)."
+    },
+    {
+      "id": "q07",
+      "question": "What is a collision in a hash table?",
+      "gold": [{ "resource": "syn101-lecture-3", "quote": "When two keys map to the same bucket, the table has a collision." }],
+      "answer": "Two keys mapping to the same bucket."
+    },
+    {
+      "id": "q08",
+      "question": "How is the load factor defined?",
+      "gold": [{ "resource": "syn101-lecture-3", "quote": "The load factor alpha is the number of stored keys divided by the number of buckets." }],
+      "answer": "Stored keys divided by buckets."
+    },
+    {
+      "id": "q09",
+      "question": "What problem does linear probing suffer from?",
+      "gold": [{ "resource": "syn101-lecture-3", "quote": "Linear probing checks the next slot in order and suffers from primary clustering." }],
+      "answer": "Primary clustering."
+    },
+    {
+      "id": "q10",
+      "question": "Which modules does Exam 1 cover?",
+      "gold": [{ "resource": "syn101-syllabus", "quote": "Exam 1 covers Module 1 and Module 2." }],
+      "answer": "Module 1 and Module 2."
+    },
+    {
+      "id": "q11",
+      "question": "How does chaining handle collisions?",
+      "gold": [{ "resource": "syn101-lecture-3", "quote": "Chaining stores colliding keys in a linked list at each bucket." }],
+      "answer": "It stores colliding keys in a linked list at each bucket."
+    }
+  ],
+  "unanswerable": [
+    { "id": "u01", "question": "What textbook is required for the course?" },
+    { "id": "u02", "question": "Where are office hours held?" },
+    { "id": "u03", "question": "How many late days does each student get?" },
+    { "id": "u04", "question": "How does quicksort choose its pivot?" }
+  ]
+}

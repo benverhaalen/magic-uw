@@ -78,6 +78,8 @@ export interface CanvasConnectorOptions
   }) => void | Promise<void>;
   /** Earliest announcement window; defaults to all available historical announcements. */
   announcementsStartDate?: string;
+  /** owner: T33. A warm read: only these courses get per-course reads (D37); the account reads still run. */
+  onlyCourses?: string[];
 }
 function failure(error: unknown, hasRecords = false): CaptureBatch["status"] {
   if (error instanceof CanvasFailure) return error.status;
@@ -800,7 +802,9 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
           return;
         }
         const courses = catalog.items.filter(
-            (course) => courseSelection(course, selection()).included,
+            (course) =>
+              courseSelection(course, selection()).included &&
+              (!options.onlyCourses || options.onlyCourses.includes(course.id)), // owner: T33
           ),
           byId = new Map(courses.map((c) => [c.id, c]));
         await pool(accountReads, http.concurrency, async ({ job, promise }) => {

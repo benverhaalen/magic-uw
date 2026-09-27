@@ -47,6 +47,8 @@ We are entering Applied AI & Automation, DoIT's Badgers Building for Badgers, an
 | [Engineering principles](engineering-principles.md)   | How we choose tools, judge evidence, test alternatives, and preserve privacy                             |
 | [Tool evaluation](tool-evaluation.md)                 | Current candidates, licenses, benchmark provenance, and adoption tests                                   |
 | [Research status](research.md)                        | Checked references and unresolved evidence                                                               |
+| [Plans](plans/README.md)                               | **Start here to pick up the work:** notebook and study-tracking spec, backend optimization, measurement, complete-app plan |
+| [Research notes](notes/README.md)                     | Research and decisions: where we differ from the current plan, competitive comparison, benchmarking, local DB, Jev, practice, integrity and more |
 
 ## Status matters
 
