@@ -320,8 +320,10 @@ test("rate-limit 403 retries four times, records budgets, and never masquerades 
   });
   await assert.rejects(
     auth.request("https://canvas.synthetic.test/api/v1/courses"),
+    (error) =>
+      error instanceof Error && "status" in error && error.status === "inaccessible",
   );
-  assert.equal(auth.needsSignIn, true);
+  assert.equal(auth.needsSignIn, false);
 });
 
 test("expiry halts further Canvas requests, preserves earlier pages, and cannot remove stored items", async () => {
@@ -361,9 +363,10 @@ test("expiry halts further Canvas requests, preserves earlier pages, and cannot 
       205,
     );
     assert.match(
-      expired.calls.at(-1)!.url,
+      expired.calls.at(-2)!.url,
       /courses\/105\/assignments.*page=2/,
     );
+    assert.match(expired.calls.at(-1)!.url, /\/api\/v1\/users\/self\/profile$/);
     assert.equal(batches.at(-1)!.status, "needs_sign_in");
   } finally {
     store.close();

@@ -1,0 +1,67 @@
+{
+  "synthetic": true,
+  "course": "SYN101",
+  "note": "Seeded items for the checked-item pipeline (spec §6.3). `flaw` is the planted defect; `expectedStage` is the first stage that should drop it (7 needs Jev or a model check). Controls have no flaw and must pass every code stage.",
+  "items": [
+    {
+      "id": "s01", "flaw": "wrong_key", "expectedStage": 7,
+      "item": { "kind": "mc", "stem": "What is the running time of binary search?", "options": [{ "id": "a", "text": "Theta(log n)" }, { "id": "b", "text": "Theta(n)" }, { "id": "c", "text": "Theta(n log n)" }, { "id": "d", "text": "Theta(1)" }], "key": "b" },
+      "source": { "resource": "syn101-lecture-2", "quote": "Its recurrence is T(n) = T(n/2) + 1, which solves to Theta(log n)." }
+    },
+    {
+      "id": "s02", "flaw": "two_correct", "expectedStage": 7,
+      "item": { "kind": "mc", "stem": "Which recurrence describes merge sort?", "options": [{ "id": "a", "text": "T(n) = 2T(n/2) + n" }, { "id": "b", "text": "T(n) = 2T(n/2) + Theta(n)" }, { "id": "c", "text": "T(n) = T(n/2) + 1" }, { "id": "d", "text": "T(n) = T(n-1) + 1" }], "key": "a" },
+      "source": { "resource": "syn101-lecture-2", "quote": "Its running time satisfies T(n) = 2T(n/2) + n." }
+    },
+    {
+      "id": "s03", "flaw": "no_correct", "expectedStage": 7,
+      "item": { "kind": "mc", "stem": "How is the load factor defined?", "options": [{ "id": "a", "text": "Buckets divided by stored keys" }, { "id": "b", "text": "Collisions per bucket" }, { "id": "c", "text": "The length of the longest chain" }], "key": "a" },
+      "source": { "resource": "syn101-lecture-3", "quote": "The load factor alpha is the number of stored keys divided by the number of buckets." }
+    },
+    {
+      "id": "s04", "flaw": "longest_option_key", "expectedStage": 4,
+      "item": { "kind": "mc", "stem": "What does Big-O notation give?", "options": [{ "id": "a", "text": "An upper bound on the growth of a function, up to constant factors, for all large enough inputs" }, { "id": "b", "text": "A lower bound" }, { "id": "c", "text": "An exact count" }, { "id": "d", "text": "An average case" }], "key": "a" },
+      "source": { "resource": "syn101-lecture-1", "quote": "Big-O notation gives an upper bound on the growth of a function." }
+    },
+    {
+      "id": "s05", "flaw": "all_of_the_above", "expectedStage": 4,
+      "item": { "kind": "mc", "stem": "Which statements about chaining are true?", "options": [{ "id": "a", "text": "It uses a linked list per bucket" }, { "id": "b", "text": "It handles collisions" }, { "id": "c", "text": "All of the above" }], "key": "c" },
+      "source": { "resource": "syn101-lecture-3", "quote": "Chaining stores colliding keys in a linked list at each bucket." }
+    },
+    {
+      "id": "s06", "flaw": "duplicate_options", "expectedStage": 2,
+      "item": { "kind": "mc", "stem": "What problem does linear probing suffer from?", "options": [{ "id": "a", "text": "Primary clustering" }, { "id": "b", "text": "primary clustering." }, { "id": "c", "text": "Stack overflow" }, { "id": "d", "text": "Deadlock" }], "key": "a" },
+      "source": { "resource": "syn101-lecture-3", "quote": "Linear probing checks the next slot in order and suffers from primary clustering." }
+    },
+    {
+      "id": "s07", "flaw": "negation_without_emphasis", "expectedStage": 4,
+      "item": { "kind": "mc", "stem": "Which of these is not dropped in asymptotic analysis?", "options": [{ "id": "a", "text": "The highest-order term" }, { "id": "b", "text": "Constant factors" }, { "id": "c", "text": "Lower-order terms" }], "key": "a" },
+      "source": { "resource": "syn101-lecture-1", "quote": "Constant factors and lower-order terms are dropped, so 3n^2 + 5n is Theta(n^2)." }
+    },
+    {
+      "id": "s08", "flaw": "key_repeats_stem", "expectedStage": 4,
+      "item": { "kind": "mc", "stem": "Open addressing stores every key where?", "options": [{ "id": "a", "text": "Open addressing stores every key in the table itself" }, { "id": "b", "text": "In a linked list" }, { "id": "c", "text": "On disk" }, { "id": "d", "text": "In a tree" }], "key": "a" },
+      "source": { "resource": "syn101-lecture-3", "quote": "Open addressing stores every key in the table itself and probes for an empty slot." }
+    },
+    {
+      "id": "s09", "flaw": "quote_missing", "expectedStage": 3,
+      "item": { "kind": "mc", "stem": "How many levels does the merge sort recursion tree have?", "options": [{ "id": "a", "text": "log n" }, { "id": "b", "text": "n" }, { "id": "c", "text": "n^2" }], "key": "a" },
+      "source": { "resource": "syn101-lecture-2", "quote": "The recursion tree for merge sort is log n levels deep." }
+    },
+    {
+      "id": "s10", "flaw": "open_graded_source", "expectedStage": 1,
+      "item": { "kind": "typed", "stem": "How should your Homework 3 hash table resolve collisions?", "options": null, "key": "By chaining" },
+      "source": { "resource": "syn101-homework-3", "quote": "Implement a hash table that resolves collisions by chaining" }
+    },
+    {
+      "id": "c01", "flaw": null, "expectedStage": null,
+      "item": { "kind": "mc", "stem": "What is a collision in a hash table?", "options": [{ "id": "a", "text": "Two keys in one bucket" }, { "id": "b", "text": "A table that is full" }, { "id": "c", "text": "A key that was deleted" }, { "id": "d", "text": "A resize of the table" }], "key": "a" },
+      "source": { "resource": "syn101-lecture-3", "quote": "When two keys map to the same bucket, the table has a collision." }
+    },
+    {
+      "id": "c02", "flaw": null, "expectedStage": null,
+      "item": { "kind": "typed", "stem": "What running time does the merge sort recursion tree give, and why?", "options": null, "key": "Theta(n log n): log n levels, n work per level" },
+      "source": { "resource": "syn101-lecture-2", "quote": "The recursion tree has log n levels and each level does n work" }
+    }
+  ]
+}

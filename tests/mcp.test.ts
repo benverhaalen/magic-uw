@@ -14,6 +14,7 @@ import {
   type Store,
 } from "@magic/contracts";
 import { createMcpService } from "../packages/core/src/mcp";
+import { CONSENT_DISCLOSURE_VERSION } from "@magic/domain";
 
 const at = (minute: number) =>
   new Date(Date.UTC(2099, 0, 1, 12, minute)).toISOString();
@@ -198,6 +199,11 @@ test("hosted comments and grades need independent global opt-ins and provider se
     assert.throws(
       () => f.service.call("get_item", { id }),
       /Sharing is disabled/,
+    );
+    // T06: a hosted recipient needs its own consent record as well as the settings.
+    f.store.setConsent!(
+      { action: "grant", recipient: "claude", disclosureVersion: CONSENT_DISCLOSURE_VERSION },
+      at(0),
     );
     f.store.setPrivacy({
       ...defaultPrivacy,

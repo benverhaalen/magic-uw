@@ -1,3 +1,9 @@
+// owner: T33 (this lane): the freshness probes at the end of this file.
+import { z } from "zod";
+import { CanvasFailure, canvasNextPage, type CanvasHttp } from "./canvas-http";
+import { hashCanvas } from "./canvas-models";
+import { moduleItemsHash, moduleWithItemsSchema } from "./canvas-inventory";
+// end owner: T33
 export interface SelectableCanvasCourse {
   id: string | number;
   name?: string | null;
@@ -164,3 +170,240 @@ export function courseSelection(
   }
   return { score, included, reasons };
 }
+// owner: T33 (this lane). Per-course freshness (plan D37, spec A4; architecture review F1, F7).
+// Canvas has no per-course `updated_at`, so change is read from documented signals:
+// - the hot tick (≤2 requests, every 5 min while present): `todo` and `upcoming_events`, whose
+//   items carry their course, for dated work
+// - the content probe (every 15 min and on app focus): per course, a hash of its module items and
+//   its newest file and page (`sort=updated_at&order=desc&per_page=1`), plus one account-wide
+//   activity stream whose items carry `course_id` (announcements and discussions)
+// Only courses whose signature moved are warm-read.
+
+/** courseId → signature; `account` holds items with no course. */
+export type CourseSignatures = Record<string, string>;
+export interface CourseProbeResult {
+  status: "ok" | "partial" | "needs_sign_in";
+  courses: CourseSignatures;
+  requests: number;
+}
+const looseItem = z.record(z.string(), z.unknown());
+async function listAll(
+  http: CanvasHttp,
+  url: string,
+  signal: AbortSignal | undefined,
+  count: { requests: number },
+): Promise<unknown[]> {
+  const items: unknown[] = [];
+  const initial = url,
+    seen = new Set<string>();
+  let next: string | null = url;
+  for (let page = 0; next && page < 20; page++) {
+    if (seen.has(next)) throw new CanvasFailure("partial", "pagination_cycle");
+    seen.add(next);
+    count.requests++;
+    const response = await http.request(next, signal);
+    if (!Array.isArray(response.data))
+      throw new CanvasFailure("partial", "expected_array");
+    items.push(...response.data);
+    next = canvasNextPage(response.link, next, initial, http.origin);
+  }
+  if (next) throw new CanvasFailure("partial", "page_limit");
+  return items;
+}
+function courseOf(item: Record<string, unknown>): string {
+  const assignment = item.assignment as Record<string, unknown> | undefined;
+  const raw =
+    item.course_id ??
+    assignment?.course_id ??
+    String(item.context_code ?? "").match(/^course_(\d+)$/)?.[1];
+  return raw === undefined || raw === null || raw === ""
+    ? "account"
+    : String(raw);
+}
+/** Stable JSON: keys sorted, so a reordered response is not read as a change. */
+function stable(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`;
+  if (value && typeof value === "object")
+    return `{${Object.keys(value as object)
+      .sort()
+      .map(
+        (key) =>
+          `${JSON.stringify(key)}:${stable((value as Record<string, unknown>)[key])}`,
+      )
+      .join(",")}}`;
+  return JSON.stringify(value) ?? "null";
+}
+function group(rows: Array<{ course: string; key: string }>): CourseSignatures {
+  const byCourse = new Map<string, string[]>();
+  for (const row of rows) {
+    const list = byCourse.get(row.course) ?? [];
+    list.push(row.key);
+    byCourse.set(row.course, list);
+  }
+  return Object.fromEntries(
+    [...byCourse.entries()].map(([course, keys]) => [
+      course,
+      hashCanvas(keys.sort().join("\n")),
+    ]),
+  );
+}
+function failedStatus(http: CanvasHttp): "partial" | "needs_sign_in" {
+  return http.needsSignIn ? "needs_sign_in" : "partial";
+}
+/** The hot tick: 2 requests (more only if a list pages), dated items grouped by course. */
+export async function fetchCanvasHotProbe(
+  http: CanvasHttp,
+  signal?: AbortSignal,
+): Promise<CourseProbeResult> {
+  const count = { requests: 0 };
+  try {
+    const [todo, upcoming] = await Promise.all([
+      listAll(http, `${http.origin}/api/v1/users/self/todo?per_page=100`, signal, count),
+      listAll(
+        http,
+        `${http.origin}/api/v1/users/self/upcoming_events?per_page=100`,
+        signal,
+        count,
+      ),
+    ]);
+    const rows = [
+      ...todo.map((raw) => ["todo", raw] as const),
+      ...upcoming.map((raw) => ["event", raw] as const),
+    ].flatMap(([list, raw]) => {
+      const item = looseItem.safeParse(raw);
+      return item.success
+        ? [{ course: courseOf(item.data), key: `${list}:${stable(item.data)}` }]
+        : [];
+    });
+    return { status: "ok", courses: group(rows), requests: count.requests };
+  } catch {
+    signal?.throwIfAborted();
+    return { status: failedStatus(http), courses: {}, requests: count.requests };
+  }
+}
+/**
+ * The content probe for the given courses: 1 account-wide activity-stream request, then per
+ * course its module items (1 request, include[]=items) and its newest file and page (1 each).
+ * A list the student cannot read (for example a hidden Pages tab) contributes a stable marker.
+ */
+export async function fetchCanvasContentProbe(
+  http: CanvasHttp,
+  courseIds: string[],
+  signal?: AbortSignal,
+  concurrency = 4,
+): Promise<CourseProbeResult> {
+  const count = { requests: 0 };
+  let partial = false;
+  /** A list the student can't see is a stable marker; any other failure leaves the course out. */
+  const TRANSIENT = "\u0000transient";
+  const marker = (error: unknown) => {
+    signal?.throwIfAborted();
+    if (http.needsSignIn) throw new CanvasFailure("needs_sign_in");
+    if (error instanceof CanvasFailure && error.status === "inaccessible")
+      return `inaccessible:${error.code}`;
+    partial = true;
+    return TRANSIENT;
+  };
+  try {
+    let stream: CourseSignatures = {};
+    try {
+      const items = await listAll(
+        http,
+        `${http.origin}/api/v1/users/self/activity_stream?per_page=100&only_active_courses=true`,
+        signal,
+        count,
+      );
+      stream = group(
+        items.flatMap((raw) => {
+          const item = looseItem.safeParse(raw);
+          if (!item.success) return [];
+          // Read state is excluded: the student reading an announcement is not a course change.
+          const { id, type, updated_at, created_at, title } = item.data;
+          return [
+            {
+              course: courseOf(item.data),
+              key: stable({ id, type, updated_at, created_at, title }),
+            },
+          ];
+        }),
+      );
+    } catch (error) {
+      // Without the stream no course can be compared this time.
+      if (marker(error) === TRANSIENT)
+        return { status: "partial", courses: {}, requests: count.requests };
+    }
+    const courses: CourseSignatures = {};
+    let next = 0;
+    const one = async (courseId: string) => {
+      const prefix = `${http.origin}/api/v1/courses/${courseId}`;
+      const part = async (read: () => Promise<string>) => {
+        try {
+          return await read();
+        } catch (error) {
+          return marker(error);
+        }
+      };
+      const newest = (kind: "files" | "pages") =>
+        part(async () => {
+          count.requests++;
+          const response = await http.request(
+            `${prefix}/${kind}?sort=updated_at&order=desc&per_page=1`,
+            signal,
+          );
+          const first = Array.isArray(response.data)
+            ? looseItem.safeParse(response.data[0])
+            : undefined;
+          return first?.success
+            ? stable({
+                id: first.data.id ?? first.data.page_id ?? first.data.url,
+                updated_at: first.data.updated_at,
+              })
+            : "empty";
+        });
+      const [modules, file, page] = await Promise.all([
+        part(async () => {
+          const rows = await listAll(
+            http,
+            `${prefix}/modules?per_page=100&include[]=items&include[]=content_details`,
+            signal,
+            count,
+          );
+          return moduleItemsHash(
+            rows.flatMap((raw) => {
+              const parsed = moduleWithItemsSchema.safeParse(raw);
+              return parsed.success ? [parsed.data] : [];
+            }),
+          );
+        }),
+        newest("files"),
+        newest("pages"),
+      ]);
+      if ([modules, file, page].includes(TRANSIENT)) return;
+      courses[courseId] = hashCanvas(
+        [modules, file, page, stream[courseId] ?? "none"].join("\n"),
+      );
+    };
+    await Promise.all(
+      Array.from(
+        { length: Math.max(1, Math.min(concurrency, courseIds.length)) },
+        async () => {
+          for (;;) {
+            const courseId = courseIds[next++];
+            if (courseId === undefined) return;
+            await one(courseId);
+          }
+        },
+      ),
+    );
+    return {
+      status: partial ? "partial" : "ok",
+      courses,
+      requests: count.requests,
+    };
+  } catch {
+    signal?.throwIfAborted();
+    return { status: failedStatus(http), courses: {}, requests: count.requests };
+  }
+}
+// The comparison lives with the scheduler: movedCourses in packages/core/src/refresh.ts.
+// end owner: T33

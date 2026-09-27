@@ -1,0 +1,66 @@
+/* T06 setup and agreement screen. Reuses the settings-page recipe; only the checkbox row,
+   the recipient list and the agreement rows are new. */
+.consent-disclosure {
+  color: #262625;
+  font-size: 13px;
+  max-width: 620px;
+}
+.consent-recipients {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 10px 22px;
+  margin: 0;
+  max-width: 640px;
+  font-size: 12px;
+}
+.consent-recipients dt {
+  font-weight: 600;
+}
+.consent-recipients dd {
+  margin: 0;
+  color: #5f5f58;
+}
+.consent-check {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  max-width: 620px;
+  margin-bottom: 18px;
+  cursor: pointer;
+}
+.consent-check input {
+  margin-top: 2px;
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.consent-check input:focus-visible {
+  outline: 2px solid #262625;
+  outline-offset: 2px;
+}
+.consent-sample {
+  padding: 8px 0 20px;
+}
+.consent-records {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  max-width: 620px;
+}
+.consent-records li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+.consent-records li > span {
+  display: grid;
+  gap: 2px;
+}
+.consent-embedded .consent-title {
+  font-size: 21px;
+  letter-spacing: -0.65px;
+  margin: 0;
+}
