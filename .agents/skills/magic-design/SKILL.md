@@ -23,6 +23,7 @@ The cohesive Magic Canvas Home establishes this project’s design language. Ear
 - Image-to-code build: [build and verification order](references/image-to-code.md).
 - External skill mechanisms: [source adapters](references/source-adapters.md); load only the mechanism being applied.
 - Generation, implementation, independent audit or handoff: [iteration and review](references/iteration-and-review.md).
+- Shared implementation/adoption: [adoption agreement](../../../docs/design/adoption.md) and the relevant [component-local contract](../../../packages/ui/README.md). Inspect real consumers, reuse applicable code and attach the compact evidence record to the existing handoff.
 - Desktop/site integration or parallel work: [platform handoff](../../../docs/design/platform-handoff.md).
 - New mechanism or external skill: [reference selection](../../../docs/design/reference-selection.md). Select one useful mechanism; do not load a library of skills.
 

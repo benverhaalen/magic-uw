@@ -52,6 +52,10 @@ Calibrate a useful subset of typography, materials and recipes through **intende
 | Resolve product scope or provenance | [Home direction](docs/home-design-direction.md), [product](docs/product.md), [decision record](docs/design/decision-record.md) |
 | Apply expert help to a specific gap | [Reference selection](docs/design/reference-selection.md), [source adapters](.agents/skills/magic-design/references/source-adapters.md) |
 
+## Adoption in code
+
+Use the [adoption agreement](docs/design/adoption.md) and [shared React patterns](packages/ui/README.md). The consumer map distinguishes examples from production use. Both agent entry points route here; no CI or hooks enforce it.
+
 ## Evolve while features proceed in parallel
 
 Start with the audience, normal entry/default state, useful outcome and one complete journey. Choose the nearest recipe and state its domain binding. Reuse stable roles; keep page geometry local. A new family or consequential taste choice warrants a concrete comparison with Ben; routine fixes within accepted direction do not.
