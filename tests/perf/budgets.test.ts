@@ -5,7 +5,8 @@
  *   whatever the machine's speed.
  * - Times are divided by a same-run calibration (a fixed SQLite, zlib and JSON workload), so a
  *   budget compares ratios, which travel across machines better than milliseconds.
- * - Every recorded metric fails when it worsens by more than 25% against evals/perf/budgets.json.
+ * - Every recorded metric fails when it worsens by more than 25% against evals/perf/budgets.json;
+ *   timing ratios only when BUDGETS_TIMING=gate (the default). CI sets BUDGETS_TIMING=report.
  *
  * Run on its own (`pnpm test:budgets`; CI runs it as a separate step after the suite), so the
  * parallel suite's load doesn't skew its timings. Re-record after an intended change:
@@ -35,6 +36,18 @@ import fixture from "../../fixtures/course.json";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const BUDGETS = join(root, "evals", "perf", "budgets.json");
 const RECORD = process.env.MAGIC_BUDGETS_RECORD === "1";
+/**
+ * Timing ratios gate by default (local runs). CI sets BUDGETS_TIMING=report: shared runners are
+ * too noisy for a timing gate, so there they print and never fail the build. The statement caps,
+ * the no-growth checks, payload sizes and Canvas replay counts are exact and always gate.
+ */
+const TIMING = process.env.BUDGETS_TIMING ?? "gate";
+if (TIMING !== "gate" && TIMING !== "report") throw new Error(`BUDGETS_TIMING must be "gate" or "report", not "${TIMING}".`);
+/** One timing comparison: asserted when gating, printed as a test diagnostic when reporting. */
+function timing(t: { diagnostic(message: string): void }, ok: boolean, message: string) {
+  if (TIMING === "gate") assert.ok(ok, message);
+  else t.diagnostic(`${ok ? "within budget" : "OVER BUDGET (report only)"}: ${message}`);
+}
 const TOLERANCE = 0.25;
 const SIZE = 1000;
 const SMALL = 200;
@@ -324,21 +337,23 @@ test("record budgets (MAGIC_BUDGETS_RECORD=1 only)", { skip: !RECORD }, async ()
   writeFileSync(BUDGETS, `${JSON.stringify(record, null, 2)}\n`);
 });
 
-test("ingest rate at 1,000 resources stays above its floor", async () => {
+test(`ingest rate at 1,000 resources stays above its floor (timing: ${TIMING})`, async (t) => {
   const m = await measure();
   const b = budgets();
   assert.ok(b, "evals/perf/budgets.json is missing; record it");
-  assert.ok(
+  timing(
+    t,
     m.ratios.ingestRate >= b.ratios.ingestRate! * (1 - TOLERANCE),
     `ingest ${m.ratios.ingestRate.toFixed(3)} vs floor ${(b.ratios.ingestRate! * (1 - TOLERANCE)).toFixed(3)} (calibrated resources/s)`,
   );
 });
 
-test("passage search, agenda and summary: calibrated times within 25% of the recorded budget", async () => {
+test(`passage search, agenda and summary: calibrated times within 25% of the recorded budget (timing: ${TIMING})`, async (t) => {
   const m = await measure();
   const b = budgets()!;
   for (const key of ["searchP95", "searchP50", "agendaP95", "summary"])
-    assert.ok(
+    timing(
+      t,
       m.ratios[key]! <= b.ratios[key]! * (1 + TOLERANCE),
       `${key}: ${m.ratios[key]!.toFixed(3)} vs budget ${(b.ratios[key]! * (1 + TOLERANCE)).toFixed(3)} (x calibration ${m.calibrationMs.toFixed(1)} ms)`,
     );

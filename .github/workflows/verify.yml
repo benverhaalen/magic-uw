@@ -18,6 +18,10 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
-      # Performance budgets on their own, so the parallel suite's load doesn't skew the timings.
+      # Performance budgets on their own, after the suite. Statement caps, no-growth, payload sizes and
+      # Canvas replay counts gate; timing ratios only report here (shared runners are too noisy to gate
+      # on time). Locally they gate by default (BUDGETS_TIMING=gate).
       - run: pnpm test:budgets
+        env:
+          BUDGETS_TIMING: report
       - run: pnpm build
