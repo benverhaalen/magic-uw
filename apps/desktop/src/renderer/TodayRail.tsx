@@ -76,7 +76,7 @@ export function TodayRail({
   onPlan,
   compactEmpty = false,
   now: suppliedNow,
-  homeDueItems,
+  homeDueItems, homeDueCount = 3, onHomeDueCountChange,
   courseLabel,
   onInspectSources,
   onJoin,
@@ -84,6 +84,7 @@ export function TodayRail({
   compactEmpty?: boolean;
   now?: string;
   homeDueItems?: ResourceView[];
+  homeDueCount?: number; onHomeDueCountChange?: (count: number) => void;
   courseLabel?: (resource: ResourceView) => string;
   onInspectSources?: () => void;
   resources: ResourceView[];
@@ -114,7 +115,7 @@ export function TodayRail({
   const due = homeDueItems ? homeDueItems.map(r => ({id:r.id,title:r.title,courseName:r.courseName,dueMin:localTime(r.deadline.planningAt!,timeZone).min,conflict:r.deadline.conflict})) : rail.due;
   const notes = useMemo(() => changeNotes(changes, now, timeZone), [changes, now, timeZone]);
   // Home keeps crowded days scannable without hiding a lone item behind a control.
-  const dueShown = homeDueItems && due.length > HOME_DUE_ALL ? HOME_DUE_ALL - 1 : due.length;
+  const dueShown = homeDueItems ? Math.min(homeDueCount, due.length) : due.length;
   const allDayShown = homeDueItems && rail.allDay.length > HOME_ALL_DAY_ALL ? HOME_ALL_DAY_ALL - 1 : rail.allDay.length;
   const dueRow = (d: (typeof due)[number]) => (
     <li key={d.id}>
@@ -315,11 +316,13 @@ export function TodayRail({
         )}
       </ul>
       {due.length > dueShown ? (
-        // The heading counts every unique item; the rest stay one explicit click away.
-        <details className="rail-more" data-place-disclosure="today-due-more">
-          <summary data-focus-key="today-due-more">{due.length - dueShown} more due today</summary>
-          <ul className="rail-due rail-due--home">{due.slice(dueShown).map(dueRow)}</ul>
-        </details>
+        <button className="home-show-next" data-focus-key="today-next" aria-label={`Show next ${Math.min(3,due.length-dueShown)} due today; ${dueShown} of ${due.length} shown`} onClick={event => {
+          const pane=event.currentTarget.closest('.desktop-workspace') as HTMLElement | null;
+          const scroll=pane?.scrollTop ?? 0;
+          const next=Math.min(due.length,dueShown+3);
+          onHomeDueCountChange?.(next);
+          requestAnimationFrame(()=>{ if(pane) pane.scrollTop=scroll; if(next===due.length) pane?.querySelector<HTMLElement>('.rail-due--home li:last-child button')?.focus({preventScroll:true}); });
+        }}>Show next {Math.min(3,due.length-dueShown)}</button>
       ) : null}
 
       {editing ? (

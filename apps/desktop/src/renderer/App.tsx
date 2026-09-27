@@ -24,6 +24,7 @@ import { DesktopShell, Glyph } from "./DesktopShell";
 import { Home, ObjectLink } from "./Home";
 import { SnapshotGate } from "./snapshot-gate";
 import { StartWork, preparedWorkRevision } from "./StartWork";
+import { WORKSPACE_FAILURE, workspaceFailureMessage } from "./workspace-feedback";
 import { PersonalReport } from "./PersonalReport";
 import { Action, Disclosure } from "../../../../packages/ui/src";
 import { useDesktopNavigation, type DesktopView } from "./navigation";
@@ -183,8 +184,10 @@ export function App() {
           "The desktop connection is unavailable. Open My Magic UW from the desktop app.",
         );
       const result = await window.magic.execute({ type: "snapshot" });
-      if (mounted.current && snapshotGate.current.accepts(version))
+      if (mounted.current && snapshotGate.current.accepts(version)) {
         setSnapshot(result.snapshot);
+        setError(previous => /timed? ?out|timeout/i.test(previous) ? '' : previous);
+      }
     } catch (cause) {
       if (mounted.current && snapshotGate.current.accepts(version))
         setError(
@@ -210,6 +213,14 @@ export function App() {
       window.clearInterval(timer);
     };
   }, [refresh]);
+
+  useEffect(() => {
+    const failed = (event: Event) => setError((event as CustomEvent<string>).detail);
+    const setup = () => setView('consent');
+    window.addEventListener(WORKSPACE_FAILURE, failed);
+    window.addEventListener('magic-open-setup', setup);
+    return () => { window.removeEventListener(WORKSPACE_FAILURE, failed); window.removeEventListener('magic-open-setup', setup); };
+  }, []);
 
   const perform = useCallback(
     async (
@@ -391,7 +402,7 @@ export function App() {
             <Glyph name="school"/><span>{signInStage === "signin" ? "Opening sign-in…" : signInStage === "checking" ? "Checking Canvas…" : "Canvas · Sign in"}</span>
           </button> : needsSignIn ? <button className="desktop-source-action" onClick={() => setView("sources")}><Glyph name="settings"/><span>Review sign-in</span></button> : null}
         {(error || notice) && <div className={`desktop-feedback ${error ? "is-error" : ""}`} role={error ? "alert" : "status"}>
-          <span>{error || notice}</span><button aria-label={error ? "Dismiss error" : "Dismiss notice"} onClick={() => { setError(""); setNotice(""); }}>×</button>
+          <div><span>{error ? workspaceFailureMessage(error) : notice}</span>{error && <details><summary>Error details</summary><p>{error}</p></details>}</div><button aria-label={error ? "Dismiss error" : "Dismiss notice"} onClick={() => { setError(""); setNotice(""); }}>×</button>
         </div>}
       </>}
       onCompose={() => {
@@ -438,7 +449,7 @@ export function App() {
                 onSample={() => run({ type: "fixture" })}
               />
             ) : (
-              <Home upcomingCount={navigation.homeUpcomingCount} onUpcomingCountChange={navigation.updateHomeUpcomingCount} snapshot={snapshot} resources={resources} onSelect={setSelectedId} onCourses={() => { setQuery(""); setView("courses"); }} onSources={() => setView("sources")} onPlan={command => run(command)} onJoin={window.magic.openLink ? url => { void perform(() => window.magic.openLink!(url)); } : undefined} report={resource => <PersonalReport resource={resource} snapshot={snapshot} run={run}/>} />
+              <Home todayCount={navigation.homeTodayCount} onTodayCountChange={navigation.updateHomeTodayCount} upcomingCount={navigation.homeUpcomingCount} onUpcomingCountChange={navigation.updateHomeUpcomingCount} snapshot={snapshot} resources={resources} onSelect={setSelectedId} onCourses={() => { setQuery(""); setView("courses"); }} onSources={() => setView("sources")} onPlan={command => run(command)} onJoin={window.magic.openLink ? url => { void perform(() => window.magic.openLink!(url)); } : undefined} report={resource => <PersonalReport resource={resource} snapshot={snapshot} run={run}/>} />
             )}
           </>
         ) : view === "resource" ? (

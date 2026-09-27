@@ -19,7 +19,8 @@ export function dueLabel(value: string | null) {
 }
 /** Rows shown before Upcoming's disclosure; later work stays one click away. */
 const UPCOMING_BATCH = 3;
-export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPlan, onJoin, upcomingCount = UPCOMING_BATCH, onUpcomingCountChange, report }: {
+export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPlan, onJoin, upcomingCount = UPCOMING_BATCH, onUpcomingCountChange, todayCount = 3, onTodayCountChange, report }: {
+  todayCount?: number; onTodayCountChange?: (count: number) => void;
   upcomingCount?: number; onUpcomingCountChange?: (count: number) => void;
   snapshot: Snapshot; resources: ResourceView[]; onSelect: (id: string) => void; onCourses: () => void; onSources: () => void;
   onPlan: (command: Command) => Promise<unknown>; onJoin?: (url: string) => void; report?: (resource: ResourceView) => ReactNode;
@@ -50,7 +51,7 @@ export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPl
   const launchable=new Set(shown.map(g=>g.items[0]!.id));
   function workRow(resource:ResourceView) {
     const due=resource.deadline.planningAt!;
-    return <StartWork key={resource.id} resource={resource} refreshKey={refreshKey} compact={{
+    return <StartWork key={resource.id} resource={resource} refreshKey={refreshKey} onInspect={() => onSelect(resource.id)} compact={{
       className:`tone-${courseTone(scopeKey(resource,snapshot.sources))}`,
       description:`${course(resource)}, due ${when(due)} ${time(due)}${resource.deadline.conflict?', saved dates disagree':''}`,
       summary:<span className="home-work-summary">
@@ -80,7 +81,7 @@ export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPl
         const launch=p.reason!=='changed-date' && p.resource.kind==='assignment' && !launchable.has(p.resource.id) && work.today.concat(work.upcoming.flatMap(g=>g.items)).some(r=>r.id===p.resource.id);
         return <div className="briefing-passage" key={`${p.resource.id}:${p.span.start}`}><p><span className="briefing-context">{course(p.resource)} · <ObjectLink resource={p.resource}/>{due && <> · due {whenInline(due)} {time(due)}</>}</span><q>{p.span.text}</q></p>
           {p.reason==='changed-date' ? <div className="briefing-action"><Action data-focus-key={`briefing-${p.resource.id}`} onClick={()=>onSelect(p.resource.id)}>Review change <Glyph name="forward"/></Action></div>
-            : launch ? <div className="briefing-action"><StartWork resource={p.resource} refreshKey={refreshKey} action/></div> : null}</div>;
+            : launch ? <div className="briefing-action"><StartWork resource={p.resource} refreshKey={refreshKey} onInspect={() => onSelect(p.resource.id)} action/></div> : null}</div>;
       })}
       {!conflict && !passages.length && <><p className="home-empty">No new source-backed instructions to highlight. Your saved work and materials are below.</p><div className="home-provenance"><button onClick={onSources}>Saved sources <Glyph name="chevron"/></button></div></>}
     </section>
@@ -92,5 +93,5 @@ export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPl
     <section className="home-study" aria-labelledby="study-title" data-place-anchor="study"><h2 id="study-title">Study &amp; Learn</h2><div className="home-study-grid">{study.map(({material,context})=><a className="home-study-action" href={resourceHref(material.id)} data-focus-key={`study-${material.id}`} key={material.id}><span title={label(material).raw}>{course(material)}</span><h3>Review {material.title}</h3><p>Referenced in {context.title}</p><div><span>Open saved material</span><Glyph name="forward"/></div></a>)}</div>
       {!study.length && <p className="home-empty">No specific review material is supported by the current saved instructions.</p>}
     </section>
-  </div><div className="home-today"><div className="home-today-heading"><h2>Today</h2><span>{day(now)}</span></div><TodayRail now={now} homeDueItems={work.today} courseLabel={course} compactEmpty onInspectSources={onSources} resources={canonical} sources={snapshot.sources} plan={snapshot.dayPlan} changes={snapshot.changes} onSelect={onSelect} onPlan={onPlan} onJoin={onJoin}/></div></div>;
+  </div><div className="home-today"><div className="home-today-heading"><h2>Today</h2><span>{day(now)}</span></div><TodayRail homeDueCount={todayCount} onHomeDueCountChange={onTodayCountChange} now={now} homeDueItems={work.today} courseLabel={course} compactEmpty onInspectSources={onSources} resources={canonical} sources={snapshot.sources} plan={snapshot.dayPlan} changes={snapshot.changes} onSelect={onSelect} onPlan={onPlan} onJoin={onJoin}/></div></div>;
 }

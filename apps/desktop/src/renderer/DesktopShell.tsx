@@ -25,13 +25,13 @@ export function DesktopShell({ view, title, courses, selectedCourseKey, sample, 
 }) {
   const [collapsed, setCollapsed] = useState(false), [expanded, setExpanded] = useState(true);
   return <div className={`desktop-shell ${collapsed ? 'is-collapsed' : ''}`}>
-    <header className="desktop-chrome"><div className="desktop-history">
+    <header className="desktop-chrome"><div className="desktop-brand">My Magic UW</div><div className="desktop-history">
       <button aria-label="Go back" disabled={!canBack} onClick={onBack}><Glyph name="back"/></button>
       <button aria-label="Go forward" disabled={!canForward} onClick={onForward}><Glyph name="forward"/></button>
       <button aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!collapsed} onClick={() => setCollapsed(!collapsed)}><Glyph name="panel"/></button>
       <button aria-label="New context chat" onClick={onCompose}><Glyph name="compose"/></button>
     </div><span className="desktop-page-title" title={title}>{title}</span><div className="desktop-status">{status}<span className="desktop-state">{sample ? 'Sample data' : busy ? 'Working…' : ''}</span></div></header>
-    <aside className="desktop-sidebar" aria-label="Workspace"><div className="desktop-brand">My Magic UW</div>
+    <aside className="desktop-sidebar" aria-label="Workspace">
       <nav aria-label="Main navigation">{([
         ['today', 'Home', 'home'], ['courses', 'Courses', 'book'], ['myuw', 'My UW', 'school'], ['calendar', 'Calendar', 'calendar'],
       ] as const).map(([key, label, icon]) => <div key={key}><div className="desktop-nav-row"><button className={`desktop-nav ${view === key ? 'active' : ''}`} aria-label={label} aria-current={view === key ? 'page' : undefined} onClick={() => onNavigate(key)}><Glyph name={icon}/><span>{label}</span></button>{key === 'courses' && !collapsed && <button className={`desktop-expand ${expanded ? 'expanded' : ''}`} aria-label={expanded ? 'Collapse courses' : 'Expand courses'} aria-expanded={expanded} onClick={() => setExpanded(!expanded)}><Glyph name="chevron"/></button>}</div>{key === 'courses' && expanded && !collapsed && <div className="desktop-course-list">{courses.map(course => <button key={course.key} data-focus-key={`sidebar-course-${course.key}`} aria-current={selectedCourseKey === course.key ? "page" : undefined} className={selectedCourseKey === course.key ? "active" : undefined} onClick={() => onCourse(course.key)} title={course.rawCourseName}><span className="desktop-course-title">{course.courseName}</span>{course.code && course.code !== course.courseName && <span className="desktop-course-code">{course.code}</span>}</button>)}</div>}</div>)}</nav>

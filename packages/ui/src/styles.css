@@ -25,3 +25,7 @@
  .magic-ui-action:not(:disabled):not([aria-disabled=true]):hover { background: var(--magic-fill-action-hover); }
  .magic-ui-action--quiet:not(:disabled):not([aria-disabled=true]):hover, .magic-ui-popover a:hover { background: var(--magic-fill-secondary-hover); }
 }
+
+/* Confirmation support and its inline undo share one readable semantic role. */
+.magic-ui-confirmation [role=status] { font: 400 12px/1.5 var(--magic-font-interface); }
+.magic-ui-confirmation [role=status] .magic-ui-action { font: inherit; min-width: 32px; min-height: 32px; vertical-align: baseline; }

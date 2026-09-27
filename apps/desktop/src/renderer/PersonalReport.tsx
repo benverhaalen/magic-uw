@@ -30,6 +30,10 @@ function ResolvedReport({ evidence, snapshot, run }: { evidence: NonNullable<Ret
   const state = personalReportState(snapshot.personalReports, issueId, sourceVersion);
   const [pending, setPending] = useState(false), [error, setError] = useState('');
   const generation = useRef(0), active = useRef(false);
+  const uncertain = useRef<{ handled: boolean; revision: number } | null>(null);
+  useEffect(() => {
+    if (uncertain.current && state.revision > uncertain.current.revision) { setError(''); uncertain.current = null; }
+  }, [state.revision]);
   useEffect(() => { generation.current++; active.current = false; setPending(false); setError(''); return () => { generation.current++; }; }, [issueId, sourceVersion]);
   return <Confirmation issueId={issueId} sourceVersion={sourceVersion} record={state.record} pending={pending} error={error}
     onChange={async ({ handled }) => {
@@ -38,7 +42,17 @@ function ResolvedReport({ evidence, snapshot, run }: { evidence: NonNullable<Ret
       const ticket = generation.current;
       const result = await run({ type: 'personal-report', value: { operationId: crypto.randomUUID(), issueId, evidence, sourceVersion, handled, expectedRevision: state.revision } });
       if (ticket !== generation.current) return;
-      if (!result) { setError('Your report was not saved. Refreshing the current evidence; try again.'); await run({ type: 'snapshot' }); }
+      if (!result) {
+        uncertain.current = { handled, revision: state.revision };
+        setError('Change not confirmed. Checking the saved report…');
+        const readback = await run({ type: 'snapshot' });
+        if (ticket !== generation.current) return;
+        if (readback) {
+          const confirmed = personalReportState(readback.snapshot.personalReports, issueId, sourceVersion);
+          setError(Boolean(confirmed.record) === handled ? '' : 'Showing the saved report. Your change was not confirmed.');
+          uncertain.current = null;
+        } else setError('Change not confirmed. Showing the last saved report.');
+      }
       if (ticket === generation.current) { setPending(false); active.current = false; }
     }}/>
 }
