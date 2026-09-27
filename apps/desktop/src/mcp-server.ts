@@ -4,6 +4,7 @@ import { z } from "zod";
 import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
 import { createStore } from "@magic/storage";
 import { createMcpService } from "../../../packages/core/src/mcp";
+import { verifyRestrictedToCurrentUser } from "./mcp-connection-acl";
 
 /** A host launches this read-only stdio endpoint using a locally exported connection file. */
 async function main() {
@@ -13,7 +14,8 @@ async function main() {
   const info = await stat(path);
   if (
     info.size > 16_000 ||
-    (process.platform !== "win32" && (info.mode & 0o077) !== 0)
+    (process.platform !== "win32" && (info.mode & 0o077) !== 0) ||
+    (process.platform === "win32" && !(await verifyRestrictedToCurrentUser(path)))
   )
     throw new Error();
   const config = z

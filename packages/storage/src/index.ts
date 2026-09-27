@@ -195,7 +195,7 @@ export function createStore(
   if (schemaVersion > SCHEMA_VERSION) {
     db.close();
     throw new Error(
-      "This database was created by a newer Magic Canvas version.",
+      "This database was created by a newer My Magic UW version.",
     );
   }
   // O2: one prepared statement per SQL text for the life of the connection.
@@ -405,7 +405,7 @@ export function createStore(
     try {
       from = readVersion(); // another process may have migrated since the first read
       if (from > SCHEMA_VERSION)
-        throw new Error("This database was created by a newer Magic Canvas version.");
+        throw new Error("This database was created by a newer My Magic UW version.");
       for (const [version, step] of steps) if (version > from) step();
       if (db.prepare("PRAGMA foreign_key_check").all().length)
         throw new Error("The migration left foreign-key violations.");
