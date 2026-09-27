@@ -918,6 +918,15 @@ export interface Snapshot {
 // its practice addendum, and T47/T53's practice.target and practice.assessmentQuiz), the
 // course map, corrections (D33), packs, UI events and the workspace command bar (D40).
 const ids = (max: number) => z.array(id).max(max);
+// owner: study-backend. Course-scoped practice (additive, optional): the renderer names the course's
+// anchor resources; the worker's trusted resolver authorizes each one. Mutations carry a revision and
+// an operation ID, like the saved study session ops.
+const practiceScope = { anchorIds: z.array(id).min(1).max(50).optional() };
+const practiceMutation = {
+  sessionId: id.optional(),
+  revision: z.number().int().nonnegative().optional(),
+  operationId: id.optional(),
+};
 const studyFilterSchema = z.enum(["all", "starred", "missed", "iffy"]);
 const anchorInputSchema = z
   .object({
@@ -1018,8 +1027,9 @@ export const learningRequestSchema = z.discriminatedUnion("op", [
     cardId: id,
     rating: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
     reviewMs: z.number().int().min(0).max(86_400_000),
+    ...practiceMutation,
   }),
-  learningOp("study.undoReview", { reviewId: id }),
+  learningOp("study.undoReview", { reviewId: id, ...practiceMutation }),
   learningOp("study.exam", {
     courseId: id,
     assessmentId: id,
@@ -1051,7 +1061,12 @@ export const learningRequestSchema = z.discriminatedUnion("op", [
     count: z.number().int().min(1).max(30),
   }),
   learningOp("study.path", { courseId: id }),
-  learningOp("knowledge.state", { courseId: id }),
+  learningOp("knowledge.state", {
+    courseId: id,
+    ...practiceScope,
+    topicIds: ids(50).optional(),
+    moduleIds: ids(50).optional(),
+  }),
   learningOp("knowledge.concept", { conceptId: id }),
   learningOp("knowledge.selfRate", {
     conceptId: id,
@@ -1077,7 +1092,7 @@ export const learningRequestSchema = z.discriminatedUnion("op", [
     conceptIds: z.array(id).min(1).max(3),
     primary: id,
   }),
-  learningOp("practice.path", { courseId: id }),
+  learningOp("practice.path", { courseId: id, ...practiceScope }),
   learningOp("practice.checkpoint", { courseId: id, assessmentId: id }),
   learningOp("practice.quick", {
     courseId: id.optional(),
@@ -1113,6 +1128,8 @@ export const learningRequestSchema = z.discriminatedUnion("op", [
     mode: z.enum(["flashcards", "learn", "write", "test"]),
     count: z.number().int().min(1).max(60),
     difficulty: z.enum(["warmup", "normal", "push"]).optional(),
+    ...practiceScope,
+    operationId: id.optional(),
   }),
   // T53 (spec H3): an assessment quiz sectioned by its chapters and modules.
   learningOp("practice.assessmentQuiz", {
