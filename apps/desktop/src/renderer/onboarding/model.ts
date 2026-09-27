@@ -337,8 +337,13 @@ const kindWords: { kind: ResourceView["kind"]; one: string; many: string }[] = [
 
 function sourceLine(source: SourceHealth, busy: boolean): SourceLine {
   const progress = source.progress;
+  // A read with no total can't say it's done, so only a running sync keeps an unfinished source in flight.
+  // Canvas batches carry no total and a terminal phase ("complete", "inaccessible"), so progress alone isn't.
   const inFlight =
-    progress !== undefined && (progress.total === undefined || progress.completed < progress.total);
+    progress !== undefined &&
+    (progress.total === undefined
+      ? busy && !source.complete && (source.status === "ok" || source.status === "partial")
+      : progress.completed < progress.total);
   const found = `${source.resourceCount} ${source.resourceCount === 1 ? "item" : "items"} found`;
   if (inFlight || (busy && source.status === "ok" && !source.complete))
     return {
