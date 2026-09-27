@@ -1,0 +1,71 @@
+/*
+ * Magic Canvas visual seed v1 — September 26, 2026.
+ * Small semantic values extracted from the final cohesive Home mock.
+ * Reference/provenance: visual-baseline.md. No app integration performed.
+ * This is not a fully approved universal theme. Candidate border/tag values
+ * preserve the current reference while local refinements remain open.
+ * No font files are provided: "Cooper Light" names the mock's private
+ * Cooper Light BT face alias. Fallbacks are usable, not accepted matches.
+ * Map/import in a later implementation task; keep one-off geometry local.
+ */
+:root {
+  --magic-font-editorial: "Cooper Light", Georgia, serif;
+  --magic-font-interface: Geist, system-ui, sans-serif;
+  --magic-tracking: normal;
+  --magic-type-identity: 19px;
+  --magic-type-page-title: 18px;
+  --magic-type-section: 21px;
+  --magic-type-work-title: 19px;
+  --magic-type-study-title: 18px;
+  --magic-type-prose: 16px;
+  --magic-leading-prose: 1.72;
+
+  --magic-surface-workspace: #faf8f4;
+  --magic-surface-raised: #fffdf9;
+  --magic-surface-quiet: #f8f4ee;
+  --magic-ink: #29231f;
+  --magic-ink-prose: #3a342f;
+  --magic-ink-muted: #746d66;
+  --magic-ink-link: #325c90;
+  --magic-ink-on-shell: #fff4ed;
+  --magic-ink-on-shell-secondary: #ffe9dd;
+  --magic-fill-shell: radial-gradient(ellipse 95% 78% at 8% 10%, #d3643d 0%, transparent 57%), linear-gradient(155deg, #ae412e 0%, #913128 45%, #6e2824 100%);
+  --magic-fill-shell-selected: #6f251d73;
+  --magic-fill-shell-hover: #6f251d66;
+
+  --magic-fill-review: linear-gradient(110deg, #a2c0eb, #d8e6f8);
+  --magic-fill-review-hover: linear-gradient(110deg, #91b4e5, #c9dcf4);
+  --magic-ink-review: #233f65;
+  --magic-fill-confirmation: #eef3fa;
+  --magic-ink-confirmation: #516378;
+
+  /* Paired identity fills/inks; not error/success or course-index semantics. */
+  --magic-fill-identity-rose: linear-gradient(100deg, #eaa3bd, #f7dfe9);
+  --magic-ink-identity-rose: #55253c;
+  --magic-fill-identity-blue: linear-gradient(100deg, #8db8ed, #d8e6f8);
+  --magic-ink-identity-blue: #223f69;
+  --magic-fill-identity-coral: linear-gradient(100deg, #f4a17f, #fae0d1);
+  --magic-ink-identity-coral: #572b1b;
+  --magic-fill-study: linear-gradient(115deg, #f1cc78, #f5e0aa);
+  --magic-fill-study-secondary: linear-gradient(115deg, #ecd18f, #f3e4bc);
+  --magic-ink-study: #574424;
+  --magic-fill-schedule-event: #f4e5b8;
+  --magic-ink-schedule-event: #604a18;
+  --magic-accent-current-time: #c15842;
+
+  --magic-radius-workspace: 13px;
+  --magic-radius-control: 8px;
+  --magic-radius-card: 8px;
+  --magic-line-quiet: #dfd7ce;
+  --magic-focus: #3c70ac;
+  --magic-focus-on-shell: #fff0df;
+  --magic-icon-stroke-seed: 1.65;
+
+  /* Pending local comparison; do not generalize to all components. */
+  --magic-line-action-candidate: #adc5e3;
+  --magic-line-tag-candidate: #ded3c6;
+  --magic-fill-tag-candidate: #ece3d9;
+  --magic-ink-tag-candidate: #51463c;
+  --magic-radius-tag-candidate: 5px;
+  --magic-fill-link-candidate: linear-gradient(transparent 48%, #e3ecf7 48%);
+}
