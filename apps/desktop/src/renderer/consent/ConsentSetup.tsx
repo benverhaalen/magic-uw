@@ -187,17 +187,17 @@ export function ConsentSetup({
         </div>
       </div>
       {setup ? (
-        <section className="settings-section" aria-labelledby="consent-uw">
+        <section className="settings-section consent-uw" aria-labelledby="consent-uw">
           <h2 id="consent-uw">Reading UW</h2>
           <p className="consent-disclosure">{canvasDisclosure}</p>
           <p className="consent-disclosure">{uwSessionNote}</p>
         </section>
       ) : null}
-      <section className="settings-section" aria-labelledby="consent-recipients">
+      <section className="settings-section consent-who" aria-labelledby="consent-recipients">
         <h2 id="consent-recipients">Who receives what</h2>
         <dl className="consent-recipients">
           {setup || missing.includes("jev") ? (
-            <>
+            <div className="consent-recipient">
               <dt>Jev</dt>
               <dd>
                 Our judgment service, run with TypeSafe. Purpose: sorting your
@@ -206,8 +206,9 @@ export function ConsentSetup({
                 after you turn Jev on in Data &amp; AI. Our key stays on our
                 server.
               </dd>
-            </>
+            </div>
           ) : null}
+          <div className="consent-recipient">
           <dt>Your AI</dt>
           <dd>
             {providerLabels[provider]}
@@ -215,17 +216,22 @@ export function ConsentSetup({
               ? ". Nothing is sent to an AI provider until you choose one; it asks for its own agreement then."
               : `. Purpose: the study and course features you use. Receives only the categories you turn on in Data & AI. ${providerLabels[provider]}’s own account settings (such as training and retention) apply to what it receives.`}
           </dd>
+          </div>
+          <div className="consent-recipient">
           <dt>Asked first</dt>
           <dd>
             The first time your work, grades, grader comments or messages would
             be shared with a service, you see exactly what would be sent and
             choose. &ldquo;Always preview&rdquo; asks every time.
           </dd>
+          </div>
+          <div className="consent-recipient">
           <dt>Never sent</dt>
           <dd>
             Degree plans, holds and audits stay on this device. Fully local mode
             sends nothing to any AI.
           </dd>
+          </div>
         </dl>
         <p className="small">
           To withdraw, open Data &amp; AI, then Agreements. Withdrawing stops

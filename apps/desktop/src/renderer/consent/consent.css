@@ -64,3 +64,11 @@
   letter-spacing: -0.65px;
   margin: 0;
 }
+/* One wrapper per recipient (for the onboarding card grid); outside onboarding the pairs keep
+   the two-column term/description list above. */
+.consent-recipient {
+  display: contents;
+}
+.onb-consent .consent-recipient {
+  display: grid;
+}
