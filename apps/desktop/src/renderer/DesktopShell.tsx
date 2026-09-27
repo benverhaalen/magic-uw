@@ -19,9 +19,9 @@ export function Glyph({ name }: { name: 'home' | 'book' | 'calendar' | 'panel' |
   };
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
-export function DesktopShell({ view, title, courses, selectedCourseKey, sample, busy, canBack, canForward, onBack, onForward, onNavigate, onCourse, onCompose, children }: {
+export function DesktopShell({ view, title, courses, selectedCourseKey, sample, busy, canBack, canForward, onBack, onForward, onNavigate, onCourse, onCompose, status, children }: {
   view: DesktopView; title: string; courses: CourseCard[]; selectedCourseKey: string | null; sample: boolean; busy: boolean; canBack: boolean; canForward: boolean;
-  onBack: () => void; onForward: () => void; onNavigate: (view: DesktopView) => void; onCourse: (key: string) => void; onCompose: () => void; children: ReactNode;
+  onBack: () => void; onForward: () => void; onNavigate: (view: DesktopView) => void; onCourse: (key: string) => void; onCompose: () => void; status?: ReactNode; children: ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false), [expanded, setExpanded] = useState(true);
   return <div className={`desktop-shell ${collapsed ? 'is-collapsed' : ''}`}>
@@ -30,7 +30,7 @@ export function DesktopShell({ view, title, courses, selectedCourseKey, sample, 
       <button aria-label="Go forward" disabled={!canForward} onClick={onForward}><Glyph name="forward"/></button>
       <button aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!collapsed} onClick={() => setCollapsed(!collapsed)}><Glyph name="panel"/></button>
       <button aria-label="New context chat" onClick={onCompose}><Glyph name="compose"/></button>
-    </div><span className="desktop-page-title" title={title}>{title}</span><span className="desktop-state">{sample ? 'Sample data' : busy ? 'Working…' : ''}</span></header>
+    </div><span className="desktop-page-title" title={title}>{title}</span><div className="desktop-status">{status}<span className="desktop-state">{sample ? 'Sample data' : busy ? 'Working…' : ''}</span></div></header>
     <aside className="desktop-sidebar" aria-label="Workspace"><div className="desktop-brand">My Magic UW</div>
       <nav aria-label="Main navigation">{([
         ['today', 'Home', 'home'], ['courses', 'Courses', 'book'], ['myuw', 'My UW', 'school'], ['calendar', 'Calendar', 'calendar'],

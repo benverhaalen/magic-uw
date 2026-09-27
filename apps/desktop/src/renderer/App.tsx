@@ -161,6 +161,7 @@ export function App() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [signInStage, setSignInStage] = useState<"idle" | "signin" | "checking">("idle");
   const [query, setQuery] = useState("");
 
   const snapshotGate = useRef(new SnapshotGate());
@@ -278,11 +279,16 @@ export function App() {
   // end owner: T06
   const startSignIn = async () => {
     if (!window.magic.signInUW) return;
-    await perform(async () => {
-      await window.magic.signInUW!();
-      return window.magic.syncCanvas ? window.magic.syncCanvas() : undefined;
-    });
-    await refresh();
+    setSignInStage("signin");
+    try {
+      await perform(async () => {
+        await window.magic.signInUW!();
+        // The bridge does not report cancellation. Only source evidence clears the action.
+        setSignInStage("checking");
+        return window.magic.syncCanvas ? window.magic.syncCanvas() : undefined;
+      });
+      await refresh();
+    } finally { setSignInStage("idle"); }
   };
   const sync = () =>
     window.magic.syncCanvas
@@ -379,29 +385,20 @@ export function App() {
       courses={courseCards} selectedCourseKey={navigation.courseKey} sample={snapshot?.fixtureMode ?? false} busy={busy}
       canBack={navigation.canBack} canForward={navigation.canForward} onBack={navigation.back} onForward={navigation.forward}
       onNavigate={setView} onCourse={key => navigation.navigate("courses", null, key)}
+      status={<>
+        {snapshot?.sources.some(source => source.kind === "canvas" && source.status === "needs_sign_in") && window.magic.signInUW ?
+          <button className="desktop-source-action" aria-label="Canvas needs sign-in. Sign in to check saved coursework for updates." aria-busy={signInStage !== "idle" || undefined} aria-disabled={busy || undefined} onClick={() => { if (!busy) void signIn(); }}>
+            <Glyph name="school"/><span>{signInStage === "signin" ? "Opening sign-in…" : signInStage === "checking" ? "Checking Canvas…" : "Canvas · Sign in"}</span>
+          </button> : needsSignIn ? <button className="desktop-source-action" onClick={() => setView("sources")}><Glyph name="settings"/><span>Review sign-in</span></button> : null}
+        {(error || notice) && <div className={`desktop-feedback ${error ? "is-error" : ""}`} role={error ? "alert" : "status"}>
+          <span>{error || notice}</span><button aria-label={error ? "Dismiss error" : "Dismiss notice"} onClick={() => { setError(""); setNotice(""); }}>×</button>
+        </div>}
+      </>}
       onCompose={() => {
         if (selected) { document.querySelector<HTMLElement>(".local-ai-panel")?.scrollIntoView({ behavior: "smooth" }); }
         setNotice(selected ? "Ask about this item in its Local AI section. Your model and sharing settings still apply." : "Page-wide chat is not connected yet. Open a course item to ask about its saved context with Local AI.");
       }}>
         <WorkspaceCommandBarSlot snapshot={snapshot} /* owner: T05b */ />
-        <div className="feedback-region">
-          {error ? (
-            <div className="message error" role="alert">
-              <span>{error}</span>
-              <button aria-label="Dismiss error" onClick={() => setError("")}>
-                ×
-              </button>
-            </div>
-          ) : null}
-          {notice ? (
-            <div className="message" role="status">
-              <span>{notice}</span>
-              <button aria-label="Dismiss notice" onClick={() => setNotice("")}>
-                ×
-              </button>
-            </div>
-          ) : null}
-        </div>
         {!snapshot ? (
           <section className="initial-state">
             <h1>Your classes, in one place.</h1>
@@ -419,41 +416,6 @@ export function App() {
         ) : view === "today" ? (
           <>
             <PlanningAlerts snapshot={snapshot} open={open} onPlanning={() => setView("myuw")} />
-            {/* owner: T05c. Sign-in banner: an ended Canvas session is one click from a sign-in. */}
-            {unavailableSources.some(
-              (source) =>
-                source.kind === "canvas" && source.status === "needs_sign_in",
-            ) && window.magic.signInUW ? (
-              <div className="evidence-note" role="status">
-                <p>
-                  Your UW session ended. Saved coursework is still here and may
-                  have changed since it was last checked.
-                </p>
-                <button
-                  className="button primary"
-                  disabled={busy}
-                  onClick={() => void signIn()}
-                >
-                  Sign in again
-                </button>
-              </div>
-            ) : /* end owner: T05c */ unavailableSources.length > 0 ? (
-              <div className="evidence-note" role="status">
-                <p>
-                  {needsSignIn
-                    ? "A source needs sign-in before it can be checked. Saved coursework may have changed."
-                    : "Some sources could not be checked completely. Saved coursework may have changed."}
-                </p>
-                <button
-                  className="subtle-button"
-                  onClick={() => setView("sources")}
-                >
-                  {needsSignIn
-                    ? "Review sign-in and sources"
-                    : "Review sources"}
-                </button>
-              </div>
-            ) : null}
             {resources.length === 0 && !uwConsented ? (
               // owner: T06: the first-run screen replaces the empty workspace until agreed.
               <ConsentSetup
