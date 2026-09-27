@@ -1,4 +1,4 @@
-import { projectWork } from "./work";
+import { projectWork, type WorkSource } from "./work";
 import type { DayPlanEntry, DeadlineResolution, ResourceInput } from "@magic/contracts";
 
 export interface RailResource {
@@ -16,6 +16,8 @@ export interface RailResource {
   createdAt?: string | null;
   deleted?: boolean;
   externalId?: string;
+  /** The saved source this copy came from; used to recognise copies of one assignment. */
+  sourceId?: string;
   points?: number | null;
   lockAt?: string | null;
   submission?: ResourceInput["submission"];
@@ -276,6 +278,7 @@ export function buildTodayRail(
   now: string,
   timeZone: string,
   plan: PlanEntry[] = [],
+  sources?: WorkSource[],
 ): TodayRail {
   const today = localTime(now, timeZone);
   const live = resources.filter((r) => !r.deleted);
@@ -312,7 +315,7 @@ export function buildTodayRail(
   events.sort((a, b) => a.startMin - b.startMin);
 
   // Due items and suggestion candidates come from the same projection as Home's Upcoming.
-  const work = projectWork(resources, now, timeZone);
+  const work = projectWork(resources, now, timeZone, sources);
   const due: RailDue[] = work.dueToday.map((w) => ({
     id: w.id,
     title: w.title,
