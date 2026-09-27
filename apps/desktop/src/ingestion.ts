@@ -79,10 +79,15 @@ import { courseInclusion } from "../../../packages/core/src/access";
 import { createRefreshCoordinator } from "../../../packages/core/src/refresh";
 // owner: T33. Per-course freshness probes (D37).
 import {
+  canvasCourseCode,
   fetchCanvasContentProbe,
   fetchCanvasHotProbe,
+  type SelectableCanvasCourse,
 } from "../../../packages/connectors/src/canvas-selection";
 // end owner: T33
+// fix/current-courses-only: the student's UW enrollment corroborates Canvas's current courses.
+import { currentEnrollment } from "../../../packages/domain/src/enrollment-match";
+import { courseChoices } from "./renderer/onboarding/model";
 import {
   linkExactEvidence,
   evidenceFor,
@@ -1687,6 +1692,112 @@ export function createIngestion(
       recordRun(run);
     },
   });
+  /**
+   * fix/current-courses-only. The student's UW current enrollment (Course Search & Enroll), when
+   * planning has read it: a Canvas course matches an enrolled class by subject and catalog number
+   * (and section, when both name one). Code only; nothing here reaches AI, Jev or MCP. Without
+   * planning data, Canvas's own signals decide alone.
+   */
+  /** The enrollment matcher for the connector; authoritative whenever the read found this term's classes. */
+  function enrollmentOptions() {
+    const enrolledThisTerm = planningEnrollment();
+    return enrolledThisTerm ? { enrolledThisTerm, enrollmentAuthoritative: true } : {};
+  }
+  function planningEnrollment(): ((course: SelectableCanvasCourse) => boolean) | undefined {
+    const enrollment = currentEnrollment(store.planningRecords?.() ?? [], now());
+    return enrollment ? (course) => !!enrollment.match(course) : undefined;
+  }
+  /**
+   * fix/current-courses-only. Canvas's nameless `{id, access_restricted_by_date}` rows are no
+   * longer stored; a workspace that stored one before is repaired without losing history:
+   * - a course whose row an earlier version named (it became date-restricted and the nameless
+   *   observation overwrote its name) gets that named version back, marked restricted and not
+   *   included
+   * - only a row that never had a name and has no other source for its course is retired
+   * - anything else is left as it is (hidden from the course list, never deleted)
+   */
+  const NAMELESS = /^Course \d+ \(name unavailable\)$/;
+  function repairNamelessCourses() {
+    const sources = store.sources();
+    for (const r of store.resources()) {
+      if (r.kind !== "course" || r.deleted || !NAMELESS.test(r.courseName)) continue;
+      const source = sources.find((s) => s.id === r.sourceId);
+      if (!source || source.kind !== "canvas" || source.scope !== "course") continue;
+      const named = store.resourceHistory?.(r.id).find((v) => v.resource.courseName && !NAMELESS.test(v.resource.courseName));
+      if (named) {
+        const restored = resourceInputSchema.parse({
+          ...named.resource,
+          course: {
+            ...named.resource.course,
+            accessRestricted: true,
+            accessState: "date_restricted",
+            selection: {
+              score: named.resource.course?.selection?.score ?? 0,
+              included: false,
+              reasons: ["Canvas now restricts this course by date; kept with its last known name"],
+            },
+          },
+        });
+        const { id, label, kind, accountScope, courseId, scope } = source;
+        save({
+          source: { id, label: `${restored.courseName.slice(0, 145)} · course`.slice(0, 200) || label, kind, accountScope, courseId, scope },
+          observedAt: now().toISOString(),
+          status: "ok",
+          complete: true,
+          resources: [restored],
+          diagnostics: [{ code: "restored_named_course_version", path: [], severity: "warning" }],
+        });
+        continue;
+      }
+      const siblings = sources.some(
+        (s) => s.id !== source.id && s.accountScope === source.accountScope && s.courseId === source.courseId,
+      );
+      if (!siblings) store.removeSource(source.id);
+    }
+  }
+  /**
+   * fix/current-courses-only. Discovery before the first full read: the profile and the course
+   * lists only, so onboarding can show the courses and the student can choose. Background
+   * reads hold until the student starts the sync (the next manual run).
+   */
+  const holdForChoice = (value: boolean) => {
+    const settings = store.ingestionSettings();
+    if (settings.awaitingCourseChoice !== value) store.setIngestionSettings({ ...settings, awaitingCourseChoice: value });
+  };
+  /** The listable courses (onboarding's chooser rule): named, not past. */
+  const choiceCount = () =>
+    courseChoices({
+      sources: store.sources(),
+      resources: store.resources(),
+      courseOverrides: store.courseOverrides(),
+    } as unknown as Parameters<typeof courseChoices>[0]).length;
+  async function discover(signal = new AbortController().signal) {
+    // Held before anything is read, and any run already under way (a background tick, the
+    // 30-second timer, a reconnect) is cancelled first, so no unconfirmed course is read.
+    holdForChoice(true);
+    if (reconnectBarrier) await reconnectBarrier;
+    await coordinator.cancelAndWait();
+    const s = store.ingestionSettings();
+    for await (const batch of canvasConnector({
+      fetch: host.canvasFetch,
+      metadataConcurrency: s.metadataConcurrency,
+      selectedTerm: s.selectedTerm,
+      courseOverrides: store.courseOverrides(),
+      knownResources: store.resources(),
+      ...enrollmentOptions(),
+      now,
+      catalogOnly: true,
+    }).pull(signal))
+      save(batch);
+    repairNamelessCourses();
+    // Nothing to choose from: no hold (the next sync reads nothing unconfirmed anyway).
+    if (!choiceCount()) holdForChoice(false);
+  }
+  /** "Start syncing": the student confirmed the course choice. The only way the hold is released. */
+  function confirmCourses() {
+    holdForChoice(false);
+    return tick("manual");
+  }
   // owner: T33. One Canvas read: every included course (full), or only the given ones (warm).
   async function canvasRead(
     only: Set<string> | undefined,
@@ -1707,6 +1818,7 @@ export function createIngestion(
       selectedTerm: s.selectedTerm,
       courseOverrides: store.courseOverrides(),
       knownResources: store.resources(),
+      ...enrollmentOptions(), // fix/current-courses-only
       moduleRun,
       onModuleRun: (run) => {
         if (!signal.aborted && !reconnecting) moduleRun = run;
@@ -1731,6 +1843,7 @@ export function createIngestion(
         else accountSignIn = true;
       }
     }
+    repairNamelessCourses(); // fix/current-courses-only
     if (needsSignIn && accountSignIn) markExpired();
     else {
       // documents() stops at its first sign-in answer (one request) if the session is gone.
@@ -1811,6 +1924,11 @@ export function createIngestion(
     trigger: "manual" | "background" = "background",
   ): ReturnType<typeof coordinator.tick> {
     if (reconnectBarrier) return reconnectBarrier.then(() => tick(trigger));
+    // fix/current-courses-only: while the student chooses courses, only their own start reads.
+    // While the student chooses, a background tick reads nothing and a manual one (the launch
+    // sign-in, a refresh) refreshes the course list only. confirmCourses() releases the hold.
+    if (store.ingestionSettings().awaitingCourseChoice)
+      return trigger === "manual" ? discover().then(() => undefined) : Promise.resolve(undefined);
     const generation = sessionGeneration;
     if (
       trigger === "manual" &&
@@ -1840,6 +1958,8 @@ export function createIngestion(
     ...coordinator,
     tick, // owner: T17
     markExpired,
+    discover, // fix/current-courses-only
+    confirmCourses, // fix/current-courses-only
     // owner: T05b
     reconnected() {
       sessionGeneration++;

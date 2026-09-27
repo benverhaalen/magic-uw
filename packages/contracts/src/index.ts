@@ -895,6 +895,11 @@ export const ingestionSettingsSchema = z
     crawlMaxPages: z.number().int().min(1).max(1000).default(300),
     maxFileBytes: z.number().int().min(1024).max(104857600).default(104857600),
     selectedTerm: z.string().max(300).nullable().default(null),
+    /**
+     * fix/current-courses-only. Set by onboarding's course discovery, cleared by "Start syncing"
+     * (the next manual sync): background reads wait, across restarts, until the student confirms.
+     */
+    awaitingCourseChoice: z.boolean().default(false),
   })
   .strict();
 export type IngestionSettings = z.infer<typeof ingestionSettingsSchema>;
@@ -1073,6 +1078,11 @@ export interface Store {
   removeSource(sourceId: string): number;
   resources(search?: string): Resource[];
   resource(id: string): Resource | undefined;
+  /**
+   * fix/current-courses-only. Earlier stored versions of one resource, newest first (read-only);
+   * lets a caller put back a version a later observation overwrote, instead of deleting.
+   */
+  resourceHistory?(id: string): Array<{ version: number; capturedAt: string; resource: ResourceInput }>;
   sources(): SourceHealth[];
   privacy(): PrivacyPreferences;
   setPrivacy(value: PrivacyPreferences): void;
@@ -2101,8 +2111,10 @@ export interface AppBridge {
   importFile(): Promise<CommandResult | null>;
   /** owner: client-health (FDB-002). Resolves with how the window ended; `confirmed` is the only success. */
   signInUW?(service?: SignInService): Promise<SignInOutcome>;
-  syncPlanning?(): Promise<CommandResult>;
-  syncCanvas?(): Promise<CommandResult>;
+  /** `phase: "enrollment"` (fix/current-courses-only): this term's enrollment only, before course discovery. */
+  syncPlanning?(options?: { phase?: "enrollment" }): Promise<CommandResult>;
+  /** `discover` (fix/current-courses-only): read only the course lists, so the student chooses first. */
+  syncCanvas?(options?: { discover?: boolean; confirm?: boolean }): Promise<CommandResult>;
   signOutUW?(): Promise<void>;
   /** Saves (or with null, removes) the published Outlook calendar link in the encrypted vault. */
   setOutlookCalendar?(url: string | null): Promise<{ connected: boolean }>;

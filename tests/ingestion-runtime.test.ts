@@ -199,7 +199,8 @@ test("runtime refresh saves scoped evidence, compiles supporting context, and ke
               resource.kind === "course" &&
               sources.get(resource.sourceId)?.scope === "course",
           );
-        assert.equal(catalog.length, 11);
+        // fix/current-courses-only: the nameless restricted row (301) is never stored as a course.
+        assert.equal(catalog.length, 10);
         assert.deepEqual(
           catalog
             .filter((resource) => resource.course?.selection?.included)

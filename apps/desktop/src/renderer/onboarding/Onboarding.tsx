@@ -12,7 +12,9 @@ import { Icon, Spinner } from "./icons";
 import {
   clientInfo,
   clientOrder,
+  courseChoices,
   createPreviewClients,
+  enrolledWithoutCanvas,
   firstIncompleteStep,
   healthFromStatus,
   orderedClients,
@@ -24,6 +26,7 @@ import {
   writeProgress,
   type ClientId,
   type ClientsBridge,
+  type CourseChoice,
   type OnboardingProgress,
   type StepId,
   type UwProgress,
@@ -143,6 +146,20 @@ export function Onboarding(props: OnboardingProps) {
         }}
       />
     );
+  else if (step === "courses")
+    body = (
+      <CoursesStep
+        heading={heading}
+        snapshot={snapshot}
+        busy={busy}
+        run={props.run}
+        onBack={back}
+        onNext={() => {
+          update({ coursesDone: true });
+          next();
+        }}
+      />
+    );
   else if (step === "client")
     body = (
       <ClientStep
@@ -197,10 +214,14 @@ export function Onboarding(props: OnboardingProps) {
         snapshot={snapshot}
         busy={busy}
         noClient={progress.client === "later"}
+        onSignIn={() => void props.signIn()}
+        onRetry={() => void window.magic?.syncCanvas?.().then(() => props.run({ type: "snapshot" }))}
         onLoadSample={loadSample}
         onBack={back}
         onFinish={() => {
           update({ done: true });
+          // Finishing setup accepts the course choice if the step was never confirmed.
+          if (snapshot.ingestionSettings?.awaitingCourseChoice) void window.magic?.syncCanvas?.({ confirm: true });
           props.onFinish();
         }}
       />
@@ -360,7 +381,8 @@ function UwStep({
     setOutcome(null);
     try {
       // FDB-002: Canvas is read only after a confirmed sign-in; a closed window starts nothing.
-      const result = await signInAndSync(window.magic ?? {});
+      // fix/current-courses-only: only the course lists now; the student chooses before the sync.
+      const result = await signInAndSync(window.magic ?? {}, undefined, { discover: true, enrollmentFirst: true });
       setOutcome(result.outcome);
       onOutcome(result.outcome.status);
       if (result.synced) void run({ type: "snapshot" });
@@ -436,6 +458,95 @@ function UwStep({
             {outcome ? "Sign in again" : "Sign in to UW"}
           </button>
         ) : null}
+      </Actions>
+    </>
+  );
+}
+
+// --- 2b. Your courses (fix/current-courses-only) -------------------------------------------------
+function CourseRow({ course, busy, onToggle }: { course: CourseChoice; busy: boolean; onToggle: (on: boolean) => void }) {
+  return (
+    <li className="chn-row">
+      <label className="onb-course">
+        <input type="checkbox" checked={course.checked} disabled={busy} onChange={(e) => onToggle(e.target.checked)} />
+        <span className="chn-row-text">
+          <span className="chn-row-name">{course.name}</span>
+          <span className="chn-row-detail">
+            {course.term ?? "No term"} · {course.decidedBy === "enrollment" ? "from your UW enrollment" : "from Canvas term dates"}
+          </span>
+        </span>
+      </label>
+    </li>
+  );
+}
+function CoursesStep({
+  heading,
+  snapshot,
+  busy,
+  run,
+  onBack,
+  onNext,
+}: {
+  heading: Heading;
+  snapshot: Snapshot;
+  busy: boolean;
+  run: (command: Command) => Promise<CommandResult | undefined>;
+  onBack: (() => void) | null;
+  onNext: () => void;
+}) {
+  const choices = courseChoices(snapshot);
+  const thisTerm = choices.filter((c) => c.group === "this-term");
+  const other = choices.filter((c) => c.group === "other");
+  const missing = enrolledWithoutCanvas(snapshot, new Date());
+  const toggle = (course: CourseChoice, included: boolean) =>
+    void run({ type: "course-override", value: { accountScope: course.accountScope, courseId: course.courseId, included } });
+  const start = () => {
+    // The first full read, of the checked courses only; it continues while setup goes on.
+    if (window.magic?.syncCanvas) void window.magic.syncCanvas({ confirm: true }).then(() => run({ type: "snapshot" }));
+    onNext();
+  };
+  return (
+    <>
+      {heading("Your courses")}
+      <p className="onb-lede">
+        Your classes this term, from your UW enrollment when it could be read, otherwise from Canvas's term dates. Only
+        the checked ones are read. You can change this later in Settings.
+      </p>
+      {thisTerm.length ? (
+        <ul className="chn-rows" aria-label="This term">
+          {thisTerm.map((course) => (
+            <CourseRow key={course.id} course={course} busy={busy} onToggle={(on) => toggle(course, on)} />
+          ))}
+        </ul>
+      ) : (
+        <p className="onb-note">Canvas didn't list a course for this term.</p>
+      )}
+      {missing.length ? (
+        <ul className="chn-rows" aria-label="Enrolled classes without a Canvas course">
+          {missing.map((c) => (
+            <li key={c.courseKey} className="chn-row">
+              <span className="chn-row-text">
+                <span className="chn-row-name">{c.title}</span>
+                <span className="chn-row-detail">No Canvas course found · from your UW enrollment</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {other.length ? (
+        <details className="onb-other-courses">
+          <summary>Other Canvas sites ({other.length})</summary>
+          <ul className="chn-rows" aria-label="Other Canvas sites">
+            {other.map((course) => (
+              <CourseRow key={course.id} course={course} busy={busy} onToggle={(on) => toggle(course, on)} />
+            ))}
+          </ul>
+        </details>
+      ) : null}
+      <Actions onBack={onBack}>
+        <button className="onb-primary" disabled={busy} onClick={start}>
+          Start syncing
+        </button>
       </Actions>
     </>
   );
@@ -1128,6 +1239,8 @@ function Populating({
   snapshot,
   busy,
   noClient,
+  onSignIn,
+  onRetry,
   onLoadSample,
   onBack,
   onFinish,
@@ -1136,11 +1249,14 @@ function Populating({
   snapshot: Snapshot;
   busy: boolean;
   noClient: boolean;
+  onSignIn: () => void;
+  onRetry: () => void;
   onLoadSample: () => unknown;
   onBack: (() => void) | null;
   onFinish: () => void;
 }) {
   const summary = summarize(snapshot, busy);
+  const [whyOpen, setWhyOpen] = useState<string | null>(null);
   const title =
     summary.outcome === "empty"
       ? "Nothing connected yet"
@@ -1158,8 +1274,10 @@ function Populating({
           : summary.outcome === "reading"
             ? "This keeps going if you open your workspace now."
             : summary.outcome === "issues"
-              ? "Some sources were not fully read. What was read is saved; the rest is listed below."
-              : "Everything connected was read."}
+              ? "These weren't fully read. What was read is saved; each one says why and what you can do."
+              : summary.filesArriving
+                ? `Your courses' assignments and modules are read. ${summary.filesArriving} course ${summary.filesArriving === 1 ? "file is" : "files are"} still coming in; they keep arriving after you open your workspace.`
+                : "Everything connected was read."}
       </p>
       {summary.counts.length > 0 ? (
         <ul className="onb-counts" aria-label="Items found">
@@ -1186,10 +1304,18 @@ function Populating({
               <span className="onb-source-text">
                 <span className="onb-source-label">{source.label}</span>
                 {source.reason ? <span className="onb-source-reason">{source.reason}</span> : null}
+                {whyOpen === source.id && source.why ? <span className="onb-source-reason">{source.why}</span> : null}
               </span>
               <span className="onb-source-status">
                 {source.status}
                 {source.detail ? <span className="onb-source-detail">{source.detail}</span> : null}
+                {source.action === "sign-in" ? (
+                  <button className="onb-link" onClick={onSignIn}>Sign in again</button>
+                ) : source.action === "retry" ? (
+                  <button className="onb-link" disabled={busy} onClick={onRetry}>Retry</button>
+                ) : source.action === "why" && source.why ? (
+                  <button className="onb-link" aria-expanded={whyOpen === source.id} onClick={() => setWhyOpen(whyOpen === source.id ? null : source.id)}>Why?</button>
+                ) : null}
               </span>
             </li>
           ))}

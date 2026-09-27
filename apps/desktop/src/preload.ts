@@ -84,8 +84,13 @@ const bridge: AppBridge = {
   graph: (request) => ipcRenderer.invoke("magic:graph", request), // owner: pipeline
   importFile: () => ipcRenderer.invoke("magic:import"),
   signInUW: (service) => ipcRenderer.invoke("magic:signin", service),
-  syncCanvas: () => ipcRenderer.invoke("magic:sync"),
-  syncPlanning: () => ipcRenderer.invoke("magic:planning-sync"),
+  syncCanvas: (options?: { discover?: boolean; confirm?: boolean }) =>
+    ipcRenderer.invoke(
+      "magic:sync",
+      options?.confirm === true ? { confirm: true } : options?.discover === true ? { discover: true } : undefined,
+    ),
+  syncPlanning: (options?: { phase?: "enrollment" }) =>
+    ipcRenderer.invoke("magic:planning-sync", options?.phase === "enrollment" ? { phase: "enrollment" } : undefined),
   signOutUW: () => ipcRenderer.invoke("magic:signout"),
   localStatus: () => ipcRenderer.invoke("magic:local-status"),
   localAsk: (request) => ipcRenderer.invoke("magic:local-ask", request),

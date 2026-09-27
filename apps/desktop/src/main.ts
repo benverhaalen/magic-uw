@@ -574,6 +574,7 @@ app
             http: planningHttp, accountSeed: planningAccountScope, signal: controller.signal,
             deadline: AbortSignal.timeout(70_000),
             storedAudits: message.payload?.storedAudits, freshSubjects: message.payload?.freshSubjects,
+            ...(message.payload?.phase === "enrollment" ? { phase: "enrollment" as const } : {}), // fix/current-courses-only
           });
           // end owner: planning-perf
           controller.signal.throwIfAborted();
@@ -1859,8 +1860,14 @@ app
       validateSender(event);
       return { connected: Boolean(await vault.get("calendar:outlook")) };
     });
-    ipcMain.handle("magic:sync", async (event) => {
+    ipcMain.handle("magic:sync", async (event, options?: unknown) => {
       validateSender(event);
+      // fix/current-courses-only: discovery reads only the course lists (onboarding's chooser).
+      const discover =
+        !!options && typeof options === "object" && (options as { discover?: unknown }).discover === true;
+      // "Start syncing": the student's confirmation, the only message that releases the hold.
+      const confirm =
+        !!options && typeof options === "object" && (options as { confirm?: unknown }).confirm === true;
       if (!(await consentGate("magic:sync"))) throw new Error(consentRefused);
       await ready;
       const id = randomUUID();
@@ -1875,11 +1882,16 @@ app
           );
         }, 600_000);
         calls.set(id, { resolve, reject, timer });
-        worker.postMessage({ kind: "refresh", id });
+        worker.postMessage({ kind: "refresh", id, ...(confirm ? { confirm: true } : discover ? { discover: true } : {}) });
       });
     });
-    ipcMain.handle("magic:planning-sync", async (event) => {
+    ipcMain.handle("magic:planning-sync", async (event, options?: unknown) => {
       validateSender(event);
+      // fix/current-courses-only: onboarding reads this term's enrollment first.
+      const phase =
+        !!options && typeof options === "object" && (options as { phase?: unknown }).phase === "enrollment"
+          ? ("enrollment" as const)
+          : undefined;
       if (!(await consentGate("magic:planning-sync"))) throw new Error(consentRefused);
       await ready;
       if (planningClears > 0) throw new Error("Planning is unavailable while local data or sessions are being cleared.");
@@ -1898,7 +1910,7 @@ app
           reject(new Error("Planning refresh timed out. Saved records are still available."));
         }, 90_000);
         calls.set(id, { resolve, reject, timer });
-        worker.postMessage({ kind: "planning-sync", id });
+        worker.postMessage({ kind: "planning-sync", id, ...(phase ? { phase } : {}) });
       });
       planningCall = { id, promise };
       try { return await promise; }

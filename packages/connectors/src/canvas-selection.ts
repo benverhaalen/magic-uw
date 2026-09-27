@@ -22,6 +22,8 @@ export interface SelectableCanvasCourse {
     end_at?: string | null;
   } | null;
   enrollments?: Array<{ type?: string; enrollment_state?: string }> | null;
+  /** Canvas: the course's own dates override the term's for enrollment activity. */
+  restrict_enrollments_to_course_dates?: boolean | null;
 }
 export interface CanvasCourseOverride {
   accountScope: string;
@@ -33,7 +35,95 @@ export interface CanvasSelectionOptions {
   courseOverrides?: CanvasCourseOverride[];
   selectedTerm?: string | null;
   currentTime?: Date;
+  /**
+   * fix/current-courses-only. The student's own UW current enrollment (Course Search & Enroll,
+   * normalizeUwCurrentEnrollment): true when this Canvas course's subject and catalog number
+   * (and section, when both name one) match an enrolled class. Code only; this data never goes
+   * to AI, Jev or MCP. Without planning data Canvas's own signals decide alone.
+   */
+  enrolledThisTerm?: (course: SelectableCanvasCourse) => boolean;
+  /**
+   * The enrollment read succeeded for the current term: it is the primary definition of "this
+   * term". A current Canvas course that matches no enrolled class goes to "Other Canvas sites".
+   * Canvas's own term rules decide only when this is false (the read failed or never ran).
+   */
+  enrollmentAuthoritative?: boolean;
 }
+/**
+ * The reasons that place a course; the course chooser groups by them (stable strings).
+ * "This term" is pre-checked, "Other Canvas sites" unchecked, past and nameless courses hidden.
+ */
+export const COURSE_REASONS = {
+  thisTerm: "This term",
+  enrolled: "Matches your UW enrollment this term",
+  past: "Past course: its term ended",
+  future: "Its term hasn't started",
+  termless: "No academic term: an organization or community site",
+  notEnrolled: "Not in your UW enrollment this term",
+  stillOpen: "Its term ended, but Canvas keeps the course open until its own end date",
+} as const;
+const DAY = 86400_000;
+/** How long after its term ends a course still counts as this term (final exams, late grades). */
+export const TERM_GRACE_DAYS = 14;
+/**
+ * Approximate term dates for a term Canvas names but gives no dates for (UW's calendar shape).
+ * Only a fallback: Canvas's own term or course dates win whenever it sends them.
+ */
+function approximateTerm(term: NonNullable<ReturnType<typeof parseAcademicTerm>>): { start: number; end: number } {
+  const at = (y: number, m: number, d: number) => Date.UTC(y, m - 1, d);
+  switch (term.season) {
+    case "fall":
+      return { start: at(term.year, 9, 1), end: at(term.year, 12, 23) };
+    case "winter":
+      return { start: at(term.year, 12, 24), end: at(term.year + 1, 1, 20) };
+    case "spring":
+      return { start: at(term.endYear, 1, 15), end: at(term.endYear, 5, 20) };
+    default:
+      return { start: at(term.endYear, 5, 25), end: at(term.endYear, 8, 20) };
+  }
+}
+/**
+ * Where a course sits in time, from Canvas's own dates (Courses API with include[]=term):
+ * the term's start_at/end_at, or the course's own when Canvas restricts enrollments to course
+ * dates (restrict_enrollments_to_course_dates); a named academic term without dates falls back
+ * to its approximate dates. "past": ended more than TERM_GRACE_DAYS ago. "extended": the term is
+ * past but the course's own end date is still ahead (Canvas lists it open).
+ */
+export function courseTiming(
+  course: SelectableCanvasCourse,
+  currentTime = new Date(),
+): "current" | "past" | "future" | "extended" | "unknown" {
+  const ms = (value: string | null | undefined) => {
+    const n = Date.parse(value ?? "");
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const courseStart = ms(course.start_at),
+    courseEnd = ms(course.end_at),
+    termStart = ms(course.term?.start_at),
+    termEnd = ms(course.term?.end_at);
+  const parsed = parseAcademicTerm(course.term?.name);
+  let window: { start?: number; end?: number };
+  if (course.restrict_enrollments_to_course_dates && (courseStart !== undefined || courseEnd !== undefined))
+    window = { start: courseStart ?? termStart, end: courseEnd ?? termEnd };
+  else if (termStart !== undefined || termEnd !== undefined) window = { start: termStart, end: termEnd };
+  // Canvas's own dates always beat a date guessed from the term's name.
+  else if (courseStart !== undefined || courseEnd !== undefined) window = { start: courseStart, end: courseEnd };
+  else if (parsed) window = approximateTerm(parsed);
+  else window = {};
+  const now = currentTime.getTime();
+  if (window.start !== undefined && window.start > now) return "future";
+  if (window.end !== undefined && window.end < now - TERM_GRACE_DAYS * DAY)
+    return courseEnd !== undefined && courseEnd > now ? "extended" : "past";
+  return window.start === undefined && window.end === undefined ? "unknown" : "current";
+}
+/** Canvas gives the term start and end, and they span no more than 400 days (not a catch-all term). */
+export function academicTermDates(course: SelectableCanvasCourse): boolean {
+  const start = Date.parse(course.term?.start_at ?? ""),
+    end = Date.parse(course.term?.end_at ?? "");
+  return Number.isFinite(start) && Number.isFinite(end) && end > start && end - start <= 400 * DAY;
+}
+// The Canvas course code parser is shared with onboarding's chooser (packages/domain).
+export { canvasCourseCode } from "../../domain/src/enrollment-match";
 export function parseAcademicTerm(
   input: string | null | undefined,
 ): { season: string; year: number; endYear: number; key: string } | null {
@@ -87,6 +177,9 @@ export function courseSelection(
   if (course.workflow_state === "available") add(0.5, "Published course");
   const term = parseAcademicTerm(course.term?.name);
   if (term) add(2, "Academic term with year");
+  // A term whose name doesn't parse ("2026 Fall", "Academic Year 2026-2027", "Wintersession")
+  // is still an academic term when Canvas dates it like one: at most 400 days long.
+  else if (academicTermDates(course)) add(2, "Academic term dates");
   if (
     /\b[A-Z][A-Z &/]{1,30}[ -]?\d{3,4}[A-Z]?\b/.test(
       `${course.course_code ?? ""} ${course.name ?? ""}`,
@@ -135,6 +228,45 @@ export function courseSelection(
     included = false;
     reasons.push("Completed enrollment catalog; course metadata only");
   }
+  // fix/current-courses-only. "This term" is Canvas's own term, by its dates: a published course
+  // with the student's active enrollment whose term contains today (or ended within
+  // TERM_GRACE_DAYS). A term-less site counts only when the student's UW enrollment names it.
+  const timing = courseTiming(course, options.currentTime);
+  const listedOpen =
+    !!student &&
+    course.workflow_state === "available" &&
+    !course.access_restricted_by_date &&
+    !course.historicalOnly &&
+    !course.concluded;
+  const enrolled = listedOpen && options.enrolledThisTerm?.(course) === true;
+  const past = timing === "past" || !!course.historicalOnly || !!course.concluded ||
+    course.workflow_state === "completed" || course.workflow_state === "deleted";
+  if (timing === "past") {
+    included = false;
+    reasons.push(COURSE_REASONS.past);
+  } else if (timing === "future") {
+    included = false;
+    reasons.push(COURSE_REASONS.future);
+  } else if (timing === "extended") {
+    included = false;
+    reasons.push(COURSE_REASONS.stillOpen);
+  } else if (options.enrollmentAuthoritative && listedOpen) {
+    // Course Search & Enroll decides among the courses Canvas lists as current or term-less.
+    included = enrolled;
+    reasons.push(enrolled ? COURSE_REASONS.enrolled : COURSE_REASONS.notEnrolled);
+  } else if (!term && !academicTermDates(course)) {
+    if (enrolled) {
+      included = true;
+      reasons.push(COURSE_REASONS.enrolled);
+    } else {
+      included = false;
+      reasons.push(COURSE_REASONS.termless);
+    }
+  } else if (listedOpen && (included || enrolled)) {
+    included = true;
+    reasons.push(COURSE_REASONS.thisTerm);
+    if (enrolled) reasons.push(COURSE_REASONS.enrolled);
+  }
   const selected = parseAcademicTerm(options.selectedTerm);
   if (
     options.selectedTerm &&
@@ -155,14 +287,16 @@ export function courseSelection(
     reasons.push(
       override.included ? "Included by student" : "Excluded by student",
     );
-    // An include choice persists, but cannot turn inaccessible course evidence into an open course.
+    // An include choice persists, but cannot turn inaccessible course evidence into an open course,
+    // and old courses are never fetched (fix/current-courses-only).
     if (
       course.access_restricted_by_date ||
       course.workflow_state === "unpublished" ||
-      course.historicalOnly
+      course.historicalOnly ||
+      (override.included && past)
     ) {
       included = false;
-      reasons.push(course.historicalOnly
+      reasons.push(course.historicalOnly || past
         ? "Saved include choice retained; historical content is not collected in this refresh"
         : "Saved include choice waits for course access");
     }
