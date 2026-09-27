@@ -1,6 +1,8 @@
-import { useState, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode } from 'react';
 import type { CourseCard } from '../../../../packages/domain/src/course-page';
 import type { DesktopView } from './navigation';
+import { ACCOUNT_CARD_ID } from './account/AccountCard';
+const defaultAvatar = new URL('../../../../marketing/logo/head-color.svg', import.meta.url).href;
 // Lucide v0.468.0 nodes from lucide-static; ISC attribution: packages/ui/LICENSE.icons.
 // Existing vendor originals: docs/design/lab/vendor. Remaining nodes from the same pinned release.
 export function Glyph({ name }: { name: 'home' | 'book' | 'calendar' | 'panel' | 'back' | 'forward' | 'compose' | 'chevron' | 'external' | 'settings' | 'school' | 'tools' }) {
@@ -21,11 +23,44 @@ export function Glyph({ name }: { name: 'home' | 'book' | 'calendar' | 'panel' |
   };
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
-export function DesktopShell({ view, title, courses, selectedCourseKey, sample, busy, canBack, canForward, onBack, onForward, onNavigate, onCourse, onCompose, status, children }: {
+export function DesktopShell({ view, title, courses, selectedCourseKey, sample, busy, canBack, canForward, onBack, onForward, onNavigate, onCourse, onCompose, status, renderAccount, children }: {
   view: DesktopView; title: string; courses: CourseCard[]; selectedCourseKey: string | null; sample: boolean; busy: boolean; canBack: boolean; canForward: boolean;
-  onBack: () => void; onForward: () => void; onNavigate: (view: DesktopView) => void; onCourse: (key: string) => void; onCompose: () => void; status?: ReactNode; children: ReactNode;
+  onBack: () => void; onForward: () => void; onNavigate: (view: DesktopView) => void; onCourse: (key: string) => void; onCompose: () => void; status?: ReactNode;
+  /** The account card's content; `open` is whether it is showing. */
+  renderAccount?: (open: boolean) => ReactNode; children: ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false), [expanded, setExpanded] = useState(true);
+  // owner: account-card. A non-modal popover anchored to the avatar: hover or keyboard focus shows it,
+  // Escape or leaving hides it, a click still opens Data & AI. It sits in the top layer so the
+  // sidebar's clipping never cuts it off; its one button follows the avatar in the tab order.
+  const avatarRef = useRef<HTMLButtonElement>(null), cardRef = useRef<HTMLDivElement>(null), hideTimer = useRef(0);
+  const [cardOpen, setCardOpen] = useState(false);
+  const showCard = () => { window.clearTimeout(hideTimer.current); if (renderAccount) setCardOpen(true); };
+  const hideCardSoon = () => { window.clearTimeout(hideTimer.current); hideTimer.current = window.setTimeout(() => setCardOpen(false), 150); };
+  const leaveFocus = (event: FocusEvent) => {
+    const next = event.relatedTarget as Node | null;
+    if (!next || !(avatarRef.current?.contains(next) || cardRef.current?.contains(next))) { window.clearTimeout(hideTimer.current); setCardOpen(false); }
+  };
+  const escapeCard = (event: KeyboardEvent) => {
+    if (event.key !== 'Escape' || !cardOpen) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setCardOpen(false);
+    if (cardRef.current?.contains(document.activeElement)) avatarRef.current?.focus();
+  };
+  useLayoutEffect(() => {
+    const card = cardRef.current, anchor = avatarRef.current;
+    if (!card || !anchor) return;
+    let shown = false;
+    try { shown = card.matches(':popover-open'); } catch { /* no popover support: nothing to toggle */ }
+    if (cardOpen) {
+      const box = anchor.getBoundingClientRect();
+      card.style.left = `${Math.round(box.left)}px`;
+      card.style.bottom = `${Math.round(window.innerHeight - box.top + 8)}px`;
+      if (!shown) card.showPopover?.();
+    } else if (shown) card.hidePopover?.();
+  }, [cardOpen, collapsed]);
+  useLayoutEffect(() => () => window.clearTimeout(hideTimer.current), []);
   return <div className={`desktop-shell ${collapsed ? 'is-collapsed' : ''}`}>
     <header className="desktop-chrome"><div className="desktop-brand">My Magic UW</div><div className="desktop-history">
       <button aria-label="Go back" disabled={!canBack} onClick={onBack}><Glyph name="back"/></button>
@@ -38,7 +73,11 @@ export function DesktopShell({ view, title, courses, selectedCourseKey, sample, 
         ['today', 'Home', 'home'], ['courses', 'Courses', 'book'], ['myuw', 'My UW', 'school'], ['calendar', 'Calendar', 'calendar'],
         ['tools', 'Workspace tools', 'tools'], // owner: ui-wiring: backend wiring previews until designed screens replace them
       ] as const).map(([key, label, icon]) => <div key={key}><div className="desktop-nav-row"><button className={`desktop-nav ${view === key ? 'active' : ''}`} aria-label={label} aria-current={view === key ? 'page' : undefined} onClick={() => onNavigate(key)}><Glyph name={icon}/><span className="magic-motion-fade" data-faded={collapsed ? '' : undefined}>{label}</span></button>{key === 'courses' && <button className={`desktop-expand magic-motion-fade ${expanded ? 'expanded' : ''}`} data-faded={collapsed ? '' : undefined} inert={collapsed} aria-label={expanded ? 'Collapse courses' : 'Expand courses'} aria-expanded={expanded} onClick={() => setExpanded(!expanded)}><Glyph name="chevron"/></button>}</div>{key === 'courses' && <div className="magic-motion-rows" data-open={expanded && !collapsed} inert={!expanded || collapsed}><div className="desktop-course-list">{courses.map(course => <button key={course.key} data-focus-key={`sidebar-course-${course.key}`} aria-current={selectedCourseKey === course.key ? "page" : undefined} className={selectedCourseKey === course.key ? "active" : undefined} onClick={() => onCourse(course.key)} title={course.rawCourseName}><span className="desktop-course-title">{course.courseName}</span>{course.code && course.code !== course.courseName && <span className="desktop-course-code">{course.code}</span>}</button>)}</div></div>}</div>)}</nav>
-      <div className="desktop-profile"><button className="desktop-profile-button" aria-label="Workspace settings" onClick={() => onNavigate('privacy')}><span className="desktop-avatar" aria-hidden="true">{sample ? 'S' : 'Y'}</span><span className="magic-motion-fade" data-faded={collapsed ? '' : undefined}>{sample ? 'Sample student' : 'Your workspace'}</span></button><button className="desktop-source-shortcut magic-motion-fade" data-faded={collapsed ? '' : undefined} inert={collapsed} onClick={() => onNavigate('sources')} aria-label="Connected sources"><Glyph name="settings"/></button></div>
+      <div className="desktop-profile"><button ref={avatarRef} className="desktop-profile-button" aria-label="Workspace settings" aria-describedby={renderAccount ? `${ACCOUNT_CARD_ID}-name ${ACCOUNT_CARD_ID}-facts` : undefined}
+        onClick={() => { setCardOpen(false); onNavigate('privacy'); }} onMouseEnter={showCard} onMouseLeave={hideCardSoon} onFocus={showCard} onBlur={leaveFocus} onKeyDown={escapeCard}>
+        <span className="desktop-avatar" aria-hidden="true"><img src={defaultAvatar} alt=""/></span><span className="magic-motion-fade" data-faded={collapsed ? '' : undefined}>{sample ? 'Sample student' : 'Your workspace'}</span></button>
+        {renderAccount ? <div ref={cardRef} id={ACCOUNT_CARD_ID} className="desktop-account-card" popover="manual" role="group" aria-label="Account"
+          onMouseEnter={showCard} onMouseLeave={hideCardSoon} onFocus={showCard} onBlur={leaveFocus} onKeyDown={escapeCard}>{renderAccount(cardOpen)}</div> : null}<button className="desktop-source-shortcut magic-motion-fade" data-faded={collapsed ? '' : undefined} inert={collapsed} onClick={() => onNavigate('sources')} aria-label="Connected sources"><Glyph name="settings"/></button></div>
     </aside>
     <main className="desktop-workspace" onClick={event => {
       const link = (event.target as Element).closest<HTMLAnchorElement>('a[href^="#resource/"]');
