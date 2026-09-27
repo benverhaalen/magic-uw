@@ -15,6 +15,11 @@ export interface SessionSettings {
   signedInBefore: boolean;
   /** owner: T05e. Remember my sign-in's automatic-attempt record; present only once used. */
   autoSignIn?: AutoSignInRecord;
+  /**
+   * The last sign-in window closed without confirming. The next one first clears UW's
+   * login-page cookies so a half-finished login flow can't answer "Stale Request".
+   */
+  loginUnfinished?: boolean;
 }
 export const defaultSessionSettings: Readonly<SessionSettings> = Object.freeze({
   keepSignedIn: true,
@@ -36,6 +41,8 @@ export function parseSessionSettings(raw: unknown): SessionSettings {
       "signedInBefore" in value && typeof value.signedInBefore === "boolean"
         ? value.signedInBefore
         : defaultSessionSettings.signedInBefore,
+    // Present only when set, so ordinary settings keep their existing shape.
+    ...("loginUnfinished" in value && value.loginUnfinished === true ? { loginUnfinished: true } : {}),
   };
 }
 

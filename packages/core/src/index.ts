@@ -461,7 +461,9 @@ export function createCore(store: Store, options: CoreOptions) {
         continue;
       const attemptedAt = now();
       semanticAttempts.set(key, { status: "running", attemptedAt });
-      const included = courseInclusion(store);
+      // Built lazily: a profile with no live dependencies should not pay for a full read.
+      let inclusion: ((resource: Resource) => boolean) | undefined;
+      const included = (r: Resource) => (inclusion ??= courseInclusion(store))(r);
       const resources = profile.dependencies
         .map((d) => store.resource(d.resourceId))
         .filter(
