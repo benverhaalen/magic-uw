@@ -1,4 +1,5 @@
 import type { CourseWorkRow, CourseWorkModel } from './course-work-model';
+import { SHOW_DATE_CONFLICT_UI } from '../date-conflict-policy';
 
 export type WorkSection = 'current' | 'overdue' | 'earlier' | 'later' | 'conflict' | 'undated' | 'done';
 export type WorkListState = {
@@ -19,7 +20,7 @@ export function workToday(model: CourseWorkModel, timeZone: string): string {
 }
 export function workPlacement(row: CourseWorkRow, today: string, rows: CourseWorkRow[] = []): { section: WorkSection; date: string | null } {
   const date = row.time.state === 'dated' ? row.time.date : null;
-  if (row.time.state === 'conflict') return { section: 'conflict', date: null };
+  if (row.time.state === 'conflict') return { section: SHOW_DATE_CONFLICT_UI ? 'conflict' : 'undated', date: null };
   if (!row.report?.needsReview && (completedSource(row) || (row.kind === 'prep' && row.report?.checked))) return { section: 'done', date };
   if (!date) {
     const meeting = row.relation && rows.find(candidate => candidate.key === row.relation!.occurrenceKey && candidate.accountScope === row.accountScope && candidate.courseId === row.courseId && candidate.mode === 'commitment' && candidate.time.state === 'dated');
@@ -75,13 +76,13 @@ export function workPageSize(groups: WorkGroup[], requested = 20): number {
 }
 export function workTimeLabel(row: CourseWorkRow, today: string, showDate = false): string {
   const time = row.time;
-  if (time.state === 'conflict') return time.needsReview ? 'Your date needs review' : 'Dates disagree';
+  if (time.state === 'conflict') return SHOW_DATE_CONFLICT_UI ? time.needsReview ? 'Your date needs review' : 'Dates disagree' : 'Date in saved sources';
   if (time.state === 'undated') return row.relation?.label ?? 'No date saved';
   const clock = time.minute === null ? null : new Intl.DateTimeFormat(undefined, { timeZone: time.timeZone, hour: 'numeric', minute: '2-digit' }).format(new Date(time.at));
   const date = showDate || time.date < today ? workDateLabel(time.date, today) : null;
   const suffix = [date, clock].filter(Boolean).join(' · ');
   const prefix = time.personal ? 'Your plan' : time.role === 'starts' ? 'Starts' : time.role === 'planning' ? 'Planned' : 'Due';
-  return `${prefix}${suffix ? ` ${suffix}` : ' that day'}${time.sourceConflict ? ' · source dates disagree' : ''}`;
+  return `${prefix}${suffix ? ` ${suffix}` : ' that day'}${SHOW_DATE_CONFLICT_UI && time.sourceConflict ? ' · source dates disagree' : ''}`;
 }
 export function workSourceLabel(row: CourseWorkRow): string | null {
   if (row.sourceLabel) return row.sourceLabel;

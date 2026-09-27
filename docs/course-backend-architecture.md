@@ -1,6 +1,6 @@
 # My Magic UW backend reference
 
-**Role:** the detailed reference behind [the architecture](architecture.md), which is canonical. This page keeps what is too detailed for it: the schema history, the agent-runtime mechanisms with their measured effects, the job-handler contract, freshness, the measured effect of each design choice, the frontend's query path, the command bar and the open human calls. Status per feature is in [implementation status](implementation-status.md); measurements and methods are in [benchmarks](benchmarks.md); the build specification is [the course-backend plan folder](plans/2026-09-26-course-backend/) (where they differ on a design, the plan folder wins). **Checked against `main` at `5f79bb0`, September 27, 2026.**
+**Role:** the detailed reference behind [the architecture](architecture.md), which is canonical. This page keeps what is too detailed for it: the schema history, the agent-runtime mechanisms with their measured effects, the job-handler contract, freshness, the measured effect of each design choice, the frontend's query path, the command bar and the open human calls. Status per feature is in [implementation status](implementation-status.md); measurements and methods are in [benchmarks](benchmarks.md); the build specification is [the course-backend plan folder](plans/2026-09-26-course-backend/) (where they differ on a design, the plan folder wins). **Checked against `main` at `53ecbe3`, September 27, 2026.**
 
 ## 1. Summary
 

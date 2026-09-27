@@ -124,11 +124,10 @@ function changedDatePassage(resource:ResourceView,span:DeadlineSpan):HomePassage
 export function selectHomeEvidence(resources:ResourceView[], snapshot:Pick<Snapshot,'links'|'sources'>, now:string, timeZone:string) {
   const work=homeWork(resources,snapshot.sources,now,timeZone);
   const activeWork = [...work.today,...work.upcoming.flatMap(g=>g.items)];
-  const active = new Set(activeWork.map(r=>r.id));
-  const prerequisites = activeWork.flatMap(r => { const claim = assignmentPrerequisite(r, resources, snapshot.sources); return claim ? [claim] : []; }).slice(0, 1);
+  const prerequisites = activeWork.flatMap(r => { const claim = assignmentPrerequisite(r, resources, snapshot.sources); return claim ? [claim] : []; }).slice(0, 2);
   const messages=resources.filter(r=>r.kind==='message' && r.text).sort((a,b)=>(b.createdAt ?? b.updatedAt ?? '').localeCompare(a.createdAt ?? a.updatedAt ?? '') || a.id.localeCompare(b.id));
-  const passages:HomePassage[]=[];
-  for (const r of [...resources.filter(r=>active.has(r.id)),...messages]) {
+  const candidates:HomePassage[]=[];
+  for (const r of [...activeWork,...messages]) {
     const change=r.deadline.claims.flatMap(claim=>{
       if(claim.authority!=='explicit_change' || !claim.span) return [];
       const source=resources.find(s=>s.id===claim.span!.resourceId);
@@ -136,9 +135,26 @@ export function selectHomeEvidence(resources:ResourceView[], snapshot:Pick<Snaps
       return passage ? [passage] : [];
     })[0];
     const candidate=change ?? meaningfulPassage(r);
-    if (candidate && !passages.some(p=>p.resource.id===candidate.resource.id || p.span.text===candidate.span.text)) passages.push(candidate);
-    if (passages.length===2) break;
+    if (candidate && !candidates.some(p=>p.resource.id===candidate.resource.id || p.span.text===candidate.span.text)) candidates.push(candidate);
   }
+  // The Brief's evidence window is chosen by cited, actionable context and near deadlines,
+  // never provider row order, point value, inferred effort or an AI time estimate.
+  const score=(p:HomePassage) => {
+    const r=p.resource, planning=schedulePlanning(r,timeZone);
+    const day=planning?.date, today=localTime(now,timeZone).date;
+    const days=day ? (Date.parse(`${day}T12:00:00Z`)-Date.parse(`${today}T12:00:00Z`))/86_400_000 : Infinity;
+    const linked=snapshot.links.some(link=>link.status==='accepted' && link.type==='specifies' && link.toId===r.id &&
+      resources.some(material=>material.id===link.fromId && material.kind==='material' && link.inputHash===material.contentHash && scopeKey(material,snapshot.sources)===scopeKey(r,snapshot.sources) &&
+        (r.links??[]).some(pointer=>(typeof pointer==='string'?pointer:pointer.url)===material.url)));
+    const concrete=/\b(proposal|draft|prototype|implementation|code|analysis|report|presentation|dataset|bibliography)\b/i.test(r.text);
+    return (linked?8:0)+(r.kind==='assignment'&&concrete?5:0)+(p.reason==='changed-date'?4:0)+
+      (Number.isFinite(days)&&days>=0&&days<=7 ? 4-days/7 : 0)+
+      (p.reason==='instruction'?2:0)+(r.kind==='message'&&/\b(cancelled|canceled|moved|changed|available|posted|office hours|schedule|policy)\b/i.test(p.span.text)?1:0);
+  };
+  const ordered=candidates.sort((a,b)=>score(b)-score(a) || (b.resource.createdAt??b.resource.updatedAt??'').localeCompare(a.resource.createdAt??a.resource.updatedAt??'') || a.resource.id.localeCompare(b.resource.id));
+  const passages=ordered.slice(0,12);
+  const informative=ordered.find(p=>p.resource.kind==='message' && p.reason==='information' && /\b(cancelled|canceled|moved|changed|available|posted|will meet|office hours|schedule|policy)\b/i.test(p.span.text));
+  if (informative && !passages.includes(informative)) passages[passages.length-1]=informative;
   const relevant = [...passages.map(p=>p.resource),...work.today,...work.upcoming.flatMap(g=>g.items)];
   const byId=new Map(resources.map(r=>[r.id,r]));
   const study:Array<{material:ResourceView;context:ResourceView}>=[];

@@ -1,3 +1,4 @@
+import { SHOW_DATE_CONFLICT_UI } from './date-conflict-policy';
 import { MagicGlyph } from '../../../../packages/ui/src/glyph';
 import { ItemSpaceHost, PrepFirstPrompt, StudyLearnPage, STUDY_LEARN_EVENT } from "./study-prep"; // owner: study-prep
 import { CoursesViewHeader } from './courses/CoursesViewToggle';
@@ -597,7 +598,7 @@ export function App() {
                 onSample={() => run({ type: "fixture" })}
               />
             ) : (
-              <Home onOpenSource={open} todayCount={navigation.homeTodayCount} onTodayCountChange={navigation.updateHomeTodayCount} upcomingCount={navigation.homeUpcomingCount} onUpcomingCountChange={navigation.updateHomeUpcomingCount} snapshot={snapshot} resources={resources} onSelect={setSelectedId} onCourses={() => { setQuery(""); setView("courses"); }} onSources={() => setView("sources")} onMyUw={target => { setView("myuw"); requestAnimationFrame(() => requestAnimationFrame(() => { const section = document.getElementById(`myuw-${target}`); const heading = section?.querySelector<HTMLElement>('h2') ?? document.getElementById('myuw-title'); const pane = heading?.closest<HTMLElement>('.desktop-workspace'); if (heading && pane) pane.scrollTop += heading.getBoundingClientRect().top - pane.getBoundingClientRect().top - 24; heading?.focus({ preventScroll: true }); })); }} onPlan={command => requirePlanSave(run, command)} onJoin={window.magic.openLink ? url => { void perform(() => window.magic.openLink!(url)); } : undefined} reviewDates={resource => <DeadlineReview resource={resource} run={run} onInspect={()=>setSelectedId(resource.id)}/>} report={(resource, summary) => <PersonalReport resource={resource} snapshot={snapshot} run={run} compactWhenHandled summary={summary}/>} onSetup={() => openConsent()} onNotice={setNotice} />
+              <Home onOpenSource={open} todayCount={navigation.homeTodayCount} onTodayCountChange={navigation.updateHomeTodayCount} upcomingCount={navigation.homeUpcomingCount} onUpcomingCountChange={navigation.updateHomeUpcomingCount} snapshot={snapshot} resources={resources} onSelect={setSelectedId} onCourses={() => { setQuery(""); setView("courses"); }} onPastDue={() => { setQuery(""); navigation.switchCoursesMode("list"); }} onSources={() => setView("sources")} onMyUw={target => { setView("myuw"); requestAnimationFrame(() => requestAnimationFrame(() => { const section = document.getElementById(`myuw-${target}`); const heading = section?.querySelector<HTMLElement>('h2') ?? document.getElementById('myuw-title'); const pane = heading?.closest<HTMLElement>('.desktop-workspace'); if (heading && pane) pane.scrollTop += heading.getBoundingClientRect().top - pane.getBoundingClientRect().top - 24; heading?.focus({ preventScroll: true }); })); }} onPlan={command => requirePlanSave(run, command)} onJoin={window.magic.openLink ? url => { void perform(() => window.magic.openLink!(url)); } : undefined} reviewDates={resource => <DeadlineReview resource={resource} run={run} onInspect={()=>setSelectedId(resource.id)}/>} report={(resource, summary) => <PersonalReport resource={resource} snapshot={snapshot} run={run} compactWhenHandled summary={summary}/>} onSetup={() => openConsent()} onNotice={setNotice} />
             )}
           </>
         ) : view === "chat" ? (
@@ -814,14 +815,16 @@ function ResourceList({
                 <span className="resource-course">{resource.courseName}</span>
                 <span className="resource-title">{resource.title}</span>
                 <span
-                  className={`resource-subline ${resource.deadline.conflict ? "attention-text" : ""}`}
+                  className={`resource-subline ${SHOW_DATE_CONFLICT_UI && resource.deadline.conflict ? "attention-text" : ""}`}
                 >
                   {done
                     ? resource.submitted === true
                       ? "Submitted · reported by source"
                       : "Marked complete"
-                    : resource.deadline.conflict
+                    : SHOW_DATE_CONFLICT_UI && resource.deadline.conflict
                       ? `Conflicting dates · plan for ${formatDate(resource.deadline.planningAt)}`
+                      : resource.deadline.conflict
+                        ? `Planning date ${formatDate(resource.deadline.planningAt)}`
                       : resource.deadline.dueAt
                         ? `Due ${formatDate(resource.deadline.dueAt)}`
                         : resource.kind === "assignment"
@@ -915,7 +918,7 @@ function ResourceDetail({
   return (
     <section className="resource-detail" aria-label="Selected item">
       <ResourceDetailHeader resource={resource} snapshot={snapshot} open={open} changedWhileReading={changedWhileReading}
-        deadlineReview={resource.deadline.conflict ? <DeadlineReview resource={resource} run={run} onInspect={() => {
+        deadlineReview={SHOW_DATE_CONFLICT_UI && resource.deadline.conflict ? <DeadlineReview resource={resource} run={run} onInspect={() => {
         const target = document.getElementById(`deadline-evidence-${resource.id}`);
         const disclosure = target?.querySelector('details');
         if (disclosure) disclosure.open = true;
@@ -985,7 +988,7 @@ function ResourceDetail({
         </section>
       ) : null}
       {(resource.kind === "assignment" || resource.deadline.conflict || resource.deadline.claims.length > 0) && <section id={`deadline-evidence-${resource.id}`}><Disclosure label="Deadline evidence" placeKey={`resource-deadline:${resource.id}`}>
-        <p className="muted small">Saved source interpretation: {resource.deadline.reason}</p>
+        {(!resource.deadline.conflict || SHOW_DATE_CONFLICT_UI) && <p className="muted small">Saved source interpretation: {resource.deadline.reason}</p>}
         {resource.deadline.claims.length ? (
           <ul className="evidence-list">
             {resource.deadline.claims.map((claim, index) => (
