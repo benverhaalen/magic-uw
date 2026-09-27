@@ -23,6 +23,10 @@ import {
   type AgendaFact,
 } from "../packages/core/src/priority/index";
 import { createJobRegistry } from "../packages/core/src/jobs/registry";
+import { pipelineJobRegistry } from "../packages/core/src/jobs/default-registry";
+import { createCore } from "@magic/core";
+import { captureBatchSchema } from "@magic/contracts";
+import courseFixture from "../fixtures/course.json";
 
 const TZ = "America/Chicago";
 // Thursday, October 1, 2026, 10:00 am in Chicago.
@@ -345,6 +349,32 @@ test("the line check: numbers, weekdays, months and relative days must match the
   assert.equal(checkLine("Lab 3 is about 2 hours of work.", titled, item, NOW_MS, TZ).ok, true);
   assert.equal(ok("It's overdue already."), false, "not overdue");
   assert.equal(ok("x".repeat(200)), false, "too long");
+});
+
+test("the one drain runs agenda.estimate on a course save, as the worker wires it", async () => {
+  const store = seeded();
+  const { runner, calls } = fakeRunner((call) =>
+    call.pack.id === "agenda-estimate"
+      ? { items: ids(call.input, "e").map((id) => ({ id, minutes: 95, basis: "synthetic" })) }
+      : { lines: ids(call.input, "n").map((id) => ({ id, text: "Start with this one: it opens the week's reading." })) },
+  );
+  const jobs = pipelineJobRegistry();
+  registerAgendaJobs(jobs, deps(runner));
+  const core = createCore(store, { fixture: captureBatchSchema.parse(courseFixture), jobs, drain: { idleMs: 0 } });
+  try {
+    assert.ok(core.saved("src-assignments") > 0, "a course save enqueues the course job");
+    await core.settled();
+    const done = store.jobs().filter((j) => j.kind === "agenda.estimate");
+    assert.equal(done.length, 1);
+    assert.equal(done[0]!.status, "done");
+    const view = ranked(store);
+    assert.deepEqual(view.items.map((i) => [i.estimate.method, i.estimate.minutes]), [["model", 95], ["model", 95]]);
+    assert.equal(view.narration.status, "model");
+    assert.deepEqual(calls.map((c) => c.pack.id), ["agenda-estimate", "agenda-why"]);
+    assert.ok(calls.every((c) => c.lane === "background"), "the drain's model calls use the background lane");
+  } finally {
+    await core.close();
+  }
 });
 
 test("the agenda job registers on the drain's registry as a ready course job", () => {
