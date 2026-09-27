@@ -2,7 +2,7 @@
 
 Updated September 26, 2026. **Current product direction from Ben; latest cohesive Home is the near-approved visual anchor (Ben described it as approximately 95% desired). Remaining local refinements are still under review.** This page supersedes the older neutral/no-serif direction and the unresolved Home/navigation discussion. It does not claim these screens are integrated in the Electron app.
 
-Use the [design foundation and handoff](design-handoff.md) for the portable visual asset, tokens, component contracts and scoped agent workflow. This page remains the canonical Home product/visual explanation. The recorded 95% is a satisfaction judgment, not a measured image-match threshold.
+Use the [design system](../DESIGN.md) for the portable visual asset, tokens, component contracts and scoped agent workflow. This page remains the canonical Home product/visual explanation. The recorded 95% is a satisfaction judgment, not a measured image-match threshold.
 
 ## The flagship experience
 
@@ -201,9 +201,9 @@ Browser checks passed for exact fonts, body-size time tags, loaded assets, right
 
 ## September 26 — foundation, autonomous refinement and latest scope
 
-Ben selected **“Design foundation and handoff first”** and asked for a repo-specific skill shaped by the accumulated conversation. The [design foundation](design-handoff.md) now routes to a synthetic visual reference, semantic token seed, component/state contracts, platform boundaries, selective reference use and independent audit process. These are documented implementation targets; they do not integrate the prototype into production.
+Ben selected **“Design foundation and handoff first”** and asked for a repo-specific skill shaped by the accumulated conversation. The [design system](../DESIGN.md) now routes to a synthetic visual reference, semantic token seed, component/state contracts, platform boundaries, selective reference use and independent audit process. These are documented implementation targets; they do not integrate the prototype into production.
 
-Ben’s later assessment — “the thing we made earlier is like 95% of what id want that static home page to look like essentially.” — makes preservation the starting point. Clean rebuild means a fresh implementation from this composition and behavior contract; it does not reopen the aesthetic. Keep exact font roles, hierarchy and current structure while resolving outlined actions/time tags, source-link backing, glyph scale and combined review/handled footprint. Original timestamp unavailable; recorded September 26.
+Ben’s later assessment — “the thing we made earlier is like 95% of what id want that static home page to look like essentially.” — makes preservation the starting point. Clean rebuild means a fresh implementation from this composition and behavior contract; it does not reopen the aesthetic. Keep exact font roles, hierarchy and current structure while resolving outlined actions/time tags, source-link backing, glyph scale and combined review/handled footprint. Original source: September 27, 2026 at 00:54:50.387 UTC (September 26 in Chicago), decision-record source B:803.
 
 Newest navigation instruction: “on the side with the Home and Courses, My UW, and Calendar should be things too.” This supersedes the previous omission of a separate Calendar destination. Sean’s unmerged code supplies a Today rail; a full Calendar page has not been built. Ben subsequently accepted week/month views with suggestions on request; detailed interactions still require design. Follow the platform review for reusable code and material gaps.
 
