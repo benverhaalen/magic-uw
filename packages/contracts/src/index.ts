@@ -2358,6 +2358,8 @@ export interface ClientsBridge {
   prepare(id: ClientId): Promise<ClientStatus>;
   authStatus(id: ClientId): Promise<ClientStatus>;
   choose(id: ClientId): Promise<void>;
+  /** owner: reconfigure. Removes the app's client setup (chosen client, modes, separate profiles) so setup starts fresh. */
+  reset?(): Promise<void>;
   // owner: client-health (D50). Optional so an older main still satisfies the bridge.
   /** Checks the client in the given mode (default: its saved mode), before offering or running it. */
   health?(id: ClientId, mode?: ClientMode): Promise<ClientHealth>;

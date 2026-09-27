@@ -24,6 +24,9 @@ import { WorkspaceTools } from "./backend"; // owner: ui-wiring: backend wiring 
 import { ConsentSetup, hasUwConsent, missingConsents } from "./consent/ConsentSetup";
 // owner: T81
 import { Onboarding, needsFirstRunSetup } from "./onboarding";
+import { steps } from "./onboarding/model";
+import { ReconfigureSection } from "./reconfigure/ReconfigureSection";
+import { resetForReconfigure } from "./reconfigure/reset";
 import { CalendarPage } from "./CalendarPage";
 import { DesktopShell, Glyph } from "./DesktopShell";
 import { AccountCard } from "./account/AccountCard";
@@ -178,6 +181,8 @@ export function App() {
   const [signInStage, setSignInStage] = useState<"idle" | "signin" | "checking">("idle");
   const [query, setQuery] = useState("");
 
+  // owner: reconfigure. Set after "Reconfigure My Magic UW" is confirmed: onboarding opens at step 1.
+  const [restartSetup, setRestartSetup] = useState(false);
   // owner: voice. Local dictation for the chat; the model downloads only from Data & AI.
   const dictation = useLocalDictation(window.magic?.voice);
   const mac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform || navigator.userAgent);
@@ -430,9 +435,10 @@ export function App() {
 
   // owner: T81. First run, or setup still incomplete: the onboarding flow replaces the shell
   // (and T06's in-Home consent entry) until the student opens the workspace.
-  if (snapshot && needsFirstRunSetup(snapshot))
+  if (snapshot && (restartSetup || needsFirstRunSetup(snapshot)))
     return (
       <Onboarding
+        startAt={restartSetup ? steps[0]!.id : undefined /* owner: reconfigure */}
         snapshot={snapshot}
         busy={busy}
         error={error}
@@ -444,6 +450,7 @@ export function App() {
         openExternal={open}
         onLoadSample={() => run({ type: "fixture" })}
         onFinish={() => {
+          setRestartSetup(false);
           setView("today");
           void refresh();
         }}
@@ -595,6 +602,10 @@ export function App() {
             open={open}
             onConsent={openConsent /* owner: T06 */}
             voice={<VoiceSetting dictation={dictation} mac={mac} /* owner: voice */ />}
+            reconfigure={<ReconfigureSection disabled={busy} onConfirm={async () => {
+              await resetForReconfigure({ clients: window.magic.clients, privacy: snapshot.privacy, run });
+              setRestartSetup(true);
+            }} /* owner: reconfigure */ />}
           />
         )}
     </DesktopShell>
@@ -1303,6 +1314,7 @@ function Privacy({
   open,
   onConsent,
   voice,
+  reconfigure,
 }: {
   snapshot: Snapshot;
   busy: boolean;
@@ -1310,6 +1322,7 @@ function Privacy({
   open: (url: string) => void;
   onConsent: (pending?: PrivacyPreferences | null) => void;
   voice?: ReactNode;
+  reconfigure?: ReactNode;
 }) {
   const [deleteText, setDeleteText] = useState("");
   const [showDelete, setShowDelete] = useState(false);
@@ -1518,6 +1531,7 @@ function Privacy({
       <FloatingChatSetting /* owner: floating-chat */ />
       {voice}
       <AccountSection /> {/* owner: accounts */}
+      {reconfigure}
       <section className="settings-section danger-section">
         <h2>Delete local data</h2>
         <p>

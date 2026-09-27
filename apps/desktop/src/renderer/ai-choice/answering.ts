@@ -98,6 +98,11 @@ export function checkClientHealth(id: ClientId, force = false): Promise<void> {
   pending.set(id, next);
   return next;
 }
+/** owner: reconfigure. Forgets every cached health answer, so the next reader checks again. */
+export function resetClientHealthCache(): void {
+  healthCache.clear();
+  notify();
+}
 const subscribeHealth = (listener: () => void) => { healthListeners.add(listener); return () => { healthListeners.delete(listener); }; };
 /** Health for several clients (the "Your AI" cards), checked on mount through the same cache. */
 export function useClientHealths(ids: readonly ClientId[]): Partial<Record<ClientId, ClientHealth | null>> {

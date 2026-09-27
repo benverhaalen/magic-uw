@@ -39,6 +39,7 @@ const clients: ClientsBridge = {
   prepare: (id) => ipcRenderer.invoke("magic:clients-prepare", id),
   authStatus: (id) => ipcRenderer.invoke("magic:clients-auth", id),
   choose: (id) => ipcRenderer.invoke("magic:clients-choose", id),
+  reset: () => ipcRenderer.invoke("magic:clients-reset"), // owner: reconfigure
   // owner: client-health (D50)
   health: (id, mode) => ipcRenderer.invoke("magic:clients-health", id, mode),
   setMode: (id, mode) => ipcRenderer.invoke("magic:clients-set-mode", id, mode),

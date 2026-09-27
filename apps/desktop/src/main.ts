@@ -1119,6 +1119,12 @@ app
       validateSender(event);
       await (await clients()).choose(id);
     });
+    // owner: reconfigure. Setup starts fresh: client config, modes, separate profiles, health answers.
+    ipcMain.handle("magic:clients-reset", async (event) => {
+      validateSender(event);
+      await (await clients()).reset();
+      healthRuntime = undefined;
+    });
     ipcMain.handle("magic:terminal-open", async (event, ...args: unknown[]) => {
       validateSender(event);
       const runtime = await clients();

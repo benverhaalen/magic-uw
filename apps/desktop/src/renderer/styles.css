@@ -1806,3 +1806,9 @@ select {
 .mode-choice:has(input:disabled) { cursor: default; }
 .mode-choice:has(input:disabled) strong { color: var(--magic-ink-muted-strong); }
 .sharing-choices { margin-top: 10px; }
+/* owner: reconfigure. The confirmation before setup starts over. */
+.reconfigure-dialog { max-width: 440px; padding: 22px 24px 18px; border: 1px solid var(--magic-line-quiet); border-radius: var(--magic-radius-overlay); background: var(--magic-surface-raised); color: var(--magic-ink); box-shadow: var(--magic-shadow-overlay); }
+.reconfigure-dialog::backdrop { background: var(--magic-fill-backdrop); }
+.reconfigure-dialog h2 { margin: 0 0 10px; font: 500 var(--magic-type-section)/1.3 var(--magic-font-editorial); }
+.reconfigure-dialog p { margin: 0 0 10px; line-height: 1.55; }
+.reconfigure-actions { justify-content: flex-end; margin-top: 16px; }

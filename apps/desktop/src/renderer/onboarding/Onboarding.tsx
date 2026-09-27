@@ -68,6 +68,8 @@ export interface OnboardingProps {
   onFinish: () => void;
   /** The built-in terminal; defaults to TerminalPane. */
   renderTerminal?: (sessionId: string) => ReactNode;
+  /** owner: reconfigure. Open at this step instead of the first incomplete one ("Reconfigure" starts at step 1). */
+  startAt?: StepId;
 }
 
 export function Onboarding(props: OnboardingProps) {
@@ -75,7 +77,7 @@ export function Onboarding(props: OnboardingProps) {
   const { clients, preview } = useMemo(clientsBridge, []);
   const renderTerminal = props.renderTerminal ?? defaultTerminal;
   const [progress, setProgressState] = useState<OnboardingProgress>(() => readProgress());
-  const [step, setStep] = useState<StepId>(() => firstIncompleteStep(snapshot, readProgress(), hasCurrentConsent));
+  const [step, setStep] = useState<StepId>(() => props.startAt ?? firstIncompleteStep(snapshot, readProgress(), hasCurrentConsent));
   const [autoSignIn, setAutoSignIn] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const firstRender = useRef(true);
