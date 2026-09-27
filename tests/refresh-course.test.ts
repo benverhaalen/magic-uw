@@ -137,7 +137,7 @@ function syntheticCanvas(options: { sized: boolean }) {
       }
     }
     const file = path.match(/^\/api\/v1\/files\/(\d+)$/);
-    if (file) return json({ id: Number(file[1]), url: `${origin}/files/${file[1]}/download` });
+    if (file) return json({ id: Number(file[1]), display_name: "Course reading.txt", "content-type": "text/plain", locked_for_user: false, updated_at: newFiles.get(String(Math.floor(Number(file[1])/1000)))?.updated_at ?? "2026-09-25T12:00:00Z", url: `${origin}/files/${file[1]}/download` });
     return university.fetch(url, init);
   };
   return { origin, fetch, requests, newFiles };
@@ -237,25 +237,20 @@ async function measure(sized: boolean) {
     assert.deepEqual(contentRun.probes, ["hot", "content"]);
     assert.equal(contentRun.action, "unchanged");
     assert.equal(contentRun.warmCourses, undefined);
-    return { h, full, fullProbes, hot, withContent };
+    const metadataRequests = h.canvas.requests.slice(before).filter(url => {
+      const path = new URL(url).pathname;
+      return !/\/courses\/[^/]+\/pages\/[^/]+$|\/files\/[^/]+$|\/users\/self\/profile$/.test(path);
+    }).length;
+    return { h, full, fullProbes, hot, withContent, metadataRequests };
   } catch (error) {
     await h.close();
     throw error;
   }
 }
 
-/**
- * The sized fixture's full manual sync before T17 (hot and content probes, full read, inventory,
- * documents): 208 requests, measured at 33b1827. T17 cut the full sync itself (module items
- * inline, one read per identical GET within a sync, no redundant detail reads) to 149, while
- * the zero-change tick stayed 18. A ratio against the new, cheaper full sync would therefore
- * rise (8.7% → 12.1%) although the tick costs Canvas exactly as much as before. The budget is
- * absolute: at most 4 requests per course per tick, and at most 10% of this recorded constant.
- */
-const PRE_T17_FULL_SYNC = 208;
-test("a zero-change re-sync stays within its absolute request budget", async (t) => {
+test("a zero-change hot tick stays below 10%; content revalidation obeys its explicit budget", async (t) => {
   for (const sized of [false, true]) {
-    const { h, full, fullProbes, hot, withContent } = await measure(sized);
+    const { h, full, fullProbes, hot, withContent, metadataRequests } = await measure(sized);
     try {
       const report = {
         fixture: sized ? "sized (8 modules, 12 pages per course)" : "MT1 synthetic university",
@@ -271,14 +266,14 @@ test("a zero-change re-sync stays within its absolute request budget", async (t)
       t.diagnostic(JSON.stringify(report));
       assert.equal(hot, 2, "the hot tick is two requests");
       assert.ok(hot / full <= 0.1);
-      // The content probe is at most 1 + 3 per course (16 for five courses).
-      assert.ok(withContent - hot <= 1 + 3 * 5, `content probe ${withContent - hot}`);
-      assert.ok(withContent <= 4 * 5, `zero-change tick ${withContent} > 4 per course`);
-      if (sized)
-        assert.ok(
-          withContent / PRE_T17_FULL_SYNC <= 0.1,
-          `content tick ${withContent}/${PRE_T17_FULL_SYNC}`,
-        );
+      // Preserve T17's absolute metadata budget against its recorded 208-request baseline.
+      // Direct authorization/body freshness is separately bounded below.
+      assert.ok(metadataRequests <= 4 * 5);
+      assert.ok(metadataRequests / 208 <= 0.1);
+      // Probe: 1+3/course. Direct freshness: at most20 pages plus5 files;
+      // the synthetic unauthorized file download checks its profile once per file.
+      assert.equal(withContent, hot + 1 + 3 * 5 + (sized ? 20 : 10) + 10);
+      assert.ok(withContent < full, `content tick ${withContent}/${full}`);
     } finally {
       await h.close();
     }
@@ -314,10 +309,10 @@ test("a new undated module file is detected by the content probe within 15 minut
       .filter(Boolean);
     const warmRun = runs.at(-1)!;
     assert.deepEqual(warmRun.probes, ["hot", "content"]);
-    // Only the probe touches the other courses; the read itself is course 103's.
+    // Other courses receive only their probe and two bounded page revalidations.
     const perCourse = new Map<string, number>();
     for (const id of courseReads) perCourse.set(id!, (perCourse.get(id!) ?? 0) + 1);
-    for (const id of ["101", "102", "104", "105"]) assert.equal(perCourse.get(id), 3 * runs.filter((r) => r.probes?.includes("content")).length, id);
+    for (const id of ["101", "102", "104", "105"]) assert.equal(perCourse.get(id), 5 * runs.filter((r) => r.probes?.includes("content")).length, id);
     assert.ok((perCourse.get("103") ?? 0) > 10);
     t.diagnostic(JSON.stringify({ detectedAfterMinutes: detectedAfter / 60_000, runs: runs.length, course103Requests: perCourse.get("103"), otherCourseRequestsEach: perCourse.get("101") }));
   } finally {

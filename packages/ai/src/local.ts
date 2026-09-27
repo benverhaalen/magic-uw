@@ -367,8 +367,19 @@ export function createLocalAi(
       throw new Error("Cannot verify local weights for this model.");
     }
   }
+  // Per session (this adapter instance): the llmfit recommendation and the verified selection.
+  // A later question keeps only the cloud-disabled and digest checks (audit fix 7).
+  let recommended: HardwareRecommendations | undefined;
+  let verified: (LocalAiStatus & { selected: LocalModelSelection }) | undefined;
+  async function recommend(signal?: AbortSignal): Promise<HardwareRecommendations> {
+    if (recommended) return recommended;
+    const result = await recommendLocalModels(options.run, signal);
+    // Only a usable answer is kept, so installing llmfit mid-session still takes effect.
+    if (result.status === "available") recommended = result;
+    return result;
+  }
   async function status(signal?: AbortSignal): Promise<LocalAiStatus> {
-    const recommendations = await recommendLocalModels(options.run, signal);
+    const recommendations = await recommend(signal);
     const base: LocalAiStatus = {
       status: "setup_needed",
       reason: "",
@@ -417,12 +428,16 @@ export function createLocalAi(
     }
   }
   async function verifiedSelection(signal?: AbortSignal) {
-    const current = await status(signal);
+    // status() verifies the weights (/api/show) of the selection it returns; the verified
+    // selection is reused until its digest changes, which drops it for a full recheck.
+    const current = verified ?? (await status(signal));
     if (!current.selected || current.status !== "ready")
       throw new Error(current.reason);
     // Recheck immediately before transmitting text. A renamed remote alias is not trusted.
-    if (!(await cloudIsDisabled(signal)))
+    if (!(await cloudIsDisabled(signal))) {
+      verified = undefined;
       throw new Error("Ollama cloud must remain disabled.");
+    }
     const latest = await installedModels(signal);
     if (
       !latest.some(
@@ -430,10 +445,12 @@ export function createLocalAi(
           m.name === current.selected!.name &&
           m.digest === current.selected!.digest,
       )
-    )
+    ) {
+      verified = undefined;
       throw new Error("The local model changed. Check local AI status again.");
-    await verifyModel(current.selected, signal);
-    return current as LocalAiStatus & { selected: LocalModelSelection };
+    }
+    verified = current as LocalAiStatus & { selected: LocalModelSelection };
+    return verified;
   }
   async function generate(
     input: LocalTutorRequest,
@@ -467,7 +484,7 @@ export function createLocalAi(
           {
             model: current.selected.name,
             stream: false,
-            keep_alive: "1m",
+            keep_alive: "10m",
             truncate: false,
             options: {
               num_ctx: CONTEXT_TOKENS,
