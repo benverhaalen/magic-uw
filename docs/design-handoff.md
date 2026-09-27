@@ -1,5 +1,11 @@
 # My Magic UW desktop handoff
 
+## 2026-09-27 11:24 UTC — main 7b9bdf9 is open in the actual app
+
+Published `7b9bdf96bce820a9efed686a32cb1f2dd3e2570e` is now running in the visible Electron window (PID 18668, persistent launcher 18520). The older window quit gracefully; the populated profile and a closed database/Local Storage backup were preserved. Home, expanded sidebar, window size and scroll position were restored, with no draft or selection present and no renderer errors. The new Calendar and Home enrollment footer are now available in the real app.
+
+Startup reports local Whisper and microphone capability available; human capture still requires Ben to click the mic and speak. Try “Open Calendar” or an unambiguous included course name. Generic connected-agent/Jev computer control and streaming voice remain unavailable. No microphone recording was performed during promotion. Private runtime evidence: `work/desktop-build/recovery-20260927/visible-7b9/receipt.json` and `ready.png`; the active runtime pointer is `visible-review.json`.
+
 ## 2026-09-27 — Calendar classes and local microphone feedback
 
 This integrated slice connects Calendar to the saved enrolled Course Search & Enroll schedule. Week and month run Sunday–Saturday, with class/exam provenance, type filters, titled month previews and local personal-event create/edit/delete. Meetings use the exact planning account and captured term; lecture/lab/discussion subtype is not invented. The live profile already contains five enrolled packages and scheduled meetings; the older visible build lacked this projection.
