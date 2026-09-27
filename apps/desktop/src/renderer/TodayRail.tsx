@@ -1,10 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ResourceView, SourceHealth } from "@magic/contracts";
-import { buildTodayRail } from "@magic/domain";
+import type {
+  Command,
+  DayPlanEntry,
+  ResourceView,
+  SourceHealth,
+} from "@magic/contracts";
+import {
+  buildTodayRail,
+  planEntry,
+  validatePlanEdit,
+  type RailSuggestion,
+} from "@magic/domain";
 
-const HOUR_PX = 48;
-// Blocks shorter than this show one line so adjacent blocks never overlap.
-const COMPACT_PX = 34;
+const HOUR_PX = 44;
 
 function clock(min: number) {
   const h = Math.floor(min / 60) % 24,
@@ -14,32 +22,147 @@ function clock(min: number) {
 function hourLabel(h: number) {
   return `${h % 12 || 12}${h < 12 || h === 24 ? "a" : "p"}`;
 }
+function hhmm(min: number) {
+  return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+}
+function fromHhmm(value: string) {
+  const [h, m] = value.split(":").map(Number);
+  return Number.isFinite(h) ? h! * 60 + (m ?? 0) : NaN;
+}
+const isStudy = (s: RailSuggestion) => s.type !== "work";
+function duration(min: number) {
+  const h = Math.floor(min / 60),
+    m = min % 60;
+  return h ? `${h} h${m ? ` ${m} m` : ""}` : `${m} m`;
+}
 
 export function TodayRail({
   resources,
   sources,
+  plan = [],
   onSelect,
+  onPlan,
 }: {
   resources: ResourceView[];
   sources: SourceHealth[];
+  plan?: DayPlanEntry[];
   onSelect: (id: string) => void;
+  /** Saves a day-plan decision locally; resolves after the snapshot refreshes. */
+  onPlan: (command: Command) => Promise<unknown>;
 }) {
   const [now, setNow] = useState(() => new Date().toISOString());
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date().toISOString()), 60000);
+    const timer = window.setInterval(
+      () => setNow(new Date().toISOString()),
+      60000,
+    );
     return () => window.clearInterval(timer);
   }, []);
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const rail = useMemo(
-    () => buildTodayRail(resources, now, timeZone),
-    [resources, now, timeZone],
+    () => buildTodayRail(resources, now, timeZone, plan),
+    [resources, now, timeZone, plan],
   );
-  const grid = useRef<HTMLDivElement>(null);
-  const top = (min: number) => ((min - rail.hours.start * 60) / 60) * HOUR_PX;
-  const height = (start: number, end: number) => ((end - start) / 60) * HOUR_PX - 2;
+  const [focusId, setFocusId] = useState<string | null>(null);
+  const focused =
+    rail.suggestions.find((s) => s.id === focusId) ??
+    rail.suggestions.find((s) => s.state !== "done");
+
+  // Day-plan actions. Each one saves through core; the rail re-derives from the saved plan.
+  const saved = (s: RailSuggestion) =>
+    plan.find((p) => p.key === s.id && p.date === rail.date);
+  const accept = (s: RailSuggestion) =>
+    onPlan({ type: "day-plan", entry: planEntry(s, rail.date, "accepted") });
+  const remove = (s: RailSuggestion) =>
+    onPlan({ type: "day-plan-remove", key: s.id, date: rail.date });
+  const markDone = (s: RailSuggestion, done: boolean) => {
+    const entry = saved(s) ?? planEntry(s, rail.date, "accepted");
+    return onPlan({
+      type: "day-plan",
+      entry: { ...entry, doneAt: done ? new Date().toISOString() : null },
+    });
+  };
+  const [undo, setUndo] = useState<RailSuggestion | null>(null);
   useEffect(() => {
-    grid.current?.scrollTo({ top: Math.max(0, top(rail.nowMin) - 60) });
-    // Scroll once per day; later refreshes keep the student's position.
+    if (!undo) return;
+    const timer = window.setTimeout(() => setUndo(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [undo]);
+  const skip = async (s: RailSuggestion) => {
+    await onPlan({ type: "day-plan", entry: planEntry(s, rail.date, "skipped") });
+    setUndo(s);
+  };
+
+  const [editing, setEditing] = useState<RailSuggestion | null>(null);
+  const [form, setForm] = useState({ title: "", start: "", end: "" });
+  const startEdit = (s: RailSuggestion) => {
+    setEditing(s);
+    setForm({ title: s.title, start: hhmm(s.startMin), end: hhmm(s.endMin) });
+  };
+  const check = validatePlanEdit(
+    { startMin: fromHhmm(form.start), endMin: fromHhmm(form.end) },
+    rail.events,
+  );
+  const saveEdit = async () => {
+    if (!editing || !check.ok) return;
+    const base = saved(editing) ?? planEntry(editing, rail.date, "accepted");
+    await onPlan({
+      type: "day-plan",
+      entry: {
+        ...base,
+        // Saving an edit puts the block on the plan.
+        status: "accepted",
+        block: {
+          ...base.block,
+          title: form.title.trim() || editing.title,
+          startMin: fromHhmm(form.start),
+          endMin: fromHhmm(form.end),
+        },
+      },
+    });
+    setEditing(null);
+  };
+
+  function tools(s: RailSuggestion) {
+    const tool = (icon: string, label: string, fn: () => unknown, tone = "") => (
+      <button
+        key={label}
+        className={`rail-tool ${tone}`}
+        title={label}
+        aria-label={`${label}: ${s.title}`}
+        onClick={(event) => {
+          event.stopPropagation();
+          void fn();
+        }}
+      >
+        {icon}
+      </button>
+    );
+    if (s.state === "suggested")
+      return [
+        tool("✓", "Accept", () => accept(s), "ok"),
+        tool("✎", "Edit", () => startEdit(s)),
+        tool("✕", "Skip", () => skip(s), "no"),
+      ];
+    if (s.state === "planned")
+      return [
+        ...(isStudy(s) ? [tool("☐", "Mark done", () => markDone(s, true), "ok")] : []),
+        tool("✎", "Edit", () => startEdit(s)),
+        tool("↺", "Remove from plan", () => remove(s)),
+      ];
+    if (s.doneBy === "student")
+      return [tool("↺", "Mark not done", () => markDone(s, false))];
+    return []; // Canvas-submitted blocks stay crossed out.
+  }
+
+  const grid = useRef<HTMLDivElement>(null);
+  const top = (min: number) =>
+    ((min - rail.hours.start * 60) / 60) * HOUR_PX;
+  const height = (start: number, end: number) =>
+    ((end - start) / 60) * HOUR_PX - 2;
+  useEffect(() => {
+    grid.current?.scrollTo({ top: Math.max(0, top(rail.nowMin) - 50) });
+    // Scroll to now once per day; later refreshes keep the student's position.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rail.date]);
 
@@ -59,53 +182,119 @@ export function TodayRail({
     <aside className="today-rail" aria-label="Today's schedule">
       <div className="rail-heading">
         <span>Due today</span>
-        <span>{rail.due.length}</span>
+        <span>{rail.due.length || ""}</span>
       </div>
       <ul className="rail-due">
         {rail.due.length ? (
           rail.due.map((d) => (
             <li key={d.id}>
-              <button className="rail-link" onClick={() => onSelect(d.id)}>
+              <button
+                className="rail-row"
+                title={`${d.title} · ${d.courseName}${d.conflict ? " · dates disagree, planning for the earlier one" : ""}`}
+                onClick={() => onSelect(d.id)}
+              >
                 <span className="rail-time">{clock(d.dueMin)}</span>
-                <span>
-                  {d.title}
-                  <span className="rail-course">{d.courseName}</span>
-                  {d.conflict ? (
-                    <span className="rail-warn">
-                      Dates disagree · planning time
-                    </span>
-                  ) : null}
-                </span>
+                <span className="rail-row-title">{d.title}</span>
+                {d.conflict ? (
+                  <span className="rail-flag" aria-label="Dates disagree">
+                    !
+                  </span>
+                ) : null}
               </button>
             </li>
           ))
         ) : (
-          <li className="rail-empty-line">Nothing due today in saved sources.</li>
+          <li className="rail-empty-line">Nothing due today.</li>
         )}
       </ul>
 
-      {rail.suggestions.length ? (
+      {editing ? (
+        <form
+          className="rail-edit"
+          aria-label={`Edit ${editing.title}`}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void saveEdit();
+          }}
+        >
+          <div className="rail-heading">
+            <span>Edit {isStudy(editing) ? "study" : "work"} block</span>
+          </div>
+          <label>
+            Title
+            <input
+              value={form.title}
+              maxLength={200}
+              autoFocus
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
+            />
+          </label>
+          <div className="rail-edit-times">
+            <label>
+              Start
+              <input
+                type="time"
+                step={300}
+                value={form.start}
+                onChange={(e) => setForm({ ...form, start: e.target.value })}
+              />
+            </label>
+            <label>
+              End
+              <input
+                type="time"
+                step={300}
+                value={form.end}
+                onChange={(e) => setForm({ ...form, end: e.target.value })}
+              />
+            </label>
+          </div>
+          <p className="rail-edit-msg" aria-live="polite">
+            {check.ok
+              ? `${fromHhmm(form.end) - fromHhmm(form.start)} minutes`
+              : check.reason}
+            {check.overlaps.length ? (
+              <span className="rail-warn-text">
+                {" "}
+                · Overlaps {check.overlaps.join(", ")}
+              </span>
+            ) : null}
+          </p>
+          <div className="rail-edit-actions">
+            <button className="button primary" type="submit" disabled={!check.ok}>
+              Save to plan
+            </button>
+            <button className="button" type="button" onClick={() => setEditing(null)}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      ) : focused ? (
         <>
           <div className="rail-heading">
-            <span>Suggested</span>
-            <span>Estimates</span>
+            <span>Next up</span>
+            <span>{duration(rail.plannedMin)} planned</span>
           </div>
-          <ul className="rail-plan">
-            {rail.suggestions.map((s) => (
-              <li key={s.id}>
-                <button
-                  className={`rail-link rail-plan-item ${s.type}`}
-                  onClick={() => onSelect(s.resourceId)}
-                >
-                  <span className="rail-time">{clock(s.startMin)}</span>
-                  <span>
-                    {s.title}
-                    <span className="rail-reason">{s.reason}</span>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          <div className={`rail-next ${focused.type}`}>
+            <button
+              className="rail-next-title"
+              title={focused.reason}
+              onClick={() => onSelect(focused.resourceId)}
+            >
+              {focused.title}
+            </button>
+            <span className="rail-next-time">
+              {clock(focused.startMin)}–{clock(focused.endMin)} ·{" "}
+              {focused.courseName}
+            </span>
+            <span className="rail-chips">
+              {focused.factors.slice(0, 3).map((f) => (
+                <span key={f} className="rail-chip">
+                  {f}
+                </span>
+              ))}
+            </span>
+          </div>
         </>
       ) : null}
 
@@ -114,72 +303,111 @@ export function TodayRail({
         <span>{heading}</span>
       </div>
       {rail.allDay.map((e) => (
-        <div key={e.id} className="rail-allday">
-          All day · {e.title}
+        <div key={e.id} className="rail-allday" title={e.title}>
+          {e.title}
         </div>
       ))}
       <div className="rail-grid" ref={grid}>
-        <div className="rail-grid-inner" style={{ height: hourCount * HOUR_PX + 12 }}>
-          {Array.from({ length: hourCount + 1 }, (_, i) => rail.hours.start + i).map((h) => (
-            <div key={h} className="rail-hour" style={{ top: (h - rail.hours.start) * HOUR_PX }}>
+        <div
+          className="rail-grid-inner"
+          style={{ height: hourCount * HOUR_PX + 12 }}
+        >
+          {Array.from(
+            { length: hourCount + 1 },
+            (_, i) => rail.hours.start + i,
+          ).map((h) => (
+            <div
+              key={h}
+              className="rail-hour"
+              style={{ top: (h - rail.hours.start) * HOUR_PX }}
+            >
               <span>{hourLabel(h)}</span>
             </div>
           ))}
-          {rail.events.map((e) => (
-            <div
-              key={e.id}
-              className={`rail-block event ${e.startOnly ? "start-only" : ""}`}
-              style={{
-                top: top(e.startMin) + 1,
-                height: height(e.startMin, e.endMin ?? e.startMin + 30),
-              }}
-            >
-              <b>{e.title}</b>
-              {height(e.startMin, e.endMin ?? e.startMin + 30) >= COMPACT_PX ? (
-                <span>
-                  {e.endMin != null
-                    ? `${clock(e.startMin)}–${clock(e.endMin)}`
-                    : `${clock(e.startMin)} · start only`}
-                </span>
-              ) : null}
-            </div>
-          ))}
-          {rail.suggestions.map((s) => (
-            <button
-              key={s.id}
-              className={`rail-block suggestion ${s.type}`}
-              title={s.reason}
-              onClick={() => onSelect(s.resourceId)}
-              style={{
-                top: top(s.startMin) + 1,
-                height: height(s.startMin, s.endMin),
-              }}
-            >
-              <b>{s.title}</b>
-              {height(s.startMin, s.endMin) >= COMPACT_PX ? (
-                <span>
-                  Suggested · {clock(s.startMin)}–{clock(s.endMin)}
-                </span>
-              ) : null}
-            </button>
-          ))}
+          {rail.events.map((e) => {
+            const end = e.endMin ?? e.startMin + 30;
+            return (
+              <div
+                key={e.id}
+                className={`rail-block event ${e.startOnly ? "start-only" : ""}`}
+                title={`${e.title} · ${e.endMin != null ? `${clock(e.startMin)}–${clock(e.endMin)}` : `${clock(e.startMin)}, start only`}`}
+                style={{ top: top(e.startMin) + 1, height: height(e.startMin, end) }}
+              >
+                <b>{e.title}</b>
+                {height(e.startMin, end) >= 36 ? (
+                  <span>
+                    {e.endMin != null
+                      ? `${clock(e.startMin)}–${clock(e.endMin)}`
+                      : `${clock(e.startMin)} · start only`}
+                  </span>
+                ) : null}
+              </div>
+            );
+          })}
+          {rail.suggestions.map((s) => {
+            const label =
+              s.state === "done"
+                ? s.doneBy === "canvas"
+                  ? "Submitted on Canvas"
+                  : "Done"
+                : s.state === "planned"
+                  ? "Planned"
+                  : "Suggested";
+            return (
+              <div
+                key={s.id}
+                className="rail-slot"
+                style={{ top: top(s.startMin) + 1, height: height(s.startMin, s.endMin) }}
+              >
+                <button
+                  className={`rail-block suggestion ${s.type} ${s.state} ${focused?.id === s.id ? "focused" : ""}`}
+                  title={`${s.title} · ${clock(s.startMin)}–${clock(s.endMin)}\n${s.reason}`}
+                  aria-label={`${label}: ${s.title}, ${clock(s.startMin)} to ${clock(s.endMin)}`}
+                  aria-pressed={focused?.id === s.id}
+                  onClick={() => setFocusId(s.id)}
+                >
+                  <b>
+                    {s.state === "done" ? "✓ " : ""}
+                    {s.title}
+                  </b>
+                </button>
+                <div className="rail-tools">{tools(s)}</div>
+              </div>
+            );
+          })}
           {rail.hasCalendarSource ? (
-            <div className="rail-now" style={{ top: top(rail.nowMin) }} aria-label={`Now, ${clock(rail.nowMin)}`} />
+            <div
+              className="rail-now"
+              style={{ top: top(rail.nowMin) }}
+              aria-label={`Now, ${clock(rail.nowMin)}`}
+            />
           ) : (
             <p className="rail-grid-empty">
               No calendar events captured.
               <br />
-              Connect a calendar feed in Sources to see classes here.
+              Connect a calendar feed in Sources.
             </p>
           )}
         </div>
       </div>
+      {undo ? (
+        <div className="rail-undo" role="status">
+          <span>Skipped “{undo.title}”</span>
+          <button
+            onClick={() => {
+              void onPlan({ type: "day-plan-remove", key: undo.id, date: rail.date });
+              setUndo(null);
+            }}
+          >
+            Undo
+          </button>
+        </div>
+      ) : null}
       <p className="rail-foot">
-        {rail.hasCalendarSource ? "Calendar + course sources" : "Course sources only"}
+        Suggestions are estimates
         {lastCheck
           ? ` · checked ${new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(lastCheck))}`
           : ""}
-        . Suggestions are estimates; nothing is scheduled for you.
       </p>
     </aside>
   );

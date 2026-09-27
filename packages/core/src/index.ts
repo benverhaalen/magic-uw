@@ -88,6 +88,7 @@ export function createCore(store: Store, options: CoreOptions) {
       mcpGrants: store
         .mcpGrants()
         .map(({ tokenHash: _secretHash, ...grant }) => grant),
+      dayPlan: store.dayPlan(),
     };
   }
   function context(
@@ -372,6 +373,18 @@ export function createCore(store: Store, options: CoreOptions) {
       }
       case "link":
         store.decideLink(command.id, command.status);
+        break;
+      case "day-plan": {
+        // A self-report cannot stand in for a Canvas submission.
+        if (command.entry.block.type === "work" && command.entry.doneAt)
+          throw new Error(
+            "Assignment blocks are completed by a Canvas submission, not marked done here.",
+          );
+        store.setDayPlanEntry(command.entry);
+        break;
+      }
+      case "day-plan-remove":
+        store.removeDayPlanEntry(command.key, command.date);
         break;
       case "purge":
         interrupt();

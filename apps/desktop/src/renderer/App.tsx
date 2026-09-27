@@ -508,7 +508,9 @@ export function App() {
                 <TodayRail
                   resources={resources}
                   sources={snapshot.sources}
+                  plan={snapshot.dayPlan}
                   onSelect={setSelectedId}
+                  onPlan={(command) => run(command)}
                 />
               </div>
             )}

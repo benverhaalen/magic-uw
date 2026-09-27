@@ -604,6 +604,29 @@ export const mcpGrantSchema = z
   })
   .strict();
 export type McpGrant = z.infer<typeof mcpGrantSchema>;
+/** One day-plan decision about a Today rail suggestion. Local only; never shared with Jev, AI, or MCP. */
+export const dayPlanEntrySchema = z
+  .object({
+    key: z.string().min(1).max(300),
+    date: z.iso.date(),
+    status: z.enum(["accepted", "skipped"]),
+    block: z
+      .object({
+        type: z.enum(["prep", "work", "exam"]),
+        resourceId: id,
+        title: z.string().trim().min(1).max(200),
+        courseName: z.string().max(200),
+        startMin: z.number().int().min(0).max(1440),
+        endMin: z.number().int().min(0).max(1440),
+      })
+      .strict()
+      .refine((b) => b.endMin - b.startMin >= 10, {
+        message: "A block needs at least 10 minutes.",
+      }),
+    doneAt: instant.nullable().optional(),
+  })
+  .strict();
+export type DayPlanEntry = z.infer<typeof dayPlanEntrySchema>;
 export const syncRunSchema = z
   .object({
     id,
@@ -678,6 +701,9 @@ export interface Store {
   addSyncRun(value: SyncRun): void;
   mcpGrants(): McpGrant[];
   setMcpGrant(value: McpGrant): void;
+  dayPlan(): DayPlanEntry[];
+  setDayPlanEntry(value: DayPlanEntry): void;
+  removeDayPlanEntry(key: string, date: string): void;
   resources(search?: string): Resource[];
   resource(id: string): Resource | undefined;
   sources(): SourceHealth[];
@@ -736,6 +762,7 @@ export interface Snapshot {
   changes?: ResourceChange[];
   syncRuns?: SyncRun[];
   mcpGrants?: McpGrant[];
+  dayPlan?: DayPlanEntry[];
 }
 export const commandSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("planning-guide"), subjectCode: z.string().regex(/^\d{1,6}$/) }).strict(),
@@ -762,6 +789,16 @@ export const commandSchema = z.discriminatedUnion("type", [
     .object({ type: z.literal("course-override"), value: courseOverrideSchema })
     .strict(),
   z.object({ type: z.literal("mcp-grant"), value: mcpGrantSchema }).strict(),
+  z
+    .object({ type: z.literal("day-plan"), entry: dayPlanEntrySchema })
+    .strict(),
+  z
+    .object({
+      type: z.literal("day-plan-remove"),
+      key: z.string().min(1).max(300),
+      date: z.iso.date(),
+    })
+    .strict(),
   z.object({ type: z.literal("fixture") }).strict(),
   z
     .object({ type: z.literal("complete"), id, completed: z.boolean() })

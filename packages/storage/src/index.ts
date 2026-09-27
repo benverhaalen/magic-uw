@@ -10,6 +10,7 @@ import {
   defaultIngestionSettings,
   courseOverrideSchema,
   mcpGrantSchema,
+  dayPlanEntrySchema,
   syncRunSchema,
   type CaptureDiagnostic,
   type ChangeType,
@@ -19,6 +20,7 @@ import {
   instant,
   privacySchema,
   type Attempt,
+  type DayPlanEntry,
   type EgressReceipt,
   type IngestReport,
   type Job,
@@ -328,6 +330,36 @@ export function createStore(path: string): Store {
   }
 
   let closed = false;
+  // Keep two weeks of day-plan history, measured from the newest saved day.
+  const DAY_PLAN_KEEP_DAYS = 14;
+  function readDayPlan(): DayPlanEntry[] {
+    const row = db
+      .prepare("SELECT value FROM preferences WHERE key = 'dayPlan'")
+      .get();
+    if (!row) return [];
+    let saved: unknown;
+    try {
+      saved = JSON.parse(String(row.value));
+    } catch {
+      return [];
+    }
+    // Each entry validates on its own so one bad record cannot hide the rest.
+    return (Array.isArray(saved) ? saved : [])
+      .map((e) => dayPlanEntrySchema.safeParse(e))
+      .filter((r) => r.success)
+      .map((r) => r.data);
+  }
+  function writeDayPlan(entries: DayPlanEntry[]) {
+    const newest = entries.reduce((m, e) => (e.date > m ? e.date : m), "");
+    const cutoff = newest
+      ? new Date(Date.parse(newest) - DAY_PLAN_KEEP_DAYS * 86400000)
+          .toISOString()
+          .slice(0, 10)
+      : "";
+    db.prepare(
+      "INSERT INTO preferences VALUES ('dayPlan', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    ).run(JSON.stringify(entries.filter((e) => e.date >= cutoff)));
+  }
   return {
     ...planning,
     close() {
@@ -969,6 +1001,21 @@ export function createStore(path: string): Store {
       db.prepare(
         "INSERT INTO preferences VALUES ('privacy', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
       ).run(JSON.stringify(parsed));
+    },
+    dayPlan() {
+      return readDayPlan();
+    },
+    setDayPlanEntry(value) {
+      const entry = dayPlanEntrySchema.parse(value);
+      const rest = readDayPlan().filter(
+        (e) => !(e.key === entry.key && e.date === entry.date),
+      );
+      writeDayPlan([...rest, entry]);
+    },
+    removeDayPlanEntry(key, date) {
+      writeDayPlan(
+        readDayPlan().filter((e) => !(e.key === key && e.date === date)),
+      );
     },
     setCompleted(id, completed) {
       if (!liveResource(id))

@@ -1,4 +1,4 @@
-import type { DeadlineResolution, ResourceInput } from "@magic/contracts";
+import type { DayPlanEntry, DeadlineResolution, ResourceInput } from "@magic/contracts";
 
 export interface RailResource {
   id: string;
@@ -14,6 +14,12 @@ export interface RailResource {
   updatedAt?: string | null;
   createdAt?: string | null;
   deleted?: boolean;
+  externalId?: string;
+  points?: number | null;
+  lockAt?: string | null;
+  submission?: ResourceInput["submission"];
+  assignmentGroupId?: string | null;
+  assignmentGroup?: ResourceInput["assignmentGroup"];
 }
 export interface RailEvent {
   id: string;
@@ -43,9 +49,40 @@ export interface RailSuggestion {
   title: string;
   courseName: string;
   reason: string;
+  /** Short, scannable versions of the reason, most important first. */
+  factors: string[];
   startMin: number;
   endMin: number;
   effort: EffortBand | null;
+  /** suggested: not yet reviewed. planned: the student accepted or edited it. done: crossed out. */
+  state: "suggested" | "planned" | "done";
+  /** Canvas reports the submission, or the student marked a study block done. */
+  doneBy: "canvas" | "student" | null;
+}
+/** The student's decision about one suggestion on one day; the schema lives in contracts. */
+export type PlanEntry = DayPlanEntry;
+export type PlanBlock = DayPlanEntry["block"];
+export function planEntry(
+  s: RailSuggestion,
+  date: string,
+  status: PlanEntry["status"],
+): PlanEntry {
+  const { type, resourceId, title, courseName, startMin, endMin } = s;
+  return { key: s.id, date, status, block: { type, resourceId, title, courseName, startMin, endMin } };
+}
+/** Checks a student's edit. Overlapping a class is allowed but reported. */
+export function validatePlanEdit(
+  range: { startMin: number; endMin: number },
+  events: RailEvent[],
+): { ok: boolean; reason?: string; overlaps: string[] } {
+  const { startMin: s, endMin: e } = range;
+  if (!Number.isInteger(s) || !Number.isInteger(e) || s < 0 || e > 24 * 60)
+    return { ok: false, reason: "Pick a time within today.", overlaps: [] };
+  if (e - s < 10) return { ok: false, reason: "A block needs at least 10 minutes.", overlaps: [] };
+  const overlaps = events
+    .filter((ev) => s < (ev.endMin ?? ev.startMin + START_ONLY_MIN) && ev.startMin < e)
+    .map((ev) => ev.title);
+  return { ok: true, overlaps };
 }
 export interface TodayRail {
   date: string;
@@ -56,15 +93,21 @@ export interface TodayRail {
   suggestions: RailSuggestion[];
   hours: { start: number; end: number };
   hasCalendarSource: boolean;
+  /** Total suggested minutes. Suggestions stop at a daily cap so the day keeps free time. */
+  plannedMin: number;
 }
 
 const DAY_END = 22 * 60;
 const START_ONLY_MIN = 30;
 const PREP_MIN = 25;
-const EXAM_BLOCK_MIN = 60;
+const MAX_PREP = 2;
 const MAX_BLOCK_MIN = 90;
+const MIN_BLOCK_MIN = 30;
 const HORIZON_DAYS = 7;
 const MAX_WORK = 3;
+// Planned work stops here; spaced, shorter sessions beat filling every gap.
+const DAILY_BUDGET_MIN = 180;
+const BREAK_MIN = 15;
 // Titles that name a class meeting. Office hours, exams, and other events get no prep block.
 const CLASS_SESSION = /\b(lecture|class|workshop|lab|seminar|section|recitation)\b/i;
 
@@ -89,7 +132,7 @@ function local(iso: string, timeZone: string) {
 }
 
 const RULES: [EffortBand["category"], RegExp, number, number, string][] = [
-  ["exam", /\b(midterm|exam|final)\b/i, 60, 240, "exam"],
+  ["exam", /\b(midterm|exam)\b|\bfinal\b(?!\s+(project|paper|essay|report|presentation|draft))/i, 60, 240, "exam"],
   ["quiz", /\bquiz\b/i, 30, 60, "quiz"],
   ["problem_set", /problem.?set|homework|\bhw\s*\d|\bps\s*#?\d/i, 60, 180, "problem set"],
   ["essay", /\b(essay|paper|analysis|report)\b/i, 120, 300, "writing assignment"],
@@ -129,12 +172,43 @@ function hours(lowMin: number, highMin: number) {
     ? `${lowMin}–${highMin} min`
     : `${f(lowMin)}–${f(highMin)}`.replace(/ h–/, "–");
 }
+function shortDate(iso: string, timeZone: string) {
+  return new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short", month: "short", day: "numeric" }).format(new Date(iso));
+}
+
+/**
+ * An assignment's share of its own course grade, from Canvas assignment-group weights.
+ * Used only when that course's group weights add up to 100%; otherwise Canvas may not
+ * apply them. Never compares raw points across courses.
+ */
+export function gradeShare(resources: RailResource[]) {
+  const groups = resources.filter((r) => r.assignmentGroup?.weight != null);
+  const totals = new Map<string, number>();
+  for (const g of groups) totals.set(g.courseId, (totals.get(g.courseId) ?? 0) + g.assignmentGroup!.weight!);
+  return (r: RailResource): { percent: number; text: string } | null => {
+    if (!r.assignmentGroupId) return null;
+    const total = totals.get(r.courseId) ?? 0;
+    if (total < 99 || total > 101) return null;
+    const g = groups.find((x) => x.courseId === r.courseId && (x.externalId ?? x.id) === r.assignmentGroupId);
+    const weight = g?.assignmentGroup?.weight;
+    if (!g || !weight) return null;
+    const siblings = resources.filter(
+      (x) => x.kind === "assignment" && x.courseId === r.courseId && x.assignmentGroupId === r.assignmentGroupId,
+    );
+    const pts = siblings.reduce((n, x) => n + (x.points ?? 0), 0);
+    if (!r.points || !pts) return { percent: weight, text: `Counts in ${g.title}, ${weight}% of the ${r.courseName} grade.` };
+    const percent = Math.max(1, Math.round((weight * r.points) / pts));
+    return { percent, text: `About ${percent}% of the ${r.courseName} grade (${g.title} is ${weight}%, before any dropped scores).` };
+  };
+}
+
 const done = (r: RailResource) => r.completed || r.submitted === true || r.deleted;
 
 export function buildTodayRail(
   resources: RailResource[],
   now: string,
   timeZone: string,
+  plan: PlanEntry[] = [],
 ): TodayRail {
   const today = local(now, timeZone);
   const live = resources.filter((r) => !r.deleted);
@@ -174,13 +248,20 @@ export function buildTodayRail(
     .sort((a, b) => a.dueMin - b.dueMin);
 
   // Free time from now until the evening, around timed events.
-  let gaps: [number, number][] = [[Math.ceil(Math.max(today.min, 8 * 60) / 15) * 15, DAY_END]];
+  let gaps: [number, number][] = [[Math.ceil(Math.max(today.min + BREAK_MIN, 8 * 60) / 15) * 15, DAY_END]];
   const reserve = (a: number, b: number) => {
     gaps = gaps.flatMap(([s, e]) =>
       b <= s || a >= e ? [[s, e] as [number, number]] : ([[s, a], [b, e]] as [number, number][]).filter(([x, y]) => y - x >= 15),
     );
   };
-  for (const e of events) reserve(e.startMin, e.endMin ?? e.startMin + START_ONLY_MIN);
+  for (const e of events) reserve(e.startMin, (e.endMin ?? e.startMin + START_ONLY_MIN) + BREAK_MIN);
+
+  // The student's decisions for today come first: accepted blocks hold their time.
+  const todays = plan.filter((p) => p.date === today.date);
+  const decided = new Set(todays.map((p) => p.key));
+  const accepted = todays.filter((p) => p.status === "accepted");
+  for (const p of accepted) reserve(p.block.startMin - BREAK_MIN, p.block.endMin + BREAK_MIN);
+  const acceptedWork = accepted.filter((p) => p.block.type !== "prep");
 
   const suggestions: RailSuggestion[] = [];
   const place = (length: number, latestEnd: number) => {
@@ -196,9 +277,17 @@ export function buildTodayRail(
   for (const e of events.filter(
     (e) => !e.startOnly && CLASS_SESSION.test(e.title) && e.startMin - today.min >= PREP_MIN,
   )) {
+    if (suggestions.length + accepted.length - acceptedWork.length >= MAX_PREP) break;
+    if (decided.has(`prep:${e.id}`)) continue;
     const event = eventResources.find((r) => r.id === e.id)!;
     const material = live
-      .filter((r) => r.kind === "material" && r.courseId === event.courseId && !prepped.has(r.id))
+      .filter(
+        (r) =>
+          r.kind === "material" &&
+          !r.assignmentGroup &&
+          r.courseId === event.courseId &&
+          !prepped.has(r.id),
+      )
       .sort((a, b) => (b.updatedAt ?? b.createdAt ?? "").localeCompare(a.updatedAt ?? a.createdAt ?? ""))[0];
     if (!material) continue;
     const slot = { start: e.startMin - PREP_MIN, end: e.startMin };
@@ -212,47 +301,139 @@ export function buildTodayRail(
       title: `Review ${material.title}`,
       courseName: e.courseName,
       reason: `Before ${e.title} at ${fmt(e.startMin)}. Latest material saved for this course.`,
+      factors: [`Before class at ${fmt(e.startMin)}`, "Latest course material"],
       startMin: slot.start,
       endMin: slot.end,
       effort: null,
+      state: "suggested",
+      doneBy: null,
     });
   }
 
-  // Work: due within 24h first, then exams within 3 days, then soonest.
+  // Work, in tiers: overdue but still accepted, due within 24 h, tight for its
+  // estimated effort, exam review, then everything else due this week.
   const nowMs = Date.parse(now);
   const dayMs = 86400000;
+  const share = gradeShare(live);
   const candidates = open
-    .map((r) => ({ r, ms: Date.parse(r.deadline.planningAt!), band: effortBand(r) }))
-    .filter(({ ms }) => ms > nowMs && ms - nowMs <= HORIZON_DAYS * dayMs)
-    .map((c) => ({
-      ...c,
-      tier: c.ms - nowMs <= dayMs ? 0 : c.band?.category === "exam" && c.ms - nowMs <= 3 * dayMs ? 1 : 2,
-    }))
-    .sort((a, b) => a.tier - b.tier || a.ms - b.ms);
-  for (const { r, ms, band, tier } of candidates) {
-    if (suggestions.filter((s) => s.type !== "prep").length >= MAX_WORK) break;
+    .filter((r) => !r.submission?.excused)
+    .map((r) => {
+      const ms = Date.parse(r.deadline.planningAt!);
+      const band = effortBand(r);
+      const lockMs = r.lockAt ? Date.parse(r.lockAt) : null;
+      const hoursLeft = (ms - nowMs) / 3600000;
+      const overdue = ms <= nowMs;
+      const tight = !!band && !overdue && hoursLeft - band.highMin / 60 < 24;
+      const tier = overdue
+        ? 0
+        : hoursLeft <= 24
+          ? 1
+          : tight
+            ? 2
+            : band?.category === "exam"
+              ? 3
+              : 4;
+      return { r, ms, band, lockMs, hoursLeft, overdue, tight, tier, weight: share(r) };
+    })
+    .filter(
+      (c) =>
+        (c.overdue
+          ? (c.lockMs == null || c.lockMs > nowMs) && nowMs - c.ms <= HORIZON_DAYS * dayMs
+          : c.ms - nowMs <= HORIZON_DAYS * dayMs),
+    )
+    .sort(
+      (a, b) =>
+        a.tier - b.tier ||
+        // Grade share only orders ordinary work; urgency decides the other tiers.
+        (a.tier === 4 ? (b.weight?.percent ?? -1) - (a.weight?.percent ?? -1) : 0) ||
+        a.ms - b.ms,
+    );
+  let budget = DAILY_BUDGET_MIN - acceptedWork.reduce((n, p) => n + p.block.endMin - p.block.startMin, 0);
+  for (const c of candidates) {
+    if (suggestions.filter((s) => s.type !== "prep").length + acceptedWork.length >= MAX_WORK) break;
+    if (decided.has(`exam:${c.r.id}`) || decided.has(`work:${c.r.id}`)) continue;
+    const { r, band, hoursLeft, overdue, tier, weight } = c;
     const at = local(r.deadline.planningAt!, timeZone);
     const isExam = band?.category === "exam";
-    const length = isExam ? EXAM_BLOCK_MIN : Math.min(band?.lowMin ?? 45, MAX_BLOCK_MIN);
-    const slot = place(length, at.date === today.date ? at.min : DAY_END);
+    const days = Math.max(1, Math.ceil(hoursLeft / 24));
+    const sessions = Math.min(days, 3);
+    const wanted = isExam ? (days <= 1 ? 90 : 60) : Math.min(band?.lowMin ?? 45, MAX_BLOCK_MIN);
+    const length = Math.min(wanted, budget);
+    if (length < MIN_BLOCK_MIN) break;
+    const slot = place(length, !overdue && at.date === today.date ? at.min : DAY_END);
     if (!slot) continue;
-    const days = Math.round((ms - nowMs) / dayMs);
-    const when =
-      at.date === today.date
-        ? `Due tonight at ${fmt(at.min)}`
-        : `${isExam ? "Exam" : "Due"} in ${days} day${days === 1 ? "" : "s"}`;
-    const effortText = band ? ` Est. ${hours(band.lowMin, band.highMin)} total.` : " Effort unknown.";
-    const why = tier === 0 && at.date !== today.date ? " Due soonest." : tier === 1 ? " Exam coming up; spread review over the days before." : "";
+    budget -= length;
+    reserve(slot.end, slot.end + BREAK_MIN);
+
+    const factors: string[] = [];
+    const sentences: string[] = [];
+    if (overdue) {
+      const lock = c.lockMs ? local(r.lockAt!, timeZone) : null;
+      factors.push("Overdue");
+      sentences.push(
+        lock
+          ? `Overdue, but Canvas still accepts it until ${lock.date === today.date ? fmt(lock.min) : shortDate(r.lockAt!, timeZone)}.`
+          : "Overdue. Canvas has no lock date recorded, so check the late policy.",
+      );
+    } else if (at.date === today.date) {
+      factors.push(`Due ${fmt(at.min)}`);
+      sentences.push(`Due tonight at ${fmt(at.min)}.`);
+    } else {
+      factors.push(`${isExam ? "Exam" : "Due"} in ${days} day${days === 1 ? "" : "s"}`);
+      sentences.push(`${isExam ? "Exam" : "Due"} in ${days} day${days === 1 ? "" : "s"}.`);
+    }
+    if (tier === 2 && band) {
+      factors.push("Tight");
+      sentences.push(`Tight: about ${Math.round(hoursLeft)} h left for an estimated ${hours(band.lowMin, band.highMin)}.`);
+    }
+    if (isExam) sentences.push(sessions > 1 ? `Spaced review beats cramming; plan ${sessions} sessions before the exam.` : "Final review before the exam.");
+    if (weight) {
+      factors.push(`≈${weight.percent}% of grade`);
+      sentences.push(weight.text);
+    }
+    if (band && !isExam) factors.push(`Est. ${hours(band.lowMin, band.highMin)}`);
+    sentences.push(band ? `Est. ${hours(band.lowMin, band.highMin)} total.` : "Effort unknown.");
+    if (r.deadline.conflict) {
+      factors.push("Dates disagree");
+      sentences.push("Sources disagree on the date; planning for the earlier one.");
+    }
     suggestions.push({
       id: `${isExam ? "exam" : "work"}:${r.id}`,
       type: isExam ? "exam" : "work",
       resourceId: r.id,
-      title: isExam ? `Review for ${r.title}` : `${length < (band?.lowMin ?? 0) ? "Start" : "Work on"} ${r.title}`,
+      title: isExam
+        ? sessions > 1
+          ? `Review for ${r.title} · session 1 of ${sessions}`
+          : `Final review for ${r.title}`
+        : `${length < (band?.lowMin ?? 0) ? "Start" : "Work on"} ${r.title}`,
       courseName: r.courseName,
-      reason: `${when}.${why}${effortText}${r.deadline.conflict ? " Sources disagree on the date; planning for the earlier one." : ""}`,
+      reason: sentences.join(" "),
+      factors,
       startMin: slot.start,
       endMin: slot.end,
       effort: band,
+      state: "suggested",
+      doneBy: null,
+    });
+  }
+  for (const p of accepted) {
+    const r = resources.find((x) => x.id === p.block.resourceId);
+    const doneBy =
+      p.block.type === "work"
+        ? r?.submitted === true
+          ? "canvas"
+          : null
+        : p.doneAt
+          ? "student"
+          : null;
+    suggestions.push({
+      id: p.key,
+      ...p.block,
+      reason: doneBy === "canvas" ? "Submitted on Canvas." : doneBy === "student" ? "You marked this done." : "On your plan for today.",
+      factors: [],
+      effort: r ? effortBand(r) : null,
+      state: doneBy ? "done" : "planned",
+      doneBy,
     });
   }
   suggestions.sort((a, b) => a.startMin - b.startMin);
@@ -270,5 +451,6 @@ export function buildTodayRail(
       end: Math.max(18, ...spans.map(([, e]) => Math.ceil(e! / 60))),
     },
     hasCalendarSource: eventResources.length > 0,
+    plannedMin: suggestions.reduce((n, s) => n + s.endMin - s.startMin, 0),
   };
 }
