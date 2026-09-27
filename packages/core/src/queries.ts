@@ -36,11 +36,11 @@ export function codeAssignmentKind(r: Pick<Resource, "kind" | "submissionTypes">
 }
 
 /** The one mapping from stored resources to what a view shows: deadline, label, order. */
-export function resourceViews(store: Store, list: Resource[]): ResourceView[] {
-  const included = courseInclusion(store);
+export function resourceViews(store: Store, list: Resource[], allResources?: Resource[]): ResourceView[] {
+  const included = courseInclusion(store, allResources);
   const sources = new Map(store.sources().map(source => [source.id, source]));
   const permitted = (resource: Resource) => !resource.deleted && included(resource) && sources.get(resource.sourceId)?.status !== "inaccessible";
-  const evidence = evidenceFor(store, permitted);
+  const evidence = evidenceFor(store, permitted, allResources);
   const judgments = store.judgments();
   const personalDates = store.personalDeadlineChoices();
   return list

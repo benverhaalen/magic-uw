@@ -34,7 +34,7 @@ For the system trial, document the visual hypothesis, inspect the image, impleme
 
 ## Explicit overrides and restraint
 
-- Ben's Lora Medium/Geist, Lucide, compact single sidebar, briefing-first hierarchy, deliberate colors and truthful evidence govern. Reject upstream no-Lucide, one-accent-only, serif avoidance, giant headings, doubled whitespace, default top navigation or compulsory decorative motion.
+- Ben's Karma Medium/Geist, Lucide, compact single sidebar, briefing-first hierarchy, deliberate colors and truthful evidence govern. Reject upstream no-Lucide, one-accent-only, serif avoidance, giant headings, doubled whitespace, default top navigation or compulsory decorative motion.
 - Do not invent realistic-looking course data or completion evidence to follow a source's copy advice. Synthetic fixtures must remain distinguishable in the development/evidence path.
 - Use existing accepted images when they answer the question. Generate a new meaningful target/detail or raster asset when it advances the system; do not regenerate every section merely to satisfy upstream image quotas. Generated lettering cannot substitute for exact fonts in code.
 - Keep the standard native Electron/React boundaries and existing framework. No default RSC, Next.js, Tailwind or animation-library selection by imported skill.

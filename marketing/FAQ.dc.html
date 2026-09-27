@@ -10,11 +10,11 @@
 <helmet>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=DM+Mono&display=swap" rel="stylesheet">
-<style>@font-face{font-family:Lora;src:url("../packages/ui/assets/fonts/Lora-Medium.ttf") format("truetype");font-weight:500;font-style:normal;font-display:swap}body{margin:0;background:#fff;font-family:'DM Sans',sans-serif;color:#1b1d33}a{color:inherit;text-decoration:none}a:hover{opacity:.8}</style>
+<style>@font-face{font-family:Karma;src:url("../packages/ui/assets/fonts/Karma-Medium.ttf") format("truetype");font-weight:500;font-style:normal;font-display:swap}body{margin:0;background:#fff;font-family:'DM Sans',sans-serif;color:#1b1d33}a{color:inherit;text-decoration:none}a:hover{opacity:.8}</style>
 </helmet>
 <div data-screen-label="FAQ" style="max-width:1280px;margin:0 auto;padding:20px;display:flex;flex-direction:column;gap:20px;box-sizing:border-box">
   <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 20px;gap:24px;flex-wrap:wrap">
-    <a href="Website Directions.dc.html#2a" style="display:flex;align-items:center;gap:10px"><img src="logo/head-color.svg" alt="" style="height:38px"></img><div style="font-family:Lora,Georgia,serif;font-weight:500;font-size:24px;color:#2c55b8">Magic Canvas</div></a>
+    <a href="Website Directions.dc.html#2a" style="display:flex;align-items:center;gap:10px"><img src="logo/head-color.svg" alt="" style="height:38px"></img><div style="font-family:Karma,Georgia,serif;font-weight:500;font-size:24px;color:#2c55b8">Magic Canvas</div></a>
     <div style="display:flex;gap:28px;font-size:16px;font-weight:500;flex-wrap:wrap"><div>How it works</div><a href="Pricing.dc.html">Pricing</a><div>For devs</div><div>About us</div><div style="color:#2c55b8;border-bottom:2px solid #2c55b8">FAQ</div></div>
     <div style="background:#2c55b8;color:#fff;padding:12px 22px;border-radius:999px;font-weight:700;font-size:15px">Download</div>
   </div>
@@ -23,7 +23,7 @@
     <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:32px;flex-wrap:wrap">
       <div style="display:flex;flex-direction:column;gap:16px;max-width:720px">
         <div style="font-family:'DM Mono',monospace;font-size:13px;letter-spacing:.08em">FAQ</div>
-        <div style="font-family:Lora,Georgia,serif;font-weight:500;font-size:72px;line-height:1.02;letter-spacing:-.015em;color:#1e2757">Questions, answered.</div>
+        <div style="font-family:Karma,Georgia,serif;font-weight:500;font-size:72px;line-height:1.02;letter-spacing:-.015em;color:#1e2757">Questions, answered.</div>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:8px">
         <sc-for list="{{ cats }}" as="c" hint-placeholder-count="4">
@@ -37,7 +37,7 @@
         <sc-for list="{{ items }}" as="q" hint-placeholder-count="6">
           <div style="background:#fff;border-radius:24px;overflow:hidden">
             <div onClick="{{ q.toggle }}" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:20px;padding:24px 28px">
-              <div style="font-family:Lora,Georgia,serif;font-weight:500;font-size:22px;line-height:1.25;color:#1e2757">{{ q.q }}</div>
+              <div style="font-family:Karma,Georgia,serif;font-weight:500;font-size:22px;line-height:1.25;color:#1e2757">{{ q.q }}</div>
               <div style="flex-shrink:0;width:36px;height:36px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-size:22px;transition:transform .2s,background .2s;background:{{ q.btnBg }};color:{{ q.btnFg }};transform:{{ q.rot }}">+</div>
             </div>
             <sc-if value="{{ q.open }}" hint-placeholder-val="{{ false }}">
@@ -49,7 +49,7 @@
 
       <div style="background:#1e2757;color:#fff;border-radius:28px;padding:32px;display:flex;flex-direction:column;gap:16px;align-items:flex-start;position:sticky;top:20px">
         <img src="logo/mark-on-dark.svg" alt="" style="height:130px;align-self:center"></img>
-        <div style="font-family:Lora,Georgia,serif;font-weight:500;font-size:28px;line-height:1.15">Still have a question?</div>
+        <div style="font-family:Karma,Georgia,serif;font-weight:500;font-size:28px;line-height:1.15">Still have a question?</div>
         <div style="font-size:16px;line-height:1.5">We're a team of four building Magic Canvas for Badger BuildFest 2026. Ask us anything.</div>
         <div style="background:#f7c440;color:#1b1d33;padding:14px 22px;border-radius:999px;font-weight:700;font-size:16px">Email the team</div>
         <div style="font-size:15px;text-decoration:underline">Open an issue on GitHub</div>

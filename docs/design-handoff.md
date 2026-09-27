@@ -11,7 +11,7 @@ pnpm build
 pnpm exec electron apps/desktop
 ```
 
-Use Node 24 and the repository's pnpm version. [Development](development.md) covers gateway and desktop configuration. Preserve your existing workspace and credentials; do not copy another student's database. Lora Medium and Geist are bundled with their SIL Open Font Licenses. The build verifies both emitted font files against the supplied originals.
+Use Node 24 and the repository's pnpm version. [Development](development.md) covers gateway and desktop configuration. Preserve your existing workspace and credentials; do not copy another student's database. Karma Medium and Geist are bundled with their SIL Open Font Licenses. The build verifies both emitted font files against the supplied originals.
 
 ## Where to work
 
@@ -24,7 +24,7 @@ Use Node 24 and the repository's pnpm version. [Development](development.md) cov
 | Calendar → item → Back | `CalendarPage.tsx`, `calendar/` | Week/month, compact coverage evidence, full-day popovers, fitted month rows, request-only study suggestions, preserved navigation. [Integration evidence](calendar-page-integration.md). |
 | Message pill → full chat → return | `conversation-launcher/`, `chat/`, `App.tsx`, `navigation.ts` | Drafts retain captured origin and destination across navigation; current included-course access is rechecked. Canonical text dispatch and saved due/search paths are source-integrated; native submission/routing/Back are demonstrated, while a completed model answer, voice and external control remain unverified. |
 | First run → agreements / provider setup | `onboarding/`, `consent/`, existing desktop client bridge | Main `4cadd8d` is reconciled: typed UW sign-in outcomes, client health, default terminal and personalized onboarding. Requires current main/preload, not just a renderer reload. |
-| Shared frame and components | `DesktopShell.tsx`, `navigation.ts`, `packages/ui/src/` | Lora/Geist, Lucide, evidence info, inline context and motion are shared. App binds provider, navigation and persistence behavior. |
+| Shared frame and components | `DesktopShell.tsx`, `navigation.ts`, `packages/ui/src/` | Karma/Geist, Lucide, evidence info, inline context and motion are shared. App binds provider, navigation and persistence behavior. |
 
 Renderer paths above are under `apps/desktop/src/renderer`. Contracts and commands live in `packages/contracts` and `packages/core`; preserve those boundaries when adapting a leaf.
 
@@ -32,9 +32,9 @@ Renderer paths above are under `apps/desktop/src/renderer`. Contracts and comman
 
 ### September 27 source and runtime reconciliation
 
-The current integration batch includes source checkpoint `b570d73`, main `7477768` reconciled in `813a386`, and the reviewed chrome correction. Main's website and cardinal brand assets are preserved; the desktop build continues verifying bundled fonts. The branch tip after publication is the authoritative source revision. The visible desktop is still frozen `df0ab25` main and renderer on the existing user data (PID 88886) until its separate controlled promotion. Building or publishing does not update that open window.
+The current integration batch includes source checkpoint `b570d73`, main `7477768` reconciled in `813a386`, and the reviewed chrome correction. Main's website and cardinal brand assets are preserved; the desktop build continues verifying bundled fonts. The branch tip after publication is the authoritative source revision. Published `2fb19e1` is also the frozen visible main/renderer on the existing user data (PID 13565). Its new shell rendered and preserved the collapsed sidebar; the user continued navigating. The restoration harness had a stale collapse-control selector, so it did not produce a success receipt. More importantly, original-profile workspace requests still time out: promotion is rendered, not a healthy-workspace acceptance pass. Building later source does not update that window.
 
-Text chat is connected: draft preservation, submission, full-pane routing and Back are demonstrated. The observed request remained Starting while queued; a completed model answer is not verified. Thirty-second worker timeouts remain under backend investigation. The observed runtime had no renderer exceptions and no measured Geist/Lora mismatches in the inspected text; this does not close the earlier unmatched JavaScript report or establish every surface/state. App-authored Geist remains 400 with normal letter spacing; Lora remains Medium 500.
+Text chat is connected: draft preservation, submission, full-pane routing and Back are demonstrated. An earlier request remained Starting; the current original-profile chat reached Searching saved items and still has no verified completed answer. Thirty-second worker timeouts remain under backend investigation. The observed runtime had no renderer exceptions and no measured Geist/Lora mismatches in the inspected text; this does not close the earlier unmatched JavaScript report or establish every surface/state. App-authored Geist remains 400 with normal letter spacing. The visible `2fb19e1` still uses Lora500; the next source batch adopts Karma500 and requires its own native wrapping/font check.
 
 Home Study currently opens linked saved materials. The requested goal-based activities and date-only supporting line remain pending integration: use a verified relevant date without clock time or extra course/topic/format metadata, omitting the line when unknown. Voice has a private local prototype, but actual app microphone input, conversational transport, external actions and floating Stop are not demonstrated in the integrated runtime.
 

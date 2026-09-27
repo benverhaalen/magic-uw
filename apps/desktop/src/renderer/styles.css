@@ -29,7 +29,7 @@ option {
   letter-spacing: inherit;
 }
 /* Preserve semantic emphasis without introducing another interface weight.
-   Editorial descendants inherit Lora Medium; code and source frames keep their face. */
+   Editorial descendants inherit Karma Medium; code and source frames keep their face. */
 b, strong, h1, h2, h3, h4, h5, h6, th {
   font-weight: inherit;
 }

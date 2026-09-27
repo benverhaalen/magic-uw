@@ -1,10 +1,10 @@
 /* My Magic UW shared visual roles. The original Home reference anchors the warm shell,
- * editorial hierarchy and generous colored work surfaces. Lora Medium 500 and Geist are
+ * editorial hierarchy and generous colored work surfaces. Karma Medium 500 and Geist are
  * bundled with their OFL licenses in packages/ui/assets/fonts and declared in fonts.css.
  * Consumers use these semantic roles; page-specific geometry remains local.
  */
 :root {
-  --magic-font-editorial: "Lora", Georgia, serif;
+  --magic-font-editorial: "Karma", Georgia, serif;
   --magic-font-interface: Geist, system-ui, sans-serif;
   /* September 27: every app-authored Geist role uses one rendered weight/tracking. */
   --magic-font-interface-weight: 400;

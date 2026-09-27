@@ -1,8 +1,8 @@
-/* Lora Medium (500) loads by default from the repository's bundled asset
-   (packages/ui/assets/fonts, SIL OFL 1.1). Geist is not distributed: supply
+/* Karma Medium (500) loads by default from the repository's bundled asset
+   (packages/ui/assets/fonts, SIL OFL 1.1). For Geist in this lab, supply
    ?fontBase=/work/fonts/ on a localhost origin, or window.MAGIC_LOCAL_FONT_BASE
    before this script, for a directory containing Geist-Variable.woff2.
-   magicFontsReady resolves to { lora, geist, exact }; exact needs both. */
+   magicFontsReady resolves to { karma, geist, exact }; exact needs both. */
 window.magicFontsReady = (async () => {
   const script = document.currentScript?.src || location.href;
   async function load(face) {
@@ -14,10 +14,10 @@ window.magicFontsReady = (async () => {
       return false;
     }
   }
-  const lora = load(
+  const karma = load(
     new FontFace(
-      "Lora",
-      `url(${new URL("../../../packages/ui/assets/fonts/Lora-Medium.ttf", script).href})`,
+      "Karma",
+      `url(${new URL("../../../packages/ui/assets/fonts/Karma-Medium.ttf", script).href})`,
       { weight: "500", style: "normal" },
     ),
   );
@@ -42,12 +42,12 @@ window.magicFontsReady = (async () => {
       return false;
     }
   }
-  const [loraLoaded, geist] = await Promise.all([lora, geistFace()]);
-  return { lora: loraLoaded, geist, exact: loraLoaded && geist };
+  const [karmaLoaded, geist] = await Promise.all([karma, geistFace()]);
+  return { karma: karmaLoaded, geist, exact: karmaLoaded && geist };
 })();
 window.magicFontLabel = (state) =>
   state.exact
-    ? "Lora Medium + local Geist loaded"
-    : state.lora
-      ? "Lora Medium loaded · Geist fallback, not a visual match"
+    ? "Karma Medium + local Geist loaded"
+    : state.karma
+      ? "Karma Medium loaded · Geist fallback, not a visual match"
       : "fallback fonts · not a visual match";

@@ -207,7 +207,7 @@ export function createCore(store: Store, options: CoreOptions) {
     // of every command's payload (78 MB of 110 MB), which stalled first paint. Bodies stay in the
     // store for MCP, context and scoped queries (queries.ts), which remain the long-term path.
     const savedResources = store.resources();
-    const views = resourceViews(store, search?.trim() ? store.resources(search) : savedResources);
+    const views = resourceViews(store, search?.trim() ? store.resources(search) : savedResources, savedResources);
     const workSnapshot = store.personalWorkSnapshot(views.map(view => ({canonicalResourceId: view.id,
       contributorIds: view.deadlineContributors?.map(e => e.resourceId) ?? []})), savedResources);
     const workById = new Map(workSnapshot.descriptors.map(descriptor => [descriptor.scope.canonicalResourceId, descriptor]));
@@ -239,7 +239,7 @@ export function createCore(store: Store, options: CoreOptions) {
         reconciliation: reconcileAcademicRecords(store, now()),
       },
       resources,
-      courseWorkAdmission: courseWorkAdmission(store, now()),
+      courseWorkAdmission: courseWorkAdmission(store, now(), savedResources),
       sources,
       privacy: store.privacy(),
       links: store.links(),

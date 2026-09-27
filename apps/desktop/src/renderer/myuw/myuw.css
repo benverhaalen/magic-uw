@@ -4,7 +4,7 @@
 .myuw-page { display: grid; grid-template-columns: minmax(0, 1fr) 272px; gap: 0 32px; padding: 34px 26px 56px 38px; color: var(--magic-ink); font-family: var(--magic-font-interface); font-weight: var(--magic-font-interface-weight); letter-spacing: var(--magic-tracking); }
 .myuw-main { min-width: 0; max-width: 860px; }
 /* The workspace sets h1 26px/400 at equal specificity and loads later; the doubled class keeps
-   Home's hierarchy here: 21px page heading and sections, Lora Medium. */
+   Home's hierarchy here: 21px page heading and sections, Karma Medium. */
 .myuw-page.myuw-page :is(h1, h2, h3) { font-family: var(--magic-font-editorial); font-weight: 500; letter-spacing: normal; margin: 0; }
 .myuw-page.myuw-page h1 { font-size: var(--magic-type-section); line-height: 1.3; }
 .myuw-page.myuw-page h2 { font-size: var(--magic-type-section); line-height: 1.3; }

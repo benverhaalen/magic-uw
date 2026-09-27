@@ -1,14 +1,14 @@
-import type { Store } from '@magic/contracts';
+import type { Resource, Store } from '@magic/contracts';
 import type { CourseWorkAdmission } from '../../contracts/src/course-work';
 import { courseWorkMeetings } from './course-work-meetings';
 import { courseInclusion } from './access';
 import { buildCourseIndex } from './graph/course-index';
 
 /** Reuses the actual account/course policy. Unknown sources never enter canonical joins. */
-export function courseWorkAdmission(store: Store, now?: string): CourseWorkAdmission {
+export function courseWorkAdmission(store: Store, now?: string, resources: Resource[] = store.resources()): CourseWorkAdmission {
   const sourceById = new Map(store.sources().map(source => [source.id, source]));
-  const included = courseInclusion(store);
-  const admitted = store.resources().filter(resource => !resource.deleted && included(resource) &&
+  const included = courseInclusion(store, resources);
+  const admitted = resources.filter(resource => !resource.deleted && included(resource) &&
     sourceById.get(resource.sourceId)?.status !== 'inaccessible');
   const groups = new Map<string, typeof admitted>();
   for (const resource of admitted) {
@@ -42,5 +42,5 @@ export function courseWorkAdmission(store: Store, now?: string): CourseWorkAdmis
   const result: CourseWorkAdmission = { selectedTerm: store.ingestionSettings().selectedTerm ?? null,
     courses: courses.sort((a,b) => JSON.stringify([a.accountScope,a.courseId]).localeCompare(JSON.stringify([b.accountScope,b.courseId]))),
     resourceIds: admitted.map(row => row.id).sort(), aliases };
-  return now ? {...result,...courseWorkMeetings(store,result,now)} : result;
+  return now ? {...result,...courseWorkMeetings(store,result,now,resources)} : result;
 }

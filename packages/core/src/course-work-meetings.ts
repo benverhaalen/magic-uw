@@ -4,13 +4,13 @@ import { projectCourseLabel } from '../../domain/src/course-label';
 import { buildCourseIdentityTable, canonicalizeCourseKey, parseAuditCourseTerm, parseUwTermLabel, resolveCourseIdentity } from '../../domain/src/planning';
 
 /** Exact institutional identity, term, section and native verified account link are all required. */
-export function courseWorkMeetings(store: Store, admission: CourseWorkAdmission, now: string): {
+export function courseWorkMeetings(store: Store, admission: CourseWorkAdmission, now: string, resources: Resource[] = store.resources()): {
   schedules: CourseWorkSchedule[]; scheduleCoverage: NonNullable<CourseWorkAdmission['scheduleCoverage']>;
 } {
   const schedules: CourseWorkSchedule[] = [], scheduleCoverage: NonNullable<CourseWorkAdmission['scheduleCoverage']> = [];
   const records = store.planningRecords().filter(row=>!row.deleted), planningSources = new Map(store.planningSources().map(source=>[source.id,source]));
   const sources = new Map(store.sources().map(source=>[source.id,source])), admittedIds = new Set(admission.resourceIds);
-  const courses = store.resources().filter(row=>admittedIds.has(row.id) && row.kind === 'course' && sources.get(row.sourceId)?.scope === 'course');
+  const courses = resources.filter(row=>admittedIds.has(row.id) && row.kind === 'course' && sources.get(row.sourceId)?.scope === 'course');
   let table;
   try { table = buildCourseIdentityTable(records.filter((r):r is Extract<StoredPlanningRecord,{kind:'subject'}>=>r.kind==='subject' && r.accountScope==='public'),
     records.filter((r):r is Extract<StoredPlanningRecord,{kind:'crosslist'}>=>r.kind==='crosslist' && r.accountScope==='public')); }

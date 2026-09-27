@@ -20,7 +20,7 @@ export function resetIntentSupport() { support = "unknown"; }
 export function intentSupport() { return support; }
 /** Old schema (no `intent.preview` view) or no intent seam: the app doesn't have the router. */
 function unsupported(message: string) {
-  return /intent\.preview|invalid (discriminator|union|enum)|command bar isn't built|expected .*view|unrecognized/i.test(message);
+  return /invalid (discriminator|union|enum)|command bar isn't built|(?:unknown|unsupported|unrecognized) (?:query|view)[^\n]*intent\.preview|expected [^\n]*view/i.test(message);
 }
 
 /** The code resolver's reading of the prompt: 0 tokens, never the model. Null when the router is not available. */
@@ -34,8 +34,13 @@ export async function previewIntent(bridge: ChatBridge, text: string, courseRef:
     support = "yes";
     return found.preview;
   } catch (cause) {
-    if (unsupported(cause instanceof Error ? cause.message : String(cause))) support = "no";
-    return null;
+    if (unsupported(cause instanceof Error ? cause.message : String(cause))) {
+      support = "no";
+      return null;
+    }
+    // A failed read is not evidence that this app lacks the router. Preserve
+    // transport, authorization and cancellation failures instead of queuing another read.
+    throw cause;
   }
 }
 
