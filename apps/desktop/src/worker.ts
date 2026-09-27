@@ -90,10 +90,16 @@ async function geminiKey(): Promise<string | undefined> {
   const reply = (await hostRead("ai-key", { provider: "gemini" }, undefined, 10_000).catch(() => null)) as { key?: unknown } | null;
   return typeof reply?.key === "string" && reply.key ? reply.key : undefined;
 }
-/** The chosen client, and a cache key that changes with its mode so a switch rebuilds the runner. */
+/**
+ * The chosen client, and a cache key that changes with its mode so a switch rebuilds the runner.
+ * With no pick saved, Claude Code is the default; a saved pick (Codex, Gemini) always wins. An
+ * absent or signed-out Claude still answers "Connect your AI first" (the runner build fails), and
+ * every send stays gated by the student's consent and sharing settings.
+ */
 async function chosenClient(): Promise<{ id: ClientId; key: string } | null> {
   const { chosen } = await readClientSettings(generationUserData);
-  return chosen ? { id: chosen, key: `${chosen}:${await modeOf(chosen, generationUserData)}` } : null;
+  const id: ClientId = chosen ?? "claude";
+  return { id, key: `${id}:${await modeOf(id, generationUserData)}` };
 }
 let generationRuntime: { client: string; runner: ModelRunner } | null = null;
 async function generationRunner(): Promise<ModelRunner | null> {
