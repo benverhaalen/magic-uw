@@ -16,8 +16,9 @@
  * Planning data is never queued.
  */
 import type { Store } from "@magic/contracts";
-import type { CourseCoreStore, CourseJob } from "../../../contracts/src/course-core";
+import type { CourseCoreStore, CourseJob, CourseRef } from "../../../contracts/src/course-core";
 import { createDrain, type DrainContext, type DrainReport } from "../drain";
+import { createDerivation, isDeriveStore, type DeriveReport } from "./derive";
 import { enqueueOnSave, type JobRegistry } from "./registry";
 
 export interface PipelineTiming {
@@ -28,6 +29,24 @@ export interface PipelineTiming {
   awaySlice?: number;
   /** Gap between slices while present (ms). */
   presentGapMs?: number;
+  /**
+   * owner: drain. Run the derivation reconcile (`./derive`) at the start of every slice: passages,
+   * facts and references kept current in budgeted batches instead of per-row jobs. The app turns
+   * it on with `appJobRegistry()`; without it the per-row kinds do the same work (tests, evals).
+   */
+  derive?: boolean;
+  /** Synchronous work per derivation stretch before it yields (ms). */
+  deriveBudgetMs?: number;
+}
+/** owner: drain. What the reconcile did since the loop started. */
+export interface DeriveTotals {
+  passages: number;
+  courses: number;
+  unchanged: number;
+  writes: number;
+  transactions: number;
+  maxBatchMs: number;
+  errors: string[];
 }
 export interface PipelineLoopOptions extends PipelineTiming {
   store: Store & Pick<CourseCoreStore, "lease">;
@@ -50,6 +69,10 @@ export interface PipelineLoop {
   runToIdle(): Promise<DrainReport>;
   stop(): Promise<void>;
   readonly totals: DrainReport;
+  /** owner: drain. The student opened this course: derive it next, even while present. */
+  prioritize(course: CourseRef): void;
+  /** owner: drain. The reconcile's totals (all zero when `derive` is off). */
+  readonly derived: DeriveTotals;
 }
 
 export function createPipelineLoop(options: PipelineLoopOptions): PipelineLoop {
@@ -68,6 +91,22 @@ export function createPipelineLoop(options: PipelineLoopOptions): PipelineLoop {
   const present = createDrain({ store: options.store, handlers, available, now, maxJobs: options.presentSlice ?? 20 });
   const away = createDrain({ store: options.store, handlers, available, now, maxJobs: options.awaySlice ?? 200 });
   const totals: DrainReport = { done: 0, failed: 0, skipped: 0 };
+  // owner: drain. The reconcile runs first in every slice; it yields between its own stretches.
+  const derivation =
+    options.derive && isDeriveStore(options.store)
+      ? createDerivation({ store: options.store, now, ...(options.deriveBudgetMs ? { budgetMs: options.deriveBudgetMs } : {}) })
+      : undefined;
+  const derived: DeriveTotals = { passages: 0, courses: 0, unchanged: 0, writes: 0, transactions: 0, maxBatchMs: 0, errors: [] };
+  function addDerived(d: DeriveReport) {
+    derived.passages += d.passages;
+    derived.courses += d.courses;
+    derived.unchanged += d.unchanged;
+    derived.writes += d.writes;
+    derived.transactions += d.transactions;
+    derived.maxBatchMs = Math.max(derived.maxBatchMs, d.maxBatchMs);
+    derived.errors.push(...d.errors);
+    derived.errors.splice(0, Math.max(0, derived.errors.length - 20));
+  }
   let isPresent = true,
     syncing = 0,
     suspended = false,
@@ -79,8 +118,9 @@ export function createPipelineLoop(options: PipelineLoopOptions): PipelineLoop {
     running: Promise<void> | undefined;
 
   function schedule(delay: number) {
-    // No timer while nothing registered can run (for example only Jev's kind, with Jev off).
-    if (stopped || suspended || syncing > 0 || !kinds.some(available)) return;
+    // No timer while nothing registered can run (for example only Jev's kind, with Jev off) and
+    // there is no reconcile to check.
+    if (stopped || suspended || syncing > 0 || (!derivation && !kinds.some(available))) return;
     if (timer) clearTimeout(timer);
     // Not unref'd: a pending slice is short (the idle gap) and stop() clears it.
     timer = setTimeout(() => {
@@ -115,8 +155,13 @@ export function createPipelineLoop(options: PipelineLoopOptions): PipelineLoop {
     if (stopped || suspended || syncing > 0) return;
     wakeWhileRunning = false;
     controller = new AbortController();
+    const signal = controller.signal;
     const drain = isPresent ? present : away;
-    const run = drain.run(controller.signal).then((report) => {
+    const run = (async () => {
+      if (derivation) addDerived(await derivation.run(signal, { present: isPresent }));
+      if (signal.aborted) return { done: 0, failed: 0, skipped: 0 } satisfies DrainReport;
+      return kinds.some(available) ? drain.run(signal) : ({ done: 0, failed: 0, skipped: 0 } satisfies DrainReport);
+    })().then((report) => {
       totals.done += report.done;
       totals.failed += report.failed;
       totals.skipped += report.skipped;
@@ -187,6 +232,7 @@ export function createPipelineLoop(options: PipelineLoopOptions): PipelineLoop {
     async runToIdle() {
       const report: DrainReport = { done: 0, failed: 0, skipped: 0 };
       await running;
+      if (derivation && !stopped) addDerived(await derivation.run(new AbortController().signal, { present: false }));
       for (;;) {
         if (stopped) return report;
         const r = await away.run();
@@ -208,5 +254,11 @@ export function createPipelineLoop(options: PipelineLoopOptions): PipelineLoop {
       await running;
     },
     totals,
+    prioritize(course) {
+      if (!derivation) return;
+      derivation.prioritize(course);
+      schedule(0);
+    },
+    derived,
   };
 }
