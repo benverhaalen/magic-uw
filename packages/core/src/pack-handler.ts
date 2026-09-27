@@ -42,6 +42,11 @@ import { generateGuide, guideView, isGuideKind, type GuideRunResult, type GuideV
 // owner: mastery
 import { buildStrategy } from "../../packs/strategy/src/index";
 // end owner: mastery
+// owner: study-prep. The Studio's combined pack (`study-prep-<kinds>`) and the Sources panel's ask.
+import { studyPrepKinds } from "@magic/contracts";
+import { studyPrepPack } from "../../packs/study-prep/src/index";
+import { createStudyPrep } from "./study-prep/generate";
+// end owner: study-prep
 
 export type GenerationPackName = "quiz" | "cards" | "problems";
 /** Command pack names the handler answers to. */
@@ -267,7 +272,7 @@ export function createPackHandler(deps: PackHandlerDeps) {
 
   /** N06 on every draft; accepted versions go to the LearningStore (idempotent for a cache hit). */
   function accept(
-    s: Scoped,
+    s: Pick<Scoped, "courseRef" | "resources" | "restricted">, // owner: study-prep: only these are read
     packId: string,
     cacheKey: string,
     drafts: Draft[],
@@ -566,13 +571,21 @@ export function createPackHandler(deps: PackHandlerDeps) {
   // owner: mastery (D57). "Build my strategy": one checked call over code-derived observations.
   const strategy = (scope: PackScope, signal?: AbortSignal) => buildStrategy({ store, runner: deps.runner, artifacts, ledger, now }, scope, signal);
   // end owner: mastery
+  // owner: study-prep. Same runner, cache, ledger, prefix and checked-item pipeline as the packs above.
+  const studyPrep = createStudyPrep({ store, runner: deps.runner, artifacts, ledger, now, prefix: coursePrefix, accept });
+  const prepPack = (packName: string, scope: PackScope, signal?: AbortSignal) => {
+    const kinds = studyPrepKinds(packName);
+    return kinds ? studyPrep.generate(kinds, scope, signal) : null;
+  };
+  // end owner: study-prep
   return {
     run,
+    studyPrep, // owner: study-prep: generate(kinds, scope) and ask (notebook.ask)
     guides, // owner: guides
     coursePrefix, // owner: course-facts: the same prefix for ask
     /** The CoreSeams.pack signature. */
     pack: (packName: string, scope: PackScope, signal: AbortSignal) =>
-      (packName === "strategy" ? strategy(scope, signal) /* owner: mastery */ : null) ?? guides(packName, scope, signal) /* owner: guides */ ?? run(packName, scope, signal),
+      (packName === "strategy" ? strategy(scope, signal) /* owner: mastery */ : null) ?? prepPack(packName, scope, signal) /* owner: study-prep */ ?? guides(packName, scope, signal) /* owner: guides */ ?? run(packName, scope, signal),
   };
 }
 
@@ -592,7 +605,7 @@ export function generatePack(
 // owner: ai-paths
 /** Pack id → output schema for every generation pack: the warm pool's union schema. */
 export function generationKinds(): PoolOptions["kinds"] {
-  return Object.fromEntries([quizPack, cardsPack, problemsPack, ...Object.values(GUIDE_PACKS), courseFactsPack /* owner: course-facts */].map((p) => [p.id, p.schema as PoolOptions["kinds"][string]]));
+  return Object.fromEntries([quizPack, cardsPack, problemsPack, ...Object.values(GUIDE_PACKS), courseFactsPack /* owner: course-facts */, studyPrepPack /* owner: study-prep */].map((p) => [p.id, p.schema as PoolOptions["kinds"][string]]));
 }
 /**
  * The Claude route with one warm session per lane (D38): a follow-up pack call reuses the live

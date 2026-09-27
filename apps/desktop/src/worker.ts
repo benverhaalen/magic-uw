@@ -125,6 +125,17 @@ const courseBriefs = createCourseBriefs({ store, directory: generationUserData }
 // end owner: course-facts
 const generation = createPackHandler({ store, runner: generationRunner, brief: courseBriefs.courseBrief /* owner: course-facts */ });
 // end owner: generation
+// owner: study-prep. `notebook.ask` (Study prepper's centre panel) is the grounded ask over the
+// ticked sources, answered by the pack handler (it holds the runner, cache and course prefix);
+// every other learning op goes to the learning router unchanged.
+function withStudyPrepAsk<R extends { handle(request: import("@magic/contracts").LearningRequest, signal: AbortSignal): Promise<import("@magic/contracts").LearningResult> }>(router: R): R {
+  const handle = router.handle.bind(router);
+  return Object.assign(router, {
+    handle: (request: import("@magic/contracts").LearningRequest, signal: AbortSignal) =>
+      request.op === "notebook.ask" ? generation.studyPrep.ask(request, signal) : handle(request, signal),
+  });
+}
+// end owner: study-prep
 // owner: page-views. The "page-approach" pack (the pages' optional "how to approach it"
 // paragraph) answers through the same pack seam; every other pack name goes on unchanged.
 {
@@ -287,7 +298,7 @@ const core = createCore(store, {
   drain: { derive: true },
   madgrades: { read: (request, signal) => hostRead("madgrades-read", { request }, signal) },
   planningHttp: { read: (request, signal) => hostRead("planning-public-read", { request }, signal) },
-  seams: { learning: createLearningRouter({
+  seams: { learning: withStudyPrepAsk(createLearningRouter({
     store: store.learning,
     resolveContext: (resourceId): StudyContext | null => resolveStudyContext(resourceId),
     // owner: analytics. One references port per analytics request, over the coursework store.
@@ -297,7 +308,7 @@ const core = createCore(store, {
     // end owner: analytics
     coursework: () => store, // owner: mastery: captured Canvas scores for grades and past exams (D57)
     examEvidence: () => createExamEvidence(store), // owner: exam-prep
-  }), pack: generation.pack /* owner: generation */, notes /* owner: notes */, intent /* owner: intent */,
+  })), pack: generation.pack /* owner: generation */, notes /* owner: notes */, intent /* owner: intent */,
     // owner: agenda. Only the estimate subject is built; the others keep core's honest message.
     correct: (value, at) =>
       value.subject === "estimate"

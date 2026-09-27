@@ -38,11 +38,20 @@ export interface AskDeps {
 
 const zero = () => ({ in: 0, cached: 0, out: 0 });
 
-export async function groundedAsk(deps: AskDeps, question: string, courses: ResolvedCourse[], signal: AbortSignal): Promise<AskResult> {
+export async function groundedAsk(
+  deps: AskDeps,
+  question: string,
+  courses: ResolvedCourse[],
+  signal: AbortSignal,
+  // owner: study-prep. Only these sources (the Study prepper's ticked Sources); absent: the whole course.
+  options: { resourceIds?: readonly string[] } = {},
+): Promise<AskResult> {
   const { store } = deps;
   const none = (text: string, extra: Partial<AskResult> = {}): AskResult => ({ text, citations: [], notFound: true, dropped: 0, path: "none", tokens: zero(), ...extra });
   if (!courses.length) return none(NOT_IN_MATERIALS);
-  const found = store.searchPassages({ query: question, courses: courses.map((c) => ({ accountScope: c.accountScope, courseId: c.courseId })), k: 12 });
+  const allowed = options.resourceIds ? new Set(options.resourceIds) : null;
+  const searched = store.searchPassages({ query: question, courses: courses.map((c) => ({ accountScope: c.accountScope, courseId: c.courseId })), k: allowed ? 20 : 12 });
+  const found = allowed ? { ...searched, hits: searched.hits.filter((h) => allowed.has(h.resourceId)).slice(0, 12) } : searched;
   // The coverage gate: nothing in the materials supports the question, so no model call.
   if (found.notFound || !found.hits.length) return none(NOT_IN_MATERIALS);
   const budget = deps.tokenBudget ?? ASK_TOKEN_BUDGET;

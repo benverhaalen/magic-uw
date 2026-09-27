@@ -28,6 +28,10 @@ import type { GraphQuery, GraphResult } from "./course-core"; // owner: pipeline
 export * from "./page-views";
 import { pageViewRequestSchemas, type PageViewResult } from "./page-views";
 // end owner: page-views
+// owner: study-prep
+export * from "./study-prep";
+import { studyPrepRequestSchema, type StudyPrepResult } from "./study-prep";
+// end owner: study-prep
 import type {
   CourseIntelligence,
   CourseIntelligenceView,
@@ -1788,6 +1792,7 @@ export const queryRequestSchema = z.discriminatedUnion("view", [
   // owner: page-views. One composite read per page: assignment.workspace, lecture.session, assessment.page.
   ...pageViewRequestSchemas,
   // end owner: page-views
+  studyPrepRequestSchema, // owner: study-prep: one composite read per assessment, 0 tokens
 ]);
 export type QueryRequest = z.infer<typeof queryRequestSchema>;
 // owner: agenda. D49 result shapes; the ranking and every number in them are code's.
@@ -1982,7 +1987,8 @@ export type QueryResult =
   // end owner: guides
   | AgendaQueryResult // owner: agenda
   | { view: "intent.preview"; preview: IntentCommandResult } // owner: intent
-  | PageViewResult; // owner: page-views
+  | PageViewResult // owner: page-views
+  | StudyPrepResult; // owner: study-prep
 // end owner: T15
 export const commandSchema = z.discriminatedUnion("type", [
   z
