@@ -27,6 +27,31 @@ const store = createStore(process.env.MAGIC_DB_PATH!);
 // owner: T06: every direct public client refuses until the setup consent record exists.
 const publicClients = createWorkerClients(store);
 // end owner: T06
+// owner: generation. The pack runner: the student's chosen client in its app-owned profile
+// (CLAUDE_CONFIG_DIR / CODEX_HOME), tools off, our system prompt, the background budget, and
+// the SQLite pack stores. No client connected: the pack command answers "Connect your AI first".
+import { createClaudeBackend, createCodexBackend, type ModelRunner } from "../../../packages/runner/src/index";
+import { createPackRuntime, DEFAULT_PACK_CONFIG } from "../../../packages/packs/core/src/index";
+import { createPackHandler } from "../../../packages/core/src/pack-handler";
+import { isIsolated, isProfileReady, profileEnv, readClientSettings, resolveClient, workDir } from "./clients/profiles";
+const generationUserData = dirname(process.env.MAGIC_DB_PATH!);
+let generationRuntime: { client: string; runner: ModelRunner } | null = null;
+async function generationRunner(): Promise<ModelRunner | null> {
+  const { chosen } = await readClientSettings(generationUserData);
+  if (!chosen || !isIsolated(chosen) || !(await isProfileReady(chosen, generationUserData))) return null;
+  if (generationRuntime?.client === chosen) return generationRuntime.runner;
+  const command = resolveClient(chosen, { userData: generationUserData });
+  if (!command) return null;
+  const env = Object.fromEntries(
+    Object.entries(profileEnv(chosen, { userData: generationUserData })).flatMap(([k, v]) => (v === undefined ? [] : [[k, v]])),
+  );
+  const options = { command, workDir: workDir(generationUserData, chosen), env };
+  const backend = chosen === "claude" ? createClaudeBackend(options) : createCodexBackend(options);
+  generationRuntime = { client: chosen, runner: createPackRuntime(backend, DEFAULT_PACK_CONFIG).runner };
+  return generationRuntime.runner;
+}
+const generation = createPackHandler({ store, runner: generationRunner });
+// end owner: generation
 const core = createCore(store, {
   fixture: captureBatchSchema.parse(fixture),
   courseExtractor: createLocalCourseExtractor(),
@@ -35,7 +60,7 @@ const core = createCore(store, {
   seams: { learning: createLearningRouter({
     store: store.learning,
     resolveContext: (resourceId): StudyContext | null => resolveStudyContext(resourceId),
-  }) },
+  }), pack: generation.pack /* owner: generation */ },
   ...(process.env.MAGIC_GATEWAY_URL
     ? {
         gateway: {

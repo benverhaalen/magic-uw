@@ -1182,6 +1182,8 @@ export const packScopeSchema = z
     assessmentId: id.optional(),
     resourceIds: ids(200).optional(),
     topicIds: ids(50).optional(),
+    // owner: generation. A module scope: the module's items (Resource.module.id) only.
+    moduleId: id.optional(),
   })
   .strict();
 export type PackScope = z.infer<typeof packScopeSchema>;

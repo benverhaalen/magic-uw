@@ -1,0 +1,425 @@
+/**
+ * The `pack` Command handler for study generation (T45 items, the flashcards pack; T13 runner).
+ * Code picks the passages, decides consent, runs one checked call through the student's own
+ * client, then runs the learning engines' checked-item pipeline (N06) on every item and writes
+ * the accepted versions into the N24 LearningStore, where N25's `study.plan` selects them.
+ * A repeat with unchanged content is a cache hit: 0 tokens and a 0-token ledger row.
+ */
+import { aiRecipientSchema, type CourseCoreStore, type PackScope, type Resource, type Store } from "@magic/contracts";
+import { maySend } from "@magic/domain";
+import type { ModelRunner } from "../../runner/src/index";
+import { buildPrompt, packCacheKey, type ArtifactStore, type CourseFrame, type LedgerStore, type PackSpec, type Passage } from "../../packs/core/src/index";
+import { learningArtifactStore, sqlLedgerStore } from "../../packs/core/src/learning-stores";
+import { quizDrafts, quizPack, type Draft, type GenerationInput } from "../../packs/items/src/index";
+import { cardDrafts, cardsPack } from "../../packs/cards/src/index";
+import { runPipeline, type CandidateItem, type PipelineResource, type StageName } from "../../learning/src/items";
+import { conceptId, normaliseLabel } from "../../learning/src/concepts";
+import { newCard } from "../../learning/src/fsrs";
+import type { Concept, LearningStore } from "../../learning/src/store";
+import { eligibleStudySource } from "../../learning/src/router";
+import { findQuote } from "../../retrieval/src/quotes";
+import { courseInclusion } from "./access";
+import { buildReceipt, egressFor } from "./egress";
+import { readPackArtifact, runPack } from "./jobs/pack";
+
+export type GenerationPackName = "quiz" | "cards";
+/** Command pack names the handler answers to. */
+export const GENERATION_PACKS: Record<string, GenerationPackName> = { quiz: "quiz", items: "quiz", cards: "cards", flashcards: "cards" };
+export const DEFAULT_COUNT: Record<GenerationPackName, number> = { quiz: 8, cards: 10 };
+/** Passages sent per call, by the store's token estimate. */
+export const PASSAGE_TOKEN_BUDGET = 6000;
+const MAX_PASSAGES = 24;
+const MAP_VERSION = "generated-v1";
+
+export type PackRunStatus = "done" | "needs_student" | "blocked" | "paused" | "failed" | "no_client" | "empty" | "unknown_pack";
+export interface PackDrop {
+  index: number;
+  stage: StageName;
+  reason: string;
+}
+/** The `pack` command's result (CommandResult.pack). */
+export interface PackRunResult {
+  status: PackRunStatus;
+  message: string;
+  pack: string;
+  courseRef: string | null;
+  artifactIds: string[];
+  itemIds: string[];
+  cached: boolean;
+  /** Tokens this command spent (0 on a cache hit). */
+  tokens: { in: number; cached: number; out: number };
+  counts: { generated: number; accepted: number; dropped: number; droppedBy: Partial<Record<StageName, number>> };
+  drops: PackDrop[];
+  receiptIds: string[];
+  /** needs_student: what the student can do next. */
+  options?: ("retry" | "narrow_scope" | "skip")[];
+  checkErrors?: string[];
+}
+
+export type WorkspaceStore = Store & CourseCoreStore & { learning: LearningStore };
+export interface PackHandlerDeps {
+  store: WorkspaceStore;
+  /** The student's own client, or null when none is connected. Never called on a cache hit. */
+  runner: () => ModelRunner | null | Promise<ModelRunner | null>;
+  artifacts?: ArtifactStore;
+  ledger?: LedgerStore;
+  now?: () => Date;
+}
+export interface GenerateOptions {
+  count?: number;
+  /** `interactive` when the student asked (default); `background` is budgeted and pausable. */
+  lane?: "interactive" | "background";
+  passageTokenBudget?: number;
+}
+
+const sourceIdOf = (pid: number) => `p${pid}`;
+
+interface Scoped {
+  accountScope: string;
+  courseId: string;
+  courseRef: string;
+  label: string;
+  resources: Resource[];
+  restricted: boolean;
+}
+
+/** The course (and optional module or resources) the scope names, with only eligible, included study sources. */
+function resolveScope(store: WorkspaceStore, scope: PackScope): Scoped | null {
+  const sources = new Map(store.sources().map((s) => [s.id, s]));
+  const included = courseInclusion(store);
+  const inCourse = store.resources().filter((r) => !r.deleted && r.courseId === scope.courseId && sources.has(r.sourceId));
+  const accountScope = inCourse.map((r) => sources.get(r.sourceId)!.accountScope).sort()[0];
+  if (!accountScope) return null;
+  const course = inCourse.filter((r) => sources.get(r.sourceId)!.accountScope === accountScope);
+  // Conservative: any restricted statement in the course blocks AI-made practice (N06 stage 1).
+  const restricted = course.some((r) => r.policy.mode === "restricted");
+  const resources = course
+    .filter((r) => included(r) && eligibleStudySource(r) && r.text.trim().length > 0)
+    .filter((r) => !scope.resourceIds?.length || scope.resourceIds.includes(r.id))
+    .filter((r) => !scope.moduleId || r.module?.id === scope.moduleId)
+    .sort((a, b) => a.id.localeCompare(b.id));
+  const label = course.find((r) => r.courseName)?.courseName ?? scope.courseId;
+  return {
+    accountScope,
+    courseId: scope.courseId,
+    courseRef: `${accountScope}:${scope.courseId}`,
+    label,
+    resources,
+    restricted,
+  };
+}
+
+/** Passages within the token budget: search hits for chosen topics, otherwise round-robin by resource. */
+function pickPassages(store: WorkspaceStore, s: Scoped, focus: string[], budget: number): { passages: Passage[]; resourceOf: Map<string, string> } {
+  const allowed = new Set(s.resources.map((r) => r.id));
+  let pids: number[] = [];
+  if (focus.length) {
+    const hits = store.searchPassages({ query: focus.join(" "), courses: [{ accountScope: s.accountScope, courseId: s.courseId }], k: 20 });
+    pids = hits.hits.filter((h) => allowed.has(h.resourceId)).map((h) => h.pid);
+  }
+  if (!pids.length) {
+    const lists = s.resources.map((r) => store.passages(r.id).filter((p) => !p.redacted));
+    for (let i = 0; lists.some((l) => i < l.length); i++) for (const l of lists) if (l[i]) pids.push(l[i]!.pid);
+  }
+  const passages: Passage[] = [];
+  const resourceOf = new Map<string, string>();
+  let used = 0;
+  for (const pid of pids) {
+    if (passages.length >= MAX_PASSAGES) break;
+    const p = store.passage(pid);
+    if (!p || p.passage.redacted || !allowed.has(p.passage.resourceId) || !p.text.trim()) continue;
+    if (used + p.passage.tokEst > budget && passages.length) continue;
+    used += p.passage.tokEst;
+    passages.push({ sourceId: sourceIdOf(pid), text: p.text });
+    resourceOf.set(sourceIdOf(pid), p.passage.resourceId);
+  }
+  return { passages, resourceOf };
+}
+
+function frameFor(s: Scoped, units: Concept[]): CourseFrame {
+  const policy = s.resources.find((r) => r.policy.mode !== "unknown")?.policy ?? s.resources[0]?.policy;
+  return {
+    courseId: s.courseRef,
+    course: s.label,
+    skeleton: [`Course: ${s.label}`, ...units.map((u) => `Section: ${u.studentLabel ?? u.label}`)].join("\n"),
+    policy: policy ? `${policy.mode}: ${policy.evidence}` : "",
+  };
+}
+
+const empty = (pack: string, status: PackRunStatus, message: string, courseRef: string | null = null): PackRunResult => ({
+  status,
+  message,
+  pack,
+  courseRef,
+  artifactIds: [],
+  itemIds: [],
+  cached: false,
+  tokens: { in: 0, cached: 0, out: 0 },
+  counts: { generated: 0, accepted: 0, dropped: 0, droppedBy: {} },
+  drops: [],
+  receiptIds: [],
+});
+
+export function createPackHandler(deps: PackHandlerDeps) {
+  const { store } = deps;
+  const now = deps.now ?? (() => new Date());
+  const courseOf = (ref: string) => {
+    const s = store.sources().find((x) => `${x.accountScope}:${x.courseId}` === ref);
+    return s ? { accountScope: s.accountScope, courseId: s.courseId } : null;
+  };
+  const sourceOf = (sourceId: string) => {
+    const pid = Number(sourceId.slice(1));
+    const p = Number.isSafeInteger(pid) ? store.passage(pid) : undefined;
+    const r = p && store.resource(p.passage.resourceId);
+    return r ? { resourceId: r.id, contentHash: r.contentHash } : null;
+  };
+  const artifacts = deps.artifacts ?? learningArtifactStore(store.learning, sourceOf);
+  const ledger = deps.ledger ?? sqlLedgerStore(store, courseOf);
+
+  /** Topic and section labels → concept tags; new labels become model-origin concepts under their section. */
+  function tagsFor(courseRef: string, drafts: Draft[]): Map<number, { conceptId: string; primary: boolean }[]> {
+    const map = store.learning.concepts(courseRef);
+    const live = (kind: Concept["kind"]) => map.filter((c) => c.kind === kind && c.status === "active");
+    const find = (kind: Concept["kind"], label: string) =>
+      live(kind).find((c) => normaliseLabel(c.studentLabel ?? c.label) === normaliseLabel(label) || normaliseLabel(c.label) === normaliseLabel(label));
+    const added: Concept[] = [];
+    const add = (kind: Concept["kind"], label: string, parentId: string | null): Concept => {
+      const id = conceptId(courseRef, kind, label);
+      const existing = map.find((c) => c.id === id) ?? added.find((c) => c.id === id);
+      if (existing) return existing;
+      const c: Concept = { id, courseRef, parentId, label, kind, position: map.length + added.length, origin: "model", status: "active", mergedInto: null, studentLabel: null, mapVersion: MAP_VERSION, sources: [] };
+      added.push(c);
+      return c;
+    };
+    const out = new Map<number, { conceptId: string; primary: boolean }[]>();
+    for (const d of drafts) {
+      if (!d.section || !d.topics.length || !normaliseLabel(d.section)) continue;
+      const unit = find("unit", d.section) ?? add("unit", d.section, null);
+      const ids: string[] = [];
+      for (const label of d.topics.slice(0, 3)) {
+        if (!normaliseLabel(label)) continue;
+        const c = find("concept", label) ?? add("concept", label, unit.id);
+        if (!ids.includes(c.id)) ids.push(c.id);
+      }
+      if (ids.length) out.set(d.index, ids.map((id, i) => ({ conceptId: id, primary: i === 0 })));
+    }
+    if (added.length) store.learning.putConceptMap(courseRef, added, MAP_VERSION);
+    return out;
+  }
+
+  /** N06 on every draft; accepted versions go to the LearningStore (idempotent for a cache hit). */
+  function accept(
+    s: Scoped,
+    packId: string,
+    cacheKey: string,
+    drafts: Draft[],
+    resourceOf: Map<string, string>,
+    generator: { client: string; model: string; promptVersion: string },
+  ) {
+    const at = now();
+    const byId = new Map(s.resources.map((r) => [r.id, r]));
+    const eligible = new Set(s.resources.map((r) => r.id));
+    const resources: PipelineResource[] = s.resources.map((r) => ({ id: r.id, kind: r.kind, text: r.text, contentHash: r.contentHash }));
+    const tags = tagsFor(s.courseRef, drafts);
+    const map = store.learning.concepts(s.courseRef);
+    const prefix = `${packId}-${cacheKey.slice(0, 16)}`;
+    const existing = store.learning.items({ courseRef: s.courseRef });
+    const seen = existing.filter((x) => !x.item.id.startsWith(prefix)).map((x) => x.item.stem);
+    const itemIds: string[] = [];
+    const drops: PackDrop[] = [];
+    for (const d of drafts) {
+      const id = `${prefix}-${d.index}`;
+      if (d.problem) {
+        drops.push({ index: d.index, stage: "schema", reason: d.problem });
+        continue;
+      }
+      // Code grounds the quote: the stored quote is the exact span of the current resource text.
+      const resourceId = resourceOf.get(d.sourceId) ?? "";
+      const r = byId.get(resourceId);
+      const found = r ? findQuote(r.text, d.quote) : null;
+      const quote = r && found?.status === "unique" ? r.text.slice(found.start, found.end) : d.quote;
+      const citation = { resourceId, quote };
+      const candidate: CandidateItem = {
+        id,
+        version: 1,
+        familyId: id,
+        courseRef: s.courseRef,
+        kind: d.kind,
+        stem: d.stem,
+        options: d.options,
+        key: d.key,
+        ...(d.unit ? { unit: d.unit } : {}),
+        ...(d.formula ? { formula: d.formula } : {}),
+        keyIdeas: d.keyIdeas,
+        explanation: d.explanation ? { text: d.explanation, citation } : null,
+        tempting: {},
+        bloom: d.bloom,
+        tier: "T4",
+        sourceTerm: null,
+        origin: "generated",
+        generator,
+        sources: [citation],
+        tags: tags.get(d.index) ?? [],
+      };
+      const result = runPipeline(candidate, {
+        courseRestricted: s.restricted,
+        resources,
+        validate: findQuote,
+        map,
+        seenStems: seen,
+        now: at,
+        isOpenGraded: (res) => !eligible.has(res.id),
+      });
+      if (!result.accepted || !result.item) {
+        drops.push({ index: d.index, stage: result.dropped!.name, reason: result.dropped!.reason });
+        continue;
+      }
+      seen.push(result.item.stem);
+      itemIds.push(id);
+      if (existing.some((x) => x.item.id === id && x.item.version === 1)) continue;
+      store.learning.putItem(result.item, result.sources, result.tags, result.checks);
+      if (result.item.kind === "card" && !store.learning.cards({ itemId: id }).length)
+        store.learning.putCard({
+          ...newCard({ id: `card-${id}`, itemId: id, courseRef: s.courseRef, conceptId: result.tags.find((t) => t.primary)!.conceptId }, at),
+          itemVersion: 1,
+        });
+    }
+    return { itemIds, drops };
+  }
+
+  async function run(packName: string, scope: PackScope, signal?: AbortSignal, options: GenerateOptions = {}): Promise<PackRunResult> {
+    const name = GENERATION_PACKS[packName];
+    if (!name) return empty(packName, "unknown_pack", `There's no ${packName} pack.`);
+    const s = resolveScope(store, scope);
+    if (!s || !s.resources.length)
+      return empty(name, "empty", "There's no course material in this scope to study from yet.", s?.courseRef ?? null);
+    if (s.restricted) return empty(name, "blocked", "This course restricts AI-made practice, so nothing was generated.", s.courseRef);
+    store.learning.course(s.accountScope, s.courseId, s.label);
+    // The prompt reads only the course's own map (code- or student-made), never the concepts
+    // earlier generations added, so a repeat with unchanged content keeps its cache key.
+    const concepts = store.learning.concepts(s.courseRef).filter((c) => c.status === "active" && c.origin !== "model");
+    const units = concepts.filter((c) => c.kind === "unit").sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
+    const focus = concepts.filter((c) => scope.topicIds?.includes(c.id)).map((c) => c.studentLabel ?? c.label);
+    const { passages, resourceOf } = pickPassages(store, s, focus, options.passageTokenBudget ?? PASSAGE_TOKEN_BUDGET);
+    if (!passages.length) return empty(name, "empty", "The course material hasn't been split into passages yet. Try again after it syncs.", s.courseRef);
+    const input: GenerationInput = {
+      count: Math.max(1, Math.min(30, options.count ?? DEFAULT_COUNT[name])),
+      sections: units.map((u) => u.studentLabel ?? u.label),
+      topics: concepts.filter((c) => c.kind === "concept").map((c) => c.studentLabel ?? c.label).slice(0, 60),
+      focus,
+    };
+    const frame = frameFor(s, units);
+    return name === "quiz"
+      ? execute(quizPack, quizDrafts, name, scope, s, passages, resourceOf, input, frame, signal, options)
+      : execute(cardsPack, cardDrafts, name, scope, s, passages, resourceOf, input, frame, signal, options);
+  }
+
+  async function execute<O>(
+    pack: PackSpec<GenerationInput, O>,
+    toDrafts: (output: O) => Draft[],
+    name: GenerationPackName,
+    scope: PackScope,
+    s: Scoped,
+    passages: Passage[],
+    resourceOf: Map<string, string>,
+    input: GenerationInput,
+    frame: CourseFrame,
+    signal: AbortSignal | undefined,
+    options: GenerateOptions,
+  ): Promise<PackRunResult> {
+    const draftsOf = (output: O) => toDrafts(output).slice(0, input.count);
+    const prompt = buildPrompt(pack, frame, input, passages);
+    const cacheKey = packCacheKey(pack, prompt.systemPrompt, input, passages);
+    const receiptIds: string[] = [];
+    const lane = options.lane ?? "interactive";
+
+    const at = () => now().toISOString();
+    const base = { ...empty(name, "done", "", s.courseRef), receiptIds };
+    const finish = (artifact: { id: string; cacheKey: string; client: string; model: string; output: O; usage: PackRunResult["tokens"] }, cached: boolean): PackRunResult => {
+      const drafts = draftsOf(artifact.output);
+      const generator = { client: artifact.client, model: artifact.model, promptVersion: `${pack.id}@${pack.version}` };
+      const { itemIds, drops } = accept(s, pack.id, artifact.cacheKey, drafts, resourceOf, generator);
+      const droppedBy: Partial<Record<StageName, number>> = {};
+      for (const d of drops) droppedBy[d.stage] = (droppedBy[d.stage] ?? 0) + 1;
+      return {
+        ...base,
+        message: `${itemIds.length} ${name === "quiz" ? "questions" : "cards"} ready${drops.length ? `; ${drops.length} dropped by the checks` : ""}.`,
+        artifactIds: [artifact.id],
+        itemIds,
+        cached,
+        tokens: cached ? { in: 0, cached: 0, out: 0 } : artifact.usage,
+        counts: { generated: drafts.length, accepted: itemIds.length, dropped: drops.length, droppedBy },
+        drops,
+      };
+    };
+
+    // Study-time rule (spec §2): a cache hit is served without the runner, so it costs 0 tokens.
+    const hit = readPackArtifact(artifacts, pack, frame, input, passages);
+    if (hit) {
+      ledger.append({ at: at(), pack: pack.id, packVersion: pack.version, courseId: frame.courseId, cacheKey, outcome: "cache_hit", usage: { in: 0, cached: 0, out: 0 } });
+      return finish(hit, true);
+    }
+    const runner = await deps.runner();
+    if (!runner) return empty(name, "no_client", "Connect your AI first: choose Claude or Codex in Settings and sign in, then try again.", s.courseRef);
+
+    const authorize = (recipient: string, categories: string[]) => {
+      const parsed = aiRecipientSchema.safeParse(recipient);
+      if (!parsed.success) return { allowed: false, reason: "This recipient is not supported." };
+      const permission = maySend(store.privacy(), recipient, categories);
+      const m = {
+        recipient: parsed.data,
+        purpose: `Generate ${name === "quiz" ? "quiz questions" : "flashcards"} from course materials`,
+        categories,
+        resourceIds: [...new Set(resourceOf.values())],
+        characters: prompt.systemPrompt.length + prompt.input.length,
+        allowed: permission.allowed,
+        reason: permission.reason,
+        payload: { course: s.label, title: name, text: prompt.input, policy: frame.policy },
+      };
+      const decision = egressFor(store).check(m, { at: at(), background: lane === "background" });
+      if (decision.status === "blocked") {
+        receiptIds.push(decision.receiptId);
+        return { allowed: false, reason: decision.reason };
+      }
+      if (decision.status === "preview_required") {
+        receiptIds.push(decision.previewId);
+        return { allowed: false, reason: decision.reason };
+      }
+      const receipt = buildReceipt(m, "sent", at());
+      store.addReceipt(receipt);
+      receiptIds.push(receipt.id);
+      return { allowed: true, reason: permission.reason };
+    };
+    const result = await runPack(
+      { runner, artifacts, ledger, authorize, now: () => now().getTime() },
+      pack,
+      frame,
+      input,
+      passages,
+      { lane, scope: scope.moduleId ?? (scope.resourceIds?.length ? "resources" : "course"), ...(signal ? { signal } : {}) },
+    );
+    if (result.status === "blocked") return { ...base, status: "blocked", message: result.reason };
+    if (result.status === "paused" || result.status === "failed") return { ...base, status: result.status, message: result.message };
+    if (result.status === "needs_student")
+      return { ...base, status: "needs_student", message: result.question, options: result.options, checkErrors: result.checkErrors };
+    return finish(result.artifact, result.cached);
+  }
+  return {
+    run,
+    /** The CoreSeams.pack signature. */
+    pack: (packName: string, scope: PackScope, signal: AbortSignal) => run(packName, scope, signal),
+  };
+}
+
+/**
+ * For the eval harness: generate one pack for a scope at scale, through the same path the app
+ * uses (cache, consent, runner, N06, LearningStore). Content-hash cached, so reruns are free.
+ */
+export function generatePack(
+  deps: PackHandlerDeps,
+  request: { pack: GenerationPackName; scope: PackScope } & GenerateOptions,
+  signal?: AbortSignal,
+): Promise<PackRunResult> {
+  const { pack, scope, ...options } = request;
+  return createPackHandler(deps).run(pack, scope, signal, options);
+}
