@@ -1,6 +1,6 @@
 # Course backend lane: what exists, what's building, what's next
 
-Updated: September 26, 2026, about 22:45 CT. Human owner: Nathaniel. Agent: Claude Code (Opus 5.5) leading delegated implementers and reviewers. Code branch: `feat/course-backend`, local and **not pushed** (it carries the coordination history, so it waits for the release cleanup). The plan and research notes are now on main: `docs/plans/2026-09-26-course-backend/` (spec, plan D1–D45, tasks, execution) and `docs/notes/`. An architecture document (`docs/course-backend-architecture.md`) and a product direction document (`docs/magic-canvas-direction.md`) follow in the next docs push. This packet is updated at each piece boundary.
+Updated: September 26, 2026, about 23:00 CT. Human owner: Nathaniel. Agent: Claude Code (Opus 5.5) leading delegated implementers and reviewers. Code branch: `feat/course-backend`, local and **not pushed** (it carries the coordination history, so it waits for the release cleanup). The plan and research notes are now on main: `docs/plans/2026-09-26-course-backend/` (spec, plan D1–D45, tasks, execution) and `docs/notes/`. Start with `docs/magic-canvas-direction.md` (the whole product and where it goes) and `docs/course-backend-architecture.md` (system map, what changed and why, status, what is left). The plan now holds D1–D48 and plan §9 lists the open human calls H1–H8. This packet is updated at each piece boundary.
 
 ## What the lane is building
 
@@ -17,7 +17,7 @@ A local-first course backend: connect → store → map → generate → study. 
 | T06 | one-checkbox consent before any network request; consent enforced in `maySend`; worker network clients gated; first-send preview for sensitive categories kept | integrated |
 | T12, D38, T40, T13 | model runner (Claude Code, Codex, API keys, Ollama), warm session pool, client detection and engine choice, prompt-pack core with grounded-quote checks and a content-hash cache | tested in isolation, merged; not wired into the worker yet |
 
-Nothing is demonstrated live yet; the first NetID live trial is open now with Nathaniel.
+Nothing is demonstrated live yet; the first NetID live trial is running now (consent recorded 22:36, sign-in in progress). Lanes finished since: seams/inventory/freshness (343/343 on its lane), learning engines (433/433), client manager T80 (365/365, under review).
 
 ## Building now (lane branches)
 

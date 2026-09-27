@@ -2,6 +2,8 @@
 
 Status: architecture direction with a working implementation foundation. Electron, a local SQLite worker, expanded Canvas/material connectors, background refresh, local MCP grants, privacy gates, and a narrow Jev gateway are implemented. See [implementation status](implementation-status.md) for capability and validation boundaries, and [development](development.md) to run them. The broader mechanisms below remain direction unless identified as implemented. Tool choices follow [engineering principles](engineering-principles.md).
 
+The course backend lane (branch `feat/course-backend`, not yet merged) documents its updated design and status in [course backend architecture](course-backend-architecture.md) and [Magic Canvas direction](magic-canvas-direction.md).
+
 ## System shape
 
 ```mermaid
