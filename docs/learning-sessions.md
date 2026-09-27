@@ -1,6 +1,6 @@
 # Course-aware learning sessions
 
-Status: canonical N24/N25 integration built in the September 26 learning-session branch. Nathaniel’s course backend, reconciled with main at `780aaed`, supplied the learning engines and shared v6/v7 schema; this integration adds the SQL adapter, prepared-practice router and contextual desktop binding. The combined branch passes 637 tests, TypeScript, the build and the hidden Electron bridge check. No live coursework tutoring quality has been demonstrated.
+Status: canonical N24/N25 integration merged into main from the September 26 learning-session branch. Nathaniel’s course backend, reconciled with main at `780aaed`, supplied the learning engines and shared v6/v7 schema; this integration adds the SQL adapter, prepared-practice router and contextual desktop binding. The combined branch passes 637 tests, TypeScript, the build and the hidden Electron bridge check. No live coursework tutoring quality has been demonstrated.
 
 ## Student outcome and current journey
 
@@ -69,4 +69,4 @@ Substantial conflicts are evaluated through `magic-feature-planning`: compare th
 
 Headless synthetic preview after the main merge: sample onboarding → workspace → assignment → prepared practice → saved explanation → typed answer/feedback → next/end; source disclosure and skip/end also passed. Explicit Explain reports unavailable without erasing saved work; coursework stays unchecked. Draft navigation/reload recovery passed before the merge on the same canonical path. No browser console errors were observed. Numeric/choice controls were not exercised in this browser pass; native app restart and real-course teaching remain unverified. The synthetic preview runs the actual item-check pipeline, router and SQL store; it does not prove production question preparation exists.
 
-Team integration: implementation is on `feat/course-learning-sessions`, with canonical integration at `73bce37` and main reconciliation at `ba24140`. This document may land on main before the implementation. Avoid duplicating N24 or this bounded N25 path; the remaining preparation/T42 work should connect through Nate's existing contracts.
+Team integration: implementation is on `feat/course-learning-sessions`, with canonical integration at `73bce37` and main reconciliation at `ba24140`. The implementation is now merged into main, including the final verification changes through `555c221`. Avoid duplicating N24 or this bounded N25 path; the remaining preparation/T42 work should connect through Nate's existing contracts.
