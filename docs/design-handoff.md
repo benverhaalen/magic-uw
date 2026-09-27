@@ -31,6 +31,13 @@ Renderer paths above are under `apps/desktop/src/renderer`. Contracts and comman
 
 ## What is verified and what remains
 
+### Fresh-download demo · September 27, 10:01 UTC
+
+At the user's explicit request, published `b7982a5` (including upstream main `5372c5a`) is now running visibly from a newly created empty profile. The normal first-run screen reads **Your classes, in one place.** Startup verification returned zero resources, zero sources, no onboarding storage keys and no renderer exceptions. No previous Canvas database, cookies, provider configuration, consent or model preferences were copied. Only OS path/locale environment was inherited; installed client discovery is separate from saved app configuration.
+
+The previous app had already closed. Its profile remains untouched and a full recoverable backup was made before launch. Private runtime records identify Electron PID 98040, launcher/monitor 98019, frozen `runtime-fresh-b7982a5`, and `fresh-demo/userdata-2026-09-27T10-01-21-343Z` under the development workspace. The private `recovery-20260927/fresh-demo-b7982a5/receipt.json` and `first-run.png` record the actual entry state. Future updates must target this new profile and preserve the student's subsequent onboarding/input; do not reset it again automatically. This is a fresh development demo, not an installer or proof of live sign-in. Earlier visible-runtime statements below are historical. The post-launch fetch found main `5f0ab02` (PR #49, accounts/payments and team packets); that newer merge is under review and is not in this running build.
+
+
 ### Main reconciliation and live-window boundary · September 27, 09:58 UTC
 
 This merge includes upstream main `5372c5a` (PR #41). Its raw assignment-copy projection retains verified account/course/provider identity and submission workflow handling; missing scope cannot merge unknown accounts, and differing due evidence stays explicit. The designed Home/Calendar continue through their existing canonical schedule projection, including personal date choices and source-only obligations. Eighteen focused raw/canonical projection tests and the full build pass. This does not resolve the saved fourteen-versus-six Canvas count or demonstrate a new live capture.
