@@ -33,7 +33,7 @@ function placeholder(file, seconds, title, detail) {
   const text = font
     ? `,drawtext=fontfile='${esc(font)}':text='${esc(title)}':fontcolor=0xfff4ed:fontsize=64:x=(w-tw)/2:y=h/2-70,drawtext=fontfile='${esc(font)}':text='${esc(detail)}':fontcolor=0xffe9dd:fontsize=34:x=(w-tw)/2:y=h/2+20,drawtext=fontfile='${esc(font)}':text='PLACEHOLDER %{eif\\:t\\:d}s':fontcolor=0xffe9dd:fontsize=28:x=(w-tw)/2:y=h-120`
     : "";
-  ff(["-f", "lavfi", "-i", `color=c=0x3a0a0d:s=1920x1080:r=30:d=${seconds}${text}`, "-f", "lavfi", "-i", `anullsrc=r=48000:cl=stereo`, "-t", String(seconds), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", A(file)]);
+  ff(["-f", "lavfi", "-i", `color=c=0x3a0a0d:s=1920x1080:r=30:d=${seconds}${text}`, "-f", "lavfi", "-i", `anullsrc=r=48000:cl=stereo`, "-t", String(seconds), "-c:v", "libx264", "-g", "30", "-keyint_min", "30", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", A(file)]);
   writeFileSync(A(`${file}.PLACEHOLDER`), "Generated placeholder. Replace the .mp4 with the filmed take and delete this marker.\n");
   console.log(`slot ${file}: placeholder written`);
 }

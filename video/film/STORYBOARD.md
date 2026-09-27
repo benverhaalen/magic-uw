@@ -46,6 +46,8 @@ Voice: `assets/narration.wav` (Ben; TEMP Kokoro guide in the preview) and `asset
 | NotebookLM insert (optional) | `assets/notebooklm-race.mp4` | Not used | Only with a real timed recording |
 | Race alternate (optional) | not built | | The race footage isn't in this cut (the skit replaced it) |
 
+Filmed footage needs a keyframe every second or HyperFrames can freeze frames on seek: `ffmpeg -i take.mov -c:v libx264 -r 30 -g 30 -keyint_min 30 -movflags +faststart -c:a aac assets/skit.mp4` (same for `presenters.mp4`).
+
 ## Stand-ins to re-capture
 
 Re-run `capture/capture.ts` against the merged app. The Course Analytics stand-in (s07) is replaced by hand when its screen lands. The UW sign-in and the Exam 2 notice stay stand-ins until the app has a headless-renderable equivalent.
