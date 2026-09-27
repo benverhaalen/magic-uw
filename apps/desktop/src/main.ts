@@ -180,6 +180,14 @@ function trialLog(event: Record<string, unknown>) {
   // owner: privacy: every line is redacted (URL → host + path class, no query, no identifiers).
   void appendFile(file, logLine({ at: new Date().toISOString(), ...event })).catch(() => {});
 }
+/** Trial-log text from a sign-in page: no emails, long numbers, or URLs; short. */
+function trialText(input: unknown): string {
+  return String(input ?? "")
+    .replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, "[email]")
+    .replace(/https?:\/\/\S+/g, "[url]")
+    .replace(/\d{5,}/g, "[n]")
+    .slice(0, 120);
+}
 function allowedLogin(input: string) {
   try {
     const u = new URL(input);
@@ -320,10 +328,15 @@ app
       consented: () => consentGate("source-fetch"),
     });
     // end owner: T30
-    studentSession.setPermissionRequestHandler((_wc, _permission, callback) =>
-      callback(false),
-    );
-    studentSession.setPermissionCheckHandler(() => false);
+    // Every permission stays refused; the trial log records which ones a sign-in page asked for.
+    studentSession.setPermissionRequestHandler((_wc, permission, callback, details) => {
+      trialLog({ event: "permission.request", permission, origin: trialPath(details?.requestingUrl ?? "") });
+      callback(false);
+    });
+    studentSession.setPermissionCheckHandler((_wc, permission, origin) => {
+      trialLog({ event: "permission.check", permission, origin: trialPath(origin ?? "") });
+      return false;
+    });
     // owner: doc-window. Only a document window may download (the save prompt, Downloads only).
     const docWindows = createDocWindows({
       openExternal: (url) => shell.openExternal(url),
@@ -1713,19 +1726,41 @@ app
         },
       });
       const login = signIn;
-      login.webContents.on("page-title-updated", (event) =>
-        event.preventDefault(),
+      login.webContents.on("page-title-updated", (event, title) => {
+        event.preventDefault();
+        // A page title such as "Stale Request" or "Login" says which step the window is on.
+        trialLog({ event: "signin.title", title: trialText(title), page: trialPath(login.webContents.getURL()) });
+      });
+      login.webContents.on("did-frame-navigate", (_event, url, code, _text, isMainFrame) => {
+        if (!isMainFrame) trialLog({ event: "signin.frame-navigate", to: trialPath(url), status: code, allowed: allowedLogin(url) });
+      });
+      login.webContents.on("did-navigate-in-page", (_event, url, isMainFrame) =>
+        trialLog({ event: "signin.in-page", to: trialPath(url), mainFrame: isMainFrame }),
       );
+      login.webContents.on("did-fail-provisional-load", (_event, code, description, url, isMainFrame) =>
+        trialLog({ event: "signin.provisional-failed", code, description: trialText(description), to: trialPath(url), mainFrame: isMainFrame }),
+      );
+      login.webContents.on("render-process-gone", (_event, details) =>
+        trialLog({ event: "signin.renderer-gone", reason: details.reason, exitCode: details.exitCode }),
+      );
+      login.on("unresponsive", () => trialLog({ event: "signin.unresponsive" }));
+      login.webContents.on("console-message", (details) => {
+        const d = details as unknown as { level?: string | number; message?: string };
+        if (d.level === "error" || d.level === "warning" || d.level === 3 || d.level === 2)
+          trialLog({ event: "signin.console", level: String(d.level), message: trialText(d.message) });
+      });
       const guard = (event: Electron.Event, url: string) => {
         if (!allowedLogin(url)) {
           trialLog({ event: "signin.blocked", to: trialPath(url) });
           event.preventDefault();
-        }
+        } else trialLog({ event: "signin.hop", to: trialPath(url) });
       };
       login.webContents.on("will-navigate", guard);
       login.webContents.on("will-redirect", guard);
-      login.webContents.on("did-navigate", (_event, url) => {
-        trialLog({ event: "signin.navigate", to: trialPath(url), allowed: allowedLogin(url) });
+      let lastSignInAt = "";
+      login.webContents.on("did-navigate", (_event, url, code) => {
+        lastSignInAt = trialPath(url);
+        trialLog({ event: "signin.navigate", to: trialPath(url), status: code, allowed: allowedLogin(url) });
         if (allowedLogin(url))
           login.setTitle(`UW sign in · ${new URL(url).hostname}`);
       });
@@ -1740,7 +1775,7 @@ app
       let confirmed = false;
       const closed = new Promise<void>((resolve) => {
         login.once("closed", () => {
-          trialLog({ event: "signin.closed", confirmed });
+          trialLog({ event: "signin.closed", confirmed, lastAt: lastSignInAt });
           if (signIn === login) signIn = null;
           resolve();
         });
