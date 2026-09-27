@@ -290,6 +290,7 @@ const core = createCore(store, {
     // and course-map assessment rows).
     analyticsReferences: () => createPipelineReferences(store),
     // end owner: analytics
+    coursework: () => store, // owner: mastery: captured Canvas scores for grades and past exams (D57)
     examEvidence: () => createExamEvidence(store), // owner: exam-prep
   }), pack: generation.pack /* owner: generation */, notes /* owner: notes */, intent /* owner: intent */,
     // owner: agenda. Only the estimate subject is built; the others keep core's honest message.

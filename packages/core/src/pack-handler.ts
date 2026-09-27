@@ -39,6 +39,9 @@ import { runPack } from "./jobs/pack";
 // owner: guides
 import { generateGuide, guideView, isGuideKind, type GuideRunResult, type GuideViewResult } from "../../packs/guide/src/index";
 // end owner: guides
+// owner: mastery
+import { buildStrategy } from "../../packs/strategy/src/index";
+// end owner: mastery
 
 export type GenerationPackName = "quiz" | "cards" | "problems";
 /** Command pack names the handler answers to. */
@@ -560,12 +563,16 @@ export function createPackHandler(deps: PackHandlerDeps) {
     return null;
   }
   // end owner: guides
+  // owner: mastery (D57). "Build my strategy": one checked call over code-derived observations.
+  const strategy = (scope: PackScope, signal?: AbortSignal) => buildStrategy({ store, runner: deps.runner, artifacts, ledger, now }, scope, signal);
+  // end owner: mastery
   return {
     run,
     guides, // owner: guides
     coursePrefix, // owner: course-facts: the same prefix for ask
     /** The CoreSeams.pack signature. */
-    pack: (packName: string, scope: PackScope, signal: AbortSignal) => guides(packName, scope, signal) /* owner: guides */ ?? run(packName, scope, signal),
+    pack: (packName: string, scope: PackScope, signal: AbortSignal) =>
+      (packName === "strategy" ? strategy(scope, signal) /* owner: mastery */ : null) ?? guides(packName, scope, signal) /* owner: guides */ ?? run(packName, scope, signal),
   };
 }
 
