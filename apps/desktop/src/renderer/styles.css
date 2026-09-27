@@ -1195,6 +1195,39 @@ select {
 
 .uw-nav-mark { width: 18px; height: 24px; object-fit: contain; flex: 0 0 18px; }
 
+/* Assignment learning uses the existing flat detail-page hierarchy. */
+.learning-panel textarea,
+.learning-panel input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface, #fffdf8);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.learning-panel textarea { resize: vertical; }
+.learning-panel input { margin-bottom: 12px; }
+.learning-panel select { display: block; margin-top: 8px; }
+.learning-activity { margin: 20px 0; }
+.learning-activity h4 { font-size: 16px; margin: 12px 0 8px; }
+.learning-content { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.75; }
+.learning-evidence { margin-top: 16px; }
+.learning-panel summary { cursor: pointer; font-size: 12px; line-height: 1.6; }
+.learning-source { margin: 14px 0; }
+.learning-source .subtle-button { text-align: left; overflow-wrap: anywhere; }
+.learning-source blockquote { margin: 8px 0; border-left: 2px solid var(--border); padding-left: 12px; font-size: 12px; line-height: 1.7; }
+.learning-event { margin: 16px 0; padding-top: 14px; border-top: 1px solid var(--border); }
+.learning-event > strong { font-size: 12px; }
+.learning-prompt { font-size: 13px; line-height: 1.7; margin-top: 20px; }
+.learning-actions { flex-wrap: wrap; margin: 14px 0; }
+.learning-start { margin: 20px 0; }
+.learning-start form { margin-top: 14px; }
+
+.learning-start form > .button { margin-right: 8px; margin-bottom: 8px; }
 /* Today rail: time context for Home. One line per item, one "next up" card, and the schedule.
    Hidden on narrow windows so the list and detail keep their width. */
 .today-rail {

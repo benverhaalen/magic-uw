@@ -90,7 +90,7 @@ export interface OnboardingProps {
   /** The existing UW sign-in (then Canvas sync). */
   signIn: () => Promise<unknown>;
   openExternal: (url: string) => void;
-  onLoadSample: () => unknown;
+  onLoadSample: () => Promise<CommandResult | undefined>;
   onFinish: () => void;
   /** The built-in terminal (TerminalPane, another seat). A placeholder shows when absent. */
   renderTerminal?: (sessionId: string) => ReactNode;
@@ -124,6 +124,10 @@ export function Onboarding(props: OnboardingProps) {
   }, [step]);
 
   const index = steps.findIndex((entry) => entry.id === step);
+  const loadSample = async () => {
+    const result = await props.onLoadSample();
+    if (result?.snapshot?.resources.length) setStep("populating");
+  };
   const back = index > 0 ? () => setStep(steps[index - 1].id) : null;
   const heading = (text: string) => (
     <h1 className="onb-title" id="onb-step-title" ref={headingRef} tabIndex={-1}>
@@ -193,7 +197,7 @@ export function Onboarding(props: OnboardingProps) {
         busy={busy}
         canSignIn={props.canSignIn}
         runAll={props.runAll}
-        onLoadSample={props.onLoadSample}
+        onLoadSample={loadSample}
         onBack={back}
         onSignIn={async () => {
           update({ uwStarted: true });
@@ -209,7 +213,7 @@ export function Onboarding(props: OnboardingProps) {
         snapshot={snapshot}
         busy={busy}
         noClient={progress.client === "later"}
-        onLoadSample={props.onLoadSample}
+        onLoadSample={loadSample}
         onBack={back}
         onFinish={() => {
           update({ done: true });

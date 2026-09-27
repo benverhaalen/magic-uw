@@ -7,11 +7,36 @@ import { createCore } from "@magic/core";
 import { createStore } from "@magic/storage";
 import { captureBatchSchema } from "@magic/contracts";
 import fixture from "../fixtures/course.json";
+import {
+  createLearningRouter,
+  type StudyContext,
+} from "../packages/learning/src/router";
+import { createStudyContextResolver } from "../apps/desktop/src/learning-context";
+import { seedLearningFixture } from "./learning-fixture";
+import { linkExactEvidence } from "../packages/core/src/evidence";
+// Explicit opt-in QA output, never a substitute for live model inference.
+const learningFixture = process.env.MAGIC_PREVIEW_LEARNING_FIXTURE === "1";
 // Local verification surface using the real core/store. No browser sessions or gateway.
 const directory = await mkdtemp(join(tmpdir(), "magic-preview-"));
-const core = createCore(createStore(join(directory, "workspace.sqlite")), {
-  fixture: captureBatchSchema.parse(fixture),
+const store = createStore(join(directory, "workspace.sqlite"));
+const sample = captureBatchSchema.parse(fixture);
+if (learningFixture) {
+  const assignment = sample.resources.find((r) => r.kind === "assignment");
+  const material = sample.resources.find((r) => r.kind === "material");
+  if (assignment && material)
+    assignment.links = [{ url: material.url, text: "Supporting reading" }];
+}
+const core = createCore(store, {
+  fixture: sample,
+  seams: {
+    learning: createLearningRouter({
+      store: store.learning,
+      resolveContext: (resourceId): StudyContext | null =>
+        resolveStudyContext(resourceId),
+    }),
+  },
 });
+const resolveStudyContext = createStudyContextResolver(store, core);
 const token = randomBytes(32).toString("hex");
 const root = resolve("apps/desktop/dist/renderer");
 const server = createServer(async (req, res) => {
@@ -46,7 +71,15 @@ const server = createServer(async (req, res) => {
           return;
         }
       }
-      const result = await core.execute(JSON.parse(body));
+      const parsed = JSON.parse(body);
+      let result = await core.execute(parsed);
+      if (learningFixture && parsed.type === "fixture") {
+        linkExactEvidence(store);
+        const loaded = await core.execute({ type: "snapshot" });
+        if (loaded.snapshot)
+          seedLearningFixture(store.learning, loaded.snapshot);
+        result = loaded;
+      }
       res
         .writeHead(200, { "Content-Type": "application/json" })
         .end(JSON.stringify(result));
@@ -74,7 +107,13 @@ const server = createServer(async (req, res) => {
       body = Buffer.from(
         body
           .toString()
-          .replace("<head>", '<head><script src="/bridge.js"></script>'),
+          .replace("<head>", '<head><script src="/bridge.js"></script>')
+          .replace(
+            "<body>",
+            learningFixture
+              ? '<body><div role="note" style="padding:8px;background:#ffe7a8;color:#382700">Synthetic learning verification — prepared items are test fixtures, not live AI.</div>'
+              : "<body>",
+          ),
       );
     const types: Record<string, string> = {
       ".html": "text/html",

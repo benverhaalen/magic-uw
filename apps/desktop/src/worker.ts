@@ -7,7 +7,8 @@ import fixture from "../../../fixtures/course.json";
 import { randomUUID } from "node:crypto";
 import { createLocalService } from "./local-service";
 import { createIngestion } from "./ingestion";
-import { createLearningRouter } from "../../../packages/learning/src/router"; // owner: T05b
+import { createLearningRouter, type StudyContext } from "../../../packages/learning/src/router";
+import { createStudyContextResolver } from "./learning-context";
 import { dirname } from "node:path";
 import {
   createLocalDocumentExtractor,
@@ -31,8 +32,10 @@ const core = createCore(store, {
   courseExtractor: createLocalCourseExtractor(),
   planningPublicClient: publicClients.core, // owner: T06
   planningHttp: { read: (request, signal) => hostRead("planning-public-read", { request }, signal) },
-  // owner: T05b. The learning channel reaches the router stub; N25 takes the router over.
-  seams: { learning: createLearningRouter() },
+  seams: { learning: createLearningRouter({
+    store: store.learning,
+    resolveContext: (resourceId): StudyContext | null => resolveStudyContext(resourceId),
+  }) },
   ...(process.env.MAGIC_GATEWAY_URL
     ? {
         gateway: {
@@ -63,6 +66,7 @@ const core = createCore(store, {
     : {}),
 });
 const local = createLocalService(store, core);
+const resolveStudyContext = createStudyContextResolver(store, core);
 const hostRequests = new Map<
   string,
   { resolve(value: any): void; reject(error: Error): void }
@@ -382,8 +386,9 @@ port.on("message", async ({ data }: { data: any }) => {
     ingestion.suspend();
     await ingestion.tick();
   }
-  if (["import", "planning-import", "fixture", "privacy", "purge"].includes(data.command?.type))
+  if (["import", "planning-import", "fixture", "privacy", "purge", "course-override"].includes(data.command?.type)) {
     local.cancel();
+  }
   try {
     port.postMessage({
       kind: "response",

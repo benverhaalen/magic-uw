@@ -970,7 +970,13 @@ export const learningRequestSchema = z.discriminatedUnion("op", [
       "other",
     ]),
   }),
+  learningOp("study.sessions", { resourceId: id }),
+  learningOp("study.session", { sessionId: id }),
+  learningOp("study.resume", { sessionId: id }),
+  learningOp("study.draft", { sessionId: id, revision: z.number().int().nonnegative(), operationId: id, draft: z.string().max(2000) }),
+  learningOp("study.advance", { sessionId: id, revision: z.number().int().nonnegative(), operationId: id, action: z.enum(["next", "skip"]) }),
   learningOp("study.plan", {
+    resourceId: id.optional(), inputHash: id.optional(), operationId: id.optional(), goal: z.string().max(1000).optional(),
     courseId: id.optional(),
     assessmentId: id.optional(),
     minutes: z.number().int().min(5).max(120),
@@ -978,6 +984,7 @@ export const learningRequestSchema = z.discriminatedUnion("op", [
     filter: studyFilterSchema.optional(),
   }),
   learningOp("study.answer", {
+    revision: z.number().int().nonnegative().optional(), operationId: id.optional(),
     sessionId: id,
     itemId: id,
     itemVersion: z.number().int().min(0),
@@ -1002,6 +1009,7 @@ export const learningRequestSchema = z.discriminatedUnion("op", [
     responseMs: z.number().int().min(0).max(86_400_000),
   }),
   learningOp("study.hint", {
+    revision: z.number().int().nonnegative().optional(), operationId: id.optional(),
     sessionId: id,
     itemId: id,
     level: z.enum(["hint", "explain"]),
@@ -1574,3 +1582,5 @@ export interface Connector {
   id: string;
   pull(signal?: AbortSignal): AsyncIterable<CaptureBatch>;
 }
+
+export type { StudySessionView, StudyEvent, StudySource, StudyCitation, StudyItemView, StudyResultData } from "./study";

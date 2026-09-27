@@ -814,7 +814,7 @@ app
             worker.postMessage({ kind: "local-cancel", id });
             reject(
               new Error(
-                "Local AI timed out. Your saved coursework is still available.",
+                "The request timed out. Your saved coursework is still available.",
               ),
             );
           },
@@ -1400,6 +1400,26 @@ app
           !imported.snapshot.fixtureMode
         )
           throw new Error("Fixture import failed");
+        const studyResource = imported.snapshot.resources.find(
+          (resource: { kind: string }) => resource.kind === "assignment",
+        );
+        if (!studyResource) throw new Error("Missing study anchor");
+        const studySessions = await window.webContents.executeJavaScript(
+          `window.magic.execute(${JSON.stringify({ type: "learning", request: {
+            op: "study.sessions", resourceId: studyResource.id,
+          } })})`,
+        );
+        if (studySessions.learning?.status !== "ok" ||
+            studySessions.learning.data?.sessions?.length !== 0)
+          throw new Error("Canonical study session bridge failed");
+        const unpreparedStudy = await window.webContents.executeJavaScript(
+          `window.magic.execute(${JSON.stringify({ type: "learning", request: {
+            op: "study.plan", resourceId: studyResource.id,
+            operationId: "smoke-unprepared", minutes: 10, difficulty: "normal",
+          } })})`,
+        );
+        if (unpreparedStudy.learning?.status !== "unavailable")
+          throw new Error("Unprepared study must remain explicitly unavailable");
         const planningStamp = new Date().toISOString();
         const planningScope = { kind: "terms", key: "synthetic-smoke" };
         const planningFixture = {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, writeFile, realpath } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -83,7 +83,7 @@ test("claude one-shot: exact spec E2 argv, prompt only on stdin, byte-stable pre
   assert.equal(call.stdin, secretAsk);
   assert.ok(!call.argv.some((a) => a.includes("SYNTHETIC-ASK")));
   assert.ok(!call.argv.some((a) => forbidden.includes(a)));
-  assert.equal(call.cwd.toLowerCase(), h.workDir.toLowerCase());
+  assert.equal(await realpath(call.cwd), await realpath(h.workDir));
   assert.equal(ledger.length, 1);
   assert.equal(ledger[0].outcome, "ok");
   assert.equal(ledger[0].pack, "cards");

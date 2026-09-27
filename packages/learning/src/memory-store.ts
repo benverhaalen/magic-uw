@@ -307,6 +307,18 @@ export function createMemoryLearningStore(now: () => string = () => new Date().t
       row.decidedByStudent = true;
     },
 
+    session(id) { return clone(sessions.get(id) ?? null); },
+    commitSession(session, expectedRevision, attempt) {
+      const old = sessions.get(session.id);
+      if ((old ? (old.plan as {revision?:number}).revision : null) !== expectedRevision) return false;
+      if (session.courseRef !== null) requireCourse(session.courseRef);
+      if (old && old.courseRef !== session.courseRef) throw new Error("session belongs to another course");
+      if (attempt && (attempt.sessionId !== session.id || attempt.courseRef !== session.courseRef))
+        throw new Error("attempt does not belong to this session");
+      if (attempt) store.addAttempt(attempt);
+      sessions.set(session.id, clone(session));
+      return true;
+    },
     putSession(session) {
       if (session.courseRef !== null) requireCourse(session.courseRef);
       sessions.set(session.id, clone(session));
