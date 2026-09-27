@@ -1,11 +1,16 @@
 import { judgmentFailureError } from "./judgment-errors";
 import { createLocalCourseExtractor } from "@magic/ai";
 import { createStore } from "@magic/storage";
+import { maySend } from "@magic/domain";
+import { courseInclusion, contentCategories } from "../../../packages/core/src/access";
+import { protectedPayloadScrubber, classOf } from "../../../packages/core/src/privacy/protect";
+import { buildReceipt, egressFor } from "../../../packages/core/src/egress";
+import { investigateAssignmentClick } from "../../../packages/runner/src/source-investigator-adapter";
 import { deriveInstallKeys } from "../../../packages/core/src/privacy/at-rest"; // owner: privacy
 import { configurePseudonymKey } from "../../../packages/core/src/privacy/pseudonyms"; // owner: privacy
 import { logLine } from "../../../packages/core/src/privacy/log"; // owner: privacy
 import { createCore } from "@magic/core";
-import { captureBatchSchema, planningCaptureSchema, type PlanningCapture } from "@magic/contracts";
+import { captureBatchSchema, planningCaptureSchema, type PlanningCapture, type Resource } from "@magic/contracts";
 import { queryRequestSchema } from "@magic/contracts"; // owner: T15
 import type { MailTriageState, MessageTriageState } from "@magic/contracts"; // owner: notifications gateway relay
 import fixture from "../../../fixtures/course.json";
@@ -719,6 +724,60 @@ port.on("message", async ({ data }: { data: any }) => {
   if (data.kind === "voice-agent-warm") return void agentWarmup.start();
   if (data.kind === "voice-agent-refresh") return void agentWarmup.refresh();
   if (data.kind === "cancel-command") { commandAborts.get(data.id)?.abort(); return; }
+  if (data.kind === "source-investigate") {
+    const abort = new AbortController();
+    commandAborts.set(data.id, abort);
+    try {
+      if (typeof data.assignmentId !== "string" || !data.assignmentId || data.assignmentId.length > 300)
+        throw new Error("Invalid assignment ID.");
+      const chosen = await chosenClient();
+      if (chosen?.id !== "claude" && chosen?.id !== "codex") throw new Error("Choose a connected Claude Code or Codex client first.");
+      const client = chosen.id;
+      const built = await clientBackend(client, {userData:generationUserData},
+        {claude:createClaudeBackend,codex:createCodexBackend},
+        () => isolatedOptions(client));
+      if (!built) throw new Error("The chosen client is unavailable.");
+      const assignment = store.resource(data.assignmentId);
+      const source = assignment && store.sources().find(s=>s.id===assignment.sourceId);
+      if (!assignment || !source) throw new Error("Assignment evidence is unavailable.");
+      const scrubber = protectedPayloadScrubber(store, true, source.accountScope, `source-investigator:${data.id}`);
+      const receiptIds: string[] = [];
+      const result = await investigateAssignmentClick({
+        store, assignmentId:data.assignmentId, signal:abort.signal,
+        backend:{...built.backend, client, call:call=>built.backend.call(call)},
+        access:() => {
+          const included = courseInclusion(store);
+          return {
+            allowed:(r: Resource) => included(r) && maySend(store.privacy(),client,contentCategories(r)).allowed,
+            scrubFor:(r: Resource) => (text:string) => scrubber.field(text,r.courseId,classOf(r)),
+          };
+        },
+        beforeModel:(call,resources) => {
+          abort.signal.throwIfAborted();
+          const outgoing={...call,courseId:undefined,
+            systemPrompt:scrubber.field(call.systemPrompt,assignment.courseId,"teaching"),
+            input:scrubber.field(call.input,assignment.courseId,"personal")};
+          const categories=[...new Set(resources.flatMap(contentCategories))];
+          const permission=maySend(store.privacy(),client,categories);
+          const payload={systemPrompt:outgoing.systemPrompt,input:outgoing.input,jsonSchema:outgoing.jsonSchema};
+          const manifest={recipient:client,purpose:"Investigate the opened assignment using saved course evidence",categories,
+            resourceIds:resources.map(r=>r.id),characters:JSON.stringify(payload).length,
+            allowed:permission.allowed,reason:permission.reason,payload,protection:scrubber.counts()};
+          const policy=egressFor(store), at=new Date().toISOString();
+          const decision=policy.check(manifest,{at,background:false});
+          if (decision.status!=="allowed") throw new Error(decision.reason);
+          const receipt=buildReceipt(manifest,"sent",at);
+          store.addReceipt(receipt);
+          receiptIds.push(receipt.id);
+          return outgoing;
+        },
+      });
+      port.postMessage({kind:"response",id:data.id,result:{...result,egressReceiptIds:receiptIds.filter(Boolean)}});
+    } catch (error) {
+      port.postMessage({kind:"response",id:data.id,error:error instanceof Error ? error.message : "Investigation unavailable."});
+    } finally { commandAborts.delete(data.id); }
+    return;
+  }
   // owner: privacy. Main's install secret: at-rest key for the store, pseudonym key for sends.
   if (data.kind === "privacy-key") {
     const secret = typeof data.secret === "string" ? Buffer.from(data.secret, "base64") : null;

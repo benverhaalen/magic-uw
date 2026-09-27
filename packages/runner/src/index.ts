@@ -54,3 +54,6 @@ export {
 } from "./pool";
 export { claudeToolUse, codexToolUse, claudeStreamCheck, codexStreamCheck, toolUseError, DENY_TOOLS_SETTINGS, CLAUDE_ALLOWED_TOOLS } from "./tripwire"; // owner: client-detection
 export { killTree } from "./process"; // owner: client-detection
+export { runStudyToolLoop, courseSearch, StudyToolError, type StudyToolRequest, type StudyToolResult, type StudyToolReceipt, type StudyToolGrant, type StudyToolAction } from "./study-retrieval";
+export { runSourceInvestigator, searchInvestigation, InvestigationError, type InvestigationRequest, type InvestigationResult, type InvestigationAction, type InvestigationContext, type InvestigationGrant, type InvestigationCitation, type InvestigationReceipt, type ExternalReadPort } from "./source-investigator";
+export { investigateAssignmentClick, type AssignmentClickInvestigation } from "./source-investigator-adapter";

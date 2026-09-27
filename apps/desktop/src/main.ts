@@ -1300,6 +1300,28 @@ app
       validateSender(event);
       if (typeof operationId === 'string') interactiveCalls.get(operationId)?.abort();
     });
+    // A student opens one assignment; the worker owns evidence, grants and the provider call.
+    const sourceInvestigations = new Map<string, { id: string; cancel: () => void }>();
+    ipcMain.handle("magic:source-investigate", async (event, request: unknown) => {
+      validateSender(event);
+      const r = request as { operationId?: unknown; assignmentId?: unknown } | null;
+      if (!r || typeof r.operationId !== "string" || !/^[a-zA-Z0-9_-]{1,100}$/.test(r.operationId) ||
+        typeof r.assignmentId !== "string" || !r.assignmentId || r.assignmentId.length > 300 || sourceInvestigations.has(r.operationId))
+        throw new Error("Invalid investigation request.");
+      await ready;
+      const id = randomUUID();
+      return new Promise((resolve, reject) => {
+        const cancel = () => { clearTimeout(timer); calls.delete(id); worker.postMessage({kind:"cancel-command",id}); reject(new Error("Investigation stopped.")); };
+        const timer = setTimeout(cancel, 90_000);
+        sourceInvestigations.set(r.operationId as string, {id,cancel});
+        calls.set(id, {timer, resolve: value => resolve(value), reject});
+        worker.postMessage({kind:"source-investigate",id,assignmentId:r.assignmentId});
+      }).finally(() => sourceInvestigations.delete(r.operationId as string));
+    });
+    ipcMain.handle("magic:source-investigate-stop", (event, operationId: unknown) => {
+      validateSender(event);
+      if (typeof operationId === "string") sourceInvestigations.get(operationId)?.cancel();
+    });
     ipcMain.handle("magic:execute", async (event, command) => {
       validateSender(event);
       const purging = command?.type === "purge";

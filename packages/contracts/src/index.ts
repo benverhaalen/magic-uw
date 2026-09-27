@@ -2435,7 +2435,22 @@ export interface AccountBridge {
 }
 // end owner: accounts
 
+/** Source-linked task facts; the same result can be consumed by Study and Daily Brief. */
+export interface SourceInvestigationResult {
+  status: "resolved" | "partial" | "ambiguous";
+  summary: string;
+  assignmentId: string;
+  workSet: Pick<WorkSet, "assignmentId" | "items" | "held">;
+  findings: { kind: "instruction" | "reading" | "work_target" | "context"; text: string; citations: { resourceId: string; contentHash: string; version: number; start: number; end: number; excerpt: string; provisional: boolean; sourceUrl: string }[] }[];
+  unknowns: string[];
+  model: string;
+  client: "claude" | "codex";
+  egressReceiptIds?: string[];
+}
 export interface AppBridge {
+  /** One student-opened, read-only investigation. Operation ID permits Stop. */
+  investigateAssignment?(request: { operationId: string; assignmentId: string }): Promise<SourceInvestigationResult>;
+  stopAssignmentInvestigation?(operationId: string): Promise<void>;
   /** Shared typed/voice read and navigation path; main owns the action restriction. */
   intentRun?(request: { operationId: string; text: string; context?: IntentCommand["context"] }): Promise<IntentCommandResult>;
   cancelIntent?(operationId: string): Promise<void>;

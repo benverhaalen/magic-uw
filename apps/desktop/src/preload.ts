@@ -78,6 +78,8 @@ const clients: ClientsBridge = {
   },
 };
 const bridge: AppBridge = {
+  investigateAssignment: request => ipcRenderer.invoke("magic:source-investigate", request),
+  stopAssignmentInvestigation: operationId => ipcRenderer.invoke("magic:source-investigate-stop", operationId),
   intentRun: request => ipcRenderer.invoke("magic:intent-run", request),
   cancelIntent: operationId => ipcRenderer.invoke("magic:intent-cancel", operationId),
   execute: (command) => ipcRenderer.invoke("magic:execute", command),

@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import type { AssignmentContext, GitlabLink, ResourceView, Snapshot, TaskWindowCapability, TaskWindowPage, TaskWindowRequest, TaskWindowResult } from "@magic/contracts";
+import type { AssignmentContext, GitlabLink, ResourceView, Snapshot, SourceInvestigationResult, TaskWindowCapability, TaskWindowPage, TaskWindowRequest, TaskWindowResult } from "@magic/contracts";
 import { Action, Disclosure } from "../../../../../packages/ui/src";
 import { EvidenceInfo } from "../../../../../packages/ui/src/evidence-info";
 import { Glyph } from "../DesktopShell";
@@ -55,11 +55,25 @@ function TaskWorkspaceInner({ resource, snapshot, refreshKey, onSetup, onFailure
   const [confirmClose, setConfirmClose] = useState(false);
   const [adding, setAdding] = useState(false);
   const [returned, setReturned] = useState(false);
+  const [investigation, setInvestigation] = useState<{ kind: "loading" | "ready" | "error" | "stopped"; value?: SourceInvestigationResult; message?: string }>({kind:"stopped"});
+  const investigationId = useRef<string | null>(null);
   const awaiting = useRef<"no" | "sent" | "left">("no");
   const seededDraft = useRef(!!record);
   const bridge = window.magic.taskWindows;
 
   useEffect(() => { pruneWorkspaces(snapshot); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    // The normal detail click triggers this only for sparse Canvas instructions.
+    if ((resource.text ?? "").trim().length >= 200 || !window.magic.investigateAssignment) return;
+    let current=true;
+    const operationId=crypto.randomUUID();
+    investigationId.current=operationId;
+    setInvestigation({kind:"loading"});
+    void window.magic.investigateAssignment({operationId,assignmentId:resource.id}).then(value=>{
+      if (current) setInvestigation({kind:"ready",value});
+    }).catch(cause=>{ if (current) setInvestigation({kind:"error",message:cleanError(cause)}); });
+    return () => { current=false; if (investigationId.current===operationId) { investigationId.current=null; void window.magic.stopAssignmentInvestigation?.(operationId); } };
+  }, [resource.id,resource.contentHash,refreshKey]);
   useEffect(() => {
     let current = true;
     void readCourseTools(resource.id, resource.contentHash).then(next => { if (current) setTools(next); });
@@ -195,6 +209,11 @@ function TaskWorkspaceInner({ resource, snapshot, refreshKey, onSetup, onFailure
 
     <InstructionsFact resource={resource} />
     {work.set?.context && <ContextFacts context={work.set.context} />}
+    {((resource.text ?? "").trim().length < 200) && <SourceInvestigationFacts state={investigation} onStop={() => {
+      if (investigationId.current) void window.magic.stopAssignmentInvestigation?.(investigationId.current);
+      investigationId.current=null;
+      setInvestigation({kind:"stopped"});
+    }} />}
     <WindowsFact windows={windows} work={workTarget?.label ?? null} busy={busy === "access"} onAllow={() => void allowArrangement()} />
 
     {choosing ? <fieldset className="task-workspace__choices">
@@ -350,6 +369,29 @@ function AddPageForm({ onAdd, onCancel }: { onAdd: (url: string, title: string) 
   </form>;
 }
 
+export function SourceInvestigationFacts({state,onStop}: {state:{kind:"loading"|"ready"|"error"|"stopped";value?:SourceInvestigationResult;message?:string};onStop:()=>void}) {
+  if (state.kind==="stopped") return null;
+  if (state.kind==="loading") return <section className="task-workspace__context" aria-label="Investigating assignment">
+    <p className="task-workspace__fact">Checking saved course sources for this assignment…</p>
+    <button type="button" className="task-workspace__inline-action" onClick={onStop}>Stop</button>
+  </section>;
+  if (state.kind==="error") return <p className="task-workspace__attention">Source investigation: {state.message}</p>;
+  const result=state.value;
+  if (!result) return null;
+  return <section className="task-workspace__context" aria-label="Source investigation">
+    <h4>What the course sources say</h4>
+    <p className="task-workspace__fact">{result.summary}</p>
+    {result.findings.map((finding,index)=><figure className="task-workspace__cited" key={index}>
+      <figcaption><span className="task-workspace__label">{finding.citations.every(c=>c.provisional) ? "Possibly related course context" : finding.kind==="instruction" ? "Confirmed instruction" : finding.kind==="work_target" ? "Work target" : finding.kind==="reading" ? "Reading" : "Course context"}</span></figcaption>
+      <p>{finding.text}</p>
+      {finding.citations.map(c=><small key={`${c.resourceId}:${c.start}`}>
+        {httpsUrl(c.sourceUrl) ? <a href={httpsUrl(c.sourceUrl)!} target="_blank" rel="noreferrer">Saved source</a> : "Saved source"} · version {c.version} · characters {c.start}–{c.end}{c.provisional ? " · title match only" : ""}
+      </small>)}
+    </figure>)}
+    {result.unknowns.length>0 && <p className="task-workspace__fact">Still unclear: {result.unknowns.join(" ")}</p>}
+  </section>;
+}
+
 function InstructionsFact({ resource }: { resource: ResourceView }) {
   const saved = new Date(resource.observedAt);
   const when = Number.isNaN(saved.getTime()) ? "" : new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(saved);
@@ -455,4 +497,3 @@ function GitlabChoiceRow({ view, accountScope, courseId, onChoose, onLinked }: {
     </span>
   </div>;
 }
-

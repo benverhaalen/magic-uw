@@ -66,6 +66,8 @@ export const passageSearchSchema = z
     query: z.string().max(2000),
     /** Omitted: every course. Empty: nothing. */
     courses: z.array(courseRefSchema).max(200).optional(),
+    /** Exact saved-resource selection applied inside FTS before ranking. Empty selects none. */
+    resourceIds: z.array(idText).max(100).optional(),
     k: z.number().int().min(1).max(20).optional(),
     /** question: OR + bm25 + the not-found gate (default). lookup: every term, prefix-matched. */
     mode: z.enum(["question", "lookup"]).optional(),

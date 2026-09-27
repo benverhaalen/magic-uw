@@ -172,27 +172,34 @@ export function createPassageIndex(db: DatabaseSync, prepare: Prepare) {
     scope: string,
     limit: number,
     enough: (top: { pid: number; score: number }[]) => boolean,
+    resourceIds?: readonly string[],
   ) {
     const rare = exact.filter((t) => !isCommon(t));
     const prefixRare = prefix !== undefined && !isCommon(prefix);
     const or = (terms: readonly string[], last?: string) =>
       [...terms.map((t) => matchExpression([t], "or")), ...(last ? [matchExpression([last], "or", true)] : [])].join(" OR ");
     if (rare.length || prefixRare)
-      return topPassages(`{ctx body} : (${or(rare, prefixRare ? prefix : undefined)})${scope}`, limit);
+      return topPassages(`{ctx body} : (${or(rare, prefixRare ? prefix : undefined)})${scope}`, limit, resourceIds);
     const common = prefix === undefined ? [...exact] : [...exact, prefix];
-    const titled = topPassages(`ctx : (${or(common)})${scope}`, limit);
+    const titled = topPassages(`ctx : (${or(common)})${scope}`, limit, resourceIds);
     if (enough(titled)) return titled;
     const seen = new Set(titled.map((t) => t.pid));
     return [
       ...titled,
-      ...topPassages(`{ctx body} : (${or(common)})${scope}`, limit).filter((t) => !seen.has(t.pid)),
+      ...topPassages(`{ctx body} : (${or(common)})${scope}`, limit, resourceIds).filter((t) => !seen.has(t.pid)),
     ].slice(0, limit);
   }
 
-  function topPassages(match: string, limit: number): { pid: number; score: number }[] {
+  function topPassages(match: string, limit: number, resourceIds?: readonly string[]): { pid: number; score: number }[] {
     return (
-      prepare("SELECT rowid AS pid, rank FROM passage_fts WHERE passage_fts MATCH ? ORDER BY rank LIMIT ?").all(
+      prepare(`SELECT passage_fts.rowid AS pid, passage_fts.rank FROM passage_fts
+        JOIN passages p ON p.pid = passage_fts.rowid
+        JOIN resources r ON r.id = p.resource_id AND r.deleted = 0 AND r.version = p.version
+        WHERE passage_fts MATCH ? AND p.redacted = 0
+          ${resourceIds ? "AND p.resource_id IN (SELECT value FROM json_each(?))" : ""}
+        ORDER BY passage_fts.rank LIMIT ?`).all(
         match,
+        ...(resourceIds ? [JSON.stringify(resourceIds)] : []),
         limit,
       ) as Row[]
     ).map((r) => ({ pid: Number(r.pid), score: Number(r.rank) }));
@@ -203,12 +210,12 @@ export function createPassageIndex(db: DatabaseSync, prepare: Prepare) {
     const k = parsed.k ?? DEFAULT_K;
     const { terms, content } = queryTerms(parsed.query);
     const empty: PassageSearchResult = { hits: [], notFound: true, coverage: 0, terms: content };
-    if (!content.length || parsed.courses?.length === 0) return empty;
+    if (!content.length || parsed.courses?.length === 0 || parsed.resourceIds?.length === 0) return empty;
     const lookup = parsed.mode === "lookup";
     const scope = scopeExpression(parsed.courses);
     const top = lookup
-      ? topPassages(`{ctx body} : (${matchExpression(terms, "and", true)})${scope}`, k)
-      : rankTerms(content, undefined, scope, k, (t) => t.length >= k);
+      ? topPassages(`{ctx body} : (${matchExpression(terms, "and", true)})${scope}`, k, parsed.resourceIds)
+      : rankTerms(content, undefined, scope, k, (t) => t.length >= k, parsed.resourceIds);
     if (!top.length) return empty;
     const rows = new Map(
       (

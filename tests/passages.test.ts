@@ -254,3 +254,15 @@ test("the JS Porter stemmer agrees with FTS5's porter tokenizer on the corpus vo
   assert.ok(list.length > 300);
   assert.deepEqual(mismatches.map((w) => `${w}: js ${porterStem(w)} fts ${stems.get(list.indexOf(w) + 1)}`), []);
 });
+
+test("exact selected resources are constrained inside shared FTS before top-k", () => {
+  const {store,planted,byExternal}=plantedStore();
+  try {
+    const target=byExternal.get(planted[0]!.externalId)!;
+    const course=store.sources().find(s=>s.id===target.sourceId)!;
+    const hits=store.searchPassages({query:"Krebs cycle",courses:[{accountScope:course.accountScope,courseId:target.courseId}],resourceIds:[target.id],k:1}).hits;
+    assert.equal(hits.length,1);
+    assert.equal(hits[0]!.resourceId,target.id);
+    assert.deepEqual(store.searchPassages({query:"Krebs cycle",resourceIds:[],k:5}).hits,[]);
+  } finally { store.close(); }
+});
