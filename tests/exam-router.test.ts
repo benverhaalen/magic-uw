@@ -157,6 +157,37 @@ test("time runs out under exam conditions: the saved answers are submitted and g
   assert.equal(data.review.unanswered, v.questions.length - 1);
 });
 
+test("an interrupted submit is finished later: a replayed exam.submit and exam.session write the missing attempts once", async () => {
+  const s = setup();
+  let cur = exam(await s.call({ op: "exam.build", courseId: "SYN220", anchorIds: s.anchors, assessmentId: "a-mid1", length: 6, lean: false, timed: true, examConditions: true, operationId: nextOp() }));
+  const id = cur.id;
+  for (const q of cur.questions)
+    for (const st of q.steps)
+      cur = exam(await s.call({ op: "exam.answer", sessionId: id, revision: cur.revision, operationId: nextOp(), questionId: q.id, stepId: st.id, response: answerFor(q, st.id, true), confidence: 1, responseMs: 1000 }));
+  // The submit commit lands, then the worker stops before any attempt is written.
+  const store = s.owner.learning;
+  const commit = store.commitSession.bind(store);
+  let calls = 0;
+  store.commitSession = ((...args: Parameters<typeof commit>) => (++calls === 1 ? commit(...args) : false)) as typeof store.commitSession;
+  const submitOp = nextOp();
+  const cut = await s.call({ op: "exam.submit", sessionId: id, revision: cur.revision, operationId: submitOp });
+  assert.notEqual(cut.status, "ok", "the interrupted submit reports a conflict");
+  store.commitSession = commit;
+  assert.equal(store.evidence(s.ref).attempts.length, 0, "nothing recorded yet");
+
+  const replay = await s.call({ op: "exam.submit", sessionId: id, revision: cur.revision, operationId: submitOp });
+  assert.equal(replay.status, "ok", replay.message);
+  const { review } = replay.data as ExamReviewData;
+  const recorded = store.evidence(s.ref).attempts.length;
+  assert.ok(recorded > 0);
+  assert.equal(review.attemptsRecorded, recorded);
+  assert.equal(recorded, review.answered, "every code-graded answer is evidence");
+
+  const again = await s.call({ op: "exam.session", sessionId: id });
+  assert.equal((again.data as ExamReviewData).review.attemptsRecorded, recorded);
+  assert.equal(store.evidence(s.ref).attempts.length, recorded, "no attempt is written twice");
+});
+
 test("without exam conditions a timed practice exam isn't cut off, and hints are allowed (marked as assistance)", async () => {
   const s = setup();
   const v = exam(await s.call({ op: "exam.build", courseId: "SYN220", anchorIds: s.anchors, assessmentId: "a-mid1", length: 6, lean: true, timed: true, minutes: 5, examConditions: false, operationId: nextOp() }));

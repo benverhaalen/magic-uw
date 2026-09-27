@@ -87,6 +87,8 @@ export interface ExamEvidencePort {
 export interface ExamEvidenceSources {
   resources(): Resource[];
   sources(): SourceHealth[];
+  /** One course's live resources, filtered in SQL (the Store's graph read); preferred over a full `resources()` scan. */
+  courseResources?(course: { accountScope: string; courseId: string }): Resource[];
   assessments?(course?: { accountScope: string; courseId: string }): Assessment[];
   assessmentScopes?(assessmentId: string): AssessmentScope[];
   courseBrief?(course: { accountScope: string; courseId: string }): CourseBrief | undefined;
@@ -115,12 +117,13 @@ function assignmentDate(r: Resource): string | null {
 
 export function createExamEvidence(src: ExamEvidenceSources): ExamEvidencePort {
   function courseResources(accountScope: string, courseId: string): Resource[] {
+    if (src.courseResources) return src.courseResources({ accountScope, courseId }).filter((r) => !r.deleted && r.courseId === courseId);
     const sources = new Map(src.sources().map((s) => [s.id, s]));
     return src
       .resources()
       .filter((r) => !r.deleted && r.courseId === courseId && sources.get(r.sourceId)?.accountScope === accountScope);
   }
-  function assessments(accountScope: string, courseId: string): ExamAssessment[] {
+  function assessments(accountScope: string, courseId: string, loaded?: Resource[]): ExamAssessment[] {
     const course = { accountScope, courseId };
     const mapped = (src.assessments?.(course) ?? [])
       .filter((a) => a.accountScope === accountScope && a.courseId === courseId && EXAM_LIKE.has(a.kind))
@@ -137,7 +140,7 @@ export function createExamEvidence(src: ExamEvidenceSources): ExamEvidencePort {
     const known = new Set(mapped.flatMap((a) => (a.resourceId ? [a.resourceId] : [])));
     const keys = new Set(mapped.flatMap((a) => assessmentKey(a.title) ?? []));
     // Canvas exams and quizzes the course map hasn't named yet: dated by code, never guessed.
-    const canvas = courseResources(accountScope, courseId)
+    const canvas = (loaded ?? courseResources(accountScope, courseId))
       .filter((r) => r.kind === "assignment" && !known.has(r.id))
       .flatMap((r): ExamAssessment[] => {
         const kind = examKind(r.title, r.submissionTypes ?? []);
@@ -149,8 +152,8 @@ export function createExamEvidence(src: ExamEvidenceSources): ExamEvidencePort {
       (a, b) => (a.date ?? "9999").localeCompare(b.date ?? "9999") || a.title.localeCompare(b.title),
     );
   }
-  function materials(accountScope: string, courseId: string): ExamMaterial[] {
-    return courseResources(accountScope, courseId)
+  function materials(accountScope: string, courseId: string, loaded?: Resource[]): ExamMaterial[] {
+    return (loaded ?? courseResources(accountScope, courseId))
       .filter((r) => r.kind === "material" || r.kind === "assignment" || r.kind === "course")
       .map((r): ExamMaterial => {
         // The pipeline replaces a resource's facts when its text changes, so the stored set is current.
@@ -170,13 +173,14 @@ export function createExamEvidence(src: ExamEvidenceSources): ExamEvidencePort {
       });
   }
   return {
-    assessments,
-    materials,
+    assessments: (accountScope, courseId) => assessments(accountScope, courseId),
+    materials: (accountScope, courseId) => materials(accountScope, courseId),
     evidence(accountScope, courseId, assessmentId) {
-      const all = assessments(accountScope, courseId);
+      // One course read per call, shared by the schedule, the term and the materials.
+      const resources = courseResources(accountScope, courseId);
+      const all = assessments(accountScope, courseId, resources);
       const assessment = all.find((a) => a.id === assessmentId || a.resourceId === assessmentId);
       if (!assessment) return null;
-      const resources = courseResources(accountScope, courseId);
       const termName = resources.find((r) => r.course?.termName)?.course?.termName ?? null;
       const scopes = (src.assessmentScopes?.(assessment.id) ?? [])
         .filter((s) => s.status !== "flagged")
@@ -204,7 +208,7 @@ export function createExamEvidence(src: ExamEvidenceSources): ExamEvidencePort {
               end: row.end,
             }
           : null;
-      const docs = materials(accountScope, courseId);
+      const docs = materials(accountScope, courseId, resources);
       const links = (src.mapLinks?.({ accountScope, courseId }) ?? [])
         .filter(
           (l) =>

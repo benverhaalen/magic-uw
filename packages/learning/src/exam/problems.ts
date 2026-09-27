@@ -212,7 +212,7 @@ export function parsonsAnswer(lines: string[], distractors: string[], seed: stri
   const base = Math.min(...widths);
   const blocks = kept.map((l, i) => ({ id: `b${hash(`${seed}:${i}:${l}`).slice(0, 8)}`, text: l.trim(), indent: Math.round((widths[i]! - base) / unit) }));
   const extra = distractors.map((d, i) => ({ id: `d${hash(`${seed}:d${i}:${d}`).slice(0, 8)}`, text: d.trim(), indent: 0 }));
-  // Identical lines are interchangeable: every order of their IDs is accepted.
+  // Identical lines are interchangeable; checkParsons compares by text, so these swaps are only a hint for older readers.
   const alternatives: string[][] = [];
   const byText = new Map<string, number[]>();
   blocks.forEach((b, i) => byText.set(b.text, [...(byText.get(b.text) ?? []), i]));

@@ -93,6 +93,21 @@ test("Parsons: the solution and an allowed alternative pass; distractors, order 
   assert.equal(checkParsons(twice, [p0!, p2!, p1!, p3!].map((id) => ({ id, indent: 0 }))).outcome, "correct");
 });
 
+test("Parsons: any order of three or more identical lines passes, and indentation is checked per position", () => {
+  const braces = parsonsAnswer(["x = 1;", "}", "}", "}"], [], "braces");
+  const [x, c1, c2, c3] = braces.solution;
+  for (const order of [[x, c1, c2, c3], [x, c3, c1, c2], [x, c2, c3, c1], [x, c3, c2, c1]])
+    assert.equal(checkParsons(braces, order.map((id) => ({ id: id!, indent: 0 }))).outcome, "correct", order.join(","));
+  assert.equal(checkParsons(braces, [c1, x, c2, c3].map((id) => ({ id: id!, indent: 0 }))).outcome, "incorrect");
+  // Nested closing braces trim to the same text; the level each position needs is what's checked.
+  const nested = parsonsAnswer(["if (a) {", "  if (b) {", "    go();", "  }", "}"], [], "nested");
+  const [i0, i1, g, inner, outer] = nested.solution;
+  const swapped = [i0, i1, g, outer, inner];
+  assert.equal(checkParsons(nested, swapped.map((id, i) => ({ id: id!, indent: [0, 1, 2, 1, 0][i]! }))).outcome, "correct");
+  const wrongIndent = checkParsons(nested, swapped.map((id, i) => ({ id: id!, indent: [0, 1, 2, 0, 1][i]! })));
+  assert.equal(wrongIndent.outcome, "partial");
+});
+
 test("choice, text and the student's own mark: code grades what it can and leaves the rest undecided, never wrong", () => {
   const choice: StepAnswer = { kind: "choice", options: [{ id: "a", text: "Average speed" }, { id: "b", text: "Force" }], key: "a" };
   assert.equal(checkStep(choice, { kind: "choice", optionId: "a" }, "s").outcome, "correct");

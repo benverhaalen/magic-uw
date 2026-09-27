@@ -384,11 +384,11 @@ export function createExamOps(host: ExamHost) {
 
   // ---------- Evidence ----------
 
-  function attemptFor(session: LearningSession, st: ExamSessionState, q: QuestionState, at: string): LearningAttempt | null {
+  function attemptFor(session: LearningSession, st: ExamSessionState, q: QuestionState, at: string, seen?: Set<string>): LearningAttempt | null {
     const g = grade(q);
     if (g.undecided) return null;
     const ref = session.courseRef!;
-    const prior = store.evidence(ref).attempts.some((a) => a.itemId === q.problem.id);
+    const prior = seen ? seen.has(q.problem.id) : store.evidence(ref).attempts.some((a) => a.itemId === q.problem.id);
     const choice = studentSteps(q).find((s) => s.response?.kind === "choice")?.response;
     return {
       id: randomUUID(),
@@ -415,28 +415,51 @@ export function createExamOps(host: ExamHost) {
     };
   }
 
-  /** Write one attempt per finished, unrecorded question, one CAS commit each, so an interrupted submit resumes. */
+  /**
+   * Write one attempt per finished, unrecorded question, one CAS commit each. An interrupted submit
+   * resumes: exam.session and a repeated exam.submit call this again for a submitted session.
+   */
   function recordAll(session: LearningSession, st: ExamSessionState, at: string): { session: LearningSession; st: ExamSessionState; recorded: number } | null {
     let cur = session;
     let state = st;
     let recorded = 0;
+    let seen: Set<string> | null = null;
+    const concepts = new Set<string>();
+    const refresh = () => {
+      if (concepts.size) host.refreshAnalytics(cur.courseRef!, [...concepts]);
+    };
     for (let i = 0; i < state.questions.length; i++) {
       const q = state.questions[i]!;
       if (q.attemptId || !studentSteps(q).some((s) => s.response)) continue;
-      const attempt = attemptFor(cur, state, q, at);
+      seen ??= new Set(store.evidence(cur.courseRef!).attempts.map((a) => a.itemId));
+      const attempt = attemptFor(cur, state, q, at, seen);
       if (!attempt) continue;
       const next = structuredClone(state);
       next.questions[i]!.attemptId = attempt.id;
       next.revision = state.revision + 1;
       next.updatedAt = at;
       const updated = { ...cur, plan: next };
-      if (!store.commitSession(updated, state.revision, attempt)) return null;
+      if (!store.commitSession(updated, state.revision, attempt)) {
+        refresh();
+        return null;
+      }
       cur = updated;
       state = next;
       recorded++;
-      host.refreshAnalytics(cur.courseRef!, attempt.conceptTags.map((t) => t.conceptId));
+      seen.add(q.problem.id);
+      for (const t of attempt.conceptTags) concepts.add(t.conceptId);
     }
+    refresh();
     return { session: cur, st: state, recorded };
+  }
+
+  /** A submitted session whose attempts weren't all written (a crash or conflict mid-submit): finish writing them. */
+  function resumeRecording(session: LearningSession, st: ExamSessionState): { session: LearningSession; st: ExamSessionState } {
+    if (!st.submittedAt) return { session, st };
+    const pending = st.questions.some((q) => !q.attemptId && studentSteps(q).some((s) => s.response) && !grade(q).undecided);
+    if (!pending) return { session, st };
+    const done = recordAll(session, st, host.time().toISOString());
+    return done ? { session: done.session, st: done.st } : { session, st };
   }
 
   function submit(session: LearningSession, st: ExamSessionState, at: string, opId?: string, fingerprint?: string) {
@@ -687,17 +710,17 @@ export function createExamOps(host: ExamHost) {
     if (op === "exam.session") {
       const auto = autoSubmit(session, found);
       if (auto) return { op, status: "ok", data: { exam: view(auto.session, auto.st), review: review(auto.session, auto.st, auto.recorded) } };
-      return found.submittedAt
-        ? { op, status: "ok", data: { exam: view(session, found), review: review(session, found, found.questions.filter((q) => q.attemptId).length) } }
-        : { op, status: "ok", data: { exam: view(session, found) } };
+      if (!found.submittedAt) return { op, status: "ok", data: { exam: view(session, found) } };
+      const r = resumeRecording(session, found);
+      return { op, status: "ok", data: { exam: view(r.session, r.st), review: review(r.session, r.st, r.st.questions.filter((q) => q.attemptId).length) } };
     }
 
     const fingerprint = canonical(request);
     if (Object.hasOwn(found.operations, request.operationId)) {
       if (found.operations[request.operationId] !== fingerprint) return fail(op, "Operation ID was already used for a different request.", "failed");
-      return op === "exam.submit"
-        ? { op, status: "ok", data: { exam: view(session, found), review: review(session, found, found.questions.filter((q) => q.attemptId).length) } }
-        : { op, status: "ok", data: { exam: view(session, found) } };
+      if (op !== "exam.submit") return { op, status: "ok", data: { exam: view(session, found) } };
+      const r = resumeRecording(session, found);
+      return { op, status: "ok", data: { exam: view(r.session, r.st), review: review(r.session, r.st, r.st.questions.filter((q) => q.attemptId).length) } };
     }
     if (request.revision !== found.revision) return fail(op, "Practice session changed. Reload it before continuing.");
     if (Object.keys(found.operations).length >= 5000) return fail(op, "This session is full. Start another.");

@@ -103,9 +103,12 @@ export function checkParsons(answer: Extract<StepAnswer, { kind: "parsons" }>, b
   const ids = blocks.map((b) => b.id);
   const solutions = [answer.solution, ...answer.alternatives];
   const indentOf = new Map(answer.blocks.map((b) => [b.id, b.indent]));
+  // Blocks with identical text look the same to the student, so the order is compared by text and
+  // indentation by the level each position needs, whatever the number of identical lines.
+  const textOf = new Map(answer.blocks.map((b) => [b.id, b.text]));
   for (const s of solutions)
-    if (s.length === ids.length && s.every((id, i) => id === ids[i])) {
-      const badIndent = answer.indented ? blocks.filter((b) => indentOf.get(b.id) !== b.indent).map((b) => b.id) : [];
+    if (s.length === ids.length && s.every((id, i) => textOf.get(id) === textOf.get(ids[i]!))) {
+      const badIndent = answer.indented ? blocks.filter((b, i) => indentOf.get(s[i]!) !== b.indent).map((b) => b.id) : [];
       if (badIndent.length) return { outcome: "partial", message: "The order is right; check the indentation.", checks, score: 0.5, misplaced: badIndent };
       return ok("Right: the lines are in a working order.", checks);
     }
