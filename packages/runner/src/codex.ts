@@ -32,6 +32,9 @@ export interface CodexOptions {
 
 /**
  * Spec E2 argv: read-only sandbox, ephemeral, user config ignored, prompt from stdin ("-").
+ * `--skip-git-repo-check` (added 2026-09-27): Codex 0.156.1 refuses any folder outside a git
+ * repository ("Not inside a trusted directory and --skip-git-repo-check was not specified."), and
+ * the app's work folders never are one, so without it every Codex run failed.
  * Never --dangerously-bypass-approvals-and-sandbox or --full-auto.
  */
 export function codexArgs(o: { schemaPath: string } & CodexTierModel): string[] {
@@ -45,6 +48,7 @@ export function codexArgs(o: { schemaPath: string } & CodexTierModel): string[] 
     "-s",
     "read-only",
     "--ignore-user-config",
+    "--skip-git-repo-check",
   ];
   if (o.model) args.push("-m", o.model);
   if (o.effort) args.push("-c", `model_reasoning_effort="${o.effort}"`);

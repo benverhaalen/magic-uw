@@ -173,7 +173,8 @@ test("instant argv: Codex skips rules, git check, user instructions and tools; s
   assert.deepEqual(plan.features, ["shell_tool", "apps", "memories"]);
   const options = await instantRunOptions("codex", fake("codex"), plan, { userData, env });
   const args = options.extraArgs;
-  for (const flag of ["--ignore-rules", "--skip-git-repo-check"]) assert.ok(args.includes(flag), flag);
+  assert.ok(args.includes("--ignore-rules"));
+  assert.ok(!args.includes("--skip-git-repo-check"), "already in the spec argv");
   const configs = args.filter((_, i) => args[i - 1] === "-c");
   assert.ok(configs.some((c) => c.startsWith("model_instructions_file=") && c.includes(JSON.stringify(userData).slice(1, -1))));
   assert.ok(configs.some((c) => c.startsWith("sqlite_home=") && c.includes(JSON.stringify(userData).slice(1, -1))));
@@ -187,7 +188,7 @@ test("instant argv: Codex skips rules, git check, user instructions and tools; s
   assert.equal(argv[argv.indexOf("-s") + 1], "read-only");
   for (const a of argv) assert.ok(!a.includes(studentCodexHome({ USERPROFILE: home })) && !a.includes(profileDir(userData, "codex")), a);
   // A path with a quote or backslash stays one valid TOML string.
-  assert.deepEqual(codexInstantArgs({ instructionsPath: "C:\\O'Brien\\a\"b.md", stateDir: "/s", features: [] }).slice(3, 4), ['model_instructions_file="C:\\\\O\'Brien\\\\a\\"b.md"']);
+  assert.deepEqual(codexInstantArgs({ instructionsPath: "C:\\O'Brien\\a\"b.md", stateDir: "/s", features: [] }).slice(2, 3), ['model_instructions_file="C:\\\\O\'Brien\\\\a\\"b.md"']);
 });
 
 test("instant mode is offered only when this version was checked and keeps the student's customisations out", async () => {

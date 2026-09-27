@@ -66,9 +66,9 @@ const tomlString = (value: string) => JSON.stringify(value);
 
 /** The arguments Codex instant mode appends to the runner's spec argv (`codexArgs`). */
 export function codexInstantArgs(o: { instructionsPath: string; stateDir: string; features: readonly string[] }): string[] {
+  // `--skip-git-repo-check` is in the runner's spec argv (codexArgs) for both modes.
   return [
     "--ignore-rules",
-    "--skip-git-repo-check",
     "-c", `model_instructions_file=${tomlString(o.instructionsPath)}`,
     "-c", `sqlite_home=${tomlString(o.stateDir)}`,
     "-c", `log_dir=${tomlString(o.stateDir)}`,
