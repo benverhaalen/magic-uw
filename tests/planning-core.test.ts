@@ -8,7 +8,7 @@ import type {
 } from "@magic/contracts";
 
 // These are normalized application fixtures, not claimed response shapes from UW services.
-const current = "2026-09-26T12:00:00Z", next = "2026-09-26T13:00:00Z", now = "2026-09-26T14:00:00Z", stale = "2026-09-20T12:00:00Z";
+const current = "2026-09-26T12:00:00Z", next = "2026-09-26T13:00:00Z", now = "2026-09-26T14:00:00Z", stale = "2026-05-20T12:00:00Z" // beyond the one-term (120-day) horizon;
 const provenance = (kind: PlanningScope["kind"], key: string, observedAt = current): PlanningProvenance => ({ sourceUrl: "https://enroll.wisc.edu/", observedAt, scope: { kind, key } });
 const history = (observedAt = current): PlanningCourseHistory => ({ id: "taken-300", kind: "course_history", provenance: provenance("degree_plan", "primary", observedAt), courseKey: "uw:266:300", termCode: "1264", state: "completed", credits: 3, grade: "AB", gpaEligible: true });
 const course = (number = "400", checkedAt: string | null = current): PlanningCatalogCourse => ({ id: `course-${number}`, kind: "catalog_course", provenance: provenance("catalog_term", "1272"), courseKey: `uw:266:${number}`, termCode: "1272", title: `Synthetic course ${number}`, description: "Normalized synthetic course", creditMin: 3, creditMax: 3, designations: [], prerequisiteText: "COMP SCI 300", prerequisite: { kind: "course", courseKey: "uw:266:300", minimumGrade: null, concurrent: false }, prerequisiteCheckedAt: checkedAt, offeringFrequency: null });

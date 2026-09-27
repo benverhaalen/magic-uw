@@ -34,7 +34,7 @@ import {
   createPublicClient,
   type PublicClient,
 } from "../../connectors/src/network";
-import { planningIdentityTable, summarizePlanningGrades } from "./planning-grades";
+import { madgradesUpToDate, planningIdentityTable, summarizePlanningGrades } from "./planning-grades"; // owner: planning-perf: madgradesUpToDate
 import { pullMadgradesGrades, type MadgradesTransport } from "../../connectors/src/madgrades";
 import { comparePlanning } from "./planning";
 import { applyConsent, egressFor } from "./egress"; // owner: T06
@@ -816,7 +816,9 @@ export function createCore(store: Store, options: CoreOptions) {
         if (command.refresh) {
           if (!options.madgrades) throw new Error("Madgrades refresh is available through the desktop app.");
           const table = planningIdentityTable(store);
-          if (!table) refresh = { status: "unverified_crosslist", message: "Saved cross-list mappings disagree. Refresh subject and cross-list evidence before loading grades." };
+          // owner: planning-perf: the latest past term is already saved; no request is made.
+          if (madgradesUpToDate(store, command.courseKey)) refresh = { status: "saved", message: "Saved Madgrades evidence already covers the latest past term. Averages are not predictions." };
+          else if (!table) refresh = { status: "unverified_crosslist", message: "Saved cross-list mappings disagree. Refresh subject and cross-list evidence before loading grades." };
           else {
             const controller = new AbortController(), version = generation;
             planningReads.add(controller);

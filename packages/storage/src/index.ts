@@ -9,7 +9,8 @@ import {
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { backup, DatabaseSync, type StatementSync } from "node:sqlite";
-import { planningMigration, planningRepository } from "./planning";
+import { planningMigration, planningRepository, type PlanningRepository } from "./planning";
+import { PLANNING_V12 } from "./planning-v12"; // owner: planning-perf
 import { textHash } from "../../retrieval/src/index";
 import { COURSE_CORE_SCHEMA, COURSE_SPACE_OBSERVATION_MIGRATION, courseCoreRepository } from "./course-core";
 import { createPassageIndex, scopeToken } from "./passages";
@@ -81,7 +82,7 @@ import {
   type Store,
 } from "@magic/contracts";
 
-export const SCHEMA_VERSION = 11;
+export const SCHEMA_VERSION = 12;
 const MAX_ATTEMPTS = 3;
 /** The latest pre-migration backup, beside the database (one kept; purge deletes it). */
 export function migrationBackupPath(path: string): string {
@@ -181,7 +182,7 @@ function payloadTextHash(payload: unknown): string {
 export function createStore(
   path: string,
   options: { now?: () => Date } = {},
-): Store & CourseCoreStore & GraphStore & { learning: SqlLearningStore; notes: SqlNotesStore } {
+): Store & CourseCoreStore & GraphStore & PlanningRepository & { learning: SqlLearningStore; notes: SqlNotesStore } {
   const clock = options.now ?? (() => new Date());
   const file = path !== ":memory:";
   if (file) mkdirSync(dirname(resolve(path)), { recursive: true, mode: 0o700 });
@@ -363,6 +364,8 @@ export function createStore(
   ]);
   // v11 "notes": session notes (packages/notes); additive tables only (IF NOT EXISTS). Runs after v10 (the course graph).
   steps.push([11, () => db.exec(NOTES_V11 + "PRAGMA user_version = 11;")]);
+  // owner: planning-perf. v12: planning index and capture pruning; idempotent (IF NOT EXISTS).
+  steps.push([12, () => db.exec(PLANNING_V12 + "PRAGMA user_version = 12;")]);
   const migrationBackup = file ? migrationBackupPath(path) : null;
   const passageIndex = createPassageIndex(db, prepare);
   const courseScope = (accountScope: string, courseId: string) =>
@@ -424,7 +427,7 @@ export function createStore(
     }
   }
   migrate();
-  const planning = planningRepository(db);
+  const planning = planningRepository(db, prepare); // owner: planning-perf: cached statements
   // owner: T06. Consent storage helpers.
   function readConsents(): ConsentRecord[] {
     const row = db
