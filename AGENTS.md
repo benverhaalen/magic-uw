@@ -36,7 +36,3 @@ Use the repo’s [Magic design skill](.agents/skills/magic-design/SKILL.md) for 
 ## Delivery
 
 Use checks proportionate to the changed artifact. Update the affected product, architecture, status, and research notes when their claims change. Keep one canonical explanation and link to it. For docs-only work, check claims, links, diffs, and staged file scope; do not build features or run unrelated suites. Commit/push only what the user authorized.
-
-## Active team handoffs
-
-Keep building the current task while staying current with relevant team changes. Read [.agents/coordination.md](.agents/coordination.md) once when starting/resuming substantial work or activating this update; it routes to bounded handoffs in `.agents/team/`. At natural work boundaries, check relevant team notes roughly every few minutes and before shared-interface changes/integration; there are no automatic hooks. Before judging/sharing, complete the [September 27 release cleanup](.agents/team/packets/team/3-release-cleanup.md) before 11 a.m. America/Chicago. Read only relevant packets, apply or hand off useful changes, and ask the affected humans directly about conflicting opinions. Preserve original quotes and provenance; do not export private conversations or load the whole history. No waiting loops, automatic merges, or mandatory helper launches.
