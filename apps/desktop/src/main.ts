@@ -62,6 +62,7 @@ if (headless) {
 }
 if (process.env.MAGIC_USER_DATA)
   app.setPath("userData", process.env.MAGIC_USER_DATA);
+// Internal data-folder name: kept stable across the display rename so existing local data stays in place.
 app.setName("Magic Canvas");
 let window: BrowserWindow | null = null,
   signIn: BrowserWindow | null = null;
@@ -183,7 +184,7 @@ app
         MAGIC_PLANNING_SCOPE: planningAccountScope,
       },
       stdio: "pipe",
-      serviceName: "Magic Canvas local workspace",
+      serviceName: "My Magic UW local workspace",
     });
     const calls = new Map<
       string,
@@ -608,7 +609,7 @@ app
       return consentGateAllows(channel, consentRecords);
     }
     const consentRefused =
-      "Finish the setup step before Magic Canvas connects to UW.";
+      "Finish the setup step before My Magic UW connects to UW.";
     // end owner: T06
     // owner: T40. Onboarding detection (apps/desktop/src/onboarding.ts): the installed CLIs,
     // their own auth status, and the engine choice (Claude Code → Codex → a stored key → Ollama).
@@ -1102,7 +1103,7 @@ app
           scaleFactor: 2,
         }),
       );
-      tray.setToolTip("Magic Canvas");
+      tray.setToolTip("My Magic UW");
       tray.setContextMenu(
         Menu.buildFromTemplate(
           trayMenu.map(({ action, label }) => ({
@@ -1294,7 +1295,7 @@ app
       minWidth: 880,
       minHeight: 620,
       show: !headless,
-      title: "Magic Canvas",
+      title: "My Magic UW",
       backgroundColor: "#fbfbfa",
       webPreferences: {
         preload: join(root, "preload.cjs"),
@@ -1455,7 +1456,7 @@ app
         const body = await window.webContents.executeJavaScript(
           "document.body.innerText",
         );
-        if (!body.includes("Magic Canvas"))
+        if (!body.includes("My Magic UW"))
           throw new Error("Renderer did not load");
         // owner: T80. An app-owned client profile exists before the purge (prepare writes
         // only app files; a missing client still gets its folder).
@@ -1492,7 +1493,7 @@ app
   })
   .catch(() => {
     console.error(
-      "Magic Canvas could not start. Check the local runtime and gateway configuration.",
+      "My Magic UW could not start. Check the local runtime and gateway configuration.",
     );
     app.exit(1);
   });

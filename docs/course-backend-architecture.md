@@ -1,11 +1,11 @@
-# Magic Canvas course backend: architecture
+# My Magic UW course backend: architecture
 
 **Status:** state as of 2026-09-26 late, branch `feat/course-backend` at `b496d0a`. The branch is local for now. It gets pushed after the team's release cleanup, so its commits are re-applied onto the cleaned `main`. The commit IDs below will change when that happens; the commit subjects won't.
-**Companion:** [Magic Canvas: product direction](magic-canvas-direction.md) holds the product facts: what the student gets, the surfaces, pricing and the roadmap. This document holds the technical facts. The build itself is specified in [the course-backend plan folder](plans/2026-09-26-course-backend/): [spec](plans/2026-09-26-course-backend/spec.md), [plan](plans/2026-09-26-course-backend/plan.md), [tasks](plans/2026-09-26-course-backend/tasks.md) and [execution](plans/2026-09-26-course-backend/execution.md). Where this summary and the plan folder differ, the plan folder wins.
+**Companion:** [My Magic UW: product direction](magic-canvas-direction.md) holds the product facts: what the student gets, the surfaces, pricing and the roadmap. This document holds the technical facts. The build itself is specified in [the course-backend plan folder](plans/2026-09-26-course-backend/): [spec](plans/2026-09-26-course-backend/spec.md), [plan](plans/2026-09-26-course-backend/plan.md), [tasks](plans/2026-09-26-course-backend/tasks.md) and [execution](plans/2026-09-26-course-backend/execution.md). Where this summary and the plan folder differ, the plan folder wins.
 
 ## 1. Summary
 
-The course backend is the local system behind every Magic Canvas feature:
+The course backend is the local system behind every My Magic UW feature:
 - it connects to every source the student's own UW sign-in can already read
 - it stores that material in one SQLite file on the student's computer, as passages with exact offsets
 - it maps each course: sessions, topics, assessments and their stated scope, and the materials for each

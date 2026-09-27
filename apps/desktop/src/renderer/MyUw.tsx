@@ -78,7 +78,7 @@ export function MyUw({ snapshot, busy, run, open, signIn, refresh }: Props) {
       <button className="button" disabled={busy} onClick={() => open("https://enroll.wisc.edu/")}>Course Search & Enroll ↗</button>
     </div></div>
     <div className="planning-content">
-      <p className="muted">Planning stays on this device. Magic Canvas reads school records; enrollment changes happen in UW’s own tools.</p>
+      <p className="muted">Planning stays on this device. My Magic UW reads school records; enrollment changes happen in UW’s own tools.</p>
       {multipleAccounts ? <p role="status" className="evidence-note">Records from more than one student are saved. Personal planning is hidden to avoid mixing them. Clear local data in Data & AI before connecting a different student.</p> : null}
       {partial ? <div className="evidence-note"><p>{!privateSources.length ? "Your student record and degree audit haven’t been connected here yet." : "Some planning information is incomplete or needs refresh. Source notes below show what is available."}</p>
         {window.magic.signInUW ? <div className="inline-actions">{!connected("connection:myuw-session") ? <button className="button" disabled={busy} onClick={() => signIn("myuw")}>Sign in to My UW</button> : null}{!connected("connection:student-info") ? <button className="button" disabled={busy} onClick={() => signIn("enroll")}>Sign in to Course Search & Enroll</button> : null}</div> : <p className="small muted">UW sign-in is available in the desktop app.</p>}
