@@ -9,6 +9,11 @@ export * from "./planning";
 export * from "./course-intelligence";
 // owner: T05b. The data builder's course core (schema v5) replaces the placeholder module.
 export * from "./course-core";
+// owner: notes
+export * from "./notes";
+import { notesRequestSchema, type NotesResult } from "./notes";
+// end owner: notes
+import type { GraphQuery, GraphResult } from "./course-core"; // owner: pipeline
 import type {
   CourseIntelligence,
   CourseIntelligenceView,
@@ -558,7 +563,7 @@ export const captureBatchSchema = z
           "kaltura",
           "mail",
           "feed",
-          "notes", // owner: T30: OneNote and OneDrive through Graph
+          "notes", // owner: T30: OneNote and OneDrive through Graph; owner: notes: session notes (passages)
         ]),
         accountScope: id,
         courseId: id,
@@ -1708,6 +1713,9 @@ export const commandSchema = z.discriminatedUnion("type", [
     .object({ type: z.literal("learning"), request: learningRequestSchema })
     .strict(),
   // end owner: T05b
+  // owner: notes
+  z.object({ type: z.literal("notes"), request: notesRequestSchema }).strict(),
+  // end owner: notes
 ]);
 export type Command = z.infer<typeof commandSchema>;
 export type CommandResult = {
@@ -1722,6 +1730,7 @@ export type CommandResult = {
   pack?: unknown;
   workspace?: WorkspaceResult;
   // end owner: T05b
+  notes?: NotesResult; // owner: notes
   citations?: CitationResult[];
 };
 export const localQuestionSchema = z
@@ -1769,6 +1778,8 @@ export interface AppBridge {
   openLink?(url: string): Promise<void>;
   /** owner: T15. A scoped query (O1); reads only, never a command. */
   query?(request: QueryRequest): Promise<QueryResult>;
+  /** owner: pipeline. Graph reads: an assignment's references, the agenda, a course's graph and coverage. */
+  graph?<Q extends GraphQuery>(request: Q): Promise<GraphResult<Q>>;
   importFile(): Promise<CommandResult | null>;
   signInUW?(service?: "canvas" | "gitlab" | "enroll" | "myuw"): Promise<void>;
   syncPlanning?(): Promise<CommandResult>;

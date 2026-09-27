@@ -36,7 +36,7 @@ import {
   createPublicClient,
   type PublicClient,
 } from "../../connectors/src/network";
-import { planningIdentityTable, summarizePlanningGrades } from "./planning-grades";
+import { madgradesUpToDate, planningIdentityTable, summarizePlanningGrades } from "./planning-grades"; // owner: planning-perf: madgradesUpToDate
 import { pullMadgradesGrades, type MadgradesTransport } from "../../connectors/src/madgrades";
 import { comparePlanning } from "./planning";
 import { applyConsent, egressFor } from "./egress"; // owner: T06
@@ -51,8 +51,15 @@ import {
 // owner: T05b. The seams: the job registry, the stub drain and the injected handlers.
 import { enqueueOnSave, type JobRegistry } from "./jobs/registry";
 import { defaultJobRegistry, runRegistered } from "./jobs/default-registry";
-import { resourceViews, runQuery } from "./queries"; // owner: T15
+import { codeAssignmentKind, resourceViews, runQuery } from "./queries"; // owner: T15
+import { textHash } from "../../retrieval/src/index";
+/** Judgments are keyed on the title-and-text hash, so a grade or submission change reuses them (O5). */
+const judgedHash = (r: Resource) => textHash(r.title, r.text);
+/** The Jev kind question reads the title, about 2,000 characters, and the item's own stated policy, clipped. */
+const JEV_TEXT_CHARS = 2000;
+const JEV_POLICY_CHARS = 500;
 import type { QueryRequest } from "@magic/contracts";
+import type { NotesRequest, NotesResult } from "@magic/contracts"; // owner: notes
 import type {
   Correction,
   LearningRequest,
@@ -80,6 +87,11 @@ export interface CoreSeams {
   pack?(pack: string, scope: PackScope, signal: AbortSignal): Promise<unknown>;
   /** ui_events (schema v5). */
   uiEvent?(value: UiEvent, at: string): void;
+  // owner: notes. Session notes (packages/notes): scaffolds, edits, fill and two-way sync.
+  notes?: {
+    handle(request: NotesRequest, signal: AbortSignal): Promise<NotesResult>;
+  };
+  // end owner: notes
 }
 export type { JobRegistry } from "./jobs/registry";
 // end owner: T05b
@@ -239,11 +251,12 @@ export function createCore(store: Store, options: CoreOptions) {
         ...supporting.map((s) => `${scrub.field(s.title, s.courseId)}\n${scrub.field(s.text, s.courseId)}`),
       ]
         .join("\n\n")
-        .slice(0, 12000),
-      policy: scrub.field((policyAllowed
+        .slice(0, recipient === "jev" ? JEV_TEXT_CHARS : 12000),
+      // Jev gets the policy only when the item states one; otherwise it adds nothing to the kind question.
+      policy: recipient === "jev" && r.policy.mode === "unknown" ? "" : scrub.field((policyAllowed
         ? effectivePolicy.evidence
         : "Policy evidence is withheld by data-sharing settings; use coaching only."
-      ), r.courseId).slice(0, 4000),
+      ), r.courseId).slice(0, recipient === "jev" ? JEV_POLICY_CHARS : 4000),
     };
     const redaction = scrub.summary(r.courseId);
     const categories = [
@@ -315,7 +328,7 @@ export function createCore(store: Store, options: CoreOptions) {
       generation === version &&
       r &&
       !r.deleted &&
-      r.contentHash === job.inputHash &&
+      (r.contentHash === job.inputHash || judgedHash(r) === job.inputHash) &&
       live?.leaseToken === job.leaseToken &&
       live.status === "running" &&
       !!live.leaseUntil &&
@@ -460,8 +473,12 @@ export function createCore(store: Store, options: CoreOptions) {
       if (
         !r ||
         r.deleted ||
-        r.contentHash !== job.inputHash ||
-        r.kind !== "assignment"
+        (r.contentHash !== job.inputHash && judgedHash(r) !== job.inputHash) ||
+        r.kind !== "assignment" ||
+        // Code decides the unambiguous kinds from Canvas submission types; no Jev call.
+        codeAssignmentKind(r) ||
+        // A judgment for the same title and text is reused: a grade or submission change spends 0 budget.
+        store.judgment(`${r.id}:${judgedHash(r)}:assignment.kind.v1`)
       ) {
         store.finish(job, undefined, now());
         continue;
@@ -490,9 +507,9 @@ export function createCore(store: Store, options: CoreOptions) {
           continue;
         }
         store.putJudgment({
-          key: `${r.id}:${r.contentHash}:assignment.kind.v1`,
+          key: `${r.id}:${judgedHash(r)}:assignment.kind.v1`,
           resourceId: r.id,
-          inputHash: r.contentHash,
+          inputHash: judgedHash(r),
           model: result.model,
           questionVersion: result.questionVersion,
           result,
@@ -649,7 +666,7 @@ export function createCore(store: Store, options: CoreOptions) {
     const command = commandSchema.parse(raw);
     let message: string | undefined, manifest: ContextManifest | undefined;
     // owner: T05b
-    let seamResult: Partial<Pick<CommandResult, "learning" | "map" | "pack" | "workspace">> = {};
+    let seamResult: Partial<Pick<CommandResult, "learning" | "map" | "pack" | "workspace" | "notes">> = {};
     // end owner: T05b
     switch (command.type) {
       case "snapshot":
@@ -790,7 +807,9 @@ export function createCore(store: Store, options: CoreOptions) {
         if (command.refresh) {
           if (!options.madgrades) throw new Error("Madgrades refresh is available through the desktop app.");
           const table = planningIdentityTable(store);
-          if (!table) refresh = { status: "unverified_crosslist", message: "Saved cross-list mappings disagree. Refresh subject and cross-list evidence before loading grades." };
+          // owner: planning-perf: the latest past term is already saved; no request is made.
+          if (madgradesUpToDate(store, command.courseKey)) refresh = { status: "saved", message: "Saved Madgrades evidence already covers the latest past term. Averages are not predictions." };
+          else if (!table) refresh = { status: "unverified_crosslist", message: "Saved cross-list mappings disagree. Refresh subject and cross-list evidence before loading grades." };
           else {
             const controller = new AbortController(), version = generation;
             planningReads.add(controller);
@@ -886,7 +905,11 @@ export function createCore(store: Store, options: CoreOptions) {
           break;
         }
         const r = store.resource(command.id)!;
-        store.enqueue("enrich.resource", r.id, r.contentHash, now());
+        if (codeAssignmentKind(r)) {
+          message = "Canvas names this assignment's kind exactly; no judgment is needed.";
+          break;
+        }
+        store.enqueue("enrich.resource", r.id, judgedHash(r), now());
         wake();
         message = "Judgment queued.";
         break;
@@ -980,6 +1003,17 @@ export function createCore(store: Store, options: CoreOptions) {
         };
         break;
       }
+      // owner: notes
+      case "notes": {
+        const notes = seams.notes;
+        seamResult = {
+          notes: notes
+            ? await seamCall((signal) => notes.handle(command.request, signal))
+            : { op: command.request.op, status: "not_built", message: "Notes aren't built yet." },
+        };
+        break;
+      }
+      // end owner: notes
       default: {
         // An unknown Command is a type error here (T05b).
         const unhandled: never = command;

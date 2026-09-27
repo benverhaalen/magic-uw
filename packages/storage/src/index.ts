@@ -9,13 +9,17 @@ import {
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { backup, DatabaseSync, type StatementSync } from "node:sqlite";
-import { planningMigration, planningRepository } from "./planning";
+import { planningMigration, planningRepository, type PlanningRepository } from "./planning";
+import { PLANNING_V12 } from "./planning-v12"; // owner: planning-perf
 import { textHash } from "../../retrieval/src/index";
 import { COURSE_CORE_SCHEMA, COURSE_SPACE_OBSERVATION_MIGRATION, courseCoreRepository } from "./course-core";
 import { createPassageIndex, scopeToken } from "./passages";
+import { graphRepository, migrateGraph } from "./graph";
 import { LEARNING_SCHEMA } from "./learning";
 import { LEARNING_V8 } from "./learning-v8";
 import { createSqlLearningStore, type SqlLearningStore } from "../../learning/src/sql-store";
+import { NOTES_V11 } from "./notes-v11"; // owner: notes
+import { createSqlNotesStore, type SqlNotesStore } from "../../notes/src/sql-store"; // owner: notes
 import { decodePayload, encodePayload } from "./payload";
 // owner: privacy. At-rest sealing of mail, notes and planning payloads (migration v14).
 import { createAtRestCodec, keyCheck, type AtRestCodec } from "../../core/src/privacy/at-rest";
@@ -26,6 +30,8 @@ import {
   type ChangeWithSeq,
   type CourseCoreStore,
   type CourseJob,
+  type CourseRef,
+  type GraphStore,
   type SubjectKind,
 } from "../../contracts/src/course-core";
 import {
@@ -77,7 +83,7 @@ import {
   type Store,
 } from "@magic/contracts";
 
-export const SCHEMA_VERSION = PRIVACY_SCHEMA_VERSION; // owner: privacy (v14; the lead renumbers at integration)
+export const SCHEMA_VERSION = PRIVACY_SCHEMA_VERSION; // owner: privacy (v14, after v12 and v13)
 const MAX_ATTEMPTS = 3;
 /** The latest pre-migration backup, beside the database (one kept; purge deletes it). */
 export function migrationBackupPath(path: string): string {
@@ -183,7 +189,7 @@ export interface AtRestControl {
 export function createStore(
   path: string,
   options: { now?: () => Date } = {},
-): Store & CourseCoreStore & { learning: SqlLearningStore } & AtRestControl {
+): Store & CourseCoreStore & GraphStore & PlanningRepository & { learning: SqlLearningStore; notes: SqlNotesStore } & AtRestControl {
   const clock = options.now ?? (() => new Date());
   const file = path !== ":memory:";
   if (file) mkdirSync(dirname(resolve(path)), { recursive: true, mode: 0o700 });
@@ -359,6 +365,19 @@ export function createStore(
   steps.push([7, () => db.exec(LEARNING_SCHEMA + "PRAGMA user_version = 7;")]);
   steps.push([8, () => db.exec(LEARNING_V8 + "PRAGMA user_version = 8;")]);
   steps.push([9, () => db.exec(COURSE_SPACE_OBSERVATION_MIGRATION + "PRAGMA user_version = 9;")]);
+  // v10: the course graph (the material pipeline): external refs, resource refs, quoted facts.
+  steps.push([
+    10,
+    () => {
+      migrateGraph(db);
+      db.exec("PRAGMA user_version = 10;");
+    },
+  ]);
+  // v11 "notes": session notes (packages/notes); additive tables only (IF NOT EXISTS). Runs after v10 (the course graph).
+  steps.push([11, () => db.exec(NOTES_V11 + "PRAGMA user_version = 11;")]);
+  // owner: planning-perf. v12: planning index and capture pruning; idempotent (IF NOT EXISTS).
+  steps.push([12, () => db.exec(PLANNING_V12 + "PRAGMA user_version = 12;")]);
+  // v13 (platform, PR #19) slots in here when it lands.
   steps.push([PRIVACY_SCHEMA_VERSION, () => privacyMigration(db)]); // owner: privacy
   const migrationBackup = file ? migrationBackupPath(path) : null;
   const passageIndex = createPassageIndex(db, prepare);
@@ -421,7 +440,7 @@ export function createStore(
     }
   }
   migrate();
-  const planning = planningRepository(db, atRest); // owner: privacy
+  const planning = planningRepository(db, prepare, atRest); // owner: planning-perf: cached statements; owner: privacy: sealing
   // owner: T06. Consent storage helpers.
   function readConsents(): ConsentRecord[] {
     const row = db
@@ -706,6 +725,8 @@ export function createStore(
     versionText,
   });
   const learning = createSqlLearningStore(prepare, transaction, () => clock().toISOString());
+  const graph = graphRepository(prepare, { transaction, timestamp });
+  const notes = createSqlNotesStore(prepare, transaction, () => clock().toISOString()); // owner: notes
   let closed = false;
   // Keep two weeks of day-plan history, measured from the newest saved day.
   const DAY_PLAN_KEEP_DAYS = 14;
@@ -745,6 +766,7 @@ export function createStore(
   }
   return {
     learning,
+    notes, // owner: notes
     // owner: privacy. The worker calls this with main's key; the first call after v14 (or after
     // any sensitive write made without a key) seals the plaintext rows. Purge drops the key.
     setAtRestKey(key) {
@@ -2014,5 +2036,25 @@ export function createStore(
       return migrationBackup && existsSync(migrationBackup) ? migrationBackup : null;
     },
     ...courseCore,
+    ...graph,
+    sourceResources(sourceId: string) {
+      return (
+        prepare(
+          `SELECT r.*, v.payload, COALESCE(c.completed, 0) AS completed
+           FROM resources r JOIN resource_versions v ON v.resource_id = r.id AND v.version = r.version
+           LEFT JOIN completions c ON c.resource_id = r.id WHERE r.source_id = ? AND r.deleted = 0 ORDER BY r.external_id`,
+        ).all(sourceId) as Row[]
+      ).map(readResource);
+    },
+    courseResources(course: CourseRef) {
+      return (
+        prepare(
+          `SELECT r.*, v.payload, COALESCE(c.completed, 0) AS completed, s.scope AS source_scope
+           FROM resources r JOIN resource_versions v ON v.resource_id = r.id AND v.version = r.version
+           JOIN sources s ON s.id = r.source_id LEFT JOIN completions c ON c.resource_id = r.id
+           WHERE s.account_scope = ? AND s.course_id = ? AND r.deleted = 0 ORDER BY r.source_id, r.external_id`,
+        ).all(course.accountScope, course.courseId) as Row[]
+      ).map((row) => ({ ...readResource(row), scope: String(row.source_scope) }));
+    },
   };
 }

@@ -270,7 +270,7 @@ export function protectedProjection(
   const start = Math.max(0, range?.start ?? 0), end = Math.min(result.text.length, range?.end ?? result.text.length);
   // Where the protected text equals the roster scrubber's, hand out identity.ts's projection, so
   // its own validateCitations keeps working; otherwise only validateProtectedCitations resolves it.
-  const legacy = outgoingProjection(store, resource, field, range);
+  const legacy = outgoingProjection(store, resource, field, range, s.roster(resource.courseId));
   if (legacy.start === start && legacy.end === end && legacy.text === result.text.slice(start, end)) return legacy;
   const id = randomUUID();
   let cache = projections.get(store);

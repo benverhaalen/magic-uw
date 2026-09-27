@@ -5,8 +5,9 @@
 import type { Job, Store } from "@magic/contracts";
 import type { JobOutcome, JobRegistry } from "./registry";
 import { cardJob } from "./card";
-import { linkJob } from "./link";
-import { compileJob } from "./compile";
+import { linkJob, linkResourceJob } from "./link";
+import { compileCourseJob, compileJob } from "./compile";
+import { passagesResourceJob } from "./passages";
 import { stubHandler } from "./registry";
 import { createJobRegistry } from "./registry";
 
@@ -16,6 +17,13 @@ const passagesJob = stubHandler("passages.resource", "resource", "T10");
 /** The registry every core instance starts with: the known kinds, all stubs until built. */
 export function defaultJobRegistry(): JobRegistry {
   return createJobRegistry([passagesJob, cardJob, linkJob, compileJob]);
+}
+/**
+ * The material pipeline's registry (the desktop worker passes it to core): passages, links and
+ * facts, and the course pass are real code jobs; cards (T20) stay a stub. Nothing here sends.
+ */
+export function pipelineJobRegistry(): JobRegistry {
+  return createJobRegistry([passagesResourceJob, cardJob, linkResourceJob, compileCourseJob]);
 }
 /**
  * Runs one leased job through its handler and records the outcome. Returns false when the

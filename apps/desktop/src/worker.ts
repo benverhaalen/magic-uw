@@ -12,7 +12,6 @@ import { randomUUID } from "node:crypto";
 import { createLocalService } from "./local-service";
 import { createIngestion } from "./ingestion";
 import { createLearningRouter, type StudyContext } from "../../../packages/learning/src/router";
-import { createCurrentReferences } from "../../../packages/learning/src/analytics"; // owner: analytics
 import { createStudyContextResolver } from "./learning-context";
 import { dirname } from "node:path";
 import {
@@ -22,6 +21,21 @@ import {
 import { createWorkerClients } from "./worker-clients"; // owner: T06
 import { pullPublicSubjects, pullPublicTerms } from "../../../packages/connectors/src/planning-public";
 import type { UwPlanningSyncResult } from "../../../packages/connectors/src/uw-planning-sync";
+// owner: pipeline
+import { pipelineJobRegistry } from "../../../packages/core/src/jobs/default-registry";
+import { createPipelineLoop } from "../../../packages/core/src/jobs/pipeline";
+import { agenda, courseGraph, createPipelineReferences, references } from "../../../packages/core/src/graph/index";
+import { graphQuerySchema } from "../../../packages/contracts/src/course-core";
+// end owner: pipeline
+// owner: planning-perf
+import { planningSourceId } from "../../../packages/storage/src/planning";
+import {
+  planningRefreshDue, publicSourceTermFresh, reconfirmedAuditCaptures, storedAuditReports, termFreshSearchSubjects,
+  type PlanningAddDropWindow,
+} from "../../../packages/core/src/planning";
+// Worker ≥ main: main's planning timer is 90 s and the native sync's soft deadline is 70 s.
+const PLANNING_WORKER_TIMEOUT_MS = 95_000;
+// end owner: planning-perf
 const port = process.parentPort;
 if (!port) throw new Error("Workspace must be started by the desktop app.");
 const pending = new Map<
@@ -51,26 +65,68 @@ async function generationRunner(): Promise<ModelRunner | null> {
     Object.entries(profileEnv(chosen, { userData: generationUserData })).flatMap(([k, v]) => (v === undefined ? [] : [[k, v]])),
   );
   const options = { command, workDir: workDir(generationUserData, chosen), env };
-  const backend = chosen === "claude" ? createClaudeBackend(options) : createCodexBackend(options);
+  // owner: ai-paths. Claude runs through the warm session pool (one per worker, replaced on a
+  // client change); Codex stays one-shot.
+  const { pooledClaudeBackend } = await import("../../../packages/core/src/pack-handler");
+  const backend = chosen === "claude" ? pooledClaudeBackend(options) : createCodexBackend(options);
+  // end owner: ai-paths
   generationRuntime = { client: chosen, runner: createPackRuntime(backend, DEFAULT_PACK_CONFIG).runner };
   return generationRuntime.runner;
 }
 const generation = createPackHandler({ store, runner: generationRunner });
 // end owner: generation
+// owner: notes. Session notes: batch scaffolds on the tick, "fill from slides" through the same
+// runner, and Google Docs sync through main (which alone holds the token). Microsoft waits for graph.ts.
+import { createNotesService, googleRemote, microsoftRemote, type NotesRemote } from "../../../packages/notes/src/index";
+function notesHostCall(payload: unknown, timeoutMs: number): Promise<any> {
+  const id = randomUUID();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      hostRequests.delete(id);
+      reject(new Error("Google Docs didn't answer in time."));
+    }, timeoutMs);
+    hostRequests.set(id, {
+      resolve(value) { clearTimeout(timer); resolve(value); },
+      reject(error) { clearTimeout(timer); reject(error); },
+    });
+    port.postMessage({ kind: "notes-google", id, payload });
+  });
+}
+const notesRemotes: { microsoft?: NotesRemote; google?: NotesRemote & { connect(): Promise<boolean> } } = process.env.MAGIC_GOOGLE_CLIENT_ID
+  ? {
+      google: {
+        ...googleRemote(
+          (request) => notesHostCall({ op: "request", request }, 90_000),
+          async () => Boolean((await notesHostCall({ op: "status" }, 10_000))?.connected),
+        ),
+        connect: async () => Boolean((await notesHostCall({ op: "connect" }, 330_000))?.connected),
+      },
+    }
+  : {};
+// Word online: the app folder through main's Graph proxy (T30). Connected once the student's
+// Microsoft sign-in granted Files.ReadWrite.AppFolder. graphHost is defined below; called later.
+notesRemotes.microsoft = microsoftRemote(
+  (request) => graphHost.transport(request),
+  async () => graphScopes.includes("Files.ReadWrite.AppFolder"),
+);
+const notes = createNotesService({ store, runner: generationRunner, remotes: notesRemotes });
+// end owner: notes
 const core = createCore(store, {
   fixture: captureBatchSchema.parse(fixture),
   courseExtractor: createLocalCourseExtractor(),
   planningPublicClient: publicClients.core, // owner: T06
+  jobs: pipelineJobRegistry(), // owner: pipeline: passages, links and facts, the course pass
   madgrades: { read: (request, signal) => hostRead("madgrades-read", { request }, signal) },
   planningHttp: { read: (request, signal) => hostRead("planning-public-read", { request }, signal) },
   seams: { learning: createLearningRouter({
     store: store.learning,
     resolveContext: (resourceId): StudyContext | null => resolveStudyContext(resourceId),
-    // owner: analytics. One references port per analytics request, over the coursework store; the
-    // material pipeline's adapter replaces this factory when it lands.
-    analyticsReferences: () => createCurrentReferences(store),
+    // owner: analytics. One references port per analytics request, over the coursework store.
+    // owner: pipeline: the material pipeline's adapter (it reuses analytics' adapter for exam dates
+    // and course-map assessment rows).
+    analyticsReferences: () => createPipelineReferences(store),
     // end owner: analytics
-  }), pack: generation.pack /* owner: generation */ },
+  }), pack: generation.pack /* owner: generation */, notes /* owner: notes */ },
   ...(process.env.MAGIC_GATEWAY_URL
     ? {
         gateway: {
@@ -110,6 +166,7 @@ function hostRead(
   kind: string,
   payload: unknown,
   signal?: AbortSignal,
+  timeoutMs = 60_000, // owner: planning-perf: planning refresh passes its longer budget
 ): Promise<any> {
   signal?.throwIfAborted();
   const id = randomUUID();
@@ -120,7 +177,7 @@ function hostRead(
       port.postMessage({ kind: "source-abort", id });
       reject(new Error("Read cancelled"));
     };
-    const timer = setTimeout(abort, 60_000);
+    const timer = setTimeout(abort, timeoutMs);
     signal?.addEventListener("abort", abort, { once: true });
     const finish = () => {
       clearTimeout(timer);
@@ -206,45 +263,81 @@ const ingestion = createIngestion(store, {
   secrets: (operation, key, value) =>
     hostRead("source-secret", { operation, key, value }),
 });
+// owner: pipeline. The material pipeline's drain: code-only jobs (passages, links and facts, the
+// course pass) in bounded idle slices. A sync aborts the slice between jobs and wakes it when done;
+// presence sets the slice size. Nothing here calls Jev or a model, and planning is never queued.
+const pipeline = createPipelineLoop({ store, registry: core.jobs });
+const syncTick = ingestion.tick;
+ingestion.tick = (trigger) => {
+  pipeline.syncStarted();
+  const run = syncTick(trigger);
+  void run.finally(() => pipeline.syncEnded()).catch(() => {});
+  return run;
+};
+const pipelineTimer = setInterval(() => pipeline.wake(), 60_000);
+pipelineTimer.unref();
+const pipelineBackfill = setTimeout(() => void pipeline.backfill().then(() => pipeline.wake()), 20_000);
+pipelineBackfill.unref();
+// end owner: pipeline
 const planningPublicClient = publicClients.planning; // owner: T06
 let planningAccountScope = /^uw-session:[a-f0-9-]{36}$/.test(process.env.MAGIC_PLANNING_SCOPE ?? "")
   ? process.env.MAGIC_PLANNING_SCOPE! : `uw-session:${randomUUID()}`;
 let planningGeneration = 0;
 let planningRun: { controller: AbortController; promise: Promise<void> } | undefined;
+let planningPresent = false, planningAddDrop: PlanningAddDropWindow | null = null; // owner: planning-perf
 function cancelPlanning() {
   planningGeneration++;
   planningRun?.controller.abort();
 }
 
-function refreshPlanning(): Promise<void> {
+function refreshPlanning(trigger: "manual" | "scheduled" = "manual"): Promise<void> {
+  // owner: planning-perf. Incremental: stored complete DARS reports are reconfirmed without a
+  // download, term-fresh public reads are skipped, a slow sync keeps what arrived, and each
+  // sync's captures are written in one transaction.
   if (planningRun && !planningRun.controller.signal.aborted) return planningRun.promise;
   const generation = planningGeneration;
   const controller = new AbortController();
   const signal = controller.signal;
   const accountScope = planningAccountScope;
-  const save = (capture: PlanningCapture) => {
+  const live = () => {
     signal.throwIfAborted();
     if (generation !== planningGeneration) throw new Error("Planning refresh cancelled");
+  };
+  const save = (capture: PlanningCapture) => {
+    live();
     store.ingestPlanning(planningCaptureSchema.parse(capture));
   };
+  const saveBatch = (captures: PlanningCapture[]) => {
+    live();
+    if (captures.length) store.ingestPlanningBatch(captures.map((capture) => planningCaptureSchema.parse(capture)));
+  };
+  // One source by its ID, never a scan of every source.
   const observedAt = (source: PlanningCapture["source"], scope: PlanningCapture["scope"], account: string) => {
-    const previous = store.planningSources().find((entry) => entry.source === source && entry.accountScope === account && entry.scope.kind === scope.kind && entry.scope.key === scope.key);
+    const previous = store.planningSource(planningSourceId(source, account, scope));
     return new Date(Math.max(Date.now(), previous ? Date.parse(previous.observedAt) + 1 : 0)).toISOString();
   };
+  const nowIso = new Date().toISOString();
+  const termFresh = (scope: PlanningCapture["scope"]) =>
+    publicSourceTermFresh(store.planningSource(planningSourceId("uw_public", "public", scope)), nowIso);
   const promise = Promise.all([
     (async () => {
       let result: UwPlanningSyncResult;
-      try { result = await hostRead("planning-refresh", {}, signal); }
+      const hints = { storedAudits: storedAuditReports(store), freshSubjects: termFreshSearchSubjects(store, nowIso) ?? undefined, scheduled: trigger === "scheduled" };
+      try { result = await hostRead("planning-refresh", hints, signal, PLANNING_WORKER_TIMEOUT_MS); }
       catch {
         signal.throwIfAborted();
         result = { captures: [], invalidated: ["uw_enroll", "uw_myuw", "uw_dars"].map((source) => ({ source: source as "uw_enroll" | "uw_myuw" | "uw_dars", status: "failed", code: "refresh_failed" })) };
       }
       signal.throwIfAborted();
-      const refreshed = new Set(result.captures.map((capture) => JSON.stringify([capture.source, capture.accountScope, capture.scope])));
+      if (result.addDrop !== undefined) planningAddDrop = result.addDrop;
+      const reconfirmed = reconfirmedAuditCaptures(store, result.reconfirmed ?? [], new Date().toISOString());
+      const refreshed = new Set([...result.captures, ...reconfirmed].map((capture) => JSON.stringify([capture.source, capture.accountScope, capture.scope])));
+      const batch: PlanningCapture[] = [];
+      const privateSources = result.invalidated.length ? store.planningSources().filter((source) => source.accountScope !== "public") : [];
       for (const invalid of result.invalidated) {
-        for (const previous of store.planningSources().filter((source) => source.source === invalid.source && source.accountScope !== "public")) {
+        for (const previous of privateSources.filter((source) => source.source === invalid.source)) {
           if (refreshed.has(JSON.stringify([previous.source, previous.accountScope, previous.scope]))) continue;
-          save({ schemaVersion: 1, id: randomUUID(), source: previous.source, accountScope: previous.accountScope,
+          batch.push({ schemaVersion: 1, id: randomUUID(), source: previous.source, accountScope: previous.accountScope,
             scope: previous.scope, sourceUrl: previous.sourceUrl,
             observedAt: observedAt(previous.source, previous.scope, previous.accountScope),
             status: invalid.status, completeness: "unknown", records: [],
@@ -252,10 +345,11 @@ function refreshPlanning(): Promise<void> {
           });
         }
       }
-      for (const capture of result.captures) save(capture);
+      saveBatch([...batch, ...reconfirmed, ...result.captures]);
     })(),
     (async () => {
       const scope = { kind: "subjects" as const, key: "registrar-subjects" };
+      if (termFresh(scope)) return;
       try {
         save(await pullPublicSubjects(planningPublicClient, observedAt("uw_public", scope, "public"), signal));
       } catch {
@@ -269,6 +363,7 @@ function refreshPlanning(): Promise<void> {
     })(),
     (async () => {
       const scope = { kind: "terms" as const, key: "registrar-session-terms" };
+      if (termFresh(scope)) return;
       try {
         save(await pullPublicTerms(planningPublicClient, observedAt("uw_public", scope, "public"), signal));
       } catch {
@@ -286,12 +381,33 @@ function refreshPlanning(): Promise<void> {
   void promise.finally(() => { if (planningRun === run) planningRun = undefined; }).catch(() => {});
   return promise;
 }
+// owner: planning-perf. Scheduled planning refresh, gated on presence like ingestion: weekly during
+// add/drop (or when the window is unknown), once per term otherwise; the button stays manual.
+const planningCadence = setInterval(() => {
+  if (!planningPresent || planningRun) return;
+  if (!planningRefreshDue(store, new Date().toISOString(), planningAddDrop)) return;
+  void refreshPlanning("scheduled").catch(() => {});
+}, 10 * 60_000);
+planningCadence.unref();
+// end owner: planning-perf
 const refreshTimer = setInterval(() => {
   void ingestion.tick();
 }, 30_000);
 refreshTimer.unref();
 const tick = setInterval(() => core.wake(), 30000);
 tick.unref();
+// owner: notes. The rolling window's scaffolds (skipped when nothing changed) and the sync check.
+function notesTick() {
+  try {
+    notes.refresh();
+  } catch (error) {
+    console.error("Notes refresh failed:", error instanceof Error ? error.name : "unknown");
+  }
+  notes.syncTick().catch((error) => console.error("Notes sync failed:", error instanceof Error ? error.name : "unknown"));
+}
+const notesTimer = setInterval(notesTick, 30_000);
+notesTimer.unref();
+// end owner: notes
 port.on("message", async ({ data }: { data: any }) => {
   // owner: privacy. Main's install secret: at-rest key for the store, pseudonym key for sends.
   if (data.kind === "privacy-key") {
@@ -319,17 +435,42 @@ port.on("message", async ({ data }: { data: any }) => {
   if (data.kind === "suspend") {
     cancelPlanning();
     ingestion.suspend();
+    pipeline.suspend(); // owner: pipeline
     return;
   }
   if (data.kind === "resume") {
     ingestion.resume();
+    pipeline.resume(); // owner: pipeline
     return;
   }
   if (data.kind === "presence") {
     // Main's signal: OS input within 30 minutes and the screen unlocked. Gates signed-in reads.
     ingestion.presence(data.present === true);
+    pipeline.presence(data.present === true); // owner: pipeline
+    planningPresent = data.present === true; // owner: planning-perf
     return;
   }
+  // owner: pipeline. Graph reads: references, the agenda, a course's graph and coverage.
+  if (data.kind === "graph") {
+    try {
+      const query = graphQuerySchema.parse(data.query);
+      const result =
+        query.type === "references"
+          ? references(store, query.assignmentId)
+          : query.type === "agenda"
+            ? agenda(store, { date: query.date, tz: query.tz, ...(query.days ? { days: query.days } : {}) })
+            : courseGraph(store, { accountScope: query.accountScope, courseId: query.courseId });
+      port.postMessage({ kind: "response", id: data.id, result });
+    } catch (error) {
+      port.postMessage({
+        kind: "response",
+        id: data.id,
+        error: error instanceof Error && error.name !== "ZodError" ? error.message : "The graph query did not match its schema.",
+      });
+    }
+    return;
+  }
+  // end owner: pipeline
   // owner: T33. App focus runs the content probe on the next tick (D37).
   if (data.kind === "focus") {
     ingestion.focus();
@@ -408,8 +549,15 @@ port.on("message", async ({ data }: { data: any }) => {
     cancelPlanning();
     await planningRun?.promise.catch(() => {});
     clearInterval(refreshTimer);
+    // owner: pipeline
+    clearInterval(pipelineTimer);
+    clearTimeout(pipelineBackfill);
+    await pipeline.stop();
+    // end owner: pipeline
+    clearInterval(planningCadence); // owner: planning-perf
     await ingestion.stop();
     clearInterval(tick);
+    clearInterval(notesTimer); // owner: notes
     local.cancel();
     await core.close();
     port.postMessage({ kind: "closed" });
@@ -468,6 +616,7 @@ port.on("message", async ({ data }: { data: any }) => {
     cancelPlanning();
     await planningRun?.promise.catch(() => {});
     ingestion.suspend();
+    pipeline.suspend(); // owner: pipeline
     await ingestion.tick();
   }
   if (["import", "planning-import", "fixture", "privacy", "purge", "course-override"].includes(data.command?.type)) {
@@ -479,7 +628,10 @@ port.on("message", async ({ data }: { data: any }) => {
       id: data.id,
       result: await core.execute(data.command),
     });
-    if (data.command?.type === "purge") ingestion.resume();
+    if (data.command?.type === "purge") {
+      ingestion.resume();
+      pipeline.resume(); // owner: pipeline
+    }
   } catch (error) {
     port.postMessage({
       kind: "response",
@@ -493,3 +645,4 @@ port.on("message", async ({ data }: { data: any }) => {
 });
 core.wake();
 port.postMessage({ kind: "ready" });
+setTimeout(notesTick, 0); // owner: notes

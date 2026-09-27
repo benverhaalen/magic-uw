@@ -152,6 +152,19 @@ function corroboratesTerm(value: z.infer<typeof termSchema>): boolean {
     value.beginDate <= value.instructionBeginDate && value.instructionBeginDate <= value.instructionEndDate && value.instructionEndDate <= value.endDate);
 }
 
+// owner: planning-perf. The add/drop window for cadence and enrollment freshness: from the term's
+// published begin date to two weeks after instruction begins (UW's last day to add for fall and
+// spring; an approximation for summer). Only corroborated rows count; otherwise null (unknown).
+export function uwAddDropWindow(input: unknown, termCode: string): { start: string; end: string } | null {
+  for (const row of list(object(input)?.terms, 100) ?? []) {
+    const parsed = termSchema.safeParse(row);
+    if (!parsed.success || parsed.data.termCode !== termCode || !corroboratesTerm(parsed.data)) continue;
+    return { start: new Date(parsed.data.beginDate).toISOString(), end: new Date(parsed.data.instructionBeginDate + 14 * 24 * 60 * 60 * 1000).toISOString() };
+  }
+  return null;
+}
+// end owner: planning-perf
+
 /** Enumerates only terms explicitly published by aggregate; source pastTerm wins
  * over the local clock. Term/session dates are not part of this normalized model. */
 export function normalizeUwPublicTerms(input: unknown, observedAt: string): PlanningCapture {
