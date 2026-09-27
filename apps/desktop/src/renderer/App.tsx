@@ -25,6 +25,7 @@ import { createAssignmentTypeHues } from "../../../../packages/ui/src/deadline-e
 import { SourcesPage } from "./sources";
 import { MyUw } from "./MyUw";
 import { CoursePageView } from "./courses/CoursePage";
+import { CourseAnalyticsPanel, CourseTabs, type CourseTab } from "./analytics/CourseTabs"; // owner: course-analytics
 import { CoursesIndex } from "./courses/CoursesIndex";
 import { compactCourseTerm } from "./courses/course-index-view";
 import { buildCourseCards, buildCoursePage, courseKey } from "../../../../packages/domain/src/course-page";
@@ -163,6 +164,7 @@ export function App() {
   const { view, selectedId } = navigation;
   const setView = (next: View) => navigation.navigate(next);
   const setSelectedId = (id: string | null) => id ? navigation.navigate("resource", id) : navigation.back();
+  const [courseTab, setCourseTab] = useState<CourseTab>("overview"); // owner: course-analytics
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const chatAccountKey = snapshot ? `${snapshot.fixtureMode ? 'sample' : 'live'}:${[...new Set(snapshot.sources.map(source => source.accountScope ?? source.id))].sort().join('|')}` : 'loading';
   const previousChatAccount = useRef(chatAccountKey);
@@ -569,7 +571,9 @@ export function App() {
             signIn={(service) => uwConsented /* owner: T06 */ ? void perform(async () => { const outcome = await window.magic.signInUW?.(service); if (outcome?.status !== "confirmed") { setNotice(outcome ? signInMessage(outcome) : "Sign-in was not confirmed. Try again."); return; } return window.magic.syncPlanning?.(); }) : openConsent()} />
         ) : view === "courses" ? (
           <section className="desktop-courses">
-            {navigation.courseKey ? coursePage ? <CoursePageView typeHueOf={typeHueOf} key={coursePage.key} page={coursePage} selectedId={null} onSelect={setSelectedId} onBack={() => navigation.navigate("courses")} open={open} detail={null}/> : <><h1 tabIndex={-1}>Course unavailable</h1><p>This course is no longer included in the saved workspace.</p><Action onClick={() => navigation.navigate("courses")}>View courses</Action></> : <><CoursesViewHeader termLabel={compactCourseTerm(courseWorkModel?.scope.term.label ?? "Courses")} mode={navigation.coursesMode} onChange={navigation.switchCoursesMode}/>{navigation.coursesMode === 'list' && courseWorkModel ? <CoursesWorkList model={courseWorkModel} state={navigation.courseWorkState} onStateChange={navigation.updateCourseWorkState} timeZone={Intl.DateTimeFormat().resolvedOptions().timeZone} onOpen={openCourseWork} onAction={openCourseWork} onReport={reportCourseWork} onSources={()=>setView('sources')}/> : <CoursesIndex showHeader={false} resources={resources} sources={snapshot.sources} cards={courseCards} now={courseInput.now} typeHueOf={typeHueOf} onOpen={key => navigation.navigate("courses", null, key)} onSources={() => setView("sources")}/>}</>}
+            {navigation.courseKey ? coursePage ? <CoursePageView typeHueOf={typeHueOf} key={coursePage.key} page={coursePage} selectedId={null} onSelect={setSelectedId} onBack={() => navigation.navigate("courses")} open={open} detail={null}
+              tabs={<CourseTabs tab={courseTab} onTab={setCourseTab}/>} /* owner: course-analytics */
+              tabBody={courseTab === "analytics" ? <CourseAnalyticsPanel snapshot={snapshot} course={{ accountScope: coursePage.accountScope, courseId: coursePage.courseId, courseName: coursePage.code || coursePage.courseName }} onOpenItem={setSelectedId} onOverview={() => setCourseTab("overview")}/> : null}/> : <><h1 tabIndex={-1}>Course unavailable</h1><p>This course is no longer included in the saved workspace.</p><Action onClick={() => navigation.navigate("courses")}>View courses</Action></> : <><CoursesViewHeader termLabel={compactCourseTerm(courseWorkModel?.scope.term.label ?? "Courses")} mode={navigation.coursesMode} onChange={navigation.switchCoursesMode}/>{navigation.coursesMode === 'list' && courseWorkModel ? <CoursesWorkList model={courseWorkModel} state={navigation.courseWorkState} onStateChange={navigation.updateCourseWorkState} timeZone={Intl.DateTimeFormat().resolvedOptions().timeZone} onOpen={openCourseWork} onAction={openCourseWork} onReport={reportCourseWork} onSources={()=>setView('sources')}/> : <CoursesIndex showHeader={false} resources={resources} sources={snapshot.sources} cards={courseCards} now={courseInput.now} typeHueOf={typeHueOf} onOpen={key => navigation.navigate("courses", null, key)} onSources={() => setView("sources")}/>}</>}
           </section>
         ) : view === "consent" ? (
           // owner: T06. Consent route: setup, a new recipient's consent, or Agreements.
