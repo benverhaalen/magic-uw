@@ -26,11 +26,20 @@ import {
   readBounded,
 } from "../../../packages/connectors/src/network";
 import { checkedSpaceProbeUrl } from "../../../packages/connectors/src/space-hosts"; // owner: T05b
+// owner: acquisition
+import {
+  canvasFileDownloadUrl,
+  causeHeaders,
+  fetchCanvasFile,
+} from "../../../packages/connectors/src/canvas-file-download";
+import { MaterialReadError } from "../../../packages/connectors/src/network";
+// end owner: acquisition
 import { clearSignOutSecrets, createSecretVault } from "./secrets";
 import { purgeHostData } from "./purge-host"; // owner: platform-fix
 import { createGoogleNotesAuth } from "./notes-google"; // owner: notes
 // owner: T30. Outlook through the app's own Microsoft sign-in (Graph); the token stays in main.
 import { createOutlook, readOutlookConfig } from "./outlook";
+import { restrictToCurrentUser } from "./mcp-connection-acl";
 import { electronAuthWindow } from "./outlook-window";
 import { checkedGraphUrl } from "../../../packages/connectors/src/graph";
 import { OUTLOOK_MAIL_COURSE_ID, OUTLOOK_CALENDAR_COURSE_ID, type OutlookStatus } from "@magic/contracts";
@@ -375,6 +384,19 @@ app
         }
         return;
       }
+      // owner: client-health (D36, D50). Gemini's key for the worker's runner, only when the
+      // worker builds a Gemini backend. Read from the safeStorage vault; never logged.
+      if (message.kind === "ai-key") {
+        try {
+          if (message.payload?.provider !== "gemini") throw new Error();
+          const key = await vault.get("ai-key:gemini");
+          worker.postMessage({ kind: "source-response", id: message.id, result: { key: key || null } });
+        } catch {
+          worker.postMessage({ kind: "source-response", id: message.id, error: true });
+        }
+        return;
+      }
+      // end owner: client-health
       // owner: T30. The worker's Graph delta links and watermarks, in the encrypted vault.
       if (message.kind === "graph-state") {
         try {
@@ -496,6 +518,67 @@ app
           }
           return;
         }
+        // owner: acquisition. A course file's bytes in the student's Canvas session. Redirects are
+        // followed here, only to the Canvas origin and Instructure's file hosts (canvasFileHost);
+        // non-Canvas hops get no cookies. Bytes cross as a Uint8Array; a failure crosses as a cause
+        // header (code and host only), never a URL.
+        const fileUrl =
+          message.payload?.service === "canvas"
+            ? canvasFileDownloadUrl(String(message.payload.url), "https://canvas.wisc.edu")
+            : undefined;
+        if (fileUrl) {
+          const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(55_000)]);
+          let result: { status: number; url: string; headers: Record<string, string>; body: Uint8Array | string };
+          try {
+            const file = await fetchCanvasFile(fileUrl, {
+              origin: "https://canvas.wisc.edu",
+              session: (url, init) => studentSession.fetch(url, init),
+              plain: (url, init) => fetch(url, init),
+              signal,
+            });
+            const limit = 100 * 1024 * 1024;
+            if (Number(file.response.headers.get("content-length")) > limit)
+              throw new MaterialReadError("byte_limit");
+            const chunks: Uint8Array[] = [];
+            let size = 0;
+            const reader = file.response.body?.getReader();
+            while (reader) {
+              const next = await reader.read();
+              if (next.done) break;
+              size += next.value.byteLength;
+              if (size > limit) {
+                await reader.cancel().catch(() => {});
+                throw new MaterialReadError("byte_limit");
+              }
+              chunks.push(next.value);
+            }
+            const body = new Uint8Array(size);
+            let offset = 0;
+            for (const chunk of chunks) {
+              body.set(chunk, offset);
+              offset += chunk.byteLength;
+            }
+            const headers: Record<string, string> = { "x-magic-host-class": file.hostClass };
+            for (const key of ["content-type", "content-length", "last-modified", "etag"])
+              if (file.response.headers.has(key)) headers[key] = file.response.headers.get(key)!;
+            headers["content-length"] = String(size);
+            result = { status: 200, url: fileUrl, headers, body };
+            trialLog({ event: "file-fetch", hostClass: file.hostClass, hops: file.hops, status: 200, bytes: size });
+          } catch (error) {
+            if (controller.signal.aborted) {
+              worker.postMessage({ kind: "source-response", id: message.id, error: true });
+              sourceReads.delete(message.id);
+              return;
+            }
+            const headers = causeHeaders(error);
+            result = { status: 502, url: fileUrl, headers, body: "" };
+            trialLog({ event: "file-fetch", status: 502, cause: headers["x-magic-cause"], host: headers["x-magic-cause-host"] });
+          }
+          worker.postMessage({ kind: "source-response", id: message.id, result });
+          sourceReads.delete(message.id);
+          return;
+        }
+        // end owner: acquisition
         // end owner: T30
         try {
           const { service, url } = message.payload;
@@ -854,47 +937,7 @@ app
       return outlook.createEvent(proposalId);
     });
     // end owner: T30
-    // owner: T40. Onboarding detection (apps/desktop/src/onboarding.ts): the installed CLIs,
-    // their own auth status, and the engine choice (Claude Code → Codex → a stored key → Ollama).
-    // Runs only when asked; reads no credential file, sends no course data, never prompts.
-    // Stored-key presence and the settings (local only, prefer Ollama, a picked engine) are not
-    // wired yet: no key naming exists in the vault, and no settings record holds them.
-    let onboardingRuntime: Awaited<ReturnType<typeof loadOnboarding>> | undefined;
-    async function loadOnboarding() {
-      const { createOnboarding } = await import("./onboarding");
-      return createOnboarding({ workDir: join(data, "ai-runtime") });
-    }
-    async function onboarding() {
-      onboardingRuntime ??= await loadOnboarding();
-      const { detection, decision, checkedAt } = await onboardingRuntime.refresh();
-      // Executable paths stay in main; the view gets the facts and the choice.
-      return {
-        checkedAt,
-        clients: detection.clients.map(({ command: _command, ...c }) => c),
-        storedKeys: detection.storedKeys,
-        local: detection.local,
-        choice:
-          decision.choice.engine === "claude" || decision.choice.engine === "codex"
-            ? { engine: decision.choice.engine, route: decision.choice.route }
-            : decision.choice,
-        reason: decision.reason,
-        actions: decision.actions,
-        disclosures: decision.disclosures,
-      };
-    }
-    ipcMain.handle("magic:onboarding", async (event) => {
-      validateSender(event);
-      return onboarding();
-    });
-    // end owner: T40
-    // owner: T50b. The reader stub: the in-app reader's window and its GET-only navigation.
-    // Does nothing and sends nothing yet.
-    async function reader(): Promise<void> {}
-    // end owner: T50b
-    // owner: T62. The licence stub: the $5 lifetime hosted-Jev licence check. Does nothing yet;
-    // payment waits on the operator's say and accounts.
-    async function licence(): Promise<void> {}
-    // end owner: T62
+    // T50b (the reader) and T62 (the licence) are not built yet.
     // owner: T80. AI clients in app-owned profiles (apps/desktop/src/clients/): detection runs
     // `--version` only and needs no consent; a terminal needs that provider's consent record.
     // The renderer names a client and a purpose; main resolves the binary and fixed arguments.
@@ -980,6 +1023,33 @@ app
       await (await clients()).terminal.close(event.sender, sessionId);
     });
     // end owner: T80
+    // owner: client-health (D50). Health per client and mode, the saved mode, and Gemini's key
+    // (safeStorage vault; presence only crosses). Checks run the client's own --version, --help and
+    // status commands: no model call, no credential read, nothing sent to a provider.
+    let healthRuntime: import("./clients").ClientHealthRuntime | undefined;
+    async function clientHealth() {
+      if (healthRuntime) return healthRuntime;
+      const { createClientHealth } = await import("./clients");
+      healthRuntime = createClientHealth({ userData: data, vault });
+      return healthRuntime;
+    }
+    ipcMain.handle("magic:clients-health", async (event, id: unknown, mode?: unknown) => {
+      validateSender(event);
+      return (await clientHealth()).health(id, mode);
+    });
+    ipcMain.handle("magic:clients-set-mode", async (event, id: unknown, mode: unknown) => {
+      validateSender(event);
+      return (await clientHealth()).setMode(id, mode);
+    });
+    ipcMain.handle("magic:clients-gemini-key", async (event, op: unknown, key?: unknown) => {
+      validateSender(event);
+      const keys = (await clientHealth()).geminiKey;
+      if (op === "status") return keys.status();
+      if (op === "save") return keys.save(key);
+      if (op === "remove") return keys.remove();
+      throw new Error("Unknown key operation.");
+    });
+    // end owner: client-health
     ipcMain.handle("magic:execute", async (event, command) => {
       validateSender(event);
       const purging = command?.type === "purge";
@@ -1027,6 +1097,7 @@ app
         }),
         { mode: 0o600 },
       );
+      await restrictToCurrentUser(connection); // `mode` alone doesn't restrict an NTFS ACL on Windows
       await execute({
         type: "mcp-grant",
         value: {
@@ -1321,10 +1392,15 @@ app
       "magic:signin",
       async (event, requestedService?: unknown) => {
         validateSender(event);
-        if (requestedService !== undefined && !isSignInService(requestedService))
-          throw new Error("Unsupported sign-in source.");
-        if (!(await consentGate("magic:signin"))) throw new Error(consentRefused);
-        await openSignIn(requestedService);
+        // owner: client-health (FDB-002). The window's confirmed/cancelled result is returned as a
+        // typed SignInOutcome instead of being dropped; validation and the consent gate are unchanged.
+        const { handleSignInRequest } = await import("./sign-in-outcome");
+        return handleSignInRequest(requestedService, {
+          consented: () => consentGate("magic:signin"),
+          refused: consentRefused,
+          open: (service) => openSignIn(service),
+        });
+        // end owner: client-health
       },
     );
     // end owner: T05c
@@ -1610,9 +1686,6 @@ app
     window.on("focus", () => worker.postMessage({ kind: "focus" }));
     // end owner: T33
     postPresence();
-    void onboarding();
-    void reader(); // owner: T50b
-    void licence(); // owner: T62
     // owner: T05c. Launch: the window-close decision, macOS dock reopen, the tray and login
     // item, and the 0-request session check ("Sign in again" within 2 s).
     window.on("close", (event) => {

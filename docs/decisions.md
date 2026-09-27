@@ -137,6 +137,27 @@ Implementation choices, in code at `packages/domain/src/today-rail.ts`:
 
 Open for Ben: styling within the Home visual direction, whether the cap/cutoff should become settings, and multi-day planning.
 
+## 2026-09-27: Today rail meeting details from the Microsoft calendar
+
+Merged in [PR #15](https://github.com/benverhaalen/magic-uw/pull/15). The Graph calendar ([#12](https://github.com/benverhaalen/magic-uw/pull/12)) supplies each meeting's join link, provider, and the student's response; before this, the rail ignored all three and a declined meeting still blocked study suggestions. Rules, in code at `packages/domain/src/today-rail.ts` and `apps/desktop/src/renderer/TodayRail.tsx`:
+
+- **Declined** meetings stay on the schedule, struck through, so the student can see what they turned down. They hold no busy time, get no prep block, and do not trigger an overlap warning when a study block is edited over them.
+- **Tentative and unanswered** meetings still hold their time. This is the cautious choice: a suggestion placed over a meeting the student later accepts is worse than a missed free slot. They are outlined dashed and dotted.
+- **Join** appears only for a plain https link with no embedded credentials, checked in the rail and again by the https-only `openLink` bridge, and never for a declined meeting. Opening it is always the student's own click.
+- **Provider badges** name Teams, Zoom, Webex, or Meet from the calendar's own field, not a guess from the title.
+
+Proposed for Ben's review, not yet accepted direction: whether declined meetings should disappear instead of showing struck through.
+
+## 2026-09-27: Manual UW GitLab project links
+
+Merged in [PR #18](https://github.com/benverhaalen/magic-uw/pull/18). GitLab projects were discovered only when Canvas material linked them, so a course that names its repository in prose or in class had no way to connect it. The fallback:
+
+- A student pastes a project link; the existing `gitlabProjectFromUrl` accepts only `git.doit.wisc.edu` group/project paths, not user pages or the API. Anything else is refused with a message saying what to paste.
+- The course must be in the student's saved coursework for that account, so a link cannot attach to a course the app does not know.
+- Links are local preferences, capped at 200 and cleared by Delete local data. No new network access: a linked project is read by the existing GitLab connector with the app-owned GitLab session.
+
+Open for Ben: where the "link a GitLab project" input belongs on screen (Sources, or the course page). Until it has a screen, students cannot use it.
+
 ## 2026-09-27 — Notifications and Jev announcement triage
 
 Implemented on `feat/notifications` (Aidan's session). A bell in the top bar opens a notifications dropdown built from stored changes. Source: Aidan, this project conversation, September 26–27 (original timestamps unavailable). Exact requests:

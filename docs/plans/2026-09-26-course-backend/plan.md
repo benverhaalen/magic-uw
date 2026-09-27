@@ -579,6 +579,40 @@ Each decision names the candidates it beat and the situation in which the chosen
 - The `jobs`, `judgments` and `links` tables, extended rather than replaced.
 - The learning-features spec for practice and FSRS.
 
+
+**D49. The agenda ranks by critical action: least slack first, decided by code** (tasks T82, T83). Status: proposed 2026-09-27; building.
+- **Operator:** "instantly loading the synced course data with our intelligently built ai systems to rank by critical action the upcoming assignments, whether due date, estimated time".
+- **The rule (code):** every open item gets a *latest start* = due (or lock) − estimated effort − a buffer. Items are ordered by slack = latest start − now, ascending, like earliest-deadline-first scheduling with durations. Ties break on weight (points, and the syllabus grading weight when known), then readiness (weak topics for an upcoming exam rank higher), then availability (not yet unlocked sinks).
+- **Estimated effort:** code first (item type, points, question count, rubric length, linked material size, the student's own past durations once measured); the student's AI refines each estimate once per assignment text hash, cached, and its number is bounded and labelled "estimate". The student can correct it; a correction wins and teaches the per-course calibration.
+- **Excluded or flagged by code:** submitted and graded items drop out; missing and late items are flagged, never hidden.
+- **Narration, not templates:** each top item carries a one-line "why now" the model writes over the code's facts (slack, weight, what it depends on), batched once per agenda change and cached. Code checks every number and date the line mentions.
+- **Instant load:** at launch the app renders the last-known ranked agenda and course data from the local database through scoped queries before any network read; sync then updates it in place.
+
+**D50. Client health and instant connect** (tasks T84). Status: proposed 2026-09-27; building.
+- **Operator:** "a robust way to interface into the opened session with our configurations of all three clients if possible to instant connect with no additional steps, or if need be a quick chat with the already set up and authed in system. We can prepare for cases when a free account or insufficiency is found and have a properly component built message informing them what to do."
+- **Two connection modes per client, chosen at onboarding:**
+  - *Instant:* run the student's already-signed-in client with our configuration passed as flags (our system prompt, tools off, strict empty MCP config, no persisted session where the client supports it). Nothing in the student's own config is written. Verified per client version before it is offered.
+  - *Isolated:* the app-owned profile (D45), signed in once inside the built-in terminal.
+- **Gemini** runs only with an API key: its CLI terms prohibit third-party use of its Google sign-in (D36).
+- **Health is typed and checked before every run:** not installed, not signed in, plan cannot run the client (free tier), usage limit reached (with reset time when the client states it), model unavailable, offline. Each state has one remediation message component with the exact next step; the runner never fails silently.
+
+**D51. Onboarding personalises the app** (task T84). Status: proposed 2026-09-27.
+- **Operator:** "The onboarding should be where they can choose accent color, dark mode/light mode, client to drive, and additional oauth tools."
+- Steps: consent, UW sign-in, client choice with health, appearance (light, dark or system; an accent from the design system's approved set), optional connections (Microsoft 365, Google Drive), done.
+- **Boundary:** the token values for dark mode and the accent set belong to the design system's integrator (DESIGN.md). The backend stores the choice and exposes it; the renderer applies it through design tokens only.
+
+**D52. Generation adapts; templates are starting points** (all packs). Status: decided 2026-09-27.
+- **Operator:** "Avoid strict templating that doesnt introduce model narration or specialization."
+- Every pack passes the course's subject profile (D35) and syllabus brief (D34), so the model specialises the structure and writes connective narration (why a concept matters, how two ideas relate, what to watch for). Code still checks every quote, number, date and ID; narration carries no unchecked facts.
+
+
+**D53. The UI polish pass and complete testing** (operator, 2026-09-27). Once the integrated desktop UI (all frontend branches on the current backend) and the dark and accent tokens land, the design seat audits every screen against `DESIGN.md` in light, dark and each accent: Home, courses, course, assignment, lecture, assessment, project, practice, notes, settings and onboarding. It fixes the gaps and the design critic scores the result. Every feature adds Tier 1 end-to-end flows (Playwright Electron, a fresh home folder, fake Claude and Codex clients). Real clients (Tier 2) run only on request, with a cost cap. The UW sign-in (Tier 3) needs the student present.
+
+**D54. Assessment prep as a NotebookLM-grade suite** (operator, 2026-09-27). The assessment page is a fixed template: posted details quoted from their sources; scope in the professor's words; the study guide, briefing, FAQ, concept map and timeline; a formula and glossary sheet only when the course policy allows one; a practice exam that matches the blueprint, with review; weak-topic drills and "quiz me on"; readiness per topic; and a day-by-day plan to the exam date that goes onto the Outlook calendar only after the student clicks. New settings: default card and quiz counts, difficulty, the generation model tier, whether prep plans may write to the calendar, and reminder lead times.
+
+**D55. Project pages and course contacts** (operator, 2026-09-27). Multi-part assignments get a project page: milestones with their dates, deliverables, the rubric, resources, notes, and the people named on it. A contacts section lists the professor and TAs from the syllabus and Canvas people, with office hours, and a **Draft email** button. It creates an unsent Outlook draft addressed to that person, with the course and topic filled in (Graph `Mail.ReadWrite`, which is subject to UW consent; otherwise a `mailto:` link). The app never sends mail.
+
+**D56. Chat and voice share one action path** (operator, 2026-09-27). Typed commands (Ctrl+K) and dictation (Ctrl+Shift+Space, transcribed locally) enter the same intent router, and every action behaves identically on both. Actions that change something outside the app are prepared, shown, and applied only when the student clicks to confirm: drafting an email to a contact, and creating or moving an Outlook calendar event. Nothing is sent, submitted or posted. The tests run the same cases through both input paths.
 ## 3. Interfaces
 
 1. **Schema v6 and v7** (a PR to `packages/storage`, the only owner of `user_version`; v4 is planning's and v5 is course intelligence's, and neither is ever reused).

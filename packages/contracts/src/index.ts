@@ -950,6 +950,19 @@ export const dayPlanEntrySchema = z
   })
   .strict();
 export type DayPlanEntry = z.infer<typeof dayPlanEntrySchema>;
+/**
+ * A UW GitLab project the student linked to a course by hand, for courses whose Canvas
+ * material never links the project. `projectPath` is the namespace/project path.
+ */
+export const gitlabLinkSchema = z
+  .object({
+    accountScope: id,
+    courseId: id,
+    projectPath: z.string().min(3).max(300).regex(/^[\w.-]+(?:\/[\w.-]+)+$/),
+    addedAt: instant,
+  })
+  .strict();
+export type GitlabLink = z.infer<typeof gitlabLinkSchema>;
 export const syncRunSchema = z
   .object({
     id,
@@ -1045,6 +1058,10 @@ export interface Store {
   setNotificationState?(value: NotificationState): void;
   /** Each source's first read id; "new" changes recorded by it are the baseline, not news. */
   baselineReadIds?(): string[];
+  gitlabLinks(): GitlabLink[];
+  /** Adds or refreshes one course's manual GitLab project link. */
+  setGitlabLink(value: GitlabLink): void;
+  removeGitlabLink(accountScope: string, courseId: string, projectPath: string): void;
   /**
    * Deletes a source the student disconnected and everything captured from it; returns the
    * number of items removed. Not for failed or empty reads, which must never erase coursework.
@@ -1126,6 +1143,7 @@ export interface Snapshot {
   consents?: ConsentRecord[];
   dayPlan?: DayPlanEntry[];
   notifications?: NotificationFeed;
+  gitlabLinks?: GitlabLink[];
 }
 // owner: T05b. The integration seams: the learning channel (spec §8.1 of the learning spec,
 // its practice addendum, and T47/T53's practice.target and practice.assessmentQuiz), the
@@ -1470,6 +1488,66 @@ export interface WorkspaceResult {
   }[];
   message?: string;
 }
+// owner: intent. The command bar's plain-language request (typed with Ctrl+K or dictated into the
+// same bar). `run` resolves and runs one registered action; `preview` runs only the code resolver
+// (0 tokens, never the model) for a live hint; `prewarm` readies the AI fallback when the bar opens.
+export const intentCommandSchema = z
+  .object({
+    text: z.string().max(500),
+    context: z
+      .object({ courseId: id.optional(), view: z.string().max(100).optional(), noteId: id.optional() })
+      .strict()
+      .optional(),
+    /** `preview` here is deprecated: use the `intent.preview` query, which skips the snapshot. */
+    mode: z.enum(["run", "preview", "prewarm"]).optional(),
+  })
+  .strict();
+export type IntentCommand = z.infer<typeof intentCommandSchema>;
+/** Surface arguments: what the student said, before code resolves them to IDs and dates. */
+export interface IntentSlots {
+  course?: string | null;
+  assignment?: string | null;
+  topics?: string[] | null;
+  date?: string | null;
+  /** A clock time or range as said ("3pm", "2-3:30pm"); code reads it. */
+  time?: string | null;
+  query?: string | null;
+  kind?: "cards" | "quiz" | null;
+  count?: number | null;
+  scope?: "course" | "all" | null;
+}
+export interface IntentCandidate {
+  action: string;
+  args: IntentSlots;
+  /** What the choice does, in the student's words. */
+  label: string;
+}
+export interface IntentCitation {
+  sourceId: string;
+  resourceId: string;
+  title: string;
+  url: string;
+  /** Exactly as it appears in the resource text; code checked it. */
+  quote: string;
+  start: number | null;
+  end: number | null;
+}
+/** How the request was understood: code (0 tokens), the model, the model's cached answer, or neither. */
+export type IntentPath = "code" | "ai" | "cache" | "none";
+export type CommandOutcome =
+  | { status: "ran"; action: string; args: Record<string, unknown>; result: unknown }
+  | { status: "clarify"; question: string; candidates: IntentCandidate[] }
+  | { status: "answer"; text: string; citations: IntentCitation[]; notFound: boolean; dropped: number }
+  | { status: "unavailable"; reason: string }
+  | { status: "preview"; hint: string | null; action: string | null; slots: IntentSlots }
+  /** prewarm: whether the AI fallback is connected and ready. */
+  | { status: "ready"; ai: boolean };
+export type IntentCommandResult = CommandOutcome & {
+  path: IntentPath;
+  latencyMs: number;
+  tokens: { in: number; cached: number; out: number };
+};
+// end owner: intent
 // owner: T15. Scoped queries (O1): a view asks for what it shows instead of the whole workspace.
 export const queryRequestSchema = z.discriminatedUnion("view", [
   z.object({ view: z.literal("summary") }).strict(),
@@ -1518,6 +1596,16 @@ export const queryRequestSchema = z.discriminatedUnion("view", [
     })
     .strict(),
   // end owner: guides
+  // owner: intent. The command bar's live hint while typing or dictating: the code resolver only,
+  // 0 tokens, never the model, and no snapshot recompute (the query channel).
+  z
+    .object({
+      view: z.literal("intent.preview"),
+      text: z.string().max(500),
+      courseId: id.optional(),
+    })
+    .strict(),
+  // end owner: intent
 ]);
 export type QueryRequest = z.infer<typeof queryRequestSchema>;
 /** A list row: a resource without its bodies (text, raw HTML, parts, document pages). */
@@ -1587,8 +1675,9 @@ export type QueryResult =
       message: string | null;
       modelCalls: 0;
       guide: unknown;
-    };
-// end owner: guides
+    }
+  // end owner: guides
+  | { view: "intent.preview"; preview: IntentCommandResult }; // owner: intent
 // end owner: T15
 export const commandSchema = z.discriminatedUnion("type", [
   z
@@ -1670,6 +1759,23 @@ export const commandSchema = z.discriminatedUnion("type", [
     })
     .strict(),
   z.object({ type: z.literal("fixture") }).strict(),
+  // A student-supplied UW GitLab project for a course the connector could not discover.
+  z
+    .object({
+      type: z.literal("gitlab-link"),
+      accountScope: id,
+      courseId: id,
+      url: z.string().min(1).max(2000),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("gitlab-unlink"),
+      accountScope: id,
+      courseId: id,
+      projectPath: z.string().min(1).max(300),
+    })
+    .strict(),
   // Removes only the Outlook calendar and its meetings from this device. Used by disconnect and sign-out.
   z.object({ type: z.literal("outlook-disconnect") }).strict(),
   // owner: T30. Removes the Graph mail and calendar records (tokens and delta links are main's).
@@ -1729,6 +1835,9 @@ export const commandSchema = z.discriminatedUnion("type", [
     .object({ type: z.literal("learning"), request: learningRequestSchema })
     .strict(),
   // end owner: T05b
+  // owner: intent
+  z.object({ type: z.literal("command"), value: intentCommandSchema }).strict(),
+  // end owner: intent
   // owner: notes
   z.object({ type: z.literal("notes"), request: notesRequestSchema }).strict(),
   // end owner: notes
@@ -1748,6 +1857,7 @@ export type CommandResult = {
   // end owner: T05b
   notes?: NotesResult; // owner: notes
   citations?: CitationResult[];
+  command?: IntentCommandResult; // owner: intent
 };
 export const localQuestionSchema = z
   .object({
@@ -1797,7 +1907,8 @@ export interface AppBridge {
   /** owner: pipeline. Graph reads: an assignment's references, the agenda, a course's graph and coverage. */
   graph?<Q extends GraphQuery>(request: Q): Promise<GraphResult<Q>>;
   importFile(): Promise<CommandResult | null>;
-  signInUW?(service?: "canvas" | "gitlab" | "enroll" | "myuw"): Promise<void>;
+  /** owner: client-health (FDB-002). Resolves with how the window ended; `confirmed` is the only success. */
+  signInUW?(service?: SignInService): Promise<SignInOutcome>;
   syncPlanning?(): Promise<CommandResult>;
   syncCanvas?(): Promise<CommandResult>;
   signOutUW?(): Promise<void>;
@@ -1835,8 +1946,12 @@ export interface AppBridge {
 }
 /** T80. The AI command-line clients Magic Canvas can host in an app-owned profile. */
 export type ClientId = "claude" | "codex" | "gemini";
-/** Sign-in only for now; an interactive session needs its own threat model first (T81). */
-export type TerminalPurpose = "signin";
+/**
+ * `signin`: the client's own sign-in. `chat` (owner: client-health, D50): the client started in
+ * the student's chosen mode with tools, MCP and user customisations off, so the student can
+ * check their own account (plan, usage) themselves. No course content is sent to it.
+ */
+export type TerminalPurpose = "signin" | "chat";
 export interface ClientStatus {
   id: ClientId;
   /** A binary was found. With `problem` set it exists but isn't usable. */
@@ -1859,6 +1974,18 @@ export interface ClientsBridge {
   prepare(id: ClientId): Promise<ClientStatus>;
   authStatus(id: ClientId): Promise<ClientStatus>;
   choose(id: ClientId): Promise<void>;
+  // owner: client-health (D50). Optional so an older main still satisfies the bridge.
+  /** Checks the client in the given mode (default: its saved mode), before offering or running it. */
+  health?(id: ClientId, mode?: ClientMode): Promise<ClientHealth>;
+  /** Saves how the app reaches this client. Refused for a mode the client can't use here. */
+  setMode?(id: ClientId, mode: ClientMode): Promise<ClientHealth>;
+  /** Gemini's only route (D36): the student's own key, stored with safeStorage. Presence only. */
+  geminiKey?: {
+    status(): Promise<ApiKeyStatus>;
+    save(key: string): Promise<ApiKeyStatus>;
+    remove(): Promise<ApiKeyStatus>;
+  };
+  // end owner: client-health
   terminal: {
     open(id: ClientId, purpose: TerminalPurpose): Promise<{ sessionId: string }>;
     write(sessionId: string, data: string): void;
@@ -1868,6 +1995,12 @@ export interface ClientsBridge {
     onExit(cb: (sessionId: string, code: number | null) => void): () => void;
   };
 }
+// owner: client-health (D50, FDB-002)
+export * from "./client-health";
+export * from "./sign-in";
+import type { ApiKeyStatus, ClientHealth, ClientMode } from "./client-health";
+import type { SignInOutcome, SignInService } from "./sign-in";
+// end owner: client-health
 export type StoredPlanningRecord = PlanningRecord & {
   localId: string;
   sourceId: string;

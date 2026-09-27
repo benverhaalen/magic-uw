@@ -46,6 +46,8 @@ export interface PoolOptions {
   fallback: ModelBackend;
   models?: Partial<Record<Tier, string>>;
   env?: Record<string, string>;
+  /** owner: client-health. Appended after the session argv (instant mode's `--safe-mode`, D50). */
+  extraArgs?: readonly string[];
   /** History size that triggers rotation to a spare (S7 decides; the review starts near 40k). */
   rotateAtTokens?: number;
   /** Live processes, spares included (S8 decides; the review starts at 3). */
@@ -54,9 +56,25 @@ export interface PoolOptions {
   now?: () => number;
 }
 
+/** What a warm session is started for: the same fields that pick a lane, model and prefix for a call. */
+export interface WarmRequest {
+  pack: { id: string; version: string };
+  /** The byte-stable prefix the later calls will send (the pool appends its protocol, as for a call). */
+  systemPrompt: string;
+  tier?: Tier;
+  lane?: "interactive" | "background";
+  courseId?: string;
+}
+
 export interface SessionPool extends ModelBackend {
   /** Starts a fresh background session: no task batch is shaped by an earlier one. */
   beginBatch(): void;
+  /**
+   * Starts the lane's CLI with the prefix now, sending nothing (0 tokens), so the next call to that
+   * lane skips the CLI's start-up. A no-op when a matching session is already alive. Resolves true
+   * when a session for that prefix is live; false for an unpooled pack or a one-shot lane.
+   */
+  warm(request: WarmRequest): Promise<boolean>;
   onActivity(listener: (event: ActivityEvent) => void): () => void;
   lanes(): LaneStatus[];
   close(): Promise<void>;
@@ -281,7 +299,7 @@ export function createSessionPool(options: PoolOptions): SessionPool {
       prefixHash,
       model,
       options.command,
-      claudeSessionArgs({ schemaJson, prefixPath, model }),
+      [...claudeSessionArgs({ schemaJson, prefixPath, model }), ...(options.extraArgs ?? [])],
       options.workDir,
       env,
       now(),
@@ -381,8 +399,31 @@ export function createSessionPool(options: PoolOptions): SessionPool {
     }
   }
 
+  function laneFor(key: string): LaneState {
+    let lane = lanes.get(key);
+    if (!lane) {
+      lane = { key, session: null, spare: null, failures: 0, oneShot: false, queue: Promise.resolve(), last: null };
+      lanes.set(key, lane);
+    }
+    return lane;
+  }
+
   return {
     client: "claude",
+    async warm(request: WarmRequest): Promise<boolean> {
+      sweepIdle();
+      if (!(request.pack.id in options.kinds)) return false;
+      const lane = laneFor(laneKeyOf({ lane: request.lane ?? "interactive", courseId: request.courseId } as BackendCall));
+      if (lane.oneShot) return false;
+      const model = models[request.tier ?? "pass"];
+      const prefix = `${request.systemPrompt}\n\n${POOL_PROTOCOL}`;
+      const prefixPath = await contentFile(join(options.workDir, "prefix"), prefix, ".md");
+      const prefixHash = sha256(prefix);
+      // Queued behind any ask in flight on the lane, so a warm never replaces a busy session.
+      const started = lane.queue.then(() => sessionFor(lane, prefixPath, prefixHash, model).alive);
+      lane.queue = started.catch(() => undefined);
+      return started;
+    },
     call(call: BackendCall): Promise<BackendResult> {
       sweepIdle();
       const key = laneKeyOf(call);
@@ -390,12 +431,7 @@ export function createSessionPool(options: PoolOptions): SessionPool {
         emit({ type: "fallback", lane: key, reason: "not_pooled", at: now() });
         return options.fallback.call(call);
       }
-      let lane = lanes.get(key);
-      if (!lane) {
-        lane = { key, session: null, spare: null, failures: 0, oneShot: false, queue: Promise.resolve(), last: null };
-        lanes.set(key, lane);
-      }
-      const l = lane;
+      const l = laneFor(key);
       // One ask at a time per lane; other lanes proceed in parallel.
       const result = l.queue.then(() => pooled(l, call));
       l.queue = result.catch(() => undefined);

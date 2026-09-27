@@ -8,10 +8,10 @@ import type { MailTriageState, MessageTriageState } from "@magic/contracts"; // 
 import fixture from "../../../fixtures/course.json";
 import { randomUUID } from "node:crypto";
 import { createLocalService } from "./local-service";
-import { createIngestion } from "./ingestion";
+import { createIngestion, ACQUISITION_APP } from "./ingestion";
 import { createLearningRouter, type StudyContext } from "../../../packages/learning/src/router";
 import { createStudyContextResolver } from "./learning-context";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import {
   createLocalDocumentExtractor,
   createLocalOcrAdapter,
@@ -21,7 +21,6 @@ import { pullPublicSubjects, pullPublicTerms } from "../../../packages/connector
 import type { UwPlanningSyncResult } from "../../../packages/connectors/src/uw-planning-sync";
 // owner: pipeline
 import { pipelineJobRegistry } from "../../../packages/core/src/jobs/default-registry";
-import { createPipelineLoop } from "../../../packages/core/src/jobs/pipeline";
 import { agenda, courseGraph, createPipelineReferences, references } from "../../../packages/core/src/graph/index";
 import { graphQuerySchema } from "../../../packages/contracts/src/course-core";
 // end owner: pipeline
@@ -52,25 +51,53 @@ import { createPackRuntime, DEFAULT_PACK_CONFIG } from "../../../packages/packs/
 import { createPackHandler } from "../../../packages/core/src/pack-handler";
 import { isIsolated, isProfileReady, profileEnv, readClientSettings, resolveClient, workDir } from "./clients/profiles";
 const generationUserData = dirname(process.env.MAGIC_DB_PATH!);
-let generationRuntime: { client: string; runner: ModelRunner } | null = null;
-async function generationRunner(): Promise<ModelRunner | null> {
-  const { chosen } = await readClientSettings(generationUserData);
-  if (!chosen || !isIsolated(chosen) || !(await isProfileReady(chosen, generationUserData))) return null;
-  if (generationRuntime?.client === chosen) return generationRuntime.runner;
-  const command = resolveClient(chosen, { userData: generationUserData });
+// owner: client-health (D50). Every generation path (packs and guides, notes, the intent router)
+// runs the chosen client in its saved mode: instant by default (the student's own signed-in
+// Claude Code or Codex, the app's configuration passed as flags only), the D45 profile only when
+// the student opted in, or Gemini with the student's key, asked from main's vault for each build
+// and never logged. Health is checked before every run, so a signed-out, limited or offline
+// client fails with its own typed error instead of a generic one.
+import { clientBackend, clientRunOptions, healthGatedBackend, type CliRunOptions } from "./clients/health";
+import { modeOf } from "./clients/instant";
+import type { ClientId } from "@magic/contracts";
+async function isolatedOptions(id: "claude" | "codex"): Promise<CliRunOptions | null> {
+  if (!isIsolated(id) || !(await isProfileReady(id, generationUserData))) return null;
+  const command = resolveClient(id, { userData: generationUserData });
   if (!command) return null;
   const env = Object.fromEntries(
-    Object.entries(profileEnv(chosen, { userData: generationUserData })).flatMap(([k, v]) => (v === undefined ? [] : [[k, v]])),
+    Object.entries(profileEnv(id, { userData: generationUserData })).flatMap(([k, v]) => (v === undefined ? [] : [[k, v]])),
   );
-  const options = { command, workDir: workDir(generationUserData, chosen), env };
+  return { command, workDir: workDir(generationUserData, id), env };
+}
+async function geminiKey(): Promise<string | undefined> {
+  const reply = (await hostRead("ai-key", { provider: "gemini" }, undefined, 10_000).catch(() => null)) as { key?: unknown } | null;
+  return typeof reply?.key === "string" && reply.key ? reply.key : undefined;
+}
+/** The chosen client, and a cache key that changes with its mode so a switch rebuilds the runner. */
+async function chosenClient(): Promise<{ id: ClientId; key: string } | null> {
+  const { chosen } = await readClientSettings(generationUserData);
+  return chosen ? { id: chosen, key: `${chosen}:${await modeOf(chosen, generationUserData)}` } : null;
+}
+let generationRuntime: { client: string; runner: ModelRunner } | null = null;
+async function generationRunner(): Promise<ModelRunner | null> {
+  const chosen = await chosenClient();
+  if (!chosen) return null;
+  if (generationRuntime?.client === chosen.key) return generationRuntime.runner;
   // owner: ai-paths. Claude runs through the warm session pool (one per worker, replaced on a
   // client change); Codex stays one-shot.
   const { pooledClaudeBackend } = await import("../../../packages/core/src/pack-handler");
-  const backend = chosen === "claude" ? pooledClaudeBackend(options) : createCodexBackend(options);
   // end owner: ai-paths
-  generationRuntime = { client: chosen, runner: createPackRuntime(backend, DEFAULT_PACK_CONFIG).runner };
+  const built = await clientBackend(
+    chosen.id,
+    { userData: generationUserData, geminiKey },
+    { claude: pooledClaudeBackend, codex: createCodexBackend },
+    () => (chosen.id === "gemini" ? Promise.resolve(null) : isolatedOptions(chosen.id)),
+  ).catch(() => null); // Gemini without a key: "Connect your AI first", and nothing is sent.
+  if (!built) return null;
+  generationRuntime = { client: chosen.key, runner: createPackRuntime(built.backend, DEFAULT_PACK_CONFIG).runner };
   return generationRuntime.runner;
 }
+// end owner: client-health
 const generation = createPackHandler({ store, runner: generationRunner });
 // end owner: generation
 /** Jev judgments run in main (network + consent gate); the reply arrives as "evaluation". */
@@ -102,6 +129,50 @@ function relayJudgment(
     port.postMessage({ ...message, id });
   });
 }
+// owner: intent. The command bar's router. Claude answers through a warm session pool (lane
+// interactive:intent, tools off, the byte-stable catalogue prefix) so the AI fallback skips the
+// CLI's start-up after the first call; Codex stays one-shot (its app-server is unmeasured, S9).
+import { createIntentRouter, fromNotes, type NotesSeam } from "../../../packages/core/src/intent/index";
+import { notesActions } from "../../../packages/notes/src/actions";
+import { notesRequestSchema } from "@magic/contracts";
+import { createModelRunner, createSessionPool, type SessionPool } from "../../../packages/runner/src/index";
+import { askPack, classifyPack } from "../../../packages/packs/intent/src/index";
+let intentRuntime: { client: string; runner: ModelRunner; pool: SessionPool | null } | null = null;
+async function intentRunner(): Promise<ModelRunner | null> {
+  // owner: client-health: the chosen client in its saved mode (instant by default), health-gated.
+  const chosen = await chosenClient();
+  if (!chosen) return null;
+  if (intentRuntime?.client === chosen.key) return intentRuntime.runner;
+  await intentRuntime?.pool?.close();
+  intentRuntime = null;
+  if (chosen.id !== "claude") {
+    const runner = await generationRunner();
+    if (runner) intentRuntime = { client: chosen.key, runner, pool: null };
+    return runner;
+  }
+  const run = await clientRunOptions("claude", { userData: generationUserData }, () => isolatedOptions("claude"));
+  if (!run) return null;
+  const options = run.options;
+  // end owner: client-health
+  const pool = createSessionPool({ ...options, fallback: createClaudeBackend(options), kinds: { [classifyPack.id]: classifyPack.schema, [askPack.id]: askPack.schema } });
+  intentRuntime = { client: chosen.key, runner: createModelRunner({ backend: healthGatedBackend(pool, run.check) }), pool }; // owner: client-health: gated
+  return intentRuntime.runner;
+}
+// prewarm (the bar opened) finds the client, then starts its pooled session with the catalogue prefix.
+// The notes lane's plain actions (packages/notes/src/actions.ts) run through the notes service,
+// which is created below; the seam reads it at call time.
+const intentNotes: NotesSeam = {
+  handle: (request, signal) => notes.handle(notesRequestSchema.parse(request), signal),
+  sessionOn: (courseId, date, type) => notes.sessionOn(courseId, date, type === "discussion" || type === "lab" ? type : "lecture"),
+};
+let intentIndexScheduled = false;
+const intent = createIntentRouter({
+  store,
+  runner: intentRunner,
+  actions: fromNotes({ notesActions }, intentNotes),
+  warm: (request) => intentRuntime?.pool?.warm(request) ?? Promise.resolve(false),
+});
+// end owner: intent
 // owner: notes. Session notes: batch scaffolds on the tick, "fill from slides" through the same
 // runner, and Google Docs sync through main (which alone holds the token). Microsoft waits for graph.ts.
 import { createNotesService, googleRemote, microsoftRemote, type NotesRemote } from "../../../packages/notes/src/index";
@@ -153,7 +224,7 @@ const core = createCore(store, {
     // and course-map assessment rows).
     analyticsReferences: () => createPipelineReferences(store),
     // end owner: analytics
-  }), pack: generation.pack /* owner: generation */, notes /* owner: notes */ },
+  }), pack: generation.pack /* owner: generation */, notes /* owner: notes */, intent /* owner: intent */ },
   ...(process.env.MAGIC_GATEWAY_URL
     ? {
         gateway: {
@@ -230,17 +301,11 @@ const {
   MAGIC_TESSERACT_PATH: tesseractPath,
   MAGIC_TESSDATA_DIRECTORY: tessdataDirectory,
 } = process.env;
-const extractor = createLocalDocumentExtractor(
+const tesseract =
   pdftoppmPath && tesseractPath && tessdataDirectory
-    ? {
-        ocr: createLocalOcrAdapter({
-          pdftoppmPath,
-          tesseractPath,
-          tessdataDirectory,
-        }),
-      }
-    : {},
-);
+    ? createLocalOcrAdapter({ pdftoppmPath, tesseractPath, tessdataDirectory })
+    : undefined; // owner: acquisition: also the background OCR's fallback
+const extractor = createLocalDocumentExtractor(tesseract ? { ocr: tesseract } : {});
 // owner: T30. Microsoft Graph through main's proxy: this process never sees a token. Main says
 // which scopes the student granted; the delta links live in main's encrypted vault.
 let graphScopes: string[] = [];
@@ -276,11 +341,15 @@ const ingestion = createIngestion(store, {
   graph: graphHost, // owner: T30
   secrets: (operation, key, value) =>
     hostRead("source-secret", { operation, key, value }),
+  // owner: acquisition: main's session file route and the extraction threads exist here.
+  acquisition: ACQUISITION_APP,
+  ...(tesseract ? { ocr: tesseract } : {}),
+  extractWorkerScript: join(__dirname, "extract-worker.cjs"),
 });
-// owner: pipeline. The material pipeline's drain: code-only jobs (passages, links and facts, the
-// course pass) in bounded idle slices. A sync aborts the slice between jobs and wakes it when done;
-// presence sets the slice size. Nothing here calls Jev or a model, and planning is never queued.
-const pipeline = createPipelineLoop({ store, registry: core.jobs });
+// owner: drain. The app's one job drain is core's pipeline loop: every job kind (passages, links
+// and facts, the course pass, Jev's enrich.resource) in bounded idle slices. A sync aborts the
+// slice between jobs and nothing is leased until it ends; presence sets the slice size.
+const pipeline = core.pipeline;
 const syncTick = ingestion.tick;
 ingestion.tick = (trigger) => {
   pipeline.syncStarted();
@@ -544,6 +613,7 @@ port.on("message", async ({ data }: { data: any }) => {
     return;
   }
   if (data.kind === "shutdown") {
+    await intentRuntime?.pool?.close(); // owner: intent
     cancelPlanning();
     await planningRun?.promise.catch(() => {});
     clearInterval(refreshTimer);
@@ -590,6 +660,19 @@ port.on("message", async ({ data }: { data: any }) => {
   }
   // owner: T15. Scoped queries (O1): a read with its own small payload.
   if (data.kind === "query") {
+    // owner: intent. After the first bootstrap query is answered, build the command bar's index
+    // in the background turn, so the first command's resolver budget covers matching only.
+    if (!intentIndexScheduled) {
+      intentIndexScheduled = true;
+      setImmediate(() => {
+        try {
+          intent.ready();
+        } catch {
+          // A failed build is retried by the first command, outside its budget.
+        }
+      });
+    }
+    // end owner: intent
     try {
       port.postMessage({
         kind: "response",

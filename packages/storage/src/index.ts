@@ -53,6 +53,8 @@ import {
   dayPlanEntrySchema,
   emptyNotificationState,
   notificationStateSchema,
+  gitlabLinkSchema,
+  type GitlabLink,
   syncRunSchema,
   type CaptureDiagnostic,
   type ChangeType,
@@ -224,7 +226,7 @@ export function createStore(
   // chmods, migrates, backs up (VACUUM INTO) or rebuilds anything; a write fails in SQLite itself.
   const readOnly = options.readOnly === true;
   if (readOnly && (!file || !existsSync(path)))
-    throw new ReaderSchemaError("There is no local database to read yet. Open Magic Canvas once first.");
+    throw new ReaderSchemaError("There is no local database to read yet. Open My Magic UW once first.");
   if (file && !readOnly) mkdirSync(dirname(resolve(path)), { recursive: true, mode: 0o700 });
   const db = new DatabaseSync(path, readOnly ? { readOnly: true } : {});
   if (file && !readOnly) chmodSync(path, 0o600);
@@ -241,14 +243,14 @@ export function createStore(
   if (schemaVersion > SCHEMA_VERSION) {
     db.close();
     throw new Error(
-      "This database was created by a newer Magic Canvas version.",
+      "This database was created by a newer My Magic UW version.",
     );
   }
   // owner: platform-fix
   if (readOnly && schemaVersion < SCHEMA_VERSION) {
     db.close();
     throw new ReaderSchemaError(
-      "The local database needs updating before the course bank can read it. Open Magic Canvas once, then try again.",
+      "The local database needs updating before the course bank can read it. Open My Magic UW once, then try again.",
     );
   }
   // end owner: platform-fix
@@ -469,7 +471,7 @@ export function createStore(
     try {
       from = readVersion(); // another process may have migrated since the first read
       if (from > SCHEMA_VERSION)
-        throw new Error("This database was created by a newer Magic Canvas version.");
+        throw new Error("This database was created by a newer My Magic UW version.");
       for (const [version, step] of steps) if (version > from) step();
       if (db.prepare("PRAGMA foreign_key_check").all().length)
         throw new Error("The migration left foreign-key violations.");
@@ -810,6 +812,29 @@ export function createStore(
       "INSERT INTO preferences VALUES ('dayPlan', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
     ).run(JSON.stringify(kept));
   }
+  // Manual GitLab links live beside the day plan in preferences, so Delete local data clears them.
+  const GITLAB_LINKS_MAX = 200;
+  function readGitlabLinks(): GitlabLink[] {
+    const row = db.prepare("SELECT value FROM preferences WHERE key = 'gitlabLinks'").get();
+    if (!row) return [];
+    let saved: unknown;
+    try {
+      saved = JSON.parse(String(row.value));
+    } catch {
+      return [];
+    }
+    return (Array.isArray(saved) ? saved : [])
+      .map((e) => gitlabLinkSchema.safeParse(e))
+      .filter((r) => r.success)
+      .map((r) => r.data);
+  }
+  function writeGitlabLinks(links: GitlabLink[]) {
+    db.prepare(
+      "INSERT INTO preferences VALUES ('gitlabLinks', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    ).run(JSON.stringify(links.slice(-GITLAB_LINKS_MAX)));
+  }
+  const sameLink = (a: GitlabLink, account: string, course: string, path: string) =>
+    a.accountScope === account && a.courseId === course && a.projectPath.toLowerCase() === path.toLowerCase();
   // owner: platform-fix. Receipts: the one validated insert, the 90-day roll-up, the reader's log.
   function addReceiptRow(value: EgressReceipt) {
     assertText(value.id, "receipt ID");
@@ -1611,6 +1636,19 @@ export function createStore(
         (e) => !(e.key === entry.key && e.date === entry.date),
       );
       writeDayPlan([...rest, entry]);
+    },
+    gitlabLinks() {
+      return readGitlabLinks();
+    },
+    setGitlabLink(value) {
+      const link = gitlabLinkSchema.parse(value);
+      writeGitlabLinks([
+        ...readGitlabLinks().filter((l) => !sameLink(l, link.accountScope, link.courseId, link.projectPath)),
+        link,
+      ]);
+    },
+    removeGitlabLink(accountScope, courseId, projectPath) {
+      writeGitlabLinks(readGitlabLinks().filter((l) => !sameLink(l, accountScope, courseId, projectPath)));
     },
     removeDayPlanEntry(key, date) {
       writeDayPlan(

@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { mkdir } from "node:fs/promises"; // owner: client-health
 import type { ClientId, TerminalPurpose } from "@magic/contracts";
 import type { CliCommand } from "@magic/runner";
 import { CLIENTS, clientIdSchema, isIsolated, profileEnv, prepareProfile, resolveClient, workDir, type ClientsDeps } from "./profiles";
+import { chatArgs, instantEnv, instantWorkDir, modeOf } from "./instant"; // owner: client-health
 
 /**
  * T80 terminal host: runs the unmodified client in a pseudo-terminal so the student signs in
@@ -38,8 +40,12 @@ export async function loadNodePty(): Promise<PtySpawn> {
   return (file, args, options) => spawn(file, args, { ...options, env: options.env as Record<string, string> });
 }
 
-/** Sign-in only; see the TODO(T81) on `ClientSpec.args` for why there's no session yet. */
-const purposeSchema = ["signin"] as const;
+/**
+ * `signin`, and `chat` (owner: client-health, D50): Quick chat, the client's own interactive
+ * session with tools, MCP and user customisations off (`chatArgs`), in the student's saved mode.
+ * The student types into it to check their own account; the app sends it no course content.
+ */
+const purposeSchema = ["signin", "chat"] as const;
 const MAX_SESSIONS = 4;
 const MAX_WRITE = 64 * 1024;
 
@@ -91,7 +97,8 @@ interface Session {
 
 /** The fixed command line for a client and purpose. The only place argv is built. */
 export function commandLine(command: CliCommand, id: ClientId, purpose: TerminalPurpose): { file: string; args: string[] } {
-  return { file: command.file, args: [...command.prefixArgs, ...CLIENTS[id].args[purpose]] };
+  const args = purpose === "chat" ? chatArgs(id) : CLIENTS[id].args[purpose];
+  return { file: command.file, args: [...command.prefixArgs, ...args] };
 }
 
 export function createTerminalHost(deps: TerminalHostDeps) {
@@ -121,7 +128,11 @@ export function createTerminalHost(deps: TerminalHostDeps) {
       if (sessions.size >= MAX_SESSIONS) throw new Error("Too many terminal sessions are open.");
       const command = resolveClient(id, deps);
       if (!command) throw new Error("This client isn't installed.");
-      await prepareProfile(id, deps);
+      // owner: client-health. Quick chat in instant mode runs the student's own client (their
+      // env, an app-owned folder); everything else runs in the app's profile.
+      const instant = purpose === "chat" && (await modeOf(id, deps.userData)) === "instant";
+      if (instant) await mkdir(instantWorkDir(deps.userData, id), { recursive: true, mode: 0o700 });
+      else await prepareProfile(id, deps);
       const spawn = await pty().catch(() => {
         throw new Error("The built-in terminal could not start on this device.");
       });
@@ -136,8 +147,8 @@ export function createTerminalHost(deps: TerminalHostDeps) {
         name: "xterm-256color",
         cols: 100,
         rows: 30,
-        cwd: workDir(deps.userData, id),
-        env: { ...profileEnv(id, deps), TERM: "xterm-256color" },
+        cwd: instant ? instantWorkDir(deps.userData, id) : workDir(deps.userData, id),
+        env: { ...(instant ? instantEnv(id, deps.env ?? process.env) : profileEnv(id, deps)), TERM: "xterm-256color" },
       });
       const sessionId = randomUUID();
       let done!: () => void;

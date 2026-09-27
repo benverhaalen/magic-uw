@@ -630,6 +630,11 @@ export function App() {
                   sources={snapshot.sources}
                   plan={snapshot.dayPlan}
                   changes={snapshot.changes}
+                  onJoin={
+                    window.magic.openLink
+                      ? (url) => void perform(() => window.magic.openLink!(url))
+                      : undefined
+                  }
                   onSelect={setSelectedId}
                   onPlan={(command) => run(command)}
                 />
