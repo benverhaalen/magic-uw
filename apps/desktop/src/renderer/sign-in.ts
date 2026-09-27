@@ -8,13 +8,15 @@ import type { AppBridge, SignInOutcome, SignInService } from "@magic/contracts";
 export async function signInAndSync(
   bridge: Pick<AppBridge, "signInUW" | "syncCanvas">,
   service?: SignInService,
+  /** fix/current-courses-only: onboarding reads only the course list first, so the student chooses. */
+  options: { discover?: boolean } = {},
 ): Promise<{ outcome: SignInOutcome; synced: boolean }> {
   if (!bridge.signInUW)
     return { outcome: { status: "failed", service: service ?? "canvas", reason: "UW sign-in is available in the desktop app only." }, synced: false };
   const raw: unknown = await bridge.signInUW(service);
   const outcome = isOutcome(raw) ? raw : { status: "failed" as const, service: service ?? "canvas", reason: "The sign-in didn't report how it ended." };
   if (outcome.status !== "confirmed" || !bridge.syncCanvas) return { outcome, synced: false };
-  await bridge.syncCanvas();
+  await (options.discover ? bridge.syncCanvas({ discover: true }) : bridge.syncCanvas());
   return { outcome, synced: true };
 }
 

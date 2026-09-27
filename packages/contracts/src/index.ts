@@ -1910,7 +1910,8 @@ export interface AppBridge {
   /** owner: client-health (FDB-002). Resolves with how the window ended; `confirmed` is the only success. */
   signInUW?(service?: SignInService): Promise<SignInOutcome>;
   syncPlanning?(): Promise<CommandResult>;
-  syncCanvas?(): Promise<CommandResult>;
+  /** `discover` (fix/current-courses-only): read only the course lists, so the student chooses first. */
+  syncCanvas?(options?: { discover?: boolean }): Promise<CommandResult>;
   signOutUW?(): Promise<void>;
   /** Saves (or with null, removes) the published Outlook calendar link in the encrypted vault. */
   setOutlookCalendar?(url: string | null): Promise<{ connected: boolean }>;

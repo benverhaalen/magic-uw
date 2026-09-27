@@ -176,10 +176,11 @@ export function createPreviewClients(signInDelayMs = 4000): ClientsBridge {
 }
 
 // --- Steps and resume ---------------------------------------------------------------------------
-export type StepId = "consent" | "uw" | "client" | "appearance" | "connections" | "done";
+export type StepId = "consent" | "uw" | "courses" | "client" | "appearance" | "connections" | "done";
 export const steps: readonly { id: StepId; label: string }[] = [
   { id: "consent", label: "Agreement" },
   { id: "uw", label: "UW sign-in" },
+  { id: "courses", label: "Your courses" },
   { id: "client", label: "Your AI" },
   { id: "appearance", label: "Appearance" },
   { id: "connections", label: "Connections" },
@@ -195,12 +196,15 @@ export interface OnboardingProgress {
   /** The chosen client, or "later" when the student chose Set up later. */
   client: ClientId | "later" | null;
   clientConnected: boolean;
+  /** fix/current-courses-only: the student chose which courses to sync. */
+  coursesDone: boolean;
   appearanceDone: boolean;
   connectionsDone: boolean;
   done: boolean;
 }
 export const emptyProgress: OnboardingProgress = {
   started: false,
+  coursesDone: false,
   uw: "not_started",
   client: null,
   clientConnected: false,
@@ -238,6 +242,7 @@ export function readProgress(store: KeyValueStore | null = defaultStore()): Onbo
         uw: uwValues.includes(value.uw as UwProgress) ? (value.uw as UwProgress) : "not_started",
         client,
         clientConnected: value.clientConnected === true && client !== null && client !== "later",
+        coursesDone: value.coursesDone === true,
         appearanceDone: value.appearanceDone === true,
         connectionsDone: value.connectionsDone === true,
         done: value.done === true,
@@ -292,10 +297,67 @@ export function firstIncompleteStep(snapshot: Snapshot, progress: OnboardingProg
   if (!uwConsented(snapshot, hasConsent)) return "consent";
   const readSomething = snapshot.sources.length > 0;
   if (!readSomething && progress.uw !== "confirmed" && progress.uw !== "skipped") return "uw";
+  if (!progress.coursesDone && courseChoices(snapshot).length) return "courses";
   if (progress.client === null || (progress.client !== "later" && !progress.clientConnected)) return "client";
   if (!progress.appearanceDone) return "appearance";
   if (!progress.connectionsDone) return "connections";
   return "done";
+}
+
+// --- Course chooser (fix/current-courses-only) ------------------------------------------------
+/**
+ * One detected Canvas course the student can toggle. "this-term": Canvas's current term (or the
+ * student's UW enrollment names it), pre-checked. "other": term-less or organization sites, and
+ * courses whose term hasn't started, unchecked. Past and nameless courses are never listed.
+ * The reason strings are canvas-selection.ts COURSE_REASONS.
+ */
+export interface CourseChoice {
+  id: string;
+  accountScope: string;
+  courseId: string;
+  name: string;
+  term: string | null;
+  group: "this-term" | "other";
+  checked: boolean;
+}
+const THIS_TERM = ["This term", "Matches your UW enrollment this term"];
+const PAST = [
+  "Past course: its term ended",
+  "Course concluded",
+  "Completed enrollment catalog; course metadata only",
+  "Course has not been published",
+  "No active student enrollment",
+];
+export function courseChoices(snapshot: Snapshot): CourseChoice[] {
+  const sources = new Map(snapshot.sources.map((s) => [s.id, s]));
+  const overrides = new Map(
+    (snapshot.courseOverrides ?? []).map((o) => [`${o.accountScope}|${o.courseId}`, o.included]),
+  );
+  const seen = new Set<string>();
+  const out: CourseChoice[] = [];
+  for (const r of snapshot.resources) {
+    const source = sources.get(r.sourceId);
+    if (r.kind !== "course" || r.deleted || !r.course || source?.kind !== "canvas" || source.scope !== "course") continue;
+    const reasons = r.course.selection?.reasons ?? [];
+    const nameless = r.course.accessRestricted === true || /(name unavailable)$/.test(r.courseName);
+    const past = r.course.accessState === "concluded" || reasons.some((reason) => PAST.includes(reason));
+    if (nameless || past) continue;
+    const key = `${source.accountScope}|${r.courseId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const group = reasons.some((reason) => THIS_TERM.includes(reason)) ? "this-term" : "other";
+    const override = overrides.get(key);
+    out.push({
+      id: r.id,
+      accountScope: source.accountScope,
+      courseId: r.courseId,
+      name: r.courseName,
+      term: r.course.termName ?? null,
+      group,
+      checked: override ?? (group === "this-term"),
+    });
+  }
+  return out.sort((a, b) => (a.group === b.group ? a.name.localeCompare(b.name) : a.group === "this-term" ? -1 : 1));
 }
 
 // --- Populating summary ------------------------------------------------------------------------
