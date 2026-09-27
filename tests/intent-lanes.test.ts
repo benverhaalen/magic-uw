@@ -155,12 +155,11 @@ test("warm start: prewarm spawns the pooled session with the catalogue prefix, s
     assert.equal(await messages(), 0, "and sent nothing (0 tokens)");
     assert.equal((await h.router.prewarm()).status, "ready");
     assert.equal(await spawns(), 1, "a second prewarm reuses the live session");
-    // Each ask runs in a session started before it (fresh turns, pool.ts): the first in the prewarmed
-    // one, the next in the spare started as the previous ask returned. None starts a CLI on its path.
+    // Each ask runs in a session started before it (bounded turns, pool.ts): both in the prewarmed
+    // one, which keeps a short conversation. None starts a CLI on its path.
     for (const text of ["zq sort out thing one for me", "zq sort out thing two for me"]) {
-      for (let i = 0; i < 100 && (await spawns()) <= (await messages()); i++) await new Promise((r) => setTimeout(r, 20));
       const before = await spawns();
-      assert.ok(before > (await messages()), `a session is waiting before "${text}"`);
+      assert.ok(before >= 1, `a session is waiting before "${text}"`);
       assert.equal((await h.run(text)).path, "ai");
       const log = await h.events();
       const lastMessage = log.map((e) => e.event).lastIndexOf("message");

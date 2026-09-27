@@ -82,14 +82,18 @@ export interface PoolOptions {
   /** History size that triggers rotation to a spare (S7 decides; the review starts near 40k). */
   rotateAtTokens?: number;
   /**
-   * Interactive lanes. `fresh` (default): each ask gets a session with no earlier turns, and a spare
-   * with the same prefix is started as soon as the ask returns, so the next ask still skips the
-   * CLI's start-up. The CLI re-sends a session's whole conversation on every turn, so a kept
-   * conversation grew each ask's input (a five-ask burst measured 1,607 → 3,891 tokens); the caller
-   * adds the one earlier exchange a question refers back to. `conversation`: the session keeps its
-   * turns until the history limit.
+   * Interactive lanes. `bounded` (default): one warm session per course answers asks back to back
+   * and keeps a short conversation; once its history (the earlier messages and replies the CLI
+   * re-sends on every turn) passes `historyBudgetTokens`, the next ask goes to a spare started at
+   * half the budget, so no ask waits on a CLI start and input stays bounded. `fresh`: each ask gets
+   * a session with no earlier turns and a spare started while it answers; asks faster than a CLI
+   * start each waited on one (intent-latency on Windows ran to its 240 s timeout). `conversation`:
+   * the session keeps its turns until `rotateAtTokens`, so input grew per ask (a five-ask burst
+   * measured 1,607 → 3,891 tokens). The caller adds the one earlier exchange a question refers back to.
    */
-  turns?: "fresh" | "conversation";
+  turns?: "bounded" | "fresh" | "conversation";
+  /** `bounded` lanes: the kept history (chars / 4) that rotates to the spare. */
+  historyBudgetTokens?: number;
   /** Live processes, spares included (S8 decides; the review starts at 3). */
   maxLive?: number;
   idleMs?: number;
@@ -170,6 +174,13 @@ export function unionSchema(kinds: Record<string, z.ZodType>): Record<string, un
   };
 }
 
+/**
+ * The `bounded` interactive history budget. A pooled ask's prefix is about 1.5k tokens and its
+ * message about 0.3-0.9k, so a 1k history keeps each turn's input near 2.5k while one session
+ * answers two to four asks (measured in tests/intent-pool-cost.test.ts).
+ */
+export const INTERACTIVE_HISTORY_TOKENS = 1_000;
+
 let sessionCounter = 0;
 class Session {
   readonly id = `s${++sessionCounter}`;
@@ -177,6 +188,8 @@ class Session {
   alive = true;
   busy = false;
   contextTokens = 0;
+  /** The conversation the CLI re-sends on each turn: earlier messages and replies, chars / 4. */
+  historyTokens = 0;
   lastUsed: number;
   private buffer = "";
   /** owner: client-detection: set when the tripwire killed this session. */
@@ -313,8 +326,9 @@ function laneKeyOf(call: BackendCall): string {
 
 /**
  * The warm CLI engine (D38, review §10), Claude Code only: Codex's app-server is experimental
- * and unmeasured (S9), so Codex stays one-shot. Lanes: one interactive lane per course whose
- * session answers one ask and hands over to a pre-warmed spare with the same prefix (`turns`), one
+ * and unmeasured (S9), so Codex stays one-shot. Lanes: one interactive lane per course whose warm
+ * session answers asks back to back and hands over to a pre-warmed spare with the same prefix once
+ * its short history passes the budget (`turns`), one
  * background session rotated per batch, and an escalation session on the strong model started on
  * demand and closed after each ask.
  */
@@ -322,7 +336,10 @@ export function createSessionPool(options: PoolOptions): SessionPool {
   const now = options.now ?? Date.now;
   const models = { ...CLAUDE_TIER_MODELS, ...options.models };
   const rotateAt = options.rotateAtTokens ?? 40_000;
-  const fresh = (options.turns ?? "fresh") === "fresh";
+  const turns = options.turns ?? "bounded";
+  const fresh = turns === "fresh";
+  const bounded = turns === "bounded";
+  const historyBudget = options.historyBudgetTokens ?? INTERACTIVE_HISTORY_TOKENS;
   const maxLive = options.maxLive ?? 3;
   const idleMs = options.idleMs ?? 10 * 60 * 1000;
   const schemaJson = inlineSchema(unionSchema(options.kinds));
@@ -426,6 +443,9 @@ export function createSessionPool(options: PoolOptions): SessionPool {
       const session = sessionFor(lane, prefixPath, prefixHash, model, prefix.length);
       const started = now();
       emit({ type: "ask_start", lane: lane.key, session: session.id, pack: call.pack.id, at: started });
+      // One ask per session: start the next ask's spare now, while this one answers, so a
+      // back-to-back ask never waits on a CLI start (starting it only after the answer did).
+      if (fresh && lane.key.startsWith("interactive:")) prewarm(lane);
       let result: ClaudeResult;
       try {
         result = await session.ask(text, call.timeoutMs, call.signal);
@@ -445,6 +465,7 @@ export function createSessionPool(options: PoolOptions): SessionPool {
       lane.failures = 0;
       const outcome = claudeOutcome(result, model);
       session.contextTokens = outcome.usage.in + outcome.usage.out;
+      session.historyTokens += Math.ceil((text.length + JSON.stringify(outcome.value ?? "").length) / 4);
       emit({ type: "ask_end", lane: lane.key, session: session.id, pack: call.pack.id, ok: true, usage: outcome.usage, ms: now() - started, at: now() });
       if (lane.key === "escalation") {
         session.kill();
@@ -454,6 +475,14 @@ export function createSessionPool(options: PoolOptions): SessionPool {
         session.kill();
         lane.session = null;
         emit({ type: "rotate", lane: lane.key, reason: "turn", at: now() });
+        prewarm(lane);
+      } else if (bounded && lane.key.startsWith("interactive:") && session.historyTokens >= historyBudget) {
+        // Past the budget: the next ask goes to the spare started at half of it.
+        session.kill();
+        lane.session = null;
+        emit({ type: "rotate", lane: lane.key, reason: "history", at: now() });
+        prewarm(lane);
+      } else if (bounded && lane.key.startsWith("interactive:") && session.historyTokens >= historyBudget / 2) {
         prewarm(lane);
       } else if (session.contextTokens >= rotateAt) {
         session.kill();
