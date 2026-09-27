@@ -9,7 +9,8 @@ import {
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { backup, DatabaseSync, type StatementSync } from "node:sqlite";
-import { planningMigration, planningRepository } from "./planning";
+import { planningMigration, planningRepository, type PlanningRepository } from "./planning";
+import { PLANNING_V9 } from "./planning-v9"; // owner: planning-perf
 import { textHash } from "../../retrieval/src/index";
 import { COURSE_CORE_SCHEMA, courseCoreRepository } from "./course-core";
 import { createPassageIndex, scopeToken } from "./passages";
@@ -74,7 +75,7 @@ import {
   type Store,
 } from "@magic/contracts";
 
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 const MAX_ATTEMPTS = 3;
 /** The latest pre-migration backup, beside the database (one kept; purge deletes it). */
 export function migrationBackupPath(path: string): string {
@@ -174,7 +175,7 @@ function payloadTextHash(payload: unknown): string {
 export function createStore(
   path: string,
   options: { now?: () => Date } = {},
-): Store & CourseCoreStore & { learning: SqlLearningStore } {
+): Store & CourseCoreStore & PlanningRepository & { learning: SqlLearningStore } {
   const clock = options.now ?? (() => new Date());
   const file = path !== ":memory:";
   if (file) mkdirSync(dirname(resolve(path)), { recursive: true, mode: 0o700 });
@@ -345,6 +346,7 @@ export function createStore(
   // v7: learning and practice tables (T10L, D17).
   steps.push([7, () => db.exec(LEARNING_SCHEMA + "PRAGMA user_version = 7;")]);
   steps.push([8, () => db.exec(LEARNING_V8 + "PRAGMA user_version = 8;")]);
+  steps.push([9, () => db.exec(PLANNING_V9 + "PRAGMA user_version = 9;")]); // owner: planning-perf
   const migrationBackup = file ? migrationBackupPath(path) : null;
   const passageIndex = createPassageIndex(db, prepare);
   const courseScope = (accountScope: string, courseId: string) =>
@@ -406,7 +408,7 @@ export function createStore(
     }
   }
   migrate();
-  const planning = planningRepository(db);
+  const planning = planningRepository(db, prepare); // owner: planning-perf: cached statements
   // owner: T06. Consent storage helpers.
   function readConsents(): ConsentRecord[] {
     const row = db
