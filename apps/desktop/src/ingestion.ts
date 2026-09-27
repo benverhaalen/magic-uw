@@ -1586,7 +1586,7 @@ export function createIngestion(
           return { state: "unknown", reason: "not_verified", checkedAt: null };
         if (
           latest.diagnostics?.some((d) =>
-            ["file_budget_deferred", "unchanged_page_reused", "scope_deferred"].includes(d.code),
+            ["file_budget_deferred", "unchanged_page_reused"].includes(d.code),
           )
         )
           return {

@@ -106,7 +106,7 @@ test("a scope whose own request outlasts its budget still ends at the scope time
     assert.equal(last(batches, scope)?.status, "ok", scope);
 });
 
-test("scopes still queued when the run is stopped are deferred, not timed out", async () => {
+test("scopes still queued when the run is stopped record nothing and are not timed out", async () => {
   const stop = new AbortController();
   const read = new Set<number>();
   const { fetch, origin } = manyPages(
@@ -125,14 +125,7 @@ test("scopes still queued when the run is stopped are deferred, not timed out", 
   assert.ok(read.size < PAGES);
   const pages = batches.filter((b) => b.source.courseId === "101" && b.source.scope.startsWith("page:"));
   assert.ok(!pages.some((b) => codes(b).includes("scope_time_limit")));
-  const deferred = pages.filter((b) => codes(b).includes("scope_deferred"));
-  assert.ok(deferred.length > 0, "queued pages are recorded as not read yet");
-  for (const batch of deferred) {
-    assert.equal(batch.status, "partial");
-    assert.equal(batch.complete, false);
-    assert.equal(batch.resources.length, 0);
-    assert.equal(batch.stats?.requests, 0);
-    assert.equal(batch.diagnostics?.[0]?.severity, "warning");
-    assert.ok(!read.has(Number(batch.source.scope.slice(5)) - 1000), `${batch.source.scope} never reached the network`);
-  }
+  // A scope that never reached the network keeps its prior stored state: no batch at all, so no
+  // more page batches than page bodies actually fetched.
+  assert.ok(pages.length <= read.size, `${pages.length} page batches for ${read.size} pages read`);
 });

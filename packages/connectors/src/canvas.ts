@@ -500,13 +500,7 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
           if (next) throw new CanvasFailure("partial", "page_limit");
           if (invalid) status = "partial";
         } catch (error) {
-          if (combined.aborted) {
-            // The run stopped before this scope reached the network: not read yet, not failed.
-            if (budgetTimer === undefined && pages === 0)
-              emit(course.id, courseName(course), scope, [], "partial", false,
-                [{ code: "scope_deferred", path: [], severity: "warning" }], started);
-            combined.throwIfAborted();
-          }
+          combined.throwIfAborted();
           status = budget.signal.aborted
             ? "partial"
             : failure(error, resources.length > 0);
