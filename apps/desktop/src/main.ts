@@ -24,7 +24,7 @@ import {
   isOutlookPublishedCalendar,
   readBounded,
 } from "../../../packages/connectors/src/network";
-import { createSecretVault } from "./secrets";
+import { clearSignOutSecrets, createSecretVault } from "./secrets";
 import sampleFixture from "../../../fixtures/course.json";
 import {
   commandSchema,
@@ -709,6 +709,8 @@ app
           "That isn't a published Outlook calendar link. In Outlook: Settings → Calendar → Shared calendars → Publish a calendar, then copy the ICS link.",
         );
       await vault.set("calendar:outlook", value === null ? "" : value.trim());
+      // Disconnecting removes the meetings now, not at the next refresh.
+      if (value === null) await execute({ type: "outlook-disconnect" });
       return { connected: value !== null };
     });
     ipcMain.handle("magic:outlook-calendar-status", async (event) => {
@@ -772,8 +774,9 @@ app
         await studentSession.clearCache();
         await gitlabSession.clearStorageData();
         await gitlabSession.clearCache();
-        // Canvas feed links go with the Canvas session; a connected Outlook calendar is separate.
-        await vault.deletePrefix("calendar:", ["calendar:outlook"]);
+        // Every saved calendar link goes, Outlook's included; its meetings are removed too.
+        await clearSignOutSecrets(vault);
+        await execute({ type: "outlook-disconnect" });
         await resetPlanningScope();
         if (signOutEpoch !== planningEpoch) return;
         const result = await execute({ type: "snapshot" });

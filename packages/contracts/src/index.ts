@@ -870,6 +870,8 @@ export const commandSchema = z.discriminatedUnion("type", [
     })
     .strict(),
   z.object({ type: z.literal("fixture") }).strict(),
+  // Removes only the Outlook calendar and its meetings from this device. Used by disconnect and sign-out.
+  z.object({ type: z.literal("outlook-disconnect") }).strict(),
   z
     .object({ type: z.literal("complete"), id, completed: z.boolean() })
     .strict(),

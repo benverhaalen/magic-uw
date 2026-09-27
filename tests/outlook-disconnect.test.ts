@@ -65,3 +65,35 @@ test("disconnecting Outlook through the real refresh removes its meetings, even 
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("the outlook-disconnect command removes only the Outlook calendar, right away", async () => {
+  const { createCore } = await import("@magic/core");
+  const { captureBatchSchema } = await import("@magic/contracts");
+  const fixture = (await import("../fixtures/course.json")).default;
+  const directory = mkdtempSync(join(tmpdir(), "magic-outlook-command-"));
+  const store = createStore(join(directory, "coursework.sqlite"));
+  const core = createCore(store, { fixture: captureBatchSchema.parse(fixture) });
+  try {
+    await core.execute({ type: "fixture" });
+    const course = store.resources().filter((r) => !r.deleted && r.courseId !== OUTLOOK_CALENDAR_COURSE_ID).length;
+    store.ingest({
+      source: { id: "calendar:outlook:x", label: "Outlook calendar", kind: "calendar", accountScope: "local", courseId: OUTLOOK_CALENDAR_COURSE_ID, scope: "outlook_calendar" },
+      observedAt: new Date().toISOString(), complete: true, status: "ok",
+      resources: Array.from({ length: 6 }, (_, i) => ({
+        externalId: `calendar:m${i}`, kind: "event" as const, courseId: OUTLOOK_CALENDAR_COURSE_ID, courseName: "Outlook calendar",
+        title: `Private meeting ${i}`, url: "https://outlook.office.com/calendar/", text: "", deadlines: [], points: null, submitted: null,
+        policy: { mode: "coaching" as const, evidence: "Personal calendar." },
+        calendar: { uid: `m${i}@x`, start: "2026-09-27T15:00:00Z", end: "2026-09-27T16:00:00Z", allDay: false, timezone: "UTC" },
+      })),
+    });
+    const result = await core.execute({ type: "outlook-disconnect" });
+    assert.equal(result.snapshot.resources.filter((r) => r.courseId === OUTLOOK_CALENDAR_COURSE_ID && !r.deleted).length, 0);
+    assert.equal(result.snapshot.sources.some((s) => s.courseId === OUTLOOK_CALENDAR_COURSE_ID), false);
+    assert.equal(result.snapshot.resources.filter((r) => !r.deleted && r.courseId !== OUTLOOK_CALENDAR_COURSE_ID).length, course, "coursework untouched");
+    // Nothing connected is a harmless no-op.
+    await core.execute({ type: "outlook-disconnect" });
+  } finally {
+    await core.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

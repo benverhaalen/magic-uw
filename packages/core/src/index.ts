@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import {
   commandSchema,
   courseExtractionBatchSchema,
+  OUTLOOK_CALENDAR_COURSE_ID,
   type Store,
   type ContextManifest,
   type CommandResult,
@@ -693,6 +694,14 @@ export function createCore(store: Store, options: CoreOptions) {
       case "day-plan-remove":
         store.removeDayPlanEntry(command.key, command.date);
         break;
+      case "outlook-disconnect": {
+        // Only the student's Outlook calendar; coursework and other feeds are never touched here.
+        for (const s of store.sources())
+          if (s.kind === "calendar" && s.courseId === OUTLOOK_CALENDAR_COURSE_ID)
+            store.removeSource(s.id);
+        message = "Outlook calendar disconnected; its meetings were removed from this device.";
+        break;
+      }
       case "purge":
         interrupt();
         store.purge();

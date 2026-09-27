@@ -220,7 +220,7 @@ export function App() {
     window.magic.signOutUW
       ? perform(
           () => window.magic.signOutUW!(),
-          "UW browser session cleared. Saved course records are still on this device.",
+          "UW session cleared and Outlook calendar disconnected. Saved course records are still on this device; use Delete local data to remove them.",
         )
       : undefined;
   const open = (url: string) => {
@@ -1174,6 +1174,7 @@ function Sources({
         <p className="small muted">
           If UW requests Duo or a new sign-in, complete it in the browser.
           Previously captured records remain available when a session expires.
+          Clearing the UW session also disconnects a published Outlook calendar.
         </p>
       </section>
       <OutlookCalendar busy={busy} onSync={onSync} />
