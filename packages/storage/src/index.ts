@@ -18,6 +18,11 @@ import {
   defaultPrivacy,
   instant,
   privacySchema,
+  identityRosterSchema,
+  autoIdentityStateSchema,
+  autoIdentityUpdateSchema,
+  type AutoIdentityUpdate,
+  type IdentityRoster,
   type Attempt,
   type EgressReceipt,
   type IngestReport,
@@ -969,6 +974,50 @@ export function createStore(path: string): Store {
       db.prepare(
         "INSERT INTO preferences VALUES ('privacy', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
       ).run(JSON.stringify(parsed));
+    },
+    identityRoster() {
+      // Stored in the existing preferences table: no schema change. Cleared by purge().
+      const row = db
+        .prepare("SELECT value FROM preferences WHERE key = 'identity_roster'")
+        .get();
+      return row
+        ? identityRosterSchema.parse(JSON.parse(String(row.value)))
+        : identityRosterSchema.parse({});
+    },
+    setIdentityRoster(value: IdentityRoster) {
+      const parsed = identityRosterSchema.parse(value);
+      db.prepare(
+        "INSERT INTO preferences VALUES ('identity_roster', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      ).run(JSON.stringify(parsed));
+    },
+    autoIdentities() {
+      // Kept apart from the manual roster so a sync can never overwrite manual entries.
+      const row = db
+        .prepare("SELECT value FROM preferences WHERE key = 'identity_roster_auto'")
+        .get();
+      return row
+        ? autoIdentityStateSchema.parse(JSON.parse(String(row.value)))
+        : { accounts: {} };
+    },
+    recordAutoIdentity(value: AutoIdentityUpdate) {
+      const update = autoIdentityUpdateSchema.parse(value);
+      const row = db
+        .prepare("SELECT value FROM preferences WHERE key = 'identity_roster_auto'")
+        .get();
+      const state = row
+        ? autoIdentityStateSchema.parse(JSON.parse(String(row.value)))
+        : { accounts: {} as ReturnType<typeof autoIdentityStateSchema.parse>["accounts"] };
+      const account = (state.accounts[update.accountScope] ??= { authorsByCourse: {} });
+      // The current profile replaces the account's previous automatic self identity.
+      if (update.self) account.self = update.self;
+      if (update.courseId && update.authors?.length) {
+        // Authors accumulate: a partial read never forgets a known student.
+        const known = account.authorsByCourse[update.courseId] ?? [];
+        account.authorsByCourse[update.courseId] = [...new Set([...known, ...update.authors])].slice(0, 2000);
+      }
+      db.prepare(
+        "INSERT INTO preferences VALUES ('identity_roster_auto', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      ).run(JSON.stringify(autoIdentityStateSchema.parse(state)));
     },
     setCompleted(id, completed) {
       if (!liveResource(id))

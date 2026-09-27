@@ -4,6 +4,7 @@ import {
   instant,
   resourceInputSchema,
   type ResourceInput,
+  type IdentityPerson,
 } from "@magic/contracts";
 import { canvasContent, safeCanvasEvidenceUrl } from "./canvas-content";
 import { CanvasFailure } from "./canvas-http";
@@ -67,6 +68,12 @@ export const courseSchema = z.object({
     .optional(),
   calendar: z
     .object({ ics: z.string().max(4000).optional() })
+    .nullable()
+    .optional(),
+  // include[]=teachers: only display names are kept, to retain them when scrubbing hosted payloads.
+  teachers: z
+    .array(z.object({ display_name: z.string().max(300).nullable().optional() }))
+    .max(50)
     .nullable()
     .optional(),
 });
@@ -214,6 +221,9 @@ export const discussionSchema = z.object({
   id: canvasId,
   title: short.min(1),
   message: html,
+  // Returned by default on topics/announcements. Used only for the local scrubbing roster; never stored in resources.
+  user_name: z.string().max(300).nullable().optional(),
+  author: z.object({ display_name: z.string().max(300).nullable().optional() }).nullable().optional(),
   ...common,
   context_code: z.string().max(100).optional(),
   posted_at: date,
@@ -348,8 +358,13 @@ export function courseResource(
       endAt: course.end_at,
       selection: courseSelection(course, selection),
       gradeEvidence: gradeEvidence?.length ? gradeEvidence : undefined,
+      instructors: instructorNames(course),
     },
   });
+}
+function instructorNames(course: CanvasCourse) {
+  const names = [...new Set((course.teachers ?? []).map((t) => t.display_name?.trim()).filter((n): n is string => !!n))];
+  return names.length ? names : undefined;
 }
 export function assignmentResource(
   raw: z.infer<typeof assignmentSchema>,
@@ -638,4 +653,44 @@ export function submissionEvidence(
         }))
       : undefined,
   };
+}
+/** Poster display name of a topic/announcement, unless it is a course teacher. */
+export function discussionAuthor(
+  raw: z.infer<typeof discussionSchema>,
+  course: CanvasCourse,
+): string | undefined {
+  const name = (raw.author?.display_name ?? raw.user_name)?.trim();
+  if (!name || name.length < 2) return undefined;
+  const teachers = new Set(instructorNames(course)?.map((n) => n.toLocaleLowerCase()));
+  return teachers.has(name.toLocaleLowerCase()) ? undefined : name;
+}
+export const profileSchema = z.object({
+  id: canvasId,
+  name: z.string().max(300).nullable().optional(),
+  short_name: z.string().max(300).nullable().optional(),
+  sortable_name: z.string().max(300).nullable().optional(),
+  login_id: z.string().max(320).nullable().optional(),
+  primary_email: z.string().max(320).nullable().optional(),
+});
+/**
+ * The student's own identity for the local scrubbing roster only. Never part
+ * of a capture batch. "Last, First" sortable names are reordered; a login or
+ * UW email local part that looks like a NetID is kept as a NetID.
+ */
+export function profileIdentity(raw: z.infer<typeof profileSchema>): IdentityPerson | undefined {
+  const clean = (v: string | null | undefined) => v?.normalize("NFKC").trim() || undefined;
+  const sortable = clean(raw.sortable_name)?.match(/^([^,]+),\s*(.+)$/);
+  const names = [clean(raw.name), clean(raw.short_name), sortable ? `${sortable[2]} ${sortable[1]}` : clean(raw.sortable_name)]
+    .filter((n): n is string => !!n && n.length >= 2 && n.length <= 200);
+  const login = clean(raw.login_id), email = clean(raw.primary_email);
+  const emails = [login, email].filter((v): v is string => !!v && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v));
+  const netIds = [login, ...emails.filter((e) => /@wisc\.edu$/i.test(e)).map((e) => e.split("@")[0])]
+    .filter((v): v is string => !!v && /^[A-Za-z][A-Za-z0-9]{1,15}$/.test(v));
+  const person = {
+    names: [...new Set(names)].slice(0, 10),
+    emails: [...new Set(emails.map((e) => e.toLowerCase()))].slice(0, 10),
+    netIds: [...new Set(netIds.map((n) => n.toLowerCase()))].slice(0, 10),
+    studentIds: [],
+  };
+  return person.names.length || person.emails.length || person.netIds.length ? person : undefined;
 }

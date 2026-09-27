@@ -3,6 +3,7 @@ import test from "node:test";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { captureBatchSchema } from "@magic/contracts";
 import { createStore } from "@magic/storage";
 import { createCore } from "@magic/core";
@@ -18,8 +19,6 @@ const courseIds = ["101", "102", "103", "104", "105"];
 const noPersistence = [
   "SYNTHETIC_CAPABILITY",
   "SYNTHETIC_DOWNLOAD_SECRET",
-  "never-store@example.test",
-  "Synthetic student - should not be stored",
   "author_id",
   "user_id",
 ];
@@ -447,6 +446,33 @@ test("runtime refresh saves scoped evidence, compiles supporting context, and ke
           .filter((name) => name.startsWith("coursework.sqlite"))
           .map((name) => readFileSync(join(directory, name)).toString("utf8"))
           .join("\n");
+        // The Canvas profile identity is deliberately kept in the local
+        // scrubbing roster (preferences) and nowhere else.
+        const auto = store.autoIdentities().accounts;
+        assert.ok(
+          Object.values(auto).some((a) => a.self?.names.includes("Avery Quinlan") && a.self.netIds.includes("aquinlan")),
+        );
+        const inspect = new DatabaseSync(database, { readOnly: true });
+        try {
+          const tables = inspect
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+            .all()
+            .map((row) => String(row.name));
+          const coursework = tables
+            .filter((name) => name !== "preferences")
+            .map((name) => JSON.stringify(inspect.prepare(`SELECT * FROM "${name}"`).all()))
+            .join("\n");
+          const otherPreferences = JSON.stringify(
+            inspect.prepare("SELECT * FROM preferences WHERE key <> 'identity_roster_auto'").all(),
+          );
+          for (const canary of ["Avery Quinlan", "aquinlan@wisc.edu", "Rowan Tessier"]) {
+            assert.ok(!current.includes(canary), `Snapshot leaked profile identity ${canary}`);
+            assert.ok(!coursework.includes(canary), `Coursework tables leaked profile identity ${canary}`);
+            assert.ok(!otherPreferences.includes(canary), `Preferences leaked profile identity ${canary}`);
+          }
+        } finally {
+          inspect.close();
+        }
         for (const canary of noPersistence) {
           assert.ok(
             !current.includes(canary),
