@@ -11,6 +11,8 @@ import { normaliseLabel } from "../../../learning/src/concepts";
 import { eligibleStudySource } from "../../../learning/src/router";
 import { findQuote } from "../../../retrieval/src/quotes";
 import { courseInclusion } from "../../../core/src/access";
+import type { CoursePrefixSource } from "../../../core/src/course-facts/prefix"; // owner: course-facts
+import { BRIEF_POLICY_POINTER, briefHoldsPolicy } from "../../../core/src/course-facts/brief"; // owner: course-facts
 import type { Resolve } from "./review";
 import type { GuideInput, GuideKind } from "./schema";
 
@@ -30,6 +32,8 @@ export interface GuideSelection {
   courseRef: string;
   label: string;
   resources: Resource[];
+  /** owner: course-facts. The resources the course brief in the prompt draws on (receipts and grants). */
+  briefResourceIds: string[];
   frame: CourseFrame;
   input: GuideInput;
   passages: Passage[];
@@ -49,7 +53,14 @@ export const localDay = (value: string): string | null => {
   return Number.isFinite(t) ? new Date(t).toLocaleDateString("en-CA") : null;
 };
 
-export function selectGuideInputs(store: GuideStore, kind: GuideKind, scope: PackScope, passageBudget = GUIDE_PASSAGE_BUDGET): SelectionResult {
+export function selectGuideInputs(
+  store: GuideStore,
+  kind: GuideKind,
+  scope: PackScope,
+  passageBudget = GUIDE_PASSAGE_BUDGET,
+  /** owner: course-facts. The course prefix (brief + catalogue): it replaces the re-serialised profile. */
+  coursePrefix: CoursePrefixSource | null = null,
+): SelectionResult {
   const sources = new Map(store.sources().map((s) => [s.id, s]));
   const included = courseInclusion(store);
   const inCourse = store.resources().filter((r) => !r.deleted && r.courseId === scope.courseId && sources.has(r.sourceId));
@@ -176,7 +187,8 @@ export function selectGuideInputs(store: GuideStore, kind: GuideKind, scope: Pac
   // The prefix: course, sections and the profile (grading, assessments, topics), then the policy.
   const profile: string[] = [];
   let profileChars = 0;
-  for (const c of intelligence?.claims ?? []) {
+  const prefix = coursePrefix?.(courseRef); // owner: course-facts: the brief carries the profile
+  for (const c of prefix ? [] : (intelligence?.claims ?? [])) {
     if (c.kind === "ai_policy") continue;
     const line = `- ${c.kind}: ${clip(collapse(c.label), 120)}${c.value === null || c.value === "" ? "" : `: ${clip(collapse(String(c.value)), 200)}`}`;
     if (profileChars + line.length > PROFILE_CHARS) break;
@@ -190,6 +202,14 @@ export function selectGuideInputs(store: GuideStore, kind: GuideKind, scope: Pac
     course: label,
     skeleton: [`Course: ${label}`, ...units.map((u) => `Section: ${nameOf(u)}`), ...(profile.length ? ["Course profile:", ...profile] : [])].join("\n"),
     policy: aiPolicy ? `${aiPolicy.policyMode ?? "unknown"}: ${clip(collapse(String(aiPolicy.value ?? aiPolicy.label)), 600)}` : policy ? `${policy.mode}: ${policy.evidence}` : "",
+    // owner: course-facts: the prefix, and a policy line pointing at the brief's quotes
+    ...(prefix
+      ? {
+          brief: prefix.text,
+          // Point at the brief only when it holds every quote behind the policy; otherwise keep the line above.
+          ...(briefHoldsPolicy(policy?.evidence, prefix.text) ? { policy: `${aiPolicy?.policyMode ?? policy?.mode ?? "unknown"}: ${BRIEF_POLICY_POINTER}` } : {}),
+        }
+      : {}),
   };
 
   const byId = new Map(resources.map((r) => [r.id, r]));
@@ -213,6 +233,7 @@ export function selectGuideInputs(store: GuideStore, kind: GuideKind, scope: Pac
       courseRef,
       label,
       resources,
+      briefResourceIds: prefix?.resourceIds ?? [],
       frame,
       input: {
         kind,

@@ -18,6 +18,8 @@ export interface JobContext {
   store: Store;
   now(): string;
   signal: AbortSignal;
+  /** owner: course-facts. Renews the job's lease (the drain's context); false: the lease was lost. */
+  heartbeat?(): boolean;
 }
 /**
  * - done: finished (or nothing to do)
@@ -34,6 +36,8 @@ export interface JobHandler {
   ready: boolean;
   /** Owning task, for the stub's honest failure message. */
   owner: string;
+  /** owner: course-facts. Lease length for this kind (model-backed kinds: 180 s); default the drain's. */
+  leaseMs?: number;
   /** Save → enqueue: whether a newly saved or changed resource needs this job. */
   onSave?(resource: Resource): boolean;
   /**

@@ -46,7 +46,7 @@ const item = (pid: string, quote: string, stem: string) => ({
 });
 
 test("fix-ai-pool: the generation pool covers every pack, and a second quiz call reuses the warm session (one spawn)", async () => {
-  assert.deepEqual(Object.keys(generationKinds()).sort(), ["briefing", "cards", "compare", "conceptmap", "faq", "guide", "problems", "quiz", "timeline"]);
+  assert.deepEqual(Object.keys(generationKinds()).sort(), ["briefing", "cards", "compare", "conceptmap", "course-facts", "faq", "guide", "problems", "quiz", "timeline"]);
   const store = createStore(":memory:");
   store.ingest(materials);
   store.setPrivacy({ ...defaultPrivacy, mode: "selective_cloud", hostedProvider: "claude", shareCourseText: true });

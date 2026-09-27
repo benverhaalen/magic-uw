@@ -16,6 +16,7 @@ export type {
   SourceCoverage,
   Verb,
   Input,
+  CourseBriefV1, // owner: course-facts
 } from "./v1";
 export { authorize, openSession, type Credentials, type SessionOptions, type ReadSession } from "./session";
 export { fitToBudget, DETAIL_LEVELS, CHARS_PER_TOKEN, type DetailLevel, type Fitted } from "./budget";

@@ -110,7 +110,12 @@ async function generationRunner(): Promise<ModelRunner | null> {
   return generationRuntime.runner;
 }
 // end owner: client-health
-const generation = createPackHandler({ store, runner: generationRunner });
+// owner: course-facts. The course brief, `<userData>/courses/<course>/syllabus.md`: the first,
+// byte-identical block of every pack and guide prompt about the course.
+import { createCourseBriefs } from "../../../packages/core/src/course-facts/brief";
+const courseBriefs = createCourseBriefs({ store, directory: generationUserData });
+// end owner: course-facts
+const generation = createPackHandler({ store, runner: generationRunner, brief: courseBriefs.courseBrief /* owner: course-facts */ });
 // end owner: generation
 // owner: page-views. The "page-approach" pack (the pages' optional "how to approach it"
 // paragraph) answers through the same pack seam; every other pack name goes on unchanged.
@@ -123,6 +128,13 @@ const generation = createPackHandler({ store, runner: generationRunner });
   });
 }
 // end owner: page-views
+// owner: course-facts. The `course.facts` drain job: code selects each course's syllabus, then the
+// student's own client (the generation runner above: isolated profile, tools off, the background
+// budget) finds the course facts through the egress path, once per syllabus change. No client, or
+// fully local mode: the local (Ollama) extractor. It replaces core's Ollama-only course pass.
+// It registers on the shared job registry below (`jobs`), beside agenda and site-recipes.
+import { createCourseFactsJob } from "../../../packages/core/src/course-facts/index";
+// end owner: course-facts
 /** Jev judgments run in main (network + consent gate); the reply arrives as "evaluation". */
 function relayJudgment(
   message:
@@ -194,6 +206,7 @@ const intent = createIntentRouter({
   runner: intentRunner,
   actions: fromNotes({ notesActions }, intentNotes),
   warm: (request) => intentRuntime?.pool?.warm(request) ?? Promise.resolve(false),
+  coursePrefix: generation.coursePrefix, // owner: course-facts: a one-course ask opens with the course prefix
 });
 // end owner: intent
 // owner: notes. Session notes: batch scaffolds on the tick, "fill from slides" through the same
@@ -237,6 +250,7 @@ const notes = createNotesService({ store, runner: generationRunner, remotes: not
 const jobs = pipelineJobRegistry();
 registerAgendaJobs(jobs, { runner: generationRunner });
 // end owner: agenda
+jobs.register(createCourseFactsJob({ runner: generationRunner, local: createLocalCourseExtractor(), brief: courseBriefs.courseBrief })); // owner: course-facts
 // owner: site-recipes (D32 step 4). A crawled course-site page saved or changed → organize that
 // course's stored site pages: stored recipes replay as code; only a new layout calls the
 // student's client (background lane, consent and receipts); leftovers go to Jev when configured.
@@ -256,9 +270,8 @@ jobs.register(
 // end owner: site-recipes
 const core = createCore(store, {
   fixture: captureBatchSchema.parse(fixture),
-  courseExtractor: createLocalCourseExtractor(),
   planningPublicClient: publicClients.core, // owner: T06
-  jobs, // owner: pipeline: passages, links and facts, the course pass; owner: agenda: agenda.estimate; owner: site-recipes
+  jobs, // owner: pipeline: passages, links and facts, the course pass; owner: agenda: agenda.estimate; owner: site-recipes; course-facts adds course.facts
   madgrades: { read: (request, signal) => hostRead("madgrades-read", { request }, signal) },
   planningHttp: { read: (request, signal) => hostRead("planning-public-read", { request }, signal) },
   seams: { learning: createLearningRouter({
@@ -819,6 +832,7 @@ port.on("message", async ({ data }: { data: any }) => {
       result,
     });
     if (data.command?.type === "purge") {
+      courseBriefs.purge(); // owner: course-facts
       ingestion.resume();
       pipeline.resume(); // owner: pipeline
     }
