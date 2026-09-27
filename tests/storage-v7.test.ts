@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -203,12 +203,8 @@ test("v8 → v9 preserves every learning row, including v8-only fields and conce
       for (const name of LEARNING_TABLES)
         assert.deepEqual(migrated.prepare(`SELECT * FROM ${name}`).all(), before[name], `${name} survives migration and reopening unchanged`);
       assert.deepEqual(migrated.prepare("PRAGMA foreign_key_check").all(), []);
-      const backup = new DatabaseSync(migrationBackupPath(file), { readOnly: true });
-      try {
-        assert.equal(backup.prepare("PRAGMA user_version").get()!.user_version, 8);
-        for (const name of LEARNING_TABLES)
-          assert.deepEqual(backup.prepare(`SELECT * FROM ${name}`).all(), before[name], `${name} is backed up before migration`);
-      } finally { backup.close(); }
+      // privacy (lead decision, September 27): the verified pre-v14 backup is deleted, not kept.
+      assert.equal(existsSync(migrationBackupPath(file)), false, "the verified backup was deleted");
     } finally { migrated.close(); }
   } finally { cleanup(); }
 });

@@ -141,12 +141,33 @@ const CANVAS_USER_RE = /\/users\/(\d{1,15})(?!\d)|[?&](?:user_id|student_id)=(\d
 // --- a token explicitly labelled as a NetID ---------------------------------------------------
 const NETID_RE = /\bnet\s?-?id\b\s*(?:is|:|#|=|-)?\s*([A-Za-z][A-Za-z0-9]{1,15})\b/dgi;
 
-/** Every detection in `text`, overlapping candidates included (the caller resolves overlaps). */
-export function detect(text: string): Detection[] {
+/**
+ * What the text is decides what is replaced (the operator's rule, September 27: protect people
+ * and credentials, never rewrite teaching material):
+ * - "teaching": instructor-authored pages, slides, files, readings, prompts, syllabus, quizzes.
+ *   Only identifiers of people and credentials: emails, phones, signed URLs, Canvas user IDs,
+ *   labelled NetIDs and context-labelled student IDs. An IP, an address, a date, a card-like or
+ *   SSN-like number there is course content (a networking lab, a civics reading, a Luhn exercise).
+ * - "personal": posts and replies, comments, feedback, mail, the student's notes. Every detector,
+ *   but a number (card, SSN, IP, address) only with a person context word before it.
+ * - "all": logs, which need no content: every detector, no context required.
+ */
+export type DetectMode = "teaching" | "personal" | "all";
+export const TEACHING_KINDS: ReadonlySet<DetectorKind> = new Set(["secret_url", "email", "phone", "canvas_user", "netid", "student_id"]);
+/** A person context word shortly before a number: whose it is, or what kind of personal number. */
+const PERSON_CONTEXT =
+  /\b(?:my|me|mine|i'm|i am|his|her|hers|their|theirs|your|yours|our|call|text|reach|contact|home|lives?|living|reside|resides|address|apartment|apt|ssn|social\s+security|card|visa|mastercard|amex|credit|debit|born|dob|birthday|id|login|logged|ip|connected)\b[^\n]{0,32}$/i;
+const NEEDS_PERSON_CONTEXT: ReadonlySet<DetectorKind> = new Set(["card", "ssn", "ip", "address"]);
+
+/** Every detection in `text` for `mode`, overlapping candidates included (the caller resolves overlaps). */
+export function detect(text: string, mode: DetectMode = "all"): Detection[] {
   const out: Detection[] = [];
   if (!text) return out;
-  const push = (kind: DetectorKind, start: number, end: number) =>
+  const push = (kind: DetectorKind, start: number, end: number) => {
+    if (mode === "teaching" && !TEACHING_KINDS.has(kind)) return;
+    if (mode === "personal" && NEEDS_PERSON_CONTEXT.has(kind) && !PERSON_CONTEXT.test(before(text, start, 48))) return;
     out.push({ kind, start, end, value: text.slice(start, end).toLowerCase() });
+  };
   detectSecretUrls(text, out);
   for (const m of text.matchAll(EMAIL_RE)) push("email", m.index, m.index + m[0].length);
   // Digit runs: cheap pre-check skips the numeric detectors for text without long numbers.

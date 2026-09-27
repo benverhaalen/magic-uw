@@ -43,6 +43,9 @@ const pending = new Map<
   { resolve: (value: any) => void; reject: (error: Error) => void }
 >();
 const store = createStore(process.env.MAGIC_DB_PATH!);
+// owner: privacy: a v14 backup that failed its check is kept; say why (redacted), never silently.
+const backupCheck = store.backupCheck();
+if (backupCheck?.status === "kept") process.stderr.write(logLine({ event: "privacy.backup-kept", reason: backupCheck.reason }));
 // owner: T06: every direct public client refuses until the setup consent record exists.
 const publicClients = createWorkerClients(store);
 // end owner: T06

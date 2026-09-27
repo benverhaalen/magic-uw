@@ -1,11 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { createStore, SCHEMA_VERSION } from "@magic/storage";
 import { deriveInstallKeys, open, seal } from "../packages/core/src/privacy/at-rest";
+import { verifyAndDropBackup } from "../packages/storage/src/privacy-v14";
 
 const at = "2026-09-26T12:00:00Z";
 const PREVIEW = "CANARYPREVIEW Quentin, your advising hold clears Friday";
@@ -15,6 +16,11 @@ const DARS = "CANARYDARS degree audit";
 const keyA = deriveInstallKeys(Buffer.alloc(32, 7)).atRest;
 const keyB = deriveInstallKeys(Buffer.alloc(32, 9)).atRest;
 
+const SENDER = "CANARYSENDER Ottoline", LIFE_GIST = "CANARYLIFEGIST advising reminder";
+function seedLife(store: ReturnType<typeof createStore>) {
+  store.ingest({ source: { id: "feeds", label: "Campus feeds", kind: "web", accountScope: "acct", courseId: "_life", scope: "news" }, observedAt: at, status: "ok", complete: true, resources: [] });
+  store.putLifeItem({ id: "li", sourceId: "feeds", area: "mail", courseId: null, sender: SENDER, title: "Advising", date: at, labels: [], link: "https://news.example.test/a", duplicateOf: null, gist: LIFE_GIST });
+}
 function seed(store: ReturnType<typeof createStore>) {
   store.ingest({
     source: { id: "mail", kind: "mail", label: "Outlook mail", accountScope: "acct", courseId: "outlook-mail", scope: "graph_mail" },
@@ -126,9 +132,14 @@ test("migration v14 is additive and idempotent from v9; receipts keep protection
   try {
     createStore(file).close();
     const db = new DatabaseSync(file);
-    db.exec("ALTER TABLE receipts DROP COLUMN protection; PRAGMA user_version = 9;");
+    // The chain: main's v12 and v13, then this branch's v14 (applied from v13).
+    db.exec("ALTER TABLE receipts DROP COLUMN protection; PRAGMA user_version = 13;");
     db.close();
-    for (let i = 0; i < 2; i++) createStore(file).close();
+    const first = createStore(file);
+    assert.equal(first.backupCheck()?.status, "deleted", "the verified pre-v14 backup is deleted");
+    assert.equal(first.migrationBackup(), null);
+    first.close();
+    createStore(file).close();
     const check = new DatabaseSync(file, { readOnly: true });
     assert.equal(check.prepare("PRAGMA user_version").get()!.user_version, SCHEMA_VERSION);
     assert.ok(check.prepare("PRAGMA table_info(receipts)").all().some((c) => c.name === "protection"));
@@ -142,6 +153,53 @@ test("migration v14 is additive and idempotent from v9; receipts keep protection
     store.purge();
     assert.equal(store.atRestStats().keyed, false, "purge drops the key from memory");
     store.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("life_items sender and gist are sealed on write and by the lazy pass", () => {
+  const dir = mkdtempSync(join(tmpdir(), "privacy-life-"));
+  const file = join(dir, "db.sqlite");
+  try {
+    const store = createStore(file);
+    seedLife(store);
+    assert.ok(raw(file).includes("CANARYLIFEGIST"), "plaintext before the key");
+    store.setAtRestKey(keyA);
+    assert.deepEqual(store.lifeItems("mail").map((l) => [l.sender, l.gist]), [[SENDER, LIFE_GIST]]);
+    store.putLifeItem({ ...store.lifeItems("mail")[0]!, id: "li2" });
+    store.close();
+    const bytes = raw(file);
+    for (const canary of ["CANARYSENDER", "CANARYLIFEGIST"]) assert.ok(!bytes.includes(canary), canary);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a backup whose row counts do not match is kept, with the reason", () => {
+  const dir = mkdtempSync(join(tmpdir(), "privacy-backup-"));
+  const file = join(dir, "db.sqlite"), backup = join(dir, "db.sqlite.pre-v14.bak");
+  try {
+    const store = createStore(file);
+    seed(store);
+    store.close();
+    const copy = new DatabaseSync(file);
+    copy.exec(`VACUUM INTO '${backup.replaceAll("\\", "/")}'`);
+    copy.close();
+    const extra = new DatabaseSync(backup);
+    extra.exec("INSERT INTO preferences VALUES ('extra', 'row')");
+    extra.close();
+    const db = new DatabaseSync(file);
+    const kept = verifyAndDropBackup(db, backup, 13);
+    assert.equal(kept.status, "kept");
+    assert.match((kept as { reason: string }).reason, /row count of preferences/);
+    assert.ok(existsSync(backup), "a failed check keeps the backup");
+    const fixed = new DatabaseSync(backup);
+    fixed.exec("DELETE FROM preferences WHERE key = 'extra'");
+    fixed.close();
+    assert.equal(verifyAndDropBackup(db, backup, 13).status, "deleted");
+    assert.equal(existsSync(backup), false);
+    db.close();
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

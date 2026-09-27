@@ -103,3 +103,26 @@ test("receipt counts come from the payload's placeholders, never its values", ()
   assert.deepEqual(counts, { student_name: 2, email: 1, phone: 1, student_id: 1 });
   assert.equal(describeProtection(counts), "2 names, 1 email, 1 phone, 1 student ID replaced");
 });
+
+test("what the text is decides what is replaced: teaching keeps content numbers; personal needs a person context word", () => {
+  const modes = (text: string, mode: "teaching" | "personal") => resolveDetections(detect(text, mode)).map((d) => d.kind);
+  const content = "Ping 192.168.1.1; verify 4111 1111 1111 1111; SSN 123-45-6789 is a sample; 1600 Pennsylvania Avenue; born June 23, 1912.";
+  assert.deepEqual(modes(content, "teaching"), []);
+  assert.deepEqual(modes("Email ta@wisc.edu or call (608) 555-0142; https://x.test/f?token=abc; /users/4455667", "teaching"), ["email", "phone", "secret_url", "canvas_user"]);
+  // Personal content: the same numbers stay without a person context word, and go with one.
+  assert.deepEqual(modes("The lab router is 192.168.1.1 and 1600 Pennsylvania Avenue is on the map.", "personal"), []);
+  assert.deepEqual(
+    modes("My IP is 128.104.1.20. My card is 5555 5555 5555 4444. I live at 1234 Canaryhill Street. My SSN is 219-09-9999.", "personal"),
+    ["ip", "card", "address", "ssn"],
+  );
+});
+
+test("a classmate's first name inside another person's full name is kept", () => {
+  const store = createStore(":memory:");
+  store.recordAutoIdentity({ accountScope: "a", courseId: "c", authors: ["Will Hart"] });
+  const roster = rosterFor(store, "c", "a");
+  const s = pseudonymSession("t");
+  assert.equal(protectText("Image by Will Drevo, used with permission.", roster, s, "teaching").text, "Image by Will Drevo, used with permission.");
+  assert.match(protectText("Ask Will Hart or Will about the lab.", roster, s, "teaching").text, /^Ask \[STUDENT_\d+\] or \[STUDENT_\d+\] about/);
+  store.close();
+});

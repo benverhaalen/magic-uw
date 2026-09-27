@@ -12,7 +12,7 @@ import { runPack } from "../../../core/src/jobs/pack";
 import { buildReceipt, egressFor, payloadHash } from "../../../core/src/egress";
 import { contentCategories } from "../../../core/src/access";
 import { rosterFor, toOriginalSpan } from "../../../core/src/identity";
-import { protectedPayloadScrubber, protectionCounts } from "../../../core/src/privacy/protect"; // owner: privacy
+import { classOf, protectedPayloadScrubber, protectionCounts } from "../../../core/src/privacy/protect"; // owner: privacy
 import { findQuote } from "../../../retrieval/src/quotes";
 import { conceptState, toView } from "../../../learning/src/knowledge/state";
 import { confusablePairs, frequentDistractors } from "../../../learning/src/insights/errors";
@@ -128,10 +128,12 @@ export async function generateGuide(
   const hosted = runner ? runner.client !== "local" : store.privacy().mode !== "local_only";
   // owner: privacy: the protection pass (roster + code detectors + per-request pseudonyms).
   const scrubber = protectedPayloadScrubber(store, hosted, sel.accountScope, `guide:${sel.courseRef}`);
-  const scrub = (value: string) => scrubber.field(value, sel.courseId);
-  scrubber.prime([...sel.passages.map((p) => p.text), sel.input.scope, ...sel.input.materials, ...sel.input.topics, ...sel.input.facts, sel.frame.course, sel.frame.skeleton, sel.frame.policy], sel.courseId);
+  // Labels, facts, the frame and the assembled prompt are teaching text; a passage is its resource's class.
+  const scrub = (value: string) => scrubber.field(value, sel.courseId, "teaching");
+  const passageClass = (sourceId: string) => { const r = store.resource(sel.resourceOf.get(sourceId) ?? ""); return r ? classOf(r) : "personal"; };
+  scrubber.prime([...sel.passages.map((p): [string, "teaching" | "personal"] => [p.text, passageClass(p.sourceId)]), ...[sel.input.scope, ...sel.input.materials, ...sel.input.topics, ...sel.input.facts, sel.frame.course, sel.frame.skeleton, sel.frame.policy].map((t): [string, "teaching"] => [t, "teaching"])], sel.courseId);
   // Freeze the exact passage projection; quotes map back to the original text through it.
-  const frozen = new Map(sel.passages.map((p) => [p.sourceId, { original: p.text, result: scrubber.text(p.text, sel.courseId) }]));
+  const frozen = new Map(sel.passages.map((p) => [p.sourceId, { original: p.text, result: scrubber.text(p.text, sel.courseId, passageClass(p.sourceId)) }]));
   const toOriginal = (sourceId: string | null, quote: string | null): string | null => {
     const p = sourceId ? frozen.get(sourceId) : undefined;
     if (!p) return quote;

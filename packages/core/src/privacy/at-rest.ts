@@ -48,6 +48,8 @@ const MAIL_FIELDS = ["preview", "gist", "fromName", "fromAddress"] as const;
 export const RESOURCE_AAD = "resource_versions.payload";
 export const PLANNING_CAPTURE_AAD = "planning_captures.payload";
 export const PLANNING_VERSION_AAD = "planning_versions.payload";
+export const LIFE_SENDER_AAD = "life_items.sender";
+export const LIFE_GIST_AAD = "life_items.gist";
 
 /** True for the resource kinds whose payload is sealed (mail and notes). */
 export function sensitiveItem(item: unknown): boolean {
@@ -66,6 +68,9 @@ export interface AtRestCodec {
   /** The searchable projection: mail indexes its subject and category only while sealed. */
   searchable<T extends { title: string; text: string }>(item: T): T;
   sealJson(value: unknown, aad: string): string;
+  /** One text column: sealed with a key, as written without one; a value that cannot be opened reads as "". */
+  sealText(value: string, aad: string): string;
+  openText(value: string, aad: string): string;
   openJson(text: string, aad: string): unknown;
   stats(): { sealed: number; opened: number; failed: number };
 }
@@ -146,6 +151,28 @@ export function createAtRestCodec(): AtRestCodec {
       }
       stats.sealed++;
       return seal(key, json, aad);
+    },
+    sealText(value, aad) {
+      if (!key) {
+        if (value) dirty = true;
+        return value;
+      }
+      stats.sealed++;
+      return seal(key, value, aad);
+    },
+    openText(value, aad) {
+      if (!isSealed(value)) return value;
+      if (!key) {
+        stats.failed++;
+        return "";
+      }
+      try {
+        stats.opened++;
+        return open(key, value, aad).toString("utf8");
+      } catch {
+        stats.failed++;
+        return "";
+      }
     },
     openJson(text, aad) {
       if (!isSealed(text)) return JSON.parse(text);

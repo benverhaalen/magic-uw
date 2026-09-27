@@ -8,6 +8,9 @@
  *    10-digit number needs a context word;
  * 3. per-request pseudonyms (pseudonyms.ts): the same person or value keeps one placeholder
  *    in every field of one request.
+ * What is replaced depends on what the text is (`ContentClass`): teaching material keeps its
+ * content (only roster students, emails, phones, signed URLs and Canvas user links go); personal
+ * content gets every detector, numbers only with a person context word.
  * The span map is identity.ts's `ScrubResult`, so `toOriginalSpan` maps quotes back unchanged.
  */
 import { randomUUID } from "node:crypto";
@@ -23,11 +26,23 @@ import {
   type Store,
 } from "@magic/contracts";
 import { outgoingProjection, rosterFor, scrubText, toOriginalSpan, validateCitations, type EffectiveRoster, type RedactionSpan, type ScrubResult } from "../identity";
-import { detect, resolveDetections, type Detection } from "./detectors";
+import { detect, resolveDetections, type Detection, type DetectMode } from "./detectors";
 import { labelOf, pseudonymSession, type PseudonymSession } from "./pseudonyms";
 
 export const protectionNote =
-  "Known student names and, by code checks, emails, phone numbers, student and campus IDs, addresses, dates of birth, signed links, IP addresses and card or social security numbers were replaced before sending. This is not anonymization; distinctive details can still identify people.";
+  "Names of students and, by code checks, emails, phone numbers, signed links and Canvas user links were replaced before sending; in messages, comments, mail and notes also IDs, addresses, dates of birth and card or social security numbers given as someone's. Course material is otherwise sent as written. This is not anonymization; distinctive details can still identify people.";
+
+/**
+ * What a text is, which decides what is replaced (the operator's rule, September 27):
+ * "teaching" for instructor-authored material, "personal" for what people wrote about themselves
+ * or each other. Unknown text is treated as personal (the more protective choice).
+ */
+export type ContentClass = "teaching" | "personal";
+/** Discussions and announcements, mail, the student's notes and student work are personal. */
+export function classOf(r: Pick<Resource, "kind"> & Partial<Pick<Resource, "mail" | "notes" | "gitlab">>): ContentClass {
+  if (r.mail || r.notes || r.gitlab) return "personal";
+  return r.kind === "message" ? "personal" : "teaching";
+}
 
 interface Chosen {
   kind: RedactionKind;
@@ -46,9 +61,10 @@ export interface ProtectResult extends ScrubResult {
  * ranking like every other kind, so a provider cannot follow one classmate across requests.
  * Switching is the lead's call (it changes three assertions in identity-scrubber.test.ts).
  */
-export const NAME_LABELS = "roster" as "roster" | "session";
+export const NAME_LABELS = "session" as "roster" | "session";
+/** The student's own identity stays `[STUDENT_SELF]` (a role, the same for every student). */
 const nameLabel = (session: PseudonymSession, key: string) =>
-  NAME_LABELS === "roster" ? `[${key}]` : session.placeholder("student_name", key);
+  NAME_LABELS === "roster" || key === "STUDENT_SELF" ? `[${key}]` : session.placeholder("student_name", key);
 
 const lower = (value: string) => value.normalize("NFKC").trim().toLocaleLowerCase();
 
@@ -73,9 +89,13 @@ function atSentenceStart(text: string, start: number) {
 }
 
 /** A one-word name hit that is ordinary prose, not a person. */
-function falseNameHit(text: string, start: number, end: number): boolean {
+function falseNameHit(text: string, start: number, end: number, rosterTokens: ReadonlySet<string>): boolean {
   const token = text.slice(start, end);
   if (/[\s,]/.test(token)) return false; // full names are never dropped
+  // "Will Drevo" when the roster has "Will Hart": a full roster name would have matched as one span,
+  // so a first name followed by another capitalized name word is a different person.
+  const next = /^\s+(\p{Lu}[\p{Ll}'’-]+)/u.exec(text.slice(end, end + 40))?.[1];
+  if (next && !rosterTokens.has(next)) return true;
   const word = token.toLocaleLowerCase();
   if (!COMMON_WORD_NAMES.has(word)) return false;
   if (token === word) return true; // "will" matched through a one-word roster name
@@ -87,6 +107,16 @@ function falseNameHit(text: string, start: number, end: number): boolean {
   return true;
 }
 
+const rosterWordCache = new WeakMap<EffectiveRoster, Set<string>>();
+/** Every name word of the roster (students and retained teachers), as written. */
+function rosterWords(roster: EffectiveRoster) {
+  let words = rosterWordCache.get(roster);
+  if (!words) {
+    words = new Set([...roster.people.flatMap(({ person }) => person.names), ...roster.retain].flatMap((n) => n.normalize("NFKC").split(/\s+/)).filter(Boolean));
+    rosterWordCache.set(roster, words);
+  }
+  return words;
+}
 const rosterIdCache = new WeakMap<EffectiveRoster, Set<string>>();
 function rosterIds(roster: EffectiveRoster) {
   let ids = rosterIdCache.get(roster);
@@ -98,15 +128,15 @@ function rosterIds(roster: EffectiveRoster) {
 }
 
 /** Every replacement for `text`: identifiers first, then roster names that do not overlap them. */
-export function protectionCandidates(text: string, roster: EffectiveRoster): Chosen[] {
+export function protectionCandidates(text: string, roster: EffectiveRoster, cls: ContentClass = "personal"): Chosen[] {
   const base = scrubText(text, roster);
   const ids = rosterIds(roster);
   const names: Chosen[] = [];
-  const identifiers: Detection[] = detect(text);
+  const identifiers: Detection[] = detect(text, cls satisfies DetectMode);
   for (const s of base.spans as RedactionSpan[]) {
     const original = text.slice(s.originalStart, s.originalEnd);
     if (s.kind === "student_name") {
-      if (!falseNameHit(text, s.originalStart, s.originalEnd))
+      if (!falseNameHit(text, s.originalStart, s.originalEnd, rosterWords(roster)))
         names.push({ kind: "student_name", key: s.placeholder.slice(1, -1), start: s.originalStart, end: s.originalEnd });
     } else if ((s.kind === "netid" || s.kind === "student_id") && ids.has(lower(original)))
       // A roster ID is replaced wherever it appears, with or without a context word.
@@ -118,18 +148,18 @@ export function protectionCandidates(text: string, roster: EffectiveRoster): Cho
 }
 
 const candidateCache = new WeakMap<PseudonymSession, Map<string, Chosen[]>>();
-function candidatesIn(session: PseudonymSession, text: string, roster: EffectiveRoster) {
+function candidatesIn(session: PseudonymSession, text: string, roster: EffectiveRoster, cls: ContentClass) {
   let cache = candidateCache.get(session);
   if (!cache) candidateCache.set(session, (cache = new Map()));
-  const key = `${roster.version}\u0000${text}`;
+  const key = `${roster.version}\u0000${cls}\u0000${text}`;
   let found = cache.get(key);
-  if (!found) cache.set(key, (found = protectionCandidates(text, roster)));
+  if (!found) cache.set(key, (found = protectionCandidates(text, roster, cls)));
   return found;
 }
 
 /** Protect one field of free text within a request's pseudonym session. */
-export function protectText(text: string, roster: EffectiveRoster, session: PseudonymSession): ProtectResult {
-  const chosen = candidatesIn(session, text, roster);
+export function protectText(text: string, roster: EffectiveRoster, session: PseudonymSession, cls: ContentClass = "personal"): ProtectResult {
+  const chosen = candidatesIn(session, text, roster, cls);
   const counts: ProtectionCounts = {};
   const spans: RedactionSpan[] = [];
   let out = "", cursor = 0;
@@ -145,10 +175,10 @@ export function protectText(text: string, roster: EffectiveRoster, session: Pseu
 }
 
 /** Number every identity in `texts` in HMAC order before the fields are rendered. */
-export function primeSession(session: PseudonymSession, texts: Iterable<string>, roster: EffectiveRoster): void {
+export function primeSession(session: PseudonymSession, texts: Iterable<string | [string, ContentClass]>, roster: EffectiveRoster): void {
   const entries: { kind: string; key: string }[] = [];
-  for (const t of texts)
-    for (const c of candidatesIn(session, t, roster))
+  for (const item of texts)
+    for (const c of typeof item === "string" ? candidatesIn(session, item, roster, "personal") : candidatesIn(session, item[0], roster, item[1]))
       if (c.kind !== "student_name" || NAME_LABELS === "session") entries.push({ kind: c.kind, key: c.key });
   session.prime(entries);
 }
@@ -189,20 +219,22 @@ export function protectedPayloadScrubber(store: Store, hosted: boolean, accountS
     if (!r) rosters.set(courseId, (r = ACCOUNT_WIDE.has(courseId) ? accountRoster(store, accountScope, courseId) : rosterFor(store, courseId, accountScope)));
     return r;
   };
-  const text = (value: string, courseId: string): ProtectResult => {
+  const text = (value: string, courseId: string, cls: ContentClass = "personal"): ProtectResult => {
     if (!hosted) return { text: value, spans: [], counts: {} };
-    const result = protectText(value, roster(courseId), session);
+    const result = protectText(value, roster(courseId), session, cls);
     for (const [k, n] of Object.entries(result.counts)) counts[k as RedactionKind] = (counts[k as RedactionKind] ?? 0) + n!;
     return result;
   };
   return {
     session,
     roster,
-    prime(texts: Iterable<string>, courseId: string) {
+    prime(texts: Iterable<string | [string, ContentClass]>, courseId: string) {
       if (hosted) primeSession(session, texts, roster(courseId));
     },
     text,
-    field: (value: string, courseId: string) => text(value, courseId).text,
+    field: (value: string, courseId: string, cls: ContentClass = "personal") => text(value, courseId, cls).text,
+    /** Replacement counts so far (never values), for a receipt. */
+    counts: (): ProtectionCounts => ({ ...counts }),
     summary(courseId: string): RedactionSummary | undefined {
       if (!hosted) return undefined;
       return { applied: true, counts: { ...counts }, rosterVersion: roster(courseId).version, note: protectionNote };
@@ -266,7 +298,7 @@ export function protectedProjection(
 ) {
   const scope = store.sources().find((s) => s.id === resource.sourceId)?.accountScope;
   const s = scrubber ?? protectedPayloadScrubber(store, true, scope, `projection:${resource.courseId}`);
-  const result = s.text(fieldText(resource, field), resource.courseId);
+  const result = s.text(fieldText(resource, field), resource.courseId, field === "text" ? classOf(resource) : "teaching");
   const start = Math.max(0, range?.start ?? 0), end = Math.min(result.text.length, range?.end ?? result.text.length);
   // Where the protected text equals the roster scrubber's, hand out identity.ts's projection, so
   // its own validateCitations keeps working; otherwise only validateProtectedCitations resolves it.
