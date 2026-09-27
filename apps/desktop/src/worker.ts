@@ -4,6 +4,7 @@ import { createStore } from "@magic/storage";
 import { createCore } from "@magic/core";
 import { captureBatchSchema, planningCaptureSchema, type PlanningCapture } from "@magic/contracts";
 import { queryRequestSchema } from "@magic/contracts"; // owner: T15
+import type { MailTriageState, MessageTriageState } from "@magic/contracts"; // owner: notifications gateway relay
 import fixture from "../../../fixtures/course.json";
 import { randomUUID } from "node:crypto";
 import { createLocalService } from "./local-service";
@@ -99,6 +100,35 @@ async function generationRunner(): Promise<ModelRunner | null> {
 // end owner: client-health
 const generation = createPackHandler({ store, runner: generationRunner });
 // end owner: generation
+/** Jev judgments run in main (network + consent gate); the reply arrives as "evaluation". */
+function relayJudgment(
+  message:
+    | { kind: "evaluate"; payload: unknown }
+    | { kind: "triage"; state: MessageTriageState }
+    | { kind: "mailTriage"; state: MailTriageState },
+  signal: AbortSignal,
+): Promise<any> {
+  const id = randomUUID();
+  return new Promise<any>((resolve, reject) => {
+    const cancel = () => {
+      port.postMessage({ kind: "abort", id });
+      pending.delete(id);
+      reject(new Error("Cancelled"));
+    };
+    signal.addEventListener("abort", cancel, { once: true });
+    pending.set(id, {
+      resolve(value) {
+        signal.removeEventListener("abort", cancel);
+        resolve(value);
+      },
+      reject(error) {
+        signal.removeEventListener("abort", cancel);
+        reject(error);
+      },
+    });
+    port.postMessage({ ...message, id });
+  });
+}
 // owner: intent. The command bar's router. Claude answers through a warm session pool (lane
 // interactive:intent, tools off, the byte-stable catalogue prefix) so the AI fallback skips the
 // CLI's start-up after the first call; Codex stays one-shot (its app-server is unmeasured, S9).
@@ -199,26 +229,13 @@ const core = createCore(store, {
     ? {
         gateway: {
           evaluate(payload: any, signal: AbortSignal) {
-            const id = randomUUID();
-            return new Promise<any>((resolve, reject) => {
-              const cancel = () => {
-                port.postMessage({ kind: "abort", id });
-                pending.delete(id);
-                reject(new Error("Cancelled"));
-              };
-              signal.addEventListener("abort", cancel, { once: true });
-              pending.set(id, {
-                resolve(value) {
-                  signal.removeEventListener("abort", cancel);
-                  resolve(value);
-                },
-                reject(error) {
-                  signal.removeEventListener("abort", cancel);
-                  reject(error);
-                },
-              });
-              port.postMessage({ kind: "evaluate", id, payload });
-            });
+            return relayJudgment({ kind: "evaluate", payload }, signal);
+          },
+          triage(state: MessageTriageState, signal: AbortSignal) {
+            return relayJudgment({ kind: "triage", state }, signal);
+          },
+          mailTriage(state: MailTriageState, signal: AbortSignal) {
+            return relayJudgment({ kind: "mailTriage", state }, signal);
           },
         },
       }
