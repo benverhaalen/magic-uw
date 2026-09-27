@@ -1001,7 +1001,7 @@ function AppearanceStep({ heading, onBack, onNext }: { heading: Heading; onBack:
         </div>
       </fieldset>
       <p className="onb-note">
-        Your choice is saved now. Dark mode and accent colours take effect as the My Magic UW design system adds them.
+        Your choice is saved now. The accent colours the window frame; dark mode arrives with the My Magic UW design system.
       </p>
       <Actions onBack={onBack}>
         <button className="onb-primary" onClick={onNext}>
