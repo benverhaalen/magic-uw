@@ -1202,6 +1202,12 @@ app
       validateSender(event);
       return (await clientHealth()).health(id, mode);
     });
+    // owner: reconfigure. Setup starts fresh: client config, modes, separate profiles, health answers.
+    ipcMain.handle("magic:clients-reset", async (event) => {
+      validateSender(event);
+      await (await clients()).reset();
+      healthRuntime = undefined;
+    });
     ipcMain.handle("magic:clients-set-mode", async (event, id: unknown, mode: unknown) => {
       validateSender(event);
       return (await clientHealth()).setMode(id, mode);
@@ -1262,6 +1268,23 @@ app
       } finally {
         if (purging) planningClears--;
       }
+    });
+    // owner: data-ai. Space used, Show in folder and Export for "Your data on this computer".
+    ipcMain.handle("magic:local-data", async (event, op: unknown) => {
+      validateSender(event);
+      const { localDataBytes } = await import("./local-data");
+      if (op === "show") shell.showItemInFolder(join(data, "workspace.sqlite"));
+      if (op === "export") {
+        const owner = BrowserWindow.fromWebContents(event.sender);
+        const options = { title: "Export My Magic UW data", defaultPath: "my-magic-uw-export.json", filters: [{ name: "JSON", extensions: ["json"] }] };
+        const choice = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options);
+        if (choice.canceled || !choice.filePath) return { bytes: await localDataBytes(data), exported: "cancelled" };
+        const snapshot = (await execute({ type: "snapshot" })).snapshot;
+        await writeFile(choice.filePath, JSON.stringify({ exportedAt: new Date().toISOString(), snapshot }, null, 2), { mode: 0o600 });
+        return { bytes: await localDataBytes(data), exported: "saved" };
+      }
+      if (op !== "status" && op !== "show") throw new Error("Unknown operation.");
+      return { bytes: await localDataBytes(data) };
     });
     ipcMain.handle("magic:mcp-export", async (event, id) => {
       validateSender(event);
