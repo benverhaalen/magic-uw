@@ -1,7 +1,7 @@
 /* T06 setup and agreement screen. Reuses the settings-page recipe; only the checkbox row,
    the recipient list and the agreement rows are new. */
 .consent-disclosure {
-  color: #262625;
+  color: var(--magic-ink);
   font-size: 13px;
   max-width: 620px;
 }
@@ -18,7 +18,7 @@
 }
 .consent-recipients dd {
   margin: 0;
-  color: #5f5f58;
+  color: var(--magic-ink-muted-strong);
 }
 .consent-check {
   display: flex;
@@ -35,7 +35,7 @@
   flex: none;
 }
 .consent-check input:focus-visible {
-  outline: 2px solid #262625;
+  outline: 2px solid var(--magic-focus);
   outline-offset: 2px;
 }
 .consent-sample {

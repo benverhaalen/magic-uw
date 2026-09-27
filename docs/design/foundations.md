@@ -36,6 +36,8 @@ Share roles across Magic surfaces; their proportions follow the job. The website
 
 Keep fill/ink pairs together. Gradients are bounded, with quiet interiors and controlled saturation. Check the least contrasting region behind text and the final composed alpha overlay. CSS supplies exact gradients; raster assets need a genuine content or visual role. Generated images cannot establish course facts. Later shell customization must preserve ink/focus pairs and status meanings.
 
+Light and dark share these roles; every colour token holds both values, and a student-chosen accent changes only command, focus and selection roles, never status, identity or surfaces. [Theming](theming.md) records the derivation and measured contrast (proposed).
+
 The seeds are not an accessibility certification. Normal text targets at least 4.5:1 and qualifying large text 3:1; necessary control boundaries and indicators require the applicable non-text contrast checks. Inspect actual hover, focus, disabled and error treatments. [Standards and research](system-research.md) provide the supporting scope.
 
 ## Boundaries, icons and targets

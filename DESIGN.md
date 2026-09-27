@@ -53,6 +53,7 @@ These corrections supersede any older examples showing accent stripes, authored 
 | Need | Specification |
 | --- | --- |
 | Identity and visual comparison | [Visual baseline](docs/design/visual-baseline.md), [tokens](docs/design/tokens.css), [foundations](docs/design/foundations.md) |
+| Dark mode, accents and measured contrast | [Theming](docs/design/theming.md) (proposed) |
 | Organize information or generate interface copy | [Content design](docs/design/content-design.md) |
 | Inspect working foundations and components | [Foundations gallery](docs/design/lab/foundations.html), [component lab](docs/design/lab/index.html) |
 | Build a recurring UI family | [Component recipes](docs/design/component-recipes.md) |

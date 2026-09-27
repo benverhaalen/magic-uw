@@ -166,3 +166,23 @@ Ben supplied `Lora-Medium.ttf` with its OFL, relayed verbatim by the driver:
 > “replace the cooper font with this font across everything in the app including website and everything mentioning cooper and then push the changes”
 
 **Decision:** supplied, unmodified Lora Medium at its true weight 500 replaces Cooper Light BT in the same editorial roles: wordmark, page title and selective section, work and study titles. It also replaces the marketing drafts' display faces. Geist, sizes, geometry, color, icons and branding are unchanged. The binary and OFL live in `packages/ui/assets/fonts`; bundling follows the OFL (unmodified, copyright and license retained). This supersedes D04's private-font arrangement for the editorial face; D04 and D05 quotes remain the record of serif scope. Screenshots, receipts and the Home reference JPEG made before this change show Cooper; they remain composition and color evidence, not Lora evidence. Recapture before claiming Lora wrapping or fit.
+
+### Theming: dark mode and accents — recorded September 27, 2026
+
+Operator brief, relayed to the design integrator (not a Ben quote): onboarding lets the student choose light, dark or system appearance and an accent colour, stored and set on the page root as `data-theme` and `data-accent`; "Today they change nothing because the token system has no dark or accent values. Add them." The brief requires every existing light value to be kept exactly, dark derived from the light hue and role structure without new roles, status meaning kept, an accent that never replaces a status colour, and WCAG 2.2 AA in both themes for every accent.
+
+**Built (proposed, not judged by Ben):**
+
+- Each colour token holds `light-dark(light, dark)`, and `color-scheme` selects the branch. That keeps one declaration per role, where a separate dark block would fork values, and serves the system path without JavaScript.
+- All 86 pre-existing tokens resolve to byte-identical light values.
+- Four accents: `blue` (default, exact current values), `rose`, `coral` and `plum`. Rose and coral reuse the identity hue families. Plum is a new hue and is the one colour proposal. Gold and green were rejected (study/warning collision; D13).
+- New component-tint tokens absorb literals that recent components held locally, with light values exact.
+- The calendar today date moves to a darker marker fill because the existing pair measured 4.42:1.
+
+**Inference and open points for Ben:**
+
+- Deep-tinted fills with light inks are an agent choice for dark. The alternative, pastel fills with dark inks as in light, is louder.
+- A rose or coral accent makes the primary action share a hue with identity rows of the same family, as blue already does today.
+- The lab-only `ink-on-shell-secondary` measures 4.17:1 on the light highlight. It is recorded, not changed.
+
+Details and tables: [theming](theming.md). Supersedes nothing; D13's "shell customization is later scope" still holds, since accents do not touch the shell.

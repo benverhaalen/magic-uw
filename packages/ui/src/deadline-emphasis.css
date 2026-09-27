@@ -3,24 +3,24 @@
  * The fill is a subdued gradient whose leading stop moves from strong (today, overdue) toward pale as
  * the deadline recedes. Ink is paired per hue and never fades; the strong stop is the contrast floor.
  *
- * Palette role seam: each hue reads --magic-hue-<name>-{strong,pale,ink}. The literals are measured
- * candidates (ink >= 4.5:1 on strong, see tests/ui-deadline-emphasis.test.ts); the color-system
- * token patch replaces them by defining those properties. Names/order live in IDENTITY_HUES.
+ * Palette role seam: each hue reads --magic-hue-<name>-{strong,pale,ink} from docs/design/tokens.css
+ * (light and dark; ink >= 4.5:1 on strong, pale and the quiet surface, see
+ * tests/ui-deadline-emphasis.test.ts). Names/order live in IDENTITY_HUES.
  * Surface: [data-magic-deadline][data-magic-hue] from deadlineSurface(). Sub-elements may use
  * --magic-deadline-fill (gradient), --magic-deadline-tint (flat leading stop) or --magic-deadline-ink.
  */
-[data-magic-hue=rose] { --magic-deadline-strong: var(--magic-hue-rose-strong, #f08bb0); --magic-deadline-pale: var(--magic-hue-rose-pale, #fcdce8); --magic-deadline-ink: var(--magic-hue-rose-ink, #5a1a38); }
-[data-magic-hue=coral] { --magic-deadline-strong: var(--magic-hue-coral-strong, #f7866a); --magic-deadline-pale: var(--magic-hue-coral-pale, #fedcd1); --magic-deadline-ink: var(--magic-hue-coral-ink, #5e2112); }
-[data-magic-hue=orange] { --magic-deadline-strong: var(--magic-hue-orange-strong, #f9a444); --magic-deadline-pale: var(--magic-hue-orange-pale, #ffe7c6); --magic-deadline-ink: var(--magic-hue-orange-ink, #5b3306); }
-[data-magic-hue=yellow] { --magic-deadline-strong: var(--magic-hue-yellow-strong, #f6d24a); --magic-deadline-pale: var(--magic-hue-yellow-pale, #fdf2c2); --magic-deadline-ink: var(--magic-hue-yellow-ink, #4d3c04); }
-[data-magic-hue=lime] { --magic-deadline-strong: var(--magic-hue-lime-strong, #b4dc55); --magic-deadline-pale: var(--magic-hue-lime-pale, #eef8cf); --magic-deadline-ink: var(--magic-hue-lime-ink, #324610); }
-[data-magic-hue=green] { --magic-deadline-strong: var(--magic-hue-green-strong, #6ed49a); --magic-deadline-pale: var(--magic-hue-green-pale, #d5f4e1); --magic-deadline-ink: var(--magic-hue-green-ink, #11472a); }
-[data-magic-hue=teal] { --magic-deadline-strong: var(--magic-hue-teal-strong, #55cbc3); --magic-deadline-pale: var(--magic-hue-teal-pale, #d2f3f0); --magic-deadline-ink: var(--magic-hue-teal-ink, #0c4643); }
-[data-magic-hue=blue] { --magic-deadline-strong: var(--magic-hue-blue-strong, #78adf5); --magic-deadline-pale: var(--magic-hue-blue-pale, #dbe8fd); --magic-deadline-ink: var(--magic-hue-blue-ink, #1a3a6c); }
-[data-magic-hue=indigo] { --magic-deadline-strong: var(--magic-hue-indigo-strong, #959ff7); --magic-deadline-pale: var(--magic-hue-indigo-pale, #e3e6fe); --magic-deadline-ink: var(--magic-hue-indigo-ink, #262c78); }
-[data-magic-hue=purple] { --magic-deadline-strong: var(--magic-hue-purple-strong, #c197f2); --magic-deadline-pale: var(--magic-hue-purple-pale, #f0e4fd); --magic-deadline-ink: var(--magic-hue-purple-ink, #44206f); }
-[data-magic-hue=magenta] { --magic-deadline-strong: var(--magic-hue-magenta-strong, #ea86da); --magic-deadline-pale: var(--magic-hue-magenta-pale, #fbdff6); --magic-deadline-ink: var(--magic-hue-magenta-ink, #5a1852); }
-[data-magic-hue=neutral] { --magic-deadline-strong: var(--magic-hue-neutral-strong, #e4d9cc); --magic-deadline-pale: var(--magic-hue-neutral-pale, #f5f0e9); --magic-deadline-ink: var(--magic-hue-neutral-ink, #3a322b); }
+[data-magic-hue=rose] { --magic-deadline-strong: var(--magic-hue-rose-strong); --magic-deadline-pale: var(--magic-hue-rose-pale); --magic-deadline-ink: var(--magic-hue-rose-ink); }
+[data-magic-hue=coral] { --magic-deadline-strong: var(--magic-hue-coral-strong); --magic-deadline-pale: var(--magic-hue-coral-pale); --magic-deadline-ink: var(--magic-hue-coral-ink); }
+[data-magic-hue=orange] { --magic-deadline-strong: var(--magic-hue-orange-strong); --magic-deadline-pale: var(--magic-hue-orange-pale); --magic-deadline-ink: var(--magic-hue-orange-ink); }
+[data-magic-hue=yellow] { --magic-deadline-strong: var(--magic-hue-yellow-strong); --magic-deadline-pale: var(--magic-hue-yellow-pale); --magic-deadline-ink: var(--magic-hue-yellow-ink); }
+[data-magic-hue=lime] { --magic-deadline-strong: var(--magic-hue-lime-strong); --magic-deadline-pale: var(--magic-hue-lime-pale); --magic-deadline-ink: var(--magic-hue-lime-ink); }
+[data-magic-hue=green] { --magic-deadline-strong: var(--magic-hue-green-strong); --magic-deadline-pale: var(--magic-hue-green-pale); --magic-deadline-ink: var(--magic-hue-green-ink); }
+[data-magic-hue=teal] { --magic-deadline-strong: var(--magic-hue-teal-strong); --magic-deadline-pale: var(--magic-hue-teal-pale); --magic-deadline-ink: var(--magic-hue-teal-ink); }
+[data-magic-hue=blue] { --magic-deadline-strong: var(--magic-hue-blue-strong); --magic-deadline-pale: var(--magic-hue-blue-pale); --magic-deadline-ink: var(--magic-hue-blue-ink); }
+[data-magic-hue=indigo] { --magic-deadline-strong: var(--magic-hue-indigo-strong); --magic-deadline-pale: var(--magic-hue-indigo-pale); --magic-deadline-ink: var(--magic-hue-indigo-ink); }
+[data-magic-hue=purple] { --magic-deadline-strong: var(--magic-hue-purple-strong); --magic-deadline-pale: var(--magic-hue-purple-pale); --magic-deadline-ink: var(--magic-hue-purple-ink); }
+[data-magic-hue=magenta] { --magic-deadline-strong: var(--magic-hue-magenta-strong); --magic-deadline-pale: var(--magic-hue-magenta-pale); --magic-deadline-ink: var(--magic-hue-magenta-ink); }
+[data-magic-hue=neutral] { --magic-deadline-strong: var(--magic-hue-neutral-strong); --magic-deadline-pale: var(--magic-hue-neutral-pale); --magic-deadline-ink: var(--magic-hue-neutral-ink); }
 
 [data-magic-deadline] {
   --magic-deadline-level: 36%;

@@ -59,7 +59,7 @@ a.magic-inline-time--link.magic-inline-time--link:focus-visible, .magic-inline-e
     box-shadow: 0 0 0 0.14em var(--magic-fill-secondary);
     text-decoration-color: currentColor;
   }
-  a.magic-inline-time--link:hover { background: var(--magic-inline-time-fill-hover, color-mix(in srgb, var(--_fill), #29231f 7%)); }
+  a.magic-inline-time--link:hover { background: var(--magic-inline-time-fill-hover, color-mix(in srgb, var(--_fill), var(--magic-ink) 7%)); }
 }
 
 .magic-inline-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

@@ -29,3 +29,10 @@
 /* Confirmation support and its inline undo share one readable semantic role. */
 .magic-ui-confirmation [role=status] { font: 400 12px/1.5 var(--magic-font-interface); }
 .magic-ui-confirmation [role=status] .magic-ui-action { font: inherit; min-width: 32px; min-height: 32px; vertical-align: baseline; }
+
+/* Text selection uses the accent's selection role, so highlighted text stays readable in both themes. */
+::selection { background: var(--magic-fill-selection); color: var(--magic-ink); }
+
+/* Form controls take their surface and ink from tokens (zero specificity: any component rule wins),
+   so a control without its own background does not fall back to the browser dark-mode grey. */
+:where(textarea, select, input:not([type=checkbox], [type=radio], [type=range], [type=color])) { background-color: var(--magic-surface-raised); color: var(--magic-ink); }
