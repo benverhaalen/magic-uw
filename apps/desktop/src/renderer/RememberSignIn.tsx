@@ -7,7 +7,7 @@ import type { AppBridge, RememberSignInStatus } from "@magic/contracts";
 export const rememberCopy = {
   label: "Remember my sign-in",
   saved:
-    "Your NetID sign-in is saved encrypted on this computer only and never sent anywhere. When UW asks you to sign in again while you're here, My Magic UW fills it in on UW's own sign-in page; Duo is still yours to approve.",
+    "Your NetID sign-in is saved encrypted on this computer only, and only ever entered on UW's own sign-in page. When UW asks you to sign in again while you're here, My Magic UW fills it in on UW's own sign-in page; Duo is still yours to approve.",
   notSaved:
     "Off. To turn it on, tick “Remember my sign-in on this computer” on UW's sign-in page.",
   forget: "Forget my sign-in",

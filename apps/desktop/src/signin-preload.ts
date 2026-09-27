@@ -58,6 +58,39 @@ function findForm(): NetIdFormHandle | null {
     },
     isForm: (target) => target === form,
     connected: () => form.isConnected,
+    actionUrl() {
+      // getAttribute, not form.action: a field named "action" would shadow the property.
+      const raw = submitter?.getAttribute("formaction") ?? form.getAttribute("action") ?? "";
+      try {
+        return new URL(raw, window.location.href).href;
+      } catch {
+        return null;
+      }
+    },
+    visible: () =>
+      [form, username, password].every(
+        (element) =>
+          element.getClientRects().length > 0 &&
+          element.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }),
+      ),
+    onSubmitIntent(listener) {
+      window.addEventListener(
+        "click",
+        (event) => {
+          if (event.isTrusted && submitter && event.target instanceof Node && submitter.contains(event.target))
+            listener();
+        },
+        true,
+      );
+      window.addEventListener(
+        "keydown",
+        (event) => {
+          if (event.isTrusted && event.key === "Enter" && event.target instanceof Node && form.contains(event.target))
+            listener();
+        },
+        true,
+      );
+    },
   };
 }
 
@@ -70,6 +103,7 @@ function start() {
     onSubmit: (listener) => window.addEventListener("submit", listener),
     pageState: () => ipcRenderer.invoke("magic-signin:page"),
     capture: (message) => ipcRenderer.send("magic-signin:capture", message),
+    now: () => performance.now(),
   }).catch(() => {});
 }
 

@@ -6,12 +6,15 @@ import { readFile, rename, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { verifyMyUwSession } from "../../../packages/connectors/src/uw-planning-profile";
 import type { UwPlanningReadResult } from "../../../packages/connectors/src/uw-planning-http";
+import { parseAutoSignInRecord, type AutoSignInRecord } from "./remember-signin"; // owner: T05e
 
 export interface SessionSettings {
   /** On by default (P1-D1): closing the window keeps the app running; it starts at login. */
   keepSignedIn: boolean;
   /** Set once a Canvas profile read verifies a sign-in in the app's window. */
   signedInBefore: boolean;
+  /** owner: T05e. Remember my sign-in's automatic-attempt record; present only once used. */
+  autoSignIn?: AutoSignInRecord;
 }
 export const defaultSessionSettings: Readonly<SessionSettings> = Object.freeze({
   keepSignedIn: true,
@@ -20,7 +23,11 @@ export const defaultSessionSettings: Readonly<SessionSettings> = Object.freeze({
 
 export function parseSessionSettings(raw: unknown): SessionSettings {
   const value = raw && typeof raw === "object" ? raw : {};
+  // owner: T05e. Kept only when present and well formed; the two settings above are unchanged.
+  const autoSignIn =
+    "autoSignIn" in value ? parseAutoSignInRecord(value.autoSignIn) : undefined;
   return {
+    ...(autoSignIn ? { autoSignIn } : {}),
     keepSignedIn:
       "keepSignedIn" in value && typeof value.keepSignedIn === "boolean"
         ? value.keepSignedIn

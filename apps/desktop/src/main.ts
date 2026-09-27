@@ -65,8 +65,13 @@ import {
 // end owner: T05c
 // owner: T05e. Remember my sign-in (plan D39).
 import {
+  PRESENT_IDLE_SECONDS,
   REMEMBERED_SIGNIN_FILE,
   autoSignInWanted,
+  emptyAutoSignInRecord,
+  nextAutoSignInRecord,
+  studentAtKeyboard,
+  type AutoSignInEvent,
   createAutoSignIn,
   createRememberedSignInStore,
   isNetIdLoginPage,
@@ -1309,9 +1314,40 @@ app
           pending?: SignInCapture;
         }
       | undefined;
-    let lastAutoSignInAt: number | undefined;
+    // Present = input in the last minute, the screen unlocked, and one of the app's windows focused.
     const studentPresent = () =>
-      !headless && powerMonitor.getSystemIdleState(30 * 60) === "active";
+      studentAtKeyboard({
+        idleSeconds: powerMonitor.getSystemIdleTime(),
+        appFocused: BrowserWindow.getFocusedWindow() !== null,
+        locked: powerMonitor.getSystemIdleState(PRESENT_IDLE_SECONDS) === "locked",
+        headless,
+      });
+    // The automatic-attempt record (blocked flag and last open) lives in the session settings file,
+    // so the one-attempt-per-expiry rule and the spacing survive a restart.
+    const autoRecord = () => sessionSettings.autoSignIn ?? { ...emptyAutoSignInRecord };
+    async function recordAutoSignIn(event: AutoSignInEvent) {
+      const next = nextAutoSignInRecord(autoRecord(), event);
+      const current = autoRecord();
+      if (next.blocked === current.blocked && next.lastAt === current.lastAt) return;
+      sessionSettings = { ...sessionSettings, autoSignIn: next };
+      await writeSessionSettings(sessionSettingsPath, sessionSettings).catch(() => {});
+    }
+    /** The one decision for every automatic (filling) open; records the open when it says yes. */
+    async function claimAutoSignIn(): Promise<boolean> {
+      const saved = await remembered.saved(),
+        now = Date.now();
+      const wanted = autoSignInWanted({
+        availability: rememberState(),
+        saved,
+        present: studentPresent(),
+        headless,
+        signInOpen: signInFlight.pending,
+        record: autoRecord(),
+        now,
+      });
+      if (wanted) await recordAutoSignIn({ kind: "opened", at: now });
+      return wanted;
+    }
     function signInFrame(event: IpcMainInvokeEvent | Electron.IpcMainEvent) {
       const attempt = signInAttempt,
         frame = event.senderFrame;
@@ -1383,6 +1419,9 @@ app
         const confirmed = confirmedNow(),
           pending = attempt.pending;
         attempt.pending = undefined;
+        // An automatic window that closes unconfirmed blocks further automatic attempts until a
+        // confirmed sign-in or the student's own "Sign in again" (no Duo-push loop).
+        void recordAutoSignIn({ kind: "closed", automatic, confirmed });
         if (attempt.auto.closed(confirmed) === "failed") {
           void remembered.forget().catch(() => {});
           trialLog({ event: "signin.remember", step: "auto-failed" });
@@ -1397,25 +1436,11 @@ app
         trialLog({ event: "signin.remember", step });
       });
     }
-    /** A sync confirmed the session ended: sign in again, once, while the student is here. */
+    /** A sync confirmed the session ended: sign in again, once per expiry, with the student here. */
     async function autoSignInAfterExpiry() {
       try {
-        const saved = await remembered.saved(),
-          now = Date.now();
-        if (
-          !autoSignInWanted({
-            availability: rememberState(),
-            saved,
-            present: studentPresent(),
-            headless,
-            signInOpen: signInFlight.pending,
-            lastAutoAt: lastAutoSignInAt,
-            now,
-          })
-        )
-          return;
-        lastAutoSignInAt = now;
         if (!(await consentGate("magic:signin"))) return;
+        if (!(await claimAutoSignIn())) return;
         trialLog({ event: "signin.remember", step: "auto-open" });
         if (!(await openSignIn("canvas", true))) return;
         const id = randomUUID();
@@ -1607,7 +1632,11 @@ app
         return handleSignInRequest(requestedService, {
           consented: () => consentGate("magic:signin"),
           refused: consentRefused,
-          open: (service) => openSignIn(service),
+          // owner: T05e: the student's own sign-in lifts the one-automatic-attempt block.
+          open: async (service) => {
+            await recordAutoSignIn({ kind: "student-sign-in" });
+            return openSignIn(service);
+          },
         });
         // end owner: client-health
       },
@@ -1708,8 +1737,9 @@ app
         }
         // D33: after a previous sign-in, the UW window opens by itself.
         if (!decision.openSignIn || !(await consentGate("magic:signin"))) return;
-        // owner: T05e: opened by the app, so a saved sign-in is filled while the student is here.
-        if (!(await openSignIn("canvas", studentPresent()))) return;
+        // owner: T05e: opened by the app; it fills a saved sign-in only when the same rule as a
+        // sync's expiry allows it (at the keyboard, not blocked, spaced; recorded across restarts).
+        if (!(await openSignIn("canvas", await claimAutoSignIn()))) return;
         const id = randomUUID();
         const timer = setTimeout(() => {
           calls.delete(id);

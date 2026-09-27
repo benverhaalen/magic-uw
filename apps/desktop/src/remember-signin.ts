@@ -5,8 +5,8 @@
 // The NetID and password live only in memory while they cross, and in one file encrypted by the
 // OS (safeStorage: DPAPI on Windows, the Keychain on macOS). Nothing here logs, and nothing here
 // returns the credential except `load()`, whose one caller is main's fill answer.
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { NETID_LOGIN_ORIGIN, type RememberedSignIn } from "./signin-page";
 export {
@@ -39,9 +39,16 @@ export const UNAVAILABLE_ENCRYPTION =
   "This computer isn't offering My Magic UW protected storage, so your sign-in can't be saved.";
 export const UNAVAILABLE_LINUX_KEYRING =
   "No system keyring is available to My Magic UW (only plain-text storage), so your sign-in can't be saved.";
+/** Linux backends that are a real keyring. Anything else (basic_text, unknown) can't save. */
+export const LINUX_KEYRING_BACKENDS: readonly string[] = Object.freeze([
+  "gnome_libsecret",
+  "kwallet",
+  "kwallet5",
+  "kwallet6",
+]);
 /**
  * Offered only when the build allows it; savable only when safeStorage can encrypt and, on Linux,
- * the backend is a real keyring rather than `basic_text` (Electron safe-storage docs).
+ * the backend is one of LINUX_KEYRING_BACKENDS (Electron safe-storage docs).
  */
 export function rememberAvailability(input: {
   buildEnabled: boolean;
@@ -52,7 +59,7 @@ export function rememberAvailability(input: {
   if (!input.buildEnabled) return { state: "off" };
   if (!input.encryptionAvailable)
     return { state: "unavailable", reason: UNAVAILABLE_ENCRYPTION };
-  if (input.platform === "linux" && (input.linuxBackend ?? "basic_text") === "basic_text")
+  if (input.platform === "linux" && !LINUX_KEYRING_BACKENDS.includes(input.linuxBackend ?? ""))
     return { state: "unavailable", reason: UNAVAILABLE_LINUX_KEYRING };
   return { state: "available" };
 }
@@ -81,8 +88,22 @@ export function createRememberedSignInStore(path: string, encryption: SignInEncr
     queue = next.catch(() => {});
     return next;
   };
+  /** Removes the file and any temporary file a write left behind (remembered-signin.enc.*.tmp). */
   async function forget() {
     await rm(path, { force: true });
+    const folder = dirname(path),
+      prefix = `${basename(path)}.`;
+    let names: string[] = [];
+    try {
+      names = await readdir(folder);
+    } catch {
+      return;
+    }
+    await Promise.all(
+      names
+        .filter((name) => name.startsWith(prefix) && name.endsWith(".tmp"))
+        .map((name) => rm(join(folder, name), { force: true })),
+    );
   }
   return {
     save(value: RememberedSignIn): Promise<void> {
@@ -207,9 +228,78 @@ export function createAutoSignIn(automatic: boolean) {
 }
 
 /**
- * Whether a sync's confirmed expiry opens the sign-in window by itself to fill the saved sign-in.
- * Only with the feature on and a sign-in saved, only while the student is present, never
- * headless, never over an open sign-in window, and at most once per AUTO_SIGN_IN_SPACING_MS.
+ * The automatic sign-in's cadence record, kept in the session settings file so it survives a
+ * restart (keep-signed-in.ts, `autoSignIn`).
+ * - blocked: an automatic window closed without a confirmed sign-in (for example UW accepted the
+ *   password but the student didn't finish Duo). One automatic attempt per expired session: no
+ *   further automatic attempt until a confirmed sign-in or the student's own "Sign in again".
+ * - lastAt: when the last automatic window opened (ms since the epoch), for the spacing.
+ */
+export interface AutoSignInRecord {
+  blocked: boolean;
+  lastAt: number | null;
+}
+export const emptyAutoSignInRecord: Readonly<AutoSignInRecord> = Object.freeze({
+  blocked: false,
+  lastAt: null,
+});
+/** A missing or malformed record reads as empty. */
+export function parseAutoSignInRecord(raw: unknown): AutoSignInRecord | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const { blocked, lastAt } = raw as Record<string, unknown>;
+  if (typeof blocked !== "boolean") return undefined;
+  return {
+    blocked,
+    lastAt:
+      typeof lastAt === "number" && Number.isFinite(lastAt) && lastAt >= 0 ? lastAt : null,
+  };
+}
+export type AutoSignInEvent =
+  /** The app opened an automatic (filling) window. */
+  | { kind: "opened"; at: number }
+  /** A sign-in window closed; `automatic` says whether the app opened it to fill. */
+  | { kind: "closed"; automatic: boolean; confirmed: boolean }
+  /** The student asked to sign in themselves ("Sign in again", Sign in to UW). */
+  | { kind: "student-sign-in" };
+export function nextAutoSignInRecord(
+  record: AutoSignInRecord,
+  event: AutoSignInEvent,
+): AutoSignInRecord {
+  if (event.kind === "opened") return { ...record, lastAt: event.at };
+  if (event.kind === "student-sign-in") return { ...record, blocked: false };
+  if (event.confirmed) return { ...record, blocked: false };
+  if (event.automatic) return { ...record, blocked: true };
+  return record;
+}
+
+/** Input in the last minute, while one of the app's windows has focus. */
+export const PRESENT_IDLE_SECONDS = 60;
+/**
+ * "Present" for a zero-touch renewal: someone used the keyboard or mouse in the last minute, the
+ * screen isn't locked, and one of the app's own windows has focus.
+ */
+export function studentAtKeyboard(input: {
+  idleSeconds: number;
+  appFocused: boolean;
+  locked: boolean;
+  headless: boolean;
+}): boolean {
+  return (
+    !input.headless &&
+    !input.locked &&
+    input.appFocused &&
+    Number.isFinite(input.idleSeconds) &&
+    input.idleSeconds >= 0 &&
+    input.idleSeconds < PRESENT_IDLE_SECONDS
+  );
+}
+
+/**
+ * Whether the app opens the sign-in window by itself to fill the saved sign-in: after a sync's
+ * confirmed expiry, and at launch. Only with the feature on and a sign-in saved, only with the
+ * student at the keyboard, never headless, never over an open sign-in window, never while the
+ * record is blocked, and at most once per AUTO_SIGN_IN_SPACING_MS. A clock that went backwards
+ * (now before lastAt) refuses too.
  */
 export function autoSignInWanted(input: {
   availability: RememberAvailability;
@@ -217,16 +307,19 @@ export function autoSignInWanted(input: {
   present: boolean;
   headless: boolean;
   signInOpen: boolean;
-  lastAutoAt: number | undefined;
+  record: AutoSignInRecord;
   now: number;
 }): boolean {
+  const { lastAt, blocked } = input.record;
   return (
     input.availability.state === "available" &&
     input.saved &&
     input.present &&
     !input.headless &&
     !input.signInOpen &&
-    (input.lastAutoAt === undefined || input.now - input.lastAutoAt >= AUTO_SIGN_IN_SPACING_MS)
+    !blocked &&
+    (lastAt === null ||
+      (input.now >= lastAt && input.now - lastAt >= AUTO_SIGN_IN_SPACING_MS))
   );
 }
 

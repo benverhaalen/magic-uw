@@ -58,7 +58,7 @@ export function isSignInPageState(value: unknown): value is SignInPageState {
 
 export const REMEMBER_LABEL = "Remember my sign-in on this computer";
 export const REMEMBER_NOTE =
-  "Stored encrypted on this computer only and never sent anywhere. Remove it any time in My Magic UW under Sources › UW Canvas (Forget my sign-in).";
+  "Stored encrypted on this computer only, and only ever entered on UW's own sign-in page. Remove it any time in My Magic UW under Sources › UW Canvas (Forget my sign-in).";
 export const REMEMBER_FAILED =
   "Your saved sign-in didn't work, so My Magic UW removed it. Sign in as usual; tick the box to save the new one.";
 
@@ -92,6 +92,19 @@ export function rememberBoxMarkup(state: {
   ].join("");
 }
 
+/** The student's own click on UW's submit button, or Enter in the form, must be this recent. */
+export const SUBMIT_INTENT_MS = 2000;
+/** True when a form's resolved action (or the submitter's formaction) posts to the NetID origin. */
+export function formPostsToNetId(actionUrl: string | null): boolean {
+  if (!actionUrl) return false;
+  try {
+    const url = new URL(actionUrl);
+    return url.origin === NETID_LOGIN_ORIGIN && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}
+
 /** The capture message the preload sends: the typed sign-in only when the box is ticked. */
 export type SignInCaptureMessage =
   | { remember: false }
@@ -106,6 +119,12 @@ export interface NetIdFormHandle {
   submit(): void;
   isForm(target: unknown): boolean;
   connected(): boolean;
+  /** Where a submit would post: the submitter's formaction, else the form's action, resolved. */
+  actionUrl(): string | null;
+  /** The form and both fields are rendered and visible (not hidden, transparent or zero-size). */
+  visible(): boolean;
+  /** A trusted click on UW's submit button, or a trusted Enter keydown inside the form. */
+  onSubmitIntent(listener: () => void): void;
 }
 export interface BoxHandle {
   checked: boolean;
@@ -125,13 +144,17 @@ export interface SignInPageEnv {
   pageState(): Promise<unknown>;
   /** send("magic-signin:capture", …) */
   capture(message: SignInCaptureMessage): void;
+  /** A clock (ms), for the submit-intent window. */
+  now(): number;
 }
 
 /**
  * The sign-in page's rules. Acts only in the top frame on UW's exact NetID login origin with the
- * NetID form present; re-checks both before filling. The box starts as main says (off unless a
- * sign-in is saved) and changes only on the student's own click. A capture is sent only for the
- * student's own submit, never for the automatic one. A fill happens once, only when main sent it.
+ * NetID form present; re-checks both before filling, with the form visible and posting to the
+ * NetID origin. The box starts as main says (off unless a sign-in is saved) and changes only on
+ * the student's own click. A capture is sent only for the student's own submit (a trusted click
+ * on UW's button or Enter in the form within SUBMIT_INTENT_MS), never for the automatic one.
+ * A fill happens once, only when main sent it.
  */
 export async function runSignInPage(
   env: SignInPageEnv,
@@ -159,11 +182,19 @@ export async function runSignInPage(
     checked = box.checked;
   });
   let autoSubmitting = false;
+  // A trusted submit event alone isn't proof: the page can call requestSubmit(). The student's own
+  // click on UW's button, or Enter in the form, must have come just before.
+  let intentAt = Number.NEGATIVE_INFINITY;
+  form.onSubmitIntent(() => {
+    intentAt = env.now();
+  });
   env.onSubmit((event) => {
+    const elapsed = env.now() - intentAt;
     if (
       !form.isForm(event.target) ||
       !event.isTrusted ||
       event.defaultPrevented ||
+      !(elapsed >= 0 && elapsed <= SUBMIT_INTENT_MS) ||
       autoSubmitting ||
       disabled ||
       !here()
@@ -176,7 +207,15 @@ export async function runSignInPage(
     );
   });
   const fill = offered.fill;
-  if (!fill || !here() || !form.connected()) return "offered";
+  // Filled only into a rendered, visible NetID form that posts back to the NetID origin.
+  if (
+    !fill ||
+    !here() ||
+    !form.connected() ||
+    !form.visible() ||
+    !formPostsToNetId(form.actionUrl())
+  )
+    return "offered";
   form.username.value = fill.netid;
   form.password.value = fill.password;
   autoSubmitting = true;

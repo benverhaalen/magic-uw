@@ -2,28 +2,42 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   AUTO_SIGN_IN_SPACING_MS,
+  LINUX_KEYRING_BACKENDS,
+  PRESENT_IDLE_SECONDS,
   REMEMBERED_SIGNIN_FILE,
   UNAVAILABLE_ENCRYPTION,
   UNAVAILABLE_LINUX_KEYRING,
   autoSignInWanted,
   createAutoSignIn,
   createRememberedSignInStore,
+  emptyAutoSignInRecord,
+  nextAutoSignInRecord,
+  parseAutoSignInRecord,
   parseCapture,
   parseSignIn,
   rememberAvailability,
   rememberSignInBuildEnabled,
+  studentAtKeyboard,
+  type AutoSignInRecord,
 } from "../apps/desktop/src/remember-signin";
+import {
+  readSessionSettings,
+  writeSessionSettings,
+  type SessionSettings,
+} from "../apps/desktop/src/keep-signed-in";
 import {
   REMEMBER_FAILED,
   REMEMBER_LABEL,
   REMEMBER_NOTE,
+  SUBMIT_INTENT_MS,
+  formPostsToNetId,
   isNetIdLoginPage,
   rememberBoxMarkup,
   runSignInPage,
@@ -67,9 +81,20 @@ async function withDir(run: (dir: string) => Promise<void>) {
 }
 
 /** A fake sign-in page for runSignInPage: the rules without a browser. */
-function fakePage(options: { href?: string; top?: boolean; state?: unknown; form?: boolean } = {}) {
+function fakePage(
+  options: {
+    href?: string;
+    top?: boolean;
+    state?: unknown;
+    form?: boolean;
+    action?: string | null;
+    visible?: boolean;
+  } = {},
+) {
   let href = options.href ?? LOGIN;
   let top = options.top ?? true;
+  let clock = 1_000; // a fake clock (ms) for the submit-intent window
+  let intentListener: (() => void) | undefined;
   const log = { invoked: 0, submitted: 0, markup: "", captures: [] as SignInCaptureMessage[] };
   const formMarker = {};
   const changeListeners: Array<(trusted: boolean) => void> = [];
@@ -97,6 +122,11 @@ function fakePage(options: { href?: string; top?: boolean; state?: unknown; form
     },
     isForm: (target) => target === formMarker,
     connected: () => true,
+    actionUrl: () => (options.action === undefined ? LOGIN : options.action),
+    visible: () => options.visible ?? true,
+    onSubmitIntent(listener) {
+      intentListener = listener;
+    },
   };
   const page = {
     env: undefined as unknown as SignInPageEnv,
@@ -114,7 +144,19 @@ function fakePage(options: { href?: string; top?: boolean; state?: unknown; form
       box.checked = value;
       for (const listener of changeListeners) listener(trusted);
     },
-    submit(event: Partial<{ isTrusted: boolean; defaultPrevented: boolean; target: unknown }> = {}) {
+    advance(ms: number) {
+      clock += ms;
+    },
+    /** The student's trusted click on UW's button (or Enter in the form). */
+    intent() {
+      intentListener?.();
+    },
+    /** A submit event; by default the student's own, right after their click. */
+    submit(
+      event: Partial<{ isTrusted: boolean; defaultPrevented: boolean; target: unknown }> = {},
+      withIntent = true,
+    ) {
+      if (withIntent) intentListener?.();
       submitListener?.({ target: formMarker, isTrusted: true, defaultPrevented: false, ...event });
     },
   };
@@ -133,6 +175,7 @@ function fakePage(options: { href?: string; top?: boolean; state?: unknown; form
     capture(message) {
       log.captures.push(message);
     },
+    now: () => clock,
   };
   return page;
 }
@@ -281,9 +324,17 @@ test("availability: the build switch, encryption and the Linux keyring", () => {
     reason: UNAVAILABLE_LINUX_KEYRING,
   });
   assert.deepEqual(rememberAvailability({ ...base, platform: "linux" }).state, "unavailable");
-  assert.deepEqual(rememberAvailability({ ...base, platform: "linux", linuxBackend: "gnome_libsecret" }), {
-    state: "available",
-  });
+  // Only a real keyring: gnome_libsecret and the kwallets. "unknown" and anything new refuse.
+  assert.deepEqual([...LINUX_KEYRING_BACKENDS], ["gnome_libsecret", "kwallet", "kwallet5", "kwallet6"]);
+  for (const backend of LINUX_KEYRING_BACKENDS)
+    assert.deepEqual(rememberAvailability({ ...base, platform: "linux", linuxBackend: backend }), {
+      state: "available",
+    });
+  for (const backend of ["unknown", "basic_text", "", "kwallet7", "GNOME_LIBSECRET"])
+    assert.deepEqual(rememberAvailability({ ...base, platform: "linux", linuxBackend: backend }), {
+      state: "unavailable",
+      reason: UNAVAILABLE_LINUX_KEYRING,
+    });
 });
 
 test("build switch: baked into the bundle at build time, and the preload is built", () => {
@@ -316,6 +367,13 @@ test("store: encrypted at rest, validated, and forget removes the file", async (
     await store.forget();
     assert.equal(await store.saved(), false);
     await store.forget(); // idempotent
+    // A write that died between writing and renaming leaves a temporary file; forget removes it too.
+    for (const name of [`${REMEMBERED_SIGNIN_FILE}.0b5e-synthetic.tmp`, `${REMEMBERED_SIGNIN_FILE}.x.tmp`])
+      await writeFile(join(dir, name), "encrypted bytes");
+    await writeFile(join(dir, "other.enc.x.tmp"), "not ours");
+    await store.save(SYNTHETIC);
+    await store.forget();
+    assert.deepEqual((await readdir(dir)).sort(), ["other.enc.x.tmp"], "only the saved sign-in and its temporary files go");
     await assert.rejects(store.save({ netid: "", password: "x" }), /can't be saved/);
     await assert.rejects(store.save({ netid: "bbadger", password: "x".repeat(128) }), /can't be saved/);
   });
@@ -414,7 +472,7 @@ test("a failed automatic sign-in clears the saved sign-in and shows the normal s
   assert.match(main, /attempt\.auto\.loadFailed\(\) === "failed"\) \{\s*void remembered\.forget\(\)/);
 });
 
-test("the automatic open after a sync's expiry: present, not headless, spaced, and only with a saved sign-in", () => {
+test("the automatic open: present, not headless, not blocked, spaced, and only with a saved sign-in", () => {
   const now = 10_000_000;
   const yes = {
     availability: { state: "available" } as const,
@@ -422,7 +480,7 @@ test("the automatic open after a sync's expiry: present, not headless, spaced, a
     present: true,
     headless: false,
     signInOpen: false,
-    lastAutoAt: undefined,
+    record: { blocked: false, lastAt: null } as AutoSignInRecord,
     now,
   };
   assert.equal(autoSignInWanted(yes), true);
@@ -432,8 +490,11 @@ test("the automatic open after a sync's expiry: present, not headless, spaced, a
   assert.equal(autoSignInWanted({ ...yes, signInOpen: true }), false);
   assert.equal(autoSignInWanted({ ...yes, availability: { state: "off" } }), false);
   assert.equal(autoSignInWanted({ ...yes, availability: { state: "unavailable", reason: "x" } }), false);
-  assert.equal(autoSignInWanted({ ...yes, lastAutoAt: now - AUTO_SIGN_IN_SPACING_MS + 1 }), false);
-  assert.equal(autoSignInWanted({ ...yes, lastAutoAt: now - AUTO_SIGN_IN_SPACING_MS }), true);
+  const at = (lastAt: number | null, blocked = false) => ({ ...yes, record: { blocked, lastAt } });
+  assert.equal(autoSignInWanted(at(now - AUTO_SIGN_IN_SPACING_MS + 1)), false);
+  assert.equal(autoSignInWanted(at(now - AUTO_SIGN_IN_SPACING_MS)), true);
+  assert.equal(autoSignInWanted(at(null, true)), false, "blocked refuses whatever the spacing");
+  assert.equal(autoSignInWanted(at(now + 60_000)), false, "a clock that went backwards refuses");
   // Main opens it only when the sync's own profile read confirms the session ended.
   const main = read("apps/desktop/src/main.ts");
   assert.match(
@@ -524,7 +585,10 @@ test("headless render: the sign-in box and the Settings row", () => {
   assert.ok(text(box).includes(REMEMBER_LABEL));
   assert.ok(text(box).includes(text(REMEMBER_NOTE)));
   assert.match(REMEMBER_NOTE, /encrypted on this computer only/);
-  assert.match(REMEMBER_NOTE, /never sent anywhere/);
+  assert.match(REMEMBER_NOTE, /only ever entered on UW's own sign-in page/);
+  assert.doesNotMatch(REMEMBER_NOTE, /never sent anywhere/);
+  assert.match(rememberCopy.saved, /only ever entered on UW's own sign-in page/);
+  assert.doesNotMatch(rememberCopy.saved, /never sent anywhere/);
   assert.match(REMEMBER_NOTE, /Forget my sign-in/);
   assert.match(rememberBoxMarkup({ checked: true }), / checked>/);
   assert.match(rememberBoxMarkup({ checked: true, disabledReason: "<b>x</b>" }), /&#60;b&#62;x/);
@@ -547,6 +611,195 @@ test("headless render: the sign-in box and the Settings row", () => {
   assert.equal(render(null), "");
   const app = read("apps/desktop/src/renderer/App.tsx");
   assert.match(app, /<KeepSignedInToggle busy=\{busy\} \/>[\s\S]{0,200}<RememberSignIn busy=\{busy\} \/>/);
+});
+
+test("page: a capture needs the student's own click on UW's button or Enter, within 2 s", async () => {
+  const page = fakePage();
+  assert.equal(await runSignInPage(page.env), "offered");
+  page.tick(true);
+  page.form.username.value = SYNTHETIC.netid;
+  page.form.password.value = SYNTHETIC.password;
+  // A trusted submit with no click or Enter before it (the page calling requestSubmit()).
+  page.submit({}, false);
+  assert.deepEqual(page.log.captures, []);
+  // A click more than SUBMIT_INTENT_MS before the submit doesn't count.
+  page.intent();
+  page.advance(SUBMIT_INTENT_MS + 1);
+  page.submit({}, false);
+  assert.deepEqual(page.log.captures, []);
+  // A click just before it does.
+  page.intent();
+  page.advance(SUBMIT_INTENT_MS);
+  page.submit({}, false);
+  assert.deepEqual(page.log.captures, [{ remember: true, signIn: SYNTHETIC }]);
+});
+
+test("page: fills only a visible form that posts to the NetID origin", async () => {
+  assert.equal(formPostsToNetId(LOGIN), true);
+  for (const action of [
+    null,
+    "",
+    "https://login.wisc.edu.evil.test/idp/",
+    "https://evil.test/collect",
+    "http://login.wisc.edu/idp/",
+    "https://user:pw@login.wisc.edu/idp/",
+    "javascript:void(0)",
+  ])
+    assert.equal(formPostsToNetId(action), false, String(action));
+  const state = { offer: true, checked: true, fill: SYNTHETIC };
+  for (const options of [{ action: "https://evil.test/collect" }, { action: null }, { visible: false }]) {
+    const page = fakePage({ state, ...options });
+    assert.equal(await runSignInPage(page.env), "offered", JSON.stringify(options));
+    assert.equal(page.form.password.value, "", "nothing filled");
+    assert.equal(page.log.submitted, 0);
+  }
+});
+
+test("presence: input in the last minute, unlocked, with an app window focused", () => {
+  const here = { idleSeconds: 5, appFocused: true, locked: false, headless: false };
+  assert.equal(PRESENT_IDLE_SECONDS, 60);
+  assert.equal(studentAtKeyboard(here), true);
+  assert.equal(studentAtKeyboard({ ...here, idleSeconds: 59 }), true);
+  assert.equal(studentAtKeyboard({ ...here, idleSeconds: 60 }), false);
+  assert.equal(studentAtKeyboard({ ...here, idleSeconds: 29 * 60 }), false, "the old 30-minute rule no longer counts");
+  assert.equal(studentAtKeyboard({ ...here, appFocused: false }), false, "another app in front");
+  assert.equal(studentAtKeyboard({ ...here, locked: true }), false);
+  assert.equal(studentAtKeyboard({ ...here, headless: true }), false);
+  assert.equal(studentAtKeyboard({ ...here, idleSeconds: Number.NaN }), false);
+  assert.equal(studentAtKeyboard({ ...here, idleSeconds: -1 }), false);
+});
+
+/**
+ * The cadence as main runs it (claimAutoSignIn, recordAutoSignIn), on a fake clock: every
+ * automatic open, from a sync's expiry or at launch, asks autoSignInWanted with the persisted
+ * record, records the open when it says yes, and every window close feeds nextAutoSignInRecord.
+ */
+function cadence(start: number, record: AutoSignInRecord = { ...emptyAutoSignInRecord }) {
+  let now = start;
+  const self = {
+    record,
+    opens: [] as number[],
+    advance(ms: number) {
+      now += ms;
+    },
+    /** A confirmed expiry from a sync, or a launch that needs a sign-in. Returns whether it filled. */
+    trigger(present = true): boolean {
+      const wanted = autoSignInWanted({
+        availability: { state: "available" },
+        saved: true,
+        present,
+        headless: false,
+        signInOpen: false,
+        record: self.record,
+        now,
+      });
+      if (wanted) {
+        self.record = nextAutoSignInRecord(self.record, { kind: "opened", at: now });
+        self.opens.push(now);
+      }
+      return wanted;
+    },
+    close(automatic: boolean, confirmed: boolean) {
+      self.record = nextAutoSignInRecord(self.record, { kind: "closed", automatic, confirmed });
+    },
+    student() {
+      self.record = nextAutoSignInRecord(self.record, { kind: "student-sign-in" });
+    },
+  };
+  return self;
+}
+
+test("cadence: one automatic attempt per expired session; an unfinished Duo never repeats", () => {
+  const t0 = Date.UTC(2026, 8, 27, 15, 0, 0);
+  const run = cadence(t0);
+  assert.equal(run.trigger(), true, "the first expiry fills");
+  // UW accepted the password; the student left the Duo push unanswered and the window closed.
+  run.close(true, false);
+  assert.equal(run.record.blocked, true);
+  // Canvas retries and manual refreshes keep confirming the expiry for a day: nothing reopens.
+  for (let tick = 0; tick < 96; tick++) {
+    run.advance(AUTO_SIGN_IN_SPACING_MS);
+    assert.equal(run.trigger(), false, `tick ${tick}`);
+  }
+  assert.deepEqual(run.opens, [t0], "exactly one Duo push");
+  // The student's own "Sign in again" lifts the block; that window is manual and fills nothing.
+  run.student();
+  assert.equal(run.record.blocked, false);
+  run.close(false, true);
+  run.advance(AUTO_SIGN_IN_SPACING_MS);
+  assert.equal(run.trigger(), true, "the next expiry, after a confirmed sign-in, fills once");
+  run.close(true, true);
+  assert.equal(run.record.blocked, false, "a confirmed automatic sign-in leaves it open");
+  // A manual window closed without signing in changes nothing.
+  run.close(false, false);
+  assert.equal(run.record.blocked, false);
+});
+
+test("cadence: spacing between automatic opens; a confirmed sign-in lifts the block", () => {
+  const t0 = Date.UTC(2026, 8, 27, 15, 0, 0);
+  const run = cadence(t0);
+  assert.equal(run.trigger(false), false, "not at the keyboard: nothing, and nothing recorded");
+  assert.deepEqual(run.record, emptyAutoSignInRecord);
+  assert.equal(run.trigger(), true);
+  run.close(true, true);
+  run.advance(AUTO_SIGN_IN_SPACING_MS - 1);
+  assert.equal(run.trigger(), false, "inside the spacing");
+  run.advance(1);
+  assert.equal(run.trigger(), true, "at the spacing");
+  run.close(true, false);
+  run.advance(AUTO_SIGN_IN_SPACING_MS);
+  assert.equal(run.trigger(), false, "blocked");
+  run.close(false, true); // a confirmed sign-in the student did in a manual window
+  assert.equal(run.trigger(), true);
+  assert.equal(run.opens.length, 3);
+});
+
+test("cadence: the block and the spacing persist across a restart in the session settings file", async () => {
+  await withDir(async (dir) => {
+    const path = join(dir, "session-settings.json");
+    const t0 = Date.UTC(2026, 8, 27, 15, 0, 0);
+    // Launch 1: an automatic open at launch, then the student closes Duo unfinished.
+    let settings: SessionSettings = await readSessionSettings(path);
+    assert.equal(settings.autoSignIn, undefined, "a fresh file has no record");
+    const first = cadence(t0, settings.autoSignIn);
+    assert.equal(first.trigger(), true);
+    await writeSessionSettings(path, (settings = { ...settings, autoSignIn: first.record }));
+    first.close(true, false);
+    await writeSessionSettings(path, (settings = { ...settings, autoSignIn: first.record }));
+    // Quit and relaunch a day later: the launch path asks the same rule and is refused.
+    settings = await readSessionSettings(path);
+    assert.deepEqual(settings.autoSignIn, { blocked: true, lastAt: t0 });
+    const second = cadence(t0 + 24 * 60 * 60_000, settings.autoSignIn);
+    assert.equal(second.trigger(), false);
+    // The student signs in themselves; that's recorded, and the next launch may fill again.
+    second.student();
+    second.close(false, true);
+    await writeSessionSettings(path, { ...settings, autoSignIn: second.record });
+    settings = await readSessionSettings(path);
+    assert.deepEqual(settings.autoSignIn, { blocked: false, lastAt: t0 });
+    // The spacing survives a restart too: an open at t1, a relaunch 5 minutes later is refused.
+    const t1 = t0 + 48 * 60 * 60_000;
+    const third = cadence(t1, settings.autoSignIn);
+    assert.equal(third.trigger(), true);
+    await writeSessionSettings(path, { ...settings, autoSignIn: third.record });
+    const fourth = cadence(t1 + 5 * 60_000, (await readSessionSettings(path)).autoSignIn);
+    assert.equal(fourth.trigger(), false);
+    // T05c's own settings are untouched by the record.
+    assert.equal((await readSessionSettings(path)).keepSignedIn, true);
+  });
+  assert.equal(parseAutoSignInRecord({ blocked: "yes" }), undefined);
+  assert.deepEqual(parseAutoSignInRecord({ blocked: true, lastAt: -5 }), { blocked: true, lastAt: null });
+  assert.deepEqual(parseAutoSignInRecord({ blocked: false, lastAt: 12 }), { blocked: false, lastAt: 12 });
+});
+
+test("main runs every automatic open through claimAutoSignIn and records every close", () => {
+  const main = read("apps/desktop/src/main.ts");
+  // The two automatic paths (a sync's expiry, and launch) both claim through the one rule.
+  assert.equal(main.match(/await claimAutoSignIn\(\)/g)?.length, 2);
+  assert.match(main, /openSignIn\("canvas", await claimAutoSignIn\(\)\)/);
+  assert.match(main, /void recordAutoSignIn\(\{ kind: "closed", automatic, confirmed \}\)/);
+  assert.match(main, /await recordAutoSignIn\(\{ kind: "student-sign-in" \}\);\s*return openSignIn\(service\)/);
+  assert.doesNotMatch(main, /lastAutoSignInAt|getSystemIdleState\(30 \* 60\)/);
 });
 
 test("packaging: cookie encryption is on, RunAsNode stays for the MCP export", () => {
