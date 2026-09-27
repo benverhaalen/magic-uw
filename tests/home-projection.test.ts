@@ -67,19 +67,26 @@ test('review selection requires current exact linked material in same scope; emp
  assert.equal(selectHomeEvidence([assignment,{...material,sourceId:'other'}],{sources,links:[link]},now,tz).study.length,0);
  assert.deepEqual(selectHomeEvidence([],{sources,links:[]},now,tz).study,[]);
 });
-test('Home Today counts unique items, shows up to six, and discloses the rest; all-day entries are reachable buttons',()=>{
- const render=(count:number,allDay:number)=>{
+// Home Today reveals due items three at a time ("Show next N"), like Upcoming: Ben's d44e863 and
+// 5c3b87a replaced the earlier "up to six, then a disclosure" rule. The heading still counts every item.
+test('Home Today counts unique items, reveals them three at a time, and all-day entries are reachable buttons',()=>{
+ const render=(count:number,allDay:number,shown?:number)=>{
   const dueItems=Array.from({length:count},(_,i)=>resource(`d${i}`,{deadline:due('2026-09-28T04:59:00Z')}));
   const entries=Array.from({length:allDay},(_,i)=>feedEntry(`a${i}`,`event-calendar-event-${i}`));
-  return renderToStaticMarkup(createElement(TodayRail,{now,homeDueItems:dueItems,courseLabel:()=>'COURSE 1',compactEmpty:true,resources:[...dueItems,...entries],sources,onSelect:()=>{},onPlan:async()=>{}}));
+  return renderToStaticMarkup(createElement(TodayRail,{now,homeDueItems:dueItems,homeDueCount:shown,courseLabel:()=>'COURSE 1',compactEmpty:true,resources:[...dueItems,...entries],sources,onSelect:()=>{},onPlan:async()=>{}}));
  };
  const rows=(html:string)=>(html.match(/data-focus-key="today-d\d+"/g) ?? []).length;
+ const three=render(3,0);
+ assert.equal(rows(three),3);assert.doesNotMatch(three,/home-show-next/);assert.match(three,/<span>Due today<\/span><span>3<\/span>/);
  const six=render(6,1);
- assert.equal(rows(six),6);assert.doesNotMatch(six,/more due today/);assert.match(six,/<span>Due today<\/span><span>6<\/span>/);
+ assert.equal(rows(six),3);assert.match(six,/<span>Due today<\/span><span>6<\/span>/);assert.doesNotMatch(six,/more due today/);
+ assert.match(six,/<button class="home-show-next" data-focus-key="today-next" aria-label="Show next 3 due today; 3 of 6 shown">Show next 3<\/button>/);
  assert.match(six,/<button[^>]*class="rail-allday rail-allday--home"/);
- const eight=render(8,4);
- assert.match(eight,/<span>Due today<\/span><span>8<\/span>/);assert.equal(rows(eight),8);
- assert.match(eight,/<details class="rail-more" data-place-disclosure="today-due-more"><summary data-focus-key="today-due-more">3 more due today<\/summary>/);
- assert.equal(rows(eight.slice(0,eight.indexOf('today-due-more'))),5);
+ const sixAll=render(6,1,6);
+ assert.equal(rows(sixAll),6);assert.doesNotMatch(sixAll,/home-show-next/);
+ const eight=render(8,4,6);
+ assert.match(eight,/<span>Due today<\/span><span>8<\/span>/);assert.equal(rows(eight),6);
+ assert.match(eight,/aria-label="Show next 2 due today; 6 of 8 shown">Show next 2<\/button>/);
+ assert.equal(rows(render(8,4,8)),8);
  assert.match(eight,/2 more all day/);assert.equal((eight.match(/rail-allday--home/g) ?? []).length,4);
 });
