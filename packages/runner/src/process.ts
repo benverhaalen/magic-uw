@@ -36,7 +36,7 @@ export function resolveNpmShim(
   const match = /"%dp0%\\([^"%]+\.(?:js|mjs|cjs))"/i.exec(text);
   if (!match) return null;
   const dir = dirname(shimPath);
-  const script = join(dir, match[1]);
+  const script = join(dir, ...match[1].split("\\"));
   if (!isFile(script)) return null;
   const native = nativeBinaryFor(script);
   if (native) return { file: native, prefixArgs: [] };

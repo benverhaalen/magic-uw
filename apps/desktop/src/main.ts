@@ -48,7 +48,6 @@ import {
   captureEnvelopeSchema,
   planningCaptureSchema,
   localQuestionSchema,
-  learningStartSchema, learningActSchema, learningDraftSchema,
   queryRequestSchema, // owner: T15
   type CommandResult,
 } from "@magic/contracts";
@@ -798,7 +797,7 @@ app
       );
     });
     async function localOperation(
-      operation: "status" | "ask" | "learning-list" | "learning-get" | "learning-start" | "learning-act" | "learning-draft",
+      operation: "status" | "ask",
       request?: unknown,
     ): Promise<unknown> {
       await ready;
@@ -808,17 +807,16 @@ app
           () => {
             localCalls.delete(id);
             worker.postMessage({ kind: "local-cancel", id });
-            worker.postMessage({ kind: "learning-cancel", id });
             reject(
               new Error(
                 "The request timed out. Your saved coursework is still available.",
               ),
             );
           },
-          ["ask", "learning-start", "learning-act"].includes(operation) ? 180000 : 75000,
+          operation === "ask" ? 180000 : 75000,
         );
         localCalls.set(id, { resolve, reject, timer });
-        worker.postMessage({ kind: operation.startsWith("learning-") ? "learning" : "local", id, operation, request });
+        worker.postMessage({ kind: "local", id, operation, request });
       });
     }
     ipcMain.handle("magic:local-status", (event) => {
@@ -832,29 +830,6 @@ app
     ipcMain.handle("magic:local-cancel", (event) => {
       validateSender(event);
       worker.postMessage({ kind: "local-cancel" });
-    });
-    for (const operation of ["list", "get"] as const) {
-      ipcMain.handle(`magic:learning-${operation}`, (event, id) => {
-        validateSender(event);
-        if (typeof id !== "string" || !id || id.length > 500) throw new Error("Invalid learning resource.");
-        return localOperation(`learning-${operation}`, id);
-      });
-    }
-    ipcMain.handle("magic:learning-start", (event, request) => {
-      validateSender(event);
-      return localOperation("learning-start", learningStartSchema.parse(request));
-    });
-    ipcMain.handle("magic:learning-act", (event, request) => {
-      validateSender(event);
-      return localOperation("learning-act", learningActSchema.parse(request));
-    });
-    ipcMain.handle("magic:learning-draft", (event, request) => {
-      validateSender(event);
-      return localOperation("learning-draft", learningDraftSchema.parse(request));
-    });
-    ipcMain.handle("magic:learning-cancel", (event) => {
-      validateSender(event);
-      worker.postMessage({ kind: "learning-cancel" });
     });
     ipcMain.handle("magic:open", async (event, url) => {
       validateSender(event);
@@ -1403,16 +1378,26 @@ app
           !imported.snapshot.fixtureMode
         )
           throw new Error("Fixture import failed");
-        const learningResource = imported.snapshot.resources.find((item: { kind: string }) => item.kind === "assignment");
-        const missingLearningBackend = await window.webContents.executeJavaScript(
-          `window.magic.learningList(${JSON.stringify(learningResource.id)}).then(()=>false, error=>/not (connected|available)|unavailable|not yet|not installed/i.test(error.message))`,
+        const studyResource = imported.snapshot.resources.find(
+          (resource: { kind: string }) => resource.kind === "assignment",
         );
-        if (!missingLearningBackend) throw new Error("Missing shared learning backend was not disclosed");
-        const staleLearningRejected = await window.webContents.executeJavaScript(
-          `window.magic.learningStart(${JSON.stringify({ resourceId: learningResource.id, inputHash: "wrong", operationId: "smoke-stale" })}).then(()=>false,()=>true)`,
+        if (!studyResource) throw new Error("Missing study anchor");
+        const studySessions = await window.webContents.executeJavaScript(
+          `window.magic.execute(${JSON.stringify({ type: "learning", request: {
+            op: "study.sessions", resourceId: studyResource.id,
+          } })})`,
         );
-        if (!staleLearningRejected) throw new Error("Learning boundary accepted an invalid resource");
-        await window.webContents.executeJavaScript("window.magic.cancelLearning()");
+        if (studySessions.learning?.status !== "ok" ||
+            studySessions.learning.data?.sessions?.length !== 0)
+          throw new Error("Canonical study session bridge failed");
+        const unpreparedStudy = await window.webContents.executeJavaScript(
+          `window.magic.execute(${JSON.stringify({ type: "learning", request: {
+            op: "study.plan", resourceId: studyResource.id,
+            operationId: "smoke-unprepared", minutes: 10, difficulty: "normal",
+          } })})`,
+        );
+        if (unpreparedStudy.learning?.status !== "unavailable")
+          throw new Error("Unprepared study must remain explicitly unavailable");
         const planningStamp = new Date().toISOString();
         const planningScope = { kind: "terms", key: "synthetic-smoke" };
         const planningFixture = {

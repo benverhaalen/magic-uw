@@ -7,8 +7,12 @@ import { createCore } from "@magic/core";
 import { createStore } from "@magic/storage";
 import { captureBatchSchema } from "@magic/contracts";
 import fixture from "../fixtures/course.json";
-import { createLearningService } from "../apps/desktop/src/learning-service";
-import { createLearningFixture } from "./learning-fixture";
+import {
+  createLearningRouter,
+  type StudyContext,
+} from "../packages/learning/src/router";
+import { createStudyContextResolver } from "../apps/desktop/src/learning-context";
+import { seedLearningFixture } from "./learning-fixture";
 import { linkExactEvidence } from "../packages/core/src/evidence";
 // Explicit opt-in QA output, never a substitute for live model inference.
 const learningFixture = process.env.MAGIC_PREVIEW_LEARNING_FIXTURE === "1";
@@ -17,12 +21,22 @@ const directory = await mkdtemp(join(tmpdir(), "magic-preview-"));
 const store = createStore(join(directory, "workspace.sqlite"));
 const sample = captureBatchSchema.parse(fixture);
 if (learningFixture) {
-  const assignment = sample.resources.find(r => r.kind === "assignment");
-  const material = sample.resources.find(r => r.kind === "material");
-  if (assignment && material) assignment.links = [{ url: material.url, text: "Supporting reading" }];
+  const assignment = sample.resources.find((r) => r.kind === "assignment");
+  const material = sample.resources.find((r) => r.kind === "material");
+  if (assignment && material)
+    assignment.links = [{ url: material.url, text: "Supporting reading" }];
 }
-const core = createCore(store, { fixture: sample });
-const learning = createLearningService(store, core, learningFixture ? createLearningFixture() : undefined);
+const core = createCore(store, {
+  fixture: sample,
+  seams: {
+    learning: createLearningRouter({
+      store: store.learning,
+      resolveContext: (resourceId): StudyContext | null =>
+        resolveStudyContext(resourceId),
+    }),
+  },
+});
+const resolveStudyContext = createStudyContextResolver(store, core);
 const token = randomBytes(32).toString("hex");
 const root = resolve("apps/desktop/dist/renderer");
 const server = createServer(async (req, res) => {
@@ -40,7 +54,7 @@ const server = createServer(async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
   try {
-    if (path === "/command" || path === "/learning") {
+    if (path === "/command") {
       if (
         req.method !== "POST" ||
         req.headers.authorization !== `Bearer ${token}` ||
@@ -58,24 +72,13 @@ const server = createServer(async (req, res) => {
         }
       }
       const parsed = JSON.parse(body);
-      let result: unknown;
-      if (path === "/command") {
-        if (["purge", "privacy", "fixture", "import"].includes(parsed.type)) learning.cancel();
-        result = await core.execute(parsed);
-        if (learningFixture && parsed.type === "fixture") {
-          linkExactEvidence(store);
-          result = await core.execute({ type: "snapshot" });
-        }
-      } else {
-        switch (parsed.operation) {
-          case "list": result = learning.list(parsed.request); break;
-          case "get": result = learning.get(parsed.request); break;
-          case "start": result = await learning.start(randomBytes(16).toString("hex"), parsed.request); break;
-          case "act": result = await learning.act(randomBytes(16).toString("hex"), parsed.request); break;
-          case "draft": result = learning.saveDraft(parsed.request); break;
-          case "cancel": learning.cancel(); result = null; break;
-          default: throw new Error("Invalid learning operation.");
-        }
+      let result = await core.execute(parsed);
+      if (learningFixture && parsed.type === "fixture") {
+        linkExactEvidence(store);
+        const loaded = await core.execute({ type: "snapshot" });
+        if (loaded.snapshot)
+          seedLearningFixture(store.learning, loaded.snapshot);
+        result = loaded;
       }
       res
         .writeHead(200, { "Content-Type": "application/json" })
@@ -88,8 +91,7 @@ const server = createServer(async (req, res) => {
     }
     if (path === "/bridge.js") {
       const script = `window.magic={execute:async(command)=>{const r=await fetch('/command',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer ${token}'},body:JSON.stringify(command)});const data=await r.json();if(!r.ok)throw new Error(data.error);return data;},openExternal:async()=>{throw new Error('External windows are disabled in this headless verification surface.');},importFile:async()=>{throw new Error('Use the desktop app to import a local capture.');},localStatus:async()=>({status:'setup_needed',reason:'Local runtime checks are disabled in this browser verification surface. Use the desktop app.',cloudDisabled:false,selectedModel:null,recommenderAvailable:false,basis:'No runtime was contacted.'}),localAsk:async()=>{throw new Error('Local inference is disabled in this browser verification surface. Use the desktop app.');},cancelLocal:async()=>{}};`;
-      const learningBridge = `const learningCall=async(operation,request)=>{const r=await fetch('/learning',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer ${token}'},body:JSON.stringify({operation,request})});const data=await r.json();if(!r.ok)throw new Error(data.error);return data;};Object.assign(window.magic,{learningList:id=>learningCall('list',id),learningGet:id=>learningCall('get',id),learningStart:r=>learningCall('start',r),learningAct:r=>learningCall('act',r),learningSaveDraft:r=>learningCall('draft',r),cancelLearning:()=>learningCall('cancel')});`;
-      res.writeHead(200, { "Content-Type": "text/javascript" }).end(script + learningBridge);
+      res.writeHead(200, { "Content-Type": "text/javascript" }).end(script);
       return;
     }
     const file = resolve(root, "." + (path === "/" ? "/index.html" : path));
@@ -106,7 +108,12 @@ const server = createServer(async (req, res) => {
         body
           .toString()
           .replace("<head>", '<head><script src="/bridge.js"></script>')
-          .replace("<body>", learningFixture ? '<body><div role="note" style="padding:8px;background:#ffe7a8;color:#382700">Synthetic learning verification — generated text is a test fixture, not live AI.</div>' : '<body>'),
+          .replace(
+            "<body>",
+            learningFixture
+              ? '<body><div role="note" style="padding:8px;background:#ffe7a8;color:#382700">Synthetic learning verification — prepared items are test fixtures, not live AI.</div>'
+              : "<body>",
+          ),
       );
     const types: Record<string, string> = {
       ".html": "text/html",
@@ -136,7 +143,6 @@ for (const signal of ["SIGINT", "SIGTERM"] as const)
   process.on(signal, () => {
     server.closeAllConnections();
     server.close(async () => {
-      learning.cancel();
       await core.close();
       await rm(directory, { recursive: true, force: true });
       process.exit(0);

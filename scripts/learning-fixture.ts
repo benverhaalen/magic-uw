@@ -1,51 +1,106 @@
 // Explicit browser QA fixture only. Never imported by the desktop worker.
-import type { LearningActivity, LearningSession } from "@magic/contracts";
-import type { LearningBackendPorts } from "../apps/desktop/src/learning-service";
+import type { Snapshot } from "@magic/contracts";
+import type { Concept, LearningStore } from "../packages/learning/src/store";
+import {
+  runPipeline,
+  type CandidateItem,
+} from "../packages/learning/src/items";
+import { findQuote } from "../packages/retrieval/src/quotes";
 
-export function createLearningFixture(): LearningBackendPorts {
-  const sessions = new Map<string, LearningSession>();
-  const activities = new Map<string, LearningActivity>();
-  return {
-    sessions: {
-      learningSession: id => structuredClone(sessions.get(id)),
-      learningSessions: id => structuredClone([...sessions.values()].filter(s => s.resourceId === id)),
-      putLearningSession(session, expected) {
-        const current = sessions.get(session.id);
-        if ((current?.revision ?? null) !== expected) throw new Error("Synthetic revision conflict");
-        sessions.set(session.id, structuredClone(session));
-      },
-    },
-    study: {
-      selectPrepared({ sources, excludeActivityIds }) {
-        const source = sources[0];
-        if (!source) return undefined;
-        const n = [1, 2].find(n => !excludeActivityIds.includes(`synthetic-item-${n}`));
-        if (!n) return undefined;
-        const quote = source.text.slice(0, 100);
-        const activity: LearningActivity = {
-          id: `synthetic-item-${n}`, model: "synthetic-prepared", digest: "qa-only", createdAt: new Date().toISOString(),
-          format: "practice", title: `Evidence comparison ${n}`,
-          content: "Synthetic prepared practice. Compare two arguments about library hours.",
-          prompt: n === 1 ? "What evidence would help you compare the arguments?" : "What finding would weaken one argument?",
-          reason: "Synthetic QA item linked to the permitted source below.",
-          citations: [{ resourceId: source.resourceId, contentHash: source.contentHash, quote, start: 0, end: quote.length }],
-        };
-        activities.set(activity.id, activity);
-        return activity;
-      },
-      hint(id) { const a = activities.get(id); return a && { text: "Synthetic saved hint: distinguish the claim from supporting observations.", citations: a.citations }; },
-      grade({ activityId }) { const a = activities.get(activityId); return a && { text: "Synthetic saved feedback. This fixture does not evaluate correctness or learning.", citations: a.citations }; },
-    },
-    packs: {
-      async explain(request, signal) {
-        if (signal.aborted) throw new Error("Cancelled");
-        const source = request.payload.sources[0], quote = source.text.slice(0, 100);
-        return {
-          activity: { id: `synthetic-explain-${Date.now()}`, model: "synthetic-pack", digest: "qa-only", createdAt: new Date().toISOString(), format: "explanation", title: "Claims and evidence", content: "Synthetic explanation: a claim states a position; evidence supports or challenges it.", prompt: "How would you distinguish a claim from its evidence?", reason: "Explicit explanation request over permitted source material.", citations: [{ resourceId: source.resourceId, contentHash: source.contentHash, quote, start: 0, end: quote.length }] },
-          requestHash: request.payloadHash,
-          receipt: { id: "synthetic-receipt", payloadHash: request.payloadHash, status: "sent" },
-        };
-      },
-    },
+/** Seed synthetic items through the real deterministic checked-item pipeline. No model calls. */
+export function seedLearningFixture(
+  store: LearningStore,
+  snapshot: Snapshot,
+): void {
+  const source = snapshot.sources.find(
+    (source) => source.accountScope === "synthetic",
+  );
+  const material = snapshot.resources.find(
+    (resource) =>
+      resource.sourceId === source?.id && resource.kind === "material",
+  );
+  if (!source || !material) return;
+  const course = store.course(
+    source.accountScope,
+    material.courseId,
+    material.courseName,
+  );
+  const concept: Concept = {
+    id: "synthetic-argument",
+    courseRef: course.id,
+    parentId: null,
+    label: "Claims and evidence · synthetic",
+    kind: "concept",
+    position: 0,
+    origin: "code",
+    status: "active",
+    mergedInto: null,
+    studentLabel: null,
+    mapVersion: "synthetic-v1",
+    sources: [],
   };
+  store.putConceptMap(course.id, [concept], "synthetic-v1");
+  const quote = "A claim states a position. Evidence supports it.";
+  const base = {
+    version: 1,
+    courseRef: course.id,
+    keyIdeas: [],
+    explanation: {
+      text: "Synthetic saved explanation: a claim states a position, and evidence supports it.",
+      citation: { resourceId: material.id, quote },
+    },
+    tempting: {},
+    bloom: "remember",
+    tier: "T1",
+    sourceTerm: null,
+    origin: "instructor",
+    generator: null,
+    sources: [{ resourceId: material.id, quote }],
+    tags: [{ conceptId: concept.id, primary: true }],
+  } as const;
+  const candidates: CandidateItem[] = [
+    {
+      ...base,
+      id: "synthetic-typed",
+      familyId: "synthetic-typed",
+      kind: "typed",
+      stem: "Synthetic practice: what states a position?",
+      options: null,
+      key: "claim",
+      keyIdeas: [{ idea: "claim", synonyms: ["a claim"], required: true }],
+      sources: [...base.sources],
+      tags: [...base.tags],
+    },
+    {
+      ...base,
+      id: "synthetic-choice",
+      familyId: "synthetic-choice",
+      kind: "mc",
+      stem: "Synthetic practice: what supports a claim?",
+      options: [
+        { id: "evidence", text: "Evidence" },
+        { id: "title", text: "A title" },
+        { id: "deadline", text: "A deadline" },
+      ],
+      key: "evidence",
+      keyIdeas: [],
+      sources: [...base.sources],
+      tags: [...base.tags],
+    },
+  ];
+  for (const candidate of candidates) {
+    const checked = runPipeline(candidate, {
+      courseRestricted: false,
+      resources: [{ ...material }],
+      validate: findQuote,
+      map: [concept],
+      seenStems: [],
+      now: new Date(),
+    });
+    if (!checked.accepted || !checked.item)
+      throw new Error(
+        `Synthetic item failed its checks: ${checked.dropped?.reason}`,
+      );
+    store.putItem(checked.item, checked.sources, checked.tags, checked.checks);
+  }
 }

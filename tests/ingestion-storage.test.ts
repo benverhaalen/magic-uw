@@ -490,6 +490,15 @@ test("v2 migration preserves history and missing provenance; settings, grants an
     store.setCompleted(id, true);
     store.close();
     const legacy = new DatabaseSync(path);
+    // A real v2 database has no learning tables. Remove the current additions
+    // before downgrading the fixture's version, rather than leaving a hybrid schema.
+    legacy.exec("PRAGMA foreign_keys=OFF");
+    for (const row of legacy.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'learning_%'").all()) {
+      const name = String(row.name);
+      if (!/^learning_[a-z_]+$/.test(name)) throw new Error("Unexpected learning table");
+      legacy.exec(`DROP TABLE "${name}"`);
+    }
+    legacy.exec("PRAGMA foreign_keys=ON");
     legacy.exec(
       // Schema v6 objects first, so the file matches what a v2 database held.
       "DROP TABLE passage_vocab; DROP TABLE passage_fts; DROP TABLE passages; DROP TABLE counters; DROP TABLE assessment_scope; DROP TABLE assessments; DROP TABLE course_sessions; DROP TABLE map_links; DROP TABLE course_spaces; DROP TABLE extraction_recipes; DROP TABLE course_briefs; DROP TABLE material_facts; DROP TABLE life_items; DROP TABLE compile_runs; DROP TABLE ledger; DROP TABLE ui_events; DROP INDEX judgments_resource; DROP INDEX links_from; DROP INDEX links_to; DROP INDEX sources_course; ALTER TABLE resources DROP COLUMN text_hash; ALTER TABLE resource_versions DROP COLUMN text_hash; CREATE VIRTUAL TABLE resource_search USING fts5(resource_id UNINDEXED, title, course_name, body); " +

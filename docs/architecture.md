@@ -129,4 +129,8 @@ Local captures now materialize versioned account/course profiles in SQLite schem
 
 ## Learning session surface
 
-The [learning-session adapter](learning-sessions.md) follows the shared course-backend architecture. It owns a UI projection and orchestration, not migrations, a model runner, or an independent study engine. Repository and checked-item operations bind to the shared learning backend; explicit explanations bind to prompt packs. Missing bindings fail visibly.
+The [canonical learning-session integration](learning-sessions.md) uses the existing learning `execute` channel, N25 router, Nate's deterministic grading/progression/session engines and N24 SQL adapter on the workspace connection. Typed projections expose saved rounds, drafts, actual checks and versioned evidence without answer keys. Revision-checked transactions write the session and any scored attempt together; undecided answers remain unscored history. The earlier parallel IPC, session service and direct Ollama activity pack are retired.
+
+Storage-owned schema 8 aligns existing learning records with the engines: numeric units, selected option IDs, coverage decision authorship and scoped/pinned cards, including concept tracks without fake items. It preserves the canonical v6/v7 schemas and introduces no second course database. The worker constructs account/course context and rechecks eligibility, exact source versions, freshness and policy before prepared practice.
+
+Practice consumes an existing checked pool and makes no student-model calls. Empty pools are unavailable. Explicit model-generated explanations belong to T42/shared packs and remain unconnected; this is not a demonstrated production tutor. See the session document for current operations, reference transfers, tests and remaining integration checks.

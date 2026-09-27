@@ -1,4 +1,3 @@
-import type { LearningBridge } from "./learning";
 import { z } from "zod";
 import {
   planningCaptureSchema,
@@ -7,7 +6,6 @@ import {
   type PlanningScope,
 } from "./planning";
 export * from "./planning";
-export * from "./learning";
 export * from "./course-intelligence";
 // owner: T05b. The data builder's course core (schema v5) replaces the placeholder module.
 export * from "./course-core";
@@ -936,7 +934,13 @@ export const learningRequestSchema = z.discriminatedUnion("op", [
       "other",
     ]),
   }),
+  learningOp("study.sessions", { resourceId: id }),
+  learningOp("study.session", { sessionId: id }),
+  learningOp("study.resume", { sessionId: id }),
+  learningOp("study.draft", { sessionId: id, revision: z.number().int().nonnegative(), operationId: id, draft: z.string().max(2000) }),
+  learningOp("study.advance", { sessionId: id, revision: z.number().int().nonnegative(), operationId: id, action: z.enum(["next", "skip"]) }),
   learningOp("study.plan", {
+    resourceId: id.optional(), inputHash: id.optional(), operationId: id.optional(), goal: z.string().max(1000).optional(),
     courseId: id.optional(),
     assessmentId: id.optional(),
     minutes: z.number().int().min(5).max(120),
@@ -944,6 +948,7 @@ export const learningRequestSchema = z.discriminatedUnion("op", [
     filter: studyFilterSchema.optional(),
   }),
   learningOp("study.answer", {
+    revision: z.number().int().nonnegative().optional(), operationId: id.optional(),
     sessionId: id,
     itemId: id,
     itemVersion: z.number().int().min(0),
@@ -968,6 +973,7 @@ export const learningRequestSchema = z.discriminatedUnion("op", [
     responseMs: z.number().int().min(0).max(86_400_000),
   }),
   learningOp("study.hint", {
+    revision: z.number().int().nonnegative().optional(), operationId: id.optional(),
     sessionId: id,
     itemId: id,
     level: z.enum(["hint", "explain"]),
@@ -1415,7 +1421,7 @@ export function localContextPayload(
     policy: payload.policy.slice(0, 2000),
   };
 }
-export interface AppBridge extends Partial<LearningBridge> {
+export interface AppBridge {
   execute(command: Command): Promise<CommandResult>;
   openExternal(url: string): Promise<void>;
   /** owner: T05b. A link card (D40): the default browser, https only. */
@@ -1524,3 +1530,5 @@ export interface Connector {
   id: string;
   pull(signal?: AbortSignal): AsyncIterable<CaptureBatch>;
 }
+
+export type { StudySessionView, StudyEvent, StudySource, StudyCitation, StudyItemView, StudyResultData } from "./study";

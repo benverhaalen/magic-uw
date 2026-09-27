@@ -4,9 +4,11 @@ Updated September 26, 2026. This describes the code and observed checks, not com
 
 The later September 26 [pricing/provider decision](decisions.md#pricing-and-ai-access-resolution--september-26) adopts a $5 one-time license and the student's paid AI plan/key. This is product direction only: no checkout, license enforcement, paid CLI inference adapters, or OpenRouter route has been added. The existing local adapter and hosted-sharing-off default remain the actual implementation. Accepted OpenRouter-funded Jev and provider-consent/context-receipt/first-sensitive-preview behavior are also pending; current privacy flags and MCP grants do not implement the full new flow.
 
-## Learning-session integration candidate
+## Canonical learning-session integration
 
-The assignment learning surface has been adapted toward Nathaniel’s [shared course backend](course-backend-architecture.md). It uses explicit repository, checked-study and explanation-pack bindings; it adds no storage migration or model transport. Ordinary practice must consume prepared items/hints/feedback without calling a student model. The desktop reports the missing backend binding instead of using an alternative runtime. The binding to Nathaniel’s actual lane code remains unavailable in this checkout, so this is not yet a usable production learning feature. See [learning sessions](learning-sessions.md) for scope and checks.
+Nathaniel's course backend now has N24 SQL persistence and a bounded N25 prepared-practice router, connected through the existing learning `execute` channel. The assignment surface can list/resume sessions, save drafts, answer checked choice/numeric/typed items, expose a saved explanation and skip/advance. Source versions, actual item checks, account/course gates and atomic revision/idempotency checks are preserved. Ambiguous typed answers remain null-score history and do not create scored attempts. Storage v8 aligns the existing schema with canonical engine fields; no parallel course/session database or direct Ollama activity pack remains.
+
+Ten synthetic router tests pass. Driver integration review and rendered/SQL-backed journey checks are pending; no live coursework learning quality is claimed. Production item preparation and T42 explicit explanation generation are still unavailable: an empty checked pool stays empty, and unconnected operations return `not_built`. Ordinary practice makes no model calls. See [learning sessions](learning-sessions.md) for the canonical scope, migration details, reference transfers and limits.
 
 ## What exists
 

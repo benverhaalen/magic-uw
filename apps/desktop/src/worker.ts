@@ -6,9 +6,9 @@ import { queryRequestSchema } from "@magic/contracts"; // owner: T15
 import fixture from "../../../fixtures/course.json";
 import { randomUUID } from "node:crypto";
 import { createLocalService } from "./local-service";
-import { createLearningService } from "./learning-service";
 import { createIngestion } from "./ingestion";
-import { createLearningRouter } from "../../../packages/learning/src/router"; // owner: T05b
+import { createLearningRouter, type StudyContext } from "../../../packages/learning/src/router";
+import { createStudyContextResolver } from "./learning-context";
 import { dirname } from "node:path";
 import {
   createLocalDocumentExtractor,
@@ -32,8 +32,10 @@ const core = createCore(store, {
   courseExtractor: createLocalCourseExtractor(),
   planningPublicClient: publicClients.core, // owner: T06
   planningHttp: { read: (request, signal) => hostRead("planning-public-read", { request }, signal) },
-  // owner: T05b. The learning channel reaches the router stub; N25 takes the router over.
-  seams: { learning: createLearningRouter() },
+  seams: { learning: createLearningRouter({
+    store: store.learning,
+    resolveContext: (resourceId): StudyContext | null => resolveStudyContext(resourceId),
+  }) },
   ...(process.env.MAGIC_GATEWAY_URL
     ? {
         gateway: {
@@ -64,7 +66,7 @@ const core = createCore(store, {
     : {}),
 });
 const local = createLocalService(store, core);
-const learning = createLearningService(store, core);
+const resolveStudyContext = createStudyContextResolver(store, core);
 const hostRequests = new Map<
   string,
   { resolve(value: any): void; reject(error: Error): void }
@@ -325,32 +327,8 @@ port.on("message", async ({ data }: { data: any }) => {
     await ingestion.stop();
     clearInterval(tick);
     local.cancel();
-    learning.cancel();
     await core.close();
     port.postMessage({ kind: "closed" });
-    return;
-  }
-  if (data.kind === "learning-cancel") {
-    learning.cancel(data.id);
-    return;
-  }
-  if (data.kind === "learning") {
-    try {
-      let result: unknown;
-      switch (data.operation) {
-        case "learning-list": result = learning.list(data.request); break;
-        case "learning-get": result = learning.get(data.request); break;
-        case "learning-start": result = await learning.start(data.id, data.request); break;
-        case "learning-act": result = await learning.act(data.id, data.request); break;
-        case "learning-draft": result = learning.saveDraft(data.request); break;
-        default: throw new Error("Invalid learning operation.");
-      }
-      port.postMessage({ kind: "local-response", id: data.id, result });
-    } catch (error) {
-      port.postMessage({ kind: "local-response", id: data.id, error:
-        error instanceof Error && error.name !== "ZodError" && error.name !== "AbortError"
-          ? error.message : "Learning was cancelled or the request was invalid." });
-    }
     return;
   }
   if (data.kind === "local-cancel") {
@@ -410,7 +388,6 @@ port.on("message", async ({ data }: { data: any }) => {
   }
   if (["import", "planning-import", "fixture", "privacy", "purge", "course-override"].includes(data.command?.type)) {
     local.cancel();
-    learning.cancel();
   }
   try {
     port.postMessage({

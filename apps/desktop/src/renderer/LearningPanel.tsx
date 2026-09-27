@@ -1,28 +1,77 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type {
-  LearningAct,
-  LearningSessionView,
+  LearningRequest,
   ResourceView,
+  StudySessionView,
 } from "@magic/contracts";
 
-const formatLabels = {
-  explanation: "Explanation",
-  worked_example: "Worked example",
-  practice: "Practice",
-};
 const eventLabels = {
-  exposure: "Activity opened",
-  hint: "Hint",
-  answer: "Your response",
+  answer: "Your response and feedback",
+  hint: "Saved hint",
+  explain: "Saved explanation",
   skip: "Skipped",
-  feedback: "Feedback",
-  failure: "Could not finish",
+};
+const outcomeLabels = {
+  correct: "Matched the checked answer",
+  partial: "Partly matched the checked answer",
+  incorrect: "Did not match the checked answer",
+  undecided: "Needs review — the check could not decide",
 };
 function timestamp(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? "Capture time unknown"
     : date.toLocaleString();
+}
+async function study(request: LearningRequest) {
+  const response = await window.magic.execute({ type: "learning", request });
+  const result = response.learning;
+  if (!result || result.status !== "ok")
+    throw new Error(
+      result?.message ||
+        "Learning could not continue. Your saved coursework is still available.",
+    );
+  return result;
+}
+async function readSessions(resourceId: string): Promise<StudySessionView[]> {
+  const result = await study({ op: "study.sessions", resourceId });
+  if (
+    !result.data ||
+    typeof result.data !== "object" ||
+    !("sessions" in result.data) ||
+    !Array.isArray(result.data.sessions) ||
+    !result.data.sessions.every(isSession)
+  )
+    throw new Error("Saved study sessions could not be read.");
+  return [...result.data.sessions].sort((a, b) =>
+    b.updatedAt.localeCompare(a.updatedAt),
+  );
+}
+async function sessionRequest(
+  request: LearningRequest,
+): Promise<StudySessionView> {
+  const result = await study(request);
+  if (
+    !result.data ||
+    typeof result.data !== "object" ||
+    !("session" in result.data) ||
+    !isSession(result.data.session)
+  )
+    throw new Error("The study session could not be read.");
+  return result.data.session;
+}
+function isSession(value: unknown): value is StudySessionView {
+  if (!value || typeof value !== "object") return false;
+  const session = value as Partial<StudySessionView>;
+  return (
+    typeof session.id === "string" &&
+    typeof session.resourceId === "string" &&
+    typeof session.accountScope === "string" &&
+    typeof session.revision === "number" &&
+    typeof session.draft === "string" &&
+    Array.isArray(session.events) &&
+    Array.isArray(session.sources)
+  );
 }
 
 export function LearningPanel({
@@ -33,8 +82,8 @@ export function LearningPanel({
   accountScope?: string;
 }) {
   const fieldId = useId();
-  const [view, setView] = useState<LearningSessionView | null>(null);
-  const [sessions, setSessions] = useState<LearningSessionView[]>([]);
+  const [view, setView] = useState<StudySessionView | null>(null);
+  const [sessions, setSessions] = useState<StudySessionView[]>([]);
   const [goal, setGoal] = useState("");
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
@@ -42,55 +91,44 @@ export function LearningPanel({
   const [pending, setPending] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const current = useRef<LearningSessionView | null>(null);
+  const current = useRef<StudySessionView | null>(null);
   const draftValue = useRef("");
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const mounted = useRef(false);
   const working = useRef(false);
-  const cancelled = useRef(false);
-  const available = Boolean(
-    window.magic.learningList &&
-    window.magic.learningGet &&
-    window.magic.learningStart &&
-    window.magic.learningAct &&
-    window.magic.learningSaveDraft,
-  );
+  const openedAt = useRef(Date.now());
 
-  function accept(result: LearningSessionView, restoreDraft = false) {
+  function matches(result: StudySessionView) {
+    return (
+      result.resourceId === resource.id &&
+      (!accountScope || result.accountScope === accountScope)
+    );
+  }
+  function accept(result: StudySessionView, restoreDraft = false) {
+    if (!matches(result)) return;
     if (
-      result.session.resourceId !== resource.id ||
-      (accountScope && result.session.accountScope !== accountScope)
+      current.current?.currentItem?.id !== result.currentItem?.id ||
+      current.current?.id !== result.id
     )
-      return;
+      openedAt.current = Date.now();
     current.current = result;
     if (!mounted.current) return;
     setView(result);
     setSessions((previous) => [
       result,
-      ...previous.filter((item) => item.session.id !== result.session.id),
+      ...previous.filter((item) => item.id !== result.id),
     ]);
     if (restoreDraft) {
-      draftValue.current = result.session.draft;
-      setDraft(result.session.draft);
+      draftValue.current = result.draft;
+      setDraft(result.draft);
     }
   }
-
   useEffect(() => {
     mounted.current = true;
-    if (!window.magic.learningList) {
-      setLoading(false);
-      return;
-    }
-    void window.magic
-      .learningList(resource.id)
+    void readSessions(resource.id)
       .then((items) => {
         if (!mounted.current) return;
-        const matching = items.filter(
-          (item) =>
-            item.session.resourceId === resource.id &&
-            (!accountScope || item.session.accountScope === accountScope),
-        );
+        const matching = items.filter(matches);
         setBackendReady(true);
         setSessions(matching);
         if (matching[0]) accept(matching[0], true);
@@ -100,7 +138,7 @@ export function LearningPanel({
           setError(
             cause instanceof Error
               ? cause.message
-              : "Saved learning could not be loaded.",
+              : "Saved study could not be loaded.",
           );
       })
       .finally(() => {
@@ -108,12 +146,10 @@ export function LearningPanel({
       });
     return () => {
       mounted.current = false;
-      if (working.current)
-        void window.magic.cancelLearning?.().catch(() => undefined);
     };
   }, [resource.id, accountScope]);
 
-  // Serialize writes and coalesce fast typing. Reads never start model inference.
+  // Serialize durable writes, coalescing typing before the next operation takes its revision.
   function saveDraft(value: string): Promise<void> {
     draftValue.current = value;
     setDraft(value);
@@ -122,18 +158,16 @@ export function LearningPanel({
       .catch(() => undefined)
       .then(async () => {
         const active = current.current;
-        if (
-          !active ||
-          !window.magic.learningSaveDraft ||
-          active.session.draft === draftValue.current
-        )
-          return;
-        const result = await window.magic.learningSaveDraft({
-          sessionId: active.session.id,
-          revision: active.session.revision,
-          draft: draftValue.current,
-        });
-        accept(result);
+        if (!active || active.draft === draftValue.current) return;
+        accept(
+          await sessionRequest({
+            op: "study.draft",
+            sessionId: active.id,
+            revision: active.revision,
+            operationId: crypto.randomUUID(),
+            draft: draftValue.current,
+          }),
+        );
       });
     saveQueue.current = operation;
     void operation
@@ -153,128 +187,146 @@ export function LearningPanel({
   }
 
   async function operate(
-    action: "start" | "explain" | "reload" | LearningAct["action"],
+    action:
+      | "start"
+      | "explain"
+      | "reload"
+      | "answer"
+      | "hint"
+      | "saved_explanation"
+      | "skip"
+      | "next",
     sessionId?: string,
   ) {
     if (working.current) return;
     working.current = true;
-    cancelled.current = false;
     setPending(true);
     setError("");
-    setNotice("");
     try {
       await saveQueue.current;
-      if (cancelled.current || !mounted.current) return;
+      if (!mounted.current) return;
       if (action === "reload") {
-        if (sessionId) accept(await window.magic.learningGet!(sessionId), true);
+        if (sessionId)
+          accept(await sessionRequest({ op: "study.resume", sessionId }), true);
         else {
-          const items = await window.magic.learningList!(resource.id);
+          const items = (await readSessions(resource.id)).filter(matches);
           if (mounted.current) {
             setSessions(items);
             if (items[0]) accept(items[0], true);
           }
         }
         if (mounted.current) setBackendReady(true);
-      } else if (action === "start" || action === "explain") {
-        const result = await window.magic.learningStart!({
-          resourceId: resource.id,
-          inputHash: resource.contentHash,
-          operationId: crypto.randomUUID(),
-          goal: goal.trim() || undefined,
-          mode: action === "explain" ? "explain" : "practice",
+      } else if (action === "start") {
+        accept(
+          await sessionRequest({
+            op: "study.plan",
+            courseId: resource.courseId,
+            resourceId: resource.id,
+            inputHash: resource.contentHash,
+            operationId: crypto.randomUUID(),
+            goal: goal.trim() || undefined,
+            minutes: 15,
+            difficulty: "normal",
+          }),
+          true,
+        );
+      } else if (action === "explain") {
+        // The canonical router reports unavailable until the explanation pack and consent path exist.
+        await study({
+          op: "notebook.ask",
+          courseId: resource.courseId,
+          question: goal.trim() || `Help me understand ${resource.title}.`,
+          scope: { resourceIds: [resource.id] },
         });
-        if (!cancelled.current) accept(result, true);
       } else {
         const active = current.current;
-        if (!active) return;
-        const result = await window.magic.learningAct!({
-          sessionId: active.session.id,
-          revision: active.session.revision,
+        const item = active?.currentItem;
+        if (!active || !item) return;
+        const common = {
+          sessionId: active.id,
+          revision: active.revision,
           operationId: crypto.randomUUID(),
-          action,
-          ...(action === "answer" ? { answer: draftValue.current } : {}),
-        });
-        if (!cancelled.current) accept(result, true);
+        };
+        let request: LearningRequest;
+        if (action === "answer") {
+          const response =
+            item.kind === "mc" || item.kind === "tf"
+              ? { kind: "choice" as const, optionId: draftValue.current }
+              : item.kind === "numeric"
+                ? {
+                    kind: "number" as const,
+                    value: Number(draftValue.current),
+                    ...(item.unit ? { unit: item.unit } : {}),
+                  }
+                : { kind: "text" as const, text: draftValue.current };
+          request = {
+            op: "study.answer",
+            ...common,
+            itemId: item.id,
+            itemVersion: item.version,
+            response,
+            confidence: null,
+            responseMs: Math.min(
+              86_400_000,
+              Math.max(0, Date.now() - openedAt.current),
+            ),
+          };
+        } else if (action === "hint" || action === "saved_explanation") {
+          request = {
+            op: "study.hint",
+            ...common,
+            itemId: item.id,
+            level: action === "hint" ? "hint" : "explain",
+          };
+        } else request = { op: "study.advance", ...common, action };
+        accept(await sessionRequest(request), true);
       }
     } catch (cause) {
-      if (mounted.current && !cancelled.current)
+      if (mounted.current)
         setError(
           cause instanceof Error
             ? cause.message
-            : "Learning could not continue. Your saved activity is still here.",
+            : "Learning could not continue. Your saved work is still here.",
         );
-      // Recover authoritative revision after a partial write, preserving unsaved text.
-      if (current.current && window.magic.learningGet) {
+      // A write may have succeeded before transport failed. Recover revision without discarding local text.
+      if (current.current) {
         try {
-          accept(await window.magic.learningGet(current.current.session.id));
+          accept(
+            await sessionRequest({
+              op: "study.session",
+              sessionId: current.current.id,
+            }),
+          );
         } catch {
-          /* Existing evidence and draft remain visible. */
+          /* Keep the saved activity and draft visible. */
         }
       }
     } finally {
-      if (cancelled.current && mounted.current && window.magic.learningList) {
-        try {
-          const items = await window.magic.learningList(resource.id);
-          const restored =
-            items.find(
-              (item) => item.session.id === current.current?.session.id,
-            ) ?? items[0];
-          if (restored) accept(restored);
-        } catch {
-          /* Keep the last saved activity. */
-        }
-      }
       working.current = false;
       if (mounted.current) setPending(false);
     }
   }
 
-  async function cancel() {
-    cancelled.current = true;
-    setNotice(
-      "Stopping this request. Your saved activity and response stay here.",
-    );
-    try {
-      await window.magic.cancelLearning?.();
-    } catch (cause) {
-      if (mounted.current)
-        setError(
-          cause instanceof Error ? cause.message : "Could not cancel yet.",
-        );
-    }
-  }
-
-  const session = view?.session;
-  const activity = session?.activities.find(
-    (item) => item.id === session.currentActivityId,
-  );
+  const item = view?.currentItem;
   const events =
-    session?.events.filter(
-      (event) => event.activityId === activity?.id && event.kind !== "exposure",
+    view?.events.filter(
+      (event) =>
+        event.itemId === item?.id && event.itemVersion === item?.version,
     ) ?? [];
-  const responded = events.some(
-    (event) => event.kind === "answer" || event.kind === "skip",
-  );
-  const latestAnswerIndex = events.findLastIndex(
-    (event) => event.kind === "answer",
-  );
-  const needsFeedback =
-    latestAnswerIndex >= 0 &&
-    !events
-      .slice(latestAnswerIndex + 1)
-      .some((event) => event.kind === "feedback");
   const sourceChanged = Boolean(
-    session && session.inputHash !== resource.contentHash,
+    view && view.inputHash !== resource.contentHash,
   );
   const restricted = resource.policy.mode === "restricted";
   const canAct =
-    available &&
     backendReady &&
     !pending &&
     !loading &&
     view?.availability === "current" &&
     !sourceChanged &&
     !restricted;
+  const validResponse =
+    Boolean(draft.trim()) &&
+    (item?.kind !== "numeric" || Number.isFinite(Number(draft)));
   return (
     <section
       className="detail-section learning-panel"
@@ -282,16 +334,9 @@ export function LearningPanel({
     >
       <h3 id={`${fieldId}-heading`}>Learn this material</h3>
       <p className="small muted">
-        Study prepared material for this assignment and its sources. Responses,
-        saved hints and next activities use checked study items. Asking for a
-        new explanation is a separate AI request.
+        Practice with saved study items. Checking a response and showing saved
+        help do not make a new AI request.
       </p>
-      {!available ? (
-        <p className="evidence-note">
-          Learning sessions need the desktop app. Saved course material is still
-          available above.
-        </p>
-      ) : null}
       {loading ? (
         <p role="status" className="small muted">
           Loading saved learning…
@@ -299,22 +344,21 @@ export function LearningPanel({
       ) : null}
       {restricted ? (
         <p className="evidence-note">
-          This course restricts AI help on this work. Review the policy above
-          with your instructor before using AI preparation.
+          This course restricts AI help on this work. Review the course policy
+          before using AI preparation.
         </p>
       ) : null}
       {sessions.length > 1 ? (
         <label className="field-label">
           Saved sessions
           <select
-            value={session?.id ?? ""}
+            value={view?.id ?? ""}
             disabled={pending || saving}
             onChange={(event) => void operate("reload", event.target.value)}
           >
-            {sessions.map((item) => (
-              <option key={item.session.id} value={item.session.id}>
-                {item.session.goal || "Learn this material"} ·{" "}
-                {timestamp(item.session.createdAt)}
+            {sessions.map((session) => (
+              <option key={session.id} value={session.id}>
+                {session.goal || "Practice"} · {timestamp(session.startedAt)}
               </option>
             ))}
           </select>
@@ -325,25 +369,36 @@ export function LearningPanel({
           {sourceChanged
             ? "The assignment source has changed since this session began."
             : view.reason}{" "}
-          This saved activity remains available to read. New practice needs
-          checked items for the current permitted sources.
+          Your saved session remains available to read. New practice needs
+          checked items for current permitted sources.
         </p>
       ) : null}
-      {activity ? (
+      {item ? (
         <>
           <div className="learning-activity">
-            <span className="badge">{formatLabels[activity.format]}</span>
-            <h4>{activity.title}</h4>
-            <p className="small muted">{activity.reason}</p>
-            <p className="learning-content">{activity.content}</p>
+            <span className="badge">Practice</span>
+            <h4>{item.stem}</h4>
+            <p className="small muted">
+              {item.checks.some(
+                (check) => check.check === "quote" && check.outcome === "pass",
+              )
+                ? "Source quote checked. "
+                : ""}
+              {item.checks.some(
+                (check) =>
+                  check.check === "support" && check.outcome === "pass",
+              )
+                ? "Answer support was checked; it can still be wrong."
+                : "Answer support has not been independently checked."}
+            </p>
             <details className="learning-evidence">
               <summary>Sources and capture details</summary>
               <p className="small muted">
                 Saved excerpts, not complete course coverage. Matching
-                quotations establish source provenance; generated teaching and
-                feedback may still be wrong.
+                quotations establish provenance; they do not guarantee the
+                teaching is correct.
               </p>
-              {session?.sources.map((source) => (
+              {view?.sources.map((source) => (
                 <div key={source.resourceId} className="learning-source">
                   <button
                     className="subtle-button"
@@ -362,174 +417,198 @@ export function LearningPanel({
                     {source.title}
                   </button>
                   <p className="small muted">
-                    Captured {timestamp(source.observedAt)} ·{" "}
-                    {source.complete ? "Complete capture" : "Partial capture"} ·{" "}
-                    {source.status.replaceAll("_", " ")}
+                    Captured {timestamp(source.observedAt)}
                   </p>
-                  {activity.citations
+                  {item.citations
                     .filter(
-                      (citation) => citation.resourceId === source.resourceId,
+                      (citation) =>
+                        citation.resourceId === source.resourceId &&
+                        citation.contentHash === source.contentHash,
                     )
                     .map((citation, index) => (
                       <blockquote key={index}>{citation.quote}</blockquote>
                     ))}
                 </div>
               ))}
-              <p className="small muted">
-                Prepared with {activity.model}. Source checks establish where
-                quotations came from; they do not guarantee the teaching is
-                correct.
-              </p>
             </details>
           </div>
           {events.length ? (
             <div className="learning-history" aria-live="polite">
               {events.map((event) => (
-                <div
-                  key={event.id}
-                  className={
-                    event.kind === "failure"
-                      ? "evidence-note"
-                      : "learning-event"
-                  }
-                >
+                <div key={event.id} className="learning-event">
                   <strong>{eventLabels[event.kind]}</strong>
                   <p className="learning-content">{event.text}</p>
-                  {event.citations?.length ? (
-                    <details className="learning-evidence">
-                      <summary>
-                        Sources for this{" "}
-                        {event.kind === "hint" ? "hint" : "feedback"}
-                      </summary>
-                      {event.citations.map((citation, index) => {
-                        const source = session?.sources.find(
-                          (item) =>
-                            item.resourceId === citation.resourceId &&
-                            item.contentHash === citation.contentHash,
-                        );
-                        return (
-                          <div
-                            key={`${citation.resourceId}-${index}`}
-                            className="learning-source"
-                          >
-                            <span className="small muted">
-                              {source?.title ?? "Saved source"}
-                            </span>
-                            <blockquote>{citation.quote}</blockquote>
-                          </div>
-                        );
-                      })}
-                    </details>
+                  {event.outcome ? <p>{outcomeLabels[event.outcome]}</p> : null}
+                  {event.checks?.length ? (
+                    <p className="small muted">{event.checks.join(" · ")}</p>
                   ) : null}
-                  {event.kind === "feedback" ? (
+                  {event.kind === "answer" ? (
                     <p className="small muted">
-                      Saved study feedback · not a course grade. Reflections
-                      without a deterministic check remain ungraded.
+                      Study feedback, not a course grade.
+                      {event.outcome === "undecided"
+                        ? " This response needs review; the check could not decide."
+                        : ""}
                     </p>
                   ) : null}
                 </div>
               ))}
             </div>
           ) : null}
-          {needsFeedback ? (
-            <div className="learning-retry">
-              <p className="small muted">
-                Your response is saved. Feedback has not finished for that
-                response.
-              </p>
-              <button
-                className="button"
-                disabled={!canAct}
-                onClick={() => void operate("retry_feedback")}
-              >
-                Retry feedback
-              </button>
-            </div>
-          ) : null}
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              if (canAct && !responded && draft.trim()) void operate("answer");
+              if (canAct && !view?.answered && validResponse)
+                void operate("answer");
             }}
           >
             <label
               className="field-label learning-prompt"
               htmlFor={`${fieldId}-response`}
             >
-              {activity.prompt}
+              Your response
+              {item.kind === "numeric" && item.unit ? ` (${item.unit})` : ""}
             </label>
-            <textarea
-              id={`${fieldId}-response`}
-              rows={4}
-              maxLength={4000}
-              value={draft}
-              disabled={pending || responded}
-              onChange={(event) =>
-                void saveDraft(event.target.value).catch(() => undefined)
-              }
-              placeholder="Explain your thinking…"
-            />
+            {item.kind === "mc" || item.kind === "tf" ? (
+              <select
+                id={`${fieldId}-response`}
+                value={draft}
+                disabled={pending || view?.answered}
+                onChange={(event) =>
+                  void saveDraft(event.target.value).catch(() => undefined)
+                }
+              >
+                <option value="">Choose an answer</option>
+                {item.options?.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.text}
+                  </option>
+                ))}
+              </select>
+            ) : item.kind === "numeric" ? (
+              <input
+                id={`${fieldId}-response`}
+                type="number"
+                step="any"
+                value={draft}
+                disabled={pending || view?.answered}
+                onChange={(event) =>
+                  void saveDraft(event.target.value).catch(() => undefined)
+                }
+              />
+            ) : (
+              <textarea
+                id={`${fieldId}-response`}
+                rows={4}
+                maxLength={2000}
+                value={draft}
+                disabled={pending || view?.answered}
+                onChange={(event) =>
+                  void saveDraft(event.target.value).catch(() => undefined)
+                }
+                placeholder="Explain your thinking…"
+              />
+            )}
             <p className="small muted" role="status">
               {saving
                 ? "Saving response…"
-                : session?.draft === draft
+                : view?.draft === draft
                   ? "Response saved on this device."
                   : "Response has unsaved changes."}
             </p>
             <div className="inline-actions learning-actions">
               <button
                 className="button primary"
-                disabled={!canAct || responded || !draft.trim()}
                 type="submit"
+                disabled={!canAct || view?.answered || !validResponse}
               >
-                {activity.format === "practice"
-                  ? "Check response"
-                  : "Save reflection"}
+                Check response
               </button>
               <button
                 className="button"
-                disabled={!canAct || responded}
                 type="button"
-                onClick={() => void operate("hint")}
+                disabled={!canAct || view?.answered}
+                onClick={() => void operate("saved_explanation")}
               >
-                Show saved hint
+                Show saved explanation
               </button>
               <button
                 className="button"
-                disabled={!canAct || responded}
                 type="button"
+                disabled={!canAct || view?.answered}
                 onClick={() => void operate("skip")}
               >
                 Skip activity
               </button>
               <button
                 className="button"
-                disabled={!canAct || !responded}
                 type="button"
+                disabled={!canAct || !view?.answered}
                 onClick={() => void operate("next")}
               >
                 Next activity
               </button>
             </div>
             <p className="small muted">
-              You can leave and return to your saved session. Skipping or
-              opening an activity does not mark coursework complete.
+              Leave and return to your saved session. Skipping or opening an
+              activity does not mark coursework complete.
             </p>
           </form>
         </>
+      ) : view?.status === "complete" ? (
+        <p className="evidence-note">
+          You have reached the end of this practice session. Your responses are
+          saved; this does not mark coursework complete.
+        </p>
+      ) : null}
+      {view && !item ? (
+        <div className="learning-history">
+          {view.events.map((event) => (
+            <div className="learning-event" key={event.id}>
+              <strong>{eventLabels[event.kind]}</strong>
+              <p className="learning-content">{event.text}</p>
+              {event.outcome ? <p>{outcomeLabels[event.outcome]}</p> : null}
+            </div>
+          ))}
+          {view.status !== "complete" || draft ? (
+            <>
+              <label
+                className="field-label"
+                htmlFor={`${fieldId}-saved-response`}
+              >
+                Saved response
+              </label>
+              <textarea
+                id={`${fieldId}-saved-response`}
+                rows={4}
+                maxLength={2000}
+                value={draft}
+                disabled={pending}
+                onChange={(event) =>
+                  void saveDraft(event.target.value).catch(() => undefined)
+                }
+              />
+              <p className="small muted" role="status">
+                {saving
+                  ? "Saving response…"
+                  : view.draft === draft
+                    ? "Response saved on this device."
+                    : "Response has unsaved changes."}
+              </p>
+            </>
+          ) : null}
+        </div>
       ) : null}
       {!restricted ? (
-        <details className="learning-start" open={!session}>
+        <details className="learning-start" open={!view}>
           <summary>
-            {session
+            {view
               ? "Start a new session or change your goal"
               : "Start with this material"}
           </summary>
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              if (available && backendReady && !pending && !loading)
-                void operate("start");
+              if (backendReady && !pending && !loading) void operate("start");
             }}
           >
             <label className="field-label" htmlFor={`${fieldId}-goal`}>
@@ -543,62 +622,52 @@ export function LearningPanel({
               onChange={(event) => setGoal(event.target.value)}
               placeholder="For example, help me understand the main idea"
             />
-            <button
-              className="button primary"
-              type="submit"
-              disabled={!available || !backendReady || pending || loading}
-            >
-              {session ? "Start new practice" : "Start practice"}
-            </button>
-            <button
-              className="button"
-              type="button"
-              disabled={!available || !backendReady || pending || loading}
-              onClick={() => void operate("explain")}
-            >
-              Explain this material
-            </button>
+            <div className="inline-actions learning-actions">
+              <button
+                className="button primary"
+                type="submit"
+                disabled={!backendReady || pending || loading}
+              >
+                {view ? "Start new practice" : "Start practice"}
+              </button>
+              <button
+                className="button"
+                type="button"
+                disabled={!backendReady || pending || loading}
+                onClick={() => void operate("explain")}
+              >
+                Explain this material
+              </button>
+            </div>
             <p className="small muted">
-              Practice uses prepared study items. Explain requests a new
-              explanation through your configured AI, using the current sources
-              and goal.
+              Practice plans about 15 minutes from available checked items. New
+              AI explanations are not connected in this build; saved
+              explanations remain available with practice.
             </p>
           </form>
         </details>
       ) : null}
-      <div className="inline-actions learning-actions">
-        {pending ? (
-          <button className="button small-button" onClick={() => void cancel()}>
-            Cancel
-          </button>
-        ) : null}
-        {error && available ? (
+      {error ? (
+        <>
+          <p className="attention-text" role="alert">
+            {error}
+          </p>
           <button
             className="button small-button"
             disabled={pending}
-            onClick={() => {
+            onClick={() =>
               void saveDraft(draftValue.current)
-                .then(() => operate("reload", current.current?.session.id))
-                .catch(() => undefined);
-            }}
+                .then(() => operate("reload", current.current?.id))
+                .catch(() => undefined)
+            }
           >
             Retry loading saved learning
           </button>
-        ) : null}
-      </div>
+        </>
+      ) : null}
       {pending ? (
         <p className="small muted" role="status">
           Working… Your saved material stays available.
-        </p>
-      ) : null}
-      {notice ? (
-        <p className="small muted" role="status">
-          {notice}
-        </p>
-      ) : null}
-      {error ? (
-        <p className="attention-text" role="alert">
-          {error}
         </p>
       ) : null}
     </section>

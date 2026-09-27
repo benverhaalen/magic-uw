@@ -1,64 +1,62 @@
 # Course-aware learning sessions
 
-Status: being adapted to Nathaniel’s authoritative course-backend architecture, September 26, 2026. The session surface and orchestration are a feature-branch integration candidate. Nathaniel’s concrete runner, repository and learning-engine bindings are not present in this checkout; this is not a functioning production tutor yet.
+Status: canonical N24/N25 integration built in the September 26 learning-session branch. Nathaniel’s course backend at `f850ea7` supplied the learning engines and shared v6/v7 schema; this integration adds the SQL adapter, prepared-practice router and contextual desktop binding. Driver integration review and rendered checks are pending. No live coursework tutoring quality has been demonstrated.
 
-## Student outcome and scope
+## Student outcome and current journey
 
-From an assignment, start a useful learning activity without uploading its context again. The activity uses the assignment's available instructions, accepted supporting materials and course policy. Answer, ask for a hint, skip or pause; return to the saved activity and draft. Feedback identifies what the response supports, one gap and one next step. Unknown performance remains unknown.
+From an assignment, choose prepared practice without uploading the course again. The assignment anchors the course and navigation; its open graded text does **not** become study input. Eligible supporting materials supply source evidence. A checked pool must already exist: an empty pool produces an honest unavailable message, never generated or unlabeled sample questions.
 
-The initial module catalog is explanation, worked example and practice. These are reusable forms, not course-specific pipelines. The model can choose a form from these bounded options using the request, course evidence and recent session evidence. The student can redirect through a short optional goal. No mandatory diagnostic, scheduling screen, readiness percentage, automatic notification or second course database is introduced. Media, simulations and hosted-provider adapters remain independent extensions, not implied capabilities.
+The student can answer choice, numeric and typed questions, open a saved explanation, skip, save a response and return. Source versions and actual check outcomes are visible. An explanation is recorded as assistance; there is no separately generated smaller hint. Code grades against the stored answer/key ideas. An undecided typed answer stays in session history with a null score and creates no scored attempt. Repeated questions are legitimate parts of Nate’s progression, not duplicate-output failures.
 
-## Alignment with the course backend
+This delivers prepared practice, not the whole learning roadmap. Explanations generated on request, worked examples, adaptive artifacts, new item generation and T42 integration remain unavailable. The renderer’s explicit explanation request receives `not_built`. Exam, card-review, assessment-filtered and other unconnected learning operations also remain `not_built`. There are no readiness percentages or claims of measured mastery from this feature.
 
-Ben directed this feature to use Nathaniel’s architecture as its foundation. The [course-backend spec and tasks](plans/2026-09-26-course-backend/spec.md) are authoritative; [the architecture summary](course-backend-architecture.md) explains their current implementation status. The docs at `8d91ceb` are the integration reference. This does not mean uninspected lane code has been demonstrated here.
+## Canonical integration
 
-| Earlier session implementation | Adaptation |
-| --- | --- |
-| Independent SQLite migration 6 and session tables | Remove them. Storage owns the shared v6 course core and v7 learning tables. Session DTOs are a UI projection, not a second schema. |
-| Direct local Ollama activity/feedback calls | Remove the separate transport. Explicit explanations go through the shared pack runner, with its consent, receipts, budgets and checks. |
-| Model call on answer, hint and next | Study uses prepared checked items, stored hints/explanations and the existing deterministic learning engine. No model calls on ordinary study actions. |
-| Assignment text automatically supplies generation context | Preserve assignment entry as scope/navigation, but exclude open graded assignment content under IP-2. Use permitted supporting material; missing evidence remains missing. |
-| A runnable alternative backend | A narrow binding to the shared repository, checked study pool and pack executor. If these are absent, report unavailable; do not silently use another provider or temporary persistence. |
+The [course-backend spec](plans/2026-09-26-course-backend/spec.md), [tasks §L](plans/2026-09-26-course-backend/tasks.md#l-the-learning-tasks-status-rewritten-dependencies-amendments-these-win-over-the-learning-tasks-own-lines), and learning spec [integrity rules](plans/2026-09-26-notebook-and-study-tracking/spec.md#10-integrity-and-privacy-rules) govern this binding.
 
-Renderer → typed preload IPC → worker → learning-session orchestration → shared learning repository / checked-item engine / explicit explanation pack.
+```text
+Assignment LearningPanel
+  → existing execute({ type: "learning", request }) bridge
+  → core learning channel → N25 createLearningRouter
+  → N08 grading / N09 Learn progression / N10 session planning
+  → N24 LearningStore on the existing workspace SQLite connection
+```
 
-The injection boundary is this feature’s proposed adapter, not a claim that Nathaniel already exports identical TypeScript signatures. Bind it to his concrete APIs when available; do not recreate his runtime to satisfy the interface. Production readiness requires this final binding and a real app-path check.
+The earlier parallel `learning*` IPC methods, session service, independent session contracts and direct Ollama activity pack have been retired. Practice has no provider/model dependency. Future generation belongs to the shared pack runner and its consent, receipts, budget and evidence checks; this integration does not bypass or claim that path.
 
-The preserved journey includes source disclosure, draft recovery, skip, cancellation, return, and retry where appropriate. Code rechecks account/course membership, exclusions, policy and evidence changes. Excluding a course hides historical excerpts while retaining local work for a later permitted return. Purge must prevent late results from restoring deleted work.
+### Persistence and operations
 
-Open explanations and studying are distinct operations. The explicit explanation pack may use a model; prepared practice must not. No readiness estimate or Boolean correctness is inferred from free-form model feedback. The shared checked-item engine owns supported grading; unsupported answers remain ungraded.
+`study.plan` starts a contextual round from the newest eligible, active, checked item versions. `study.sessions`, `study.session` and `study.resume` read saved rounds. `study.draft`, `study.answer`, `study.hint` and `study.advance` mutate them. The renderer receives `StudySessionView`; answer keys and internal knowledge-model parameters are not exposed.
 
-Jev is not a required extra call for this session orchestration. The shared generation/verification pipeline determines its targeted uses. No new hosted request bypasses that pipeline.
+Session state, drafts, history, source disclosures and operation fingerprints live in the canonical `learning_sessions.plan_json`, not another table family. Each mutation supplies a revision and operation ID. `commitSession` atomically compares the revision and writes the session with any scored attempt. Retries do not duplicate attempts; a reused operation ID with a different request or a stale revision cannot overwrite work. Undecided answers are saved only as session events.
 
-## Data opportunity and limits
+The N24 SQL adapter uses the workspace store’s existing connection and transaction wrapper. Storage-owned **v8** preserves v6/v7 and fills concrete engine/schema gaps: numeric item units, chosen option IDs, coverage decision authorship, and cards with explicit course/concept scope and pinned item versions. Concept tracks no longer require an invented learning item. The migration conservatively preserves existing non-proposed coverage decisions. This is schema alignment for Nate’s records, not a second course database.
 
-| Available evidence | Behavior it changes | Limit and fallback |
+### Evidence, policy and recovery
+
+The worker constructs trusted account/course context. Renderer-supplied IDs do not authorize another account’s history. Excluded, missing or foreign-course context is unavailable. Policy restriction blocks practice; silent policy is not a verified permission statement. Source health and a context hash track source, policy and privacy changes separately from the assignment content hash.
+
+IP-2 eligibility is checked again at use time: an assignment closes at a confirmed lock time, otherwise its conflict-free resolved due time; no date or an invalid date remains open. Submission does not close it. Ordinary supporting materials can be eligible. Planning, transcript/DARS and historical grades are not inputs to this feature.
+
+Every item source must match the current eligible resource’s content hash and exact quoted span. A newer quarantined item cannot cause fallback to an older active version. Required passed checks include policy, schema, quote, flaws, near-duplicate and tags; any failed check excludes the item. Optional model support checks may be `not_run` and are disclosed accordingly. Passing source and format checks does not prove the answer is independently verified or pedagogically good.
+
+Saved explanations require their own passed citation check and use the same current source gate. No live model is called for answer, explanation exposure, skip or advance. Source changes make the round stale and suppress its current question; original source-version disclosures and saved responses remain available within authorized scope. Draft recovery can continue while freshness or policy blocks practice. A new round uses current evidence. Cancellation is checked before mutation, and purge removes canonical learning records through the workspace store.
+
+## Reference-driven transfer
+
+| Inspected reference and job | Mechanism transferred | Failure check |
 | --- | --- | --- |
-| Permitted source material linked to the assignment | Skill/topic, source passages, context and activity | An assignment can anchor navigation without allowing its open graded content into generation. Missing permitted support cannot justify invented course knowledge |
-| Course policy/compiler claims | Allow or block help; coach conservatively when unclear | Source text is evidence, not authorization; stale or unknown policy cannot grant permission |
-| Rubric/assessment expectations present in permitted source text | What the activity asks the student to explain or demonstrate | Structured rubric arrays are not yet projected into this feature’s source text. Do not claim the professor's exam pattern without examples; do not turn rubric language into a predicted grade |
-| Saved session responses, hints and explanations | Continuation and scaffolding | No inference of learning style or mastery; initial feedback is formative model output |
-| Source versions, capture times and health | Freshness, invalidation and evidence display | Saved/partial data is not proof of complete course coverage |
+| Nate N08 `grade.ts`; deterministic grading | Reuse exact/numeric/key-idea grading; undecided stays null rather than becoming an incorrect answer | Ambiguous typed response persists with no scored attempt |
+| Nate N09 `learn.ts`; progression | Persist its pure state transitions, including recognition/recall and deliberate repeats | Wrong/undecided answers can return; no blanket repeated-item ban |
+| Nate N10 `session.ts`; planning | Feed real course concepts, checked pool and evidence into the existing planner | Empty/ineligible pool cannot start a fabricated session |
+| Shared LearningStore and SQLite transaction boundary; persistence | Atomic revision comparison plus session/attempt write, on one connection | Retry produces one attempt; failed comparison preserves prior revision |
+| Learning spec IP-2 and existing source-version evidence; integrity | Assignment remains a navigation anchor while open graded text is excluded; exact source spans revalidated | Missing/invalid closing dates, changed quotes/hashes and cross-account context block use |
+| Existing assignment design and execute bridge; interaction | Contextual learning surface, source disclosure and recoverable drafts without another navigation/runtime system | Actual assignment entry, return and recovery require rendered inspection |
 
-Planning, transcript/DARS records and historical grades are not learning evidence sent through this feature. No extra collection is required. Input selection must be bounded; source counterfactual tests must show that replacing/removing decisive evidence changes the actual model input or blocks unsupported activity.
+These are inspected code/spec mechanisms and their local tests, not evidence of learning outcomes. Broader references such as the [IES practice guide](https://ies.ed.gov/ncee/wwc/PracticeGuide/1) still inform the future worked-example/practice roadmap; they do not validate the current product.
 
-## References and concrete transfer
+## Verification and remaining checks
 
-- [IES practice guide: Organizing Instruction and Study to Improve Student Learning](https://ies.ed.gov/ncee/wwc/PracticeGuide/1), inspected September 26: a research synthesis published in 2007, including worked-example/problem alternation and explanatory questions. **Role:** learning mechanism. **Transfer:** multiple forms, small feedback and a next question, assistance recorded separately. Applicability depends on task and source quality; this is not an evaluation of Magic Canvas or a reason to force quizzes after every answer.
-- [Ollama structured outputs](https://docs.ollama.com/capabilities/structured-outputs), inspected September 26: JSON schema supplied through `format`, with separate Zod validation. **Role:** implementation mechanism. **Transfer:** bounded typed activity/feedback rather than parsing arbitrary chat prose. Valid JSON does not establish grounded or correct teaching; source-span and semantic limitations remain explicit.
-- Existing `local-service.ts`, `local.ts`, core context and SQLite versioned capture paths, inspected at `2478ab1`. **Role:** architecture and safety reference. **Transfer:** worker isolation, fixed local recipient, reverified model identity, no arbitrary tools, cancellation and post-inference evidence checks. Extend this path instead of importing another agent runtime.
-- Existing design component contracts. **Role:** interaction reference. **Transfer:** optional contextual action, compact evidence disclosure, recoverable failures and reliable return within assignment detail; preserve Home/navigation.
+Ten focused router tests pass using synthetic course material run through the actual item-check pipeline and canonical memory store. They cover the normal saved-round journey, idempotency/revision conflicts, unscored uncertainty, deliberate repeats, assistance, exact evidence and account/policy/cancellation gates, newest-version invalidation, original source disclosure and failed-CAS recovery. They make no provider calls. Earlier standalone-service tests are retired and are not evidence for this architecture.
 
-## Acceptance and audit
-
-The earlier standalone implementation passed 30 focused tests and TypeScript checking. Those results do not verify the adapted architecture. Adapter tests must separately establish that ordinary study makes zero model calls, missing bindings are explicit, and open graded assignment content is excluded. Runtime-backed restart, receipts and provider checks remain integration requirements until the shared bindings land.
-
-1. Normal assignment entry starts a context-grounded activity, accepts a response, gives formative feedback, and resumes with the same draft/history after storage reopen.
-2. Quoted evidence must match the exact supplied source version. Foreign-course, invented and stale references are rejected.
-3. A restricted policy makes no inference call. Unknown policy stays coaching. Source/policy/privacy changes, deletion and purge during inference reject late results.
-4. Hint, explanation, skip and repeat exposure are recorded honestly; no generated assessment writes a fabricated Boolean correctness or readiness percentage.
-5. Missing sources, unavailable runtime, invalid output and cancellation leave useful saved state and an actionable recovery path.
-6. Synthetic STEM and humanities cases exercise different requests/evidence; remove decisive context and inspect the producing request/fallback. Fixture success does not establish live tutoring quality.
-7. Actual renderer entry, keyboard controls, navigation/return and draft recovery are inspected headlessly. Build/tests alone do not establish the experience.
-
-Independent architecture review was requested through the installed Jev harness before implementation. Its read-only report recommended explicit resumable session/item state, reuse of the verified local generation and policy-context boundaries, and tests for assistance, source drift, interruption and untrusted text. The driver accepted those mechanisms; its weak report-consistency check is not independent verification of software. Final code review and observed results are recorded below when available.
+The SQL adapter has separate persistence/migration tests. Driver-owned combined checking, SQL-backed restart/purge, renderer entry, keyboard behavior and draft recovery must be reported from their actual results. Passing isolated tests does not establish app integration or live course quality. Production preparation of a checked question pool, explicit explanation generation, broad course coverage, and student learning evaluation remain separate work.

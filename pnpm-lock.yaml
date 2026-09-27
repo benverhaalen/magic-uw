@@ -159,6 +159,9 @@ importers:
       '@magic/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@magic/domain':
+        specifier: workspace:*
+        version: link:../domain
 
   packages/packs:
     dependencies:
