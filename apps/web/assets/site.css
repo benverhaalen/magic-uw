@@ -1,22 +1,28 @@
 /* My Magic UW website. Structure and content are the marketing draft (marketing/Website
-   Directions.dc.html 2a and the About Us, FAQ and Pricing drafts). Only fonts and colours are
-   aligned to the product: every colour below comes from docs/design/tokens.css (loaded as
-   /assets/tokens.css), matched to the draft by role and prominence. White stays white.
-   Fonts: Geist and Geist Mono as in the product; Fraunces (soft, light) stands in for the
-   product's Cooper Light, which cannot be served publicly (Aidan's choice, September 27). */
+   Directions.dc.html 2a and the About Us, FAQ and Pricing drafts). Brand colours follow the
+   wizard palette built on UW–Madison cardinal (marketing/logo-design-elements/README.md), so the
+   page, the wizard and the product's warm shell read as one family. Ink, surfaces, lines and
+   fonts come from the product (docs/design/tokens.css, loaded as /assets/tokens.css). White stays
+   white. Fonts: Geist and Geist Mono as in the product; Fraunces (soft, light) stands in for
+   the product's Cooper Light, which cannot be served publicly (Aidan's choice, September 27). */
 :root {
-  --ink: var(--magic-ink); /* draft #1b1d33 */
-  --navy: var(--magic-ink-review); /* dark blue headings, draft #1e2757 */
-  --blue: var(--magic-ink-link); /* blue text and marks, draft #2c55b8 */
-  --blue-fill: linear-gradient(110deg, var(--magic-focus), var(--magic-ink-link)); /* white text 5.1:1 or more */
-  /* Draft yellow #f7c440 was a solid, vivid fill. --magic-fill-study fades to a pale end and lost
-     that pop across large rooms, so gold surfaces use its strongest stop (#f1cc78) as a solid. */
-  --gold-fill: #f1cc78;
-  /* Draft navy blocks become the ember shell, darkened with the shell's selected overlay so
-     white body text stays at 5.8:1 or more even over the highlight. */
-  --dark-fill: linear-gradient(var(--magic-fill-shell-selected), var(--magic-fill-shell-selected)), var(--magic-fill-shell);
-  --accent-on-dark: var(--magic-fill-schedule-event); /* pale gold text on dark, 4.6:1 or more */
-  --sky: var(--magic-fill-confirmation); /* draft #e8eefc */
+  /* Wizard palette */
+  --cardinal: #c5050c; /* UW cardinal: robe, primary actions, brand marks */
+  --deep-red: #9b0000; /* hat; start of the dark rooms */
+  --night-cardinal: #5c0b10; /* dark tiles; headings on tinted rooms */
+  --star-yellow: #f7c440; /* stars and the vivid yellow rooms */
+  --blush: #faebec; /* 8% cardinal on white: pale rooms and chips */
+
+  --ink: var(--magic-ink);
+  --navy: var(--night-cardinal); /* headings on tinted rooms, 13.9:1 on white; draft #1e2757 */
+  --blue: var(--cardinal); /* brand marks and wordmark, 6.2:1 on white; draft #2c55b8 */
+  --blue-fill: var(--cardinal); /* white text 6.2:1; draft #2c55b8 */
+  --gold-fill: var(--star-yellow); /* ink text 9.5:1; draft #f7c440 */
+  --dark-fill: linear-gradient(135deg, var(--deep-red), var(--night-cardinal)); /* white 8.7:1 or more; draft navy */
+  --accent-on-dark: var(--star-yellow); /* 5.4:1 or more on the dark rooms */
+  --focus: var(--ink);
+  --focus-on-dark: #fff;
+  --sky: var(--blush); /* draft #e8eefc */
   --butter: var(--magic-fill-schedule-event); /* draft #fdf0c8 */
   --paper: var(--magic-surface-quiet); /* draft #f5f2ea */
   --mist: var(--magic-surface-quiet); /* draft #f3f3f1 */
@@ -55,7 +61,7 @@ a:hover {
 a:focus-visible,
 button:focus-visible,
 summary:focus-visible {
-  outline: 3px solid var(--magic-focus);
+  outline: 3px solid var(--focus);
   outline-offset: 3px;
 }
 img,
@@ -66,6 +72,12 @@ svg {
 button {
   font: inherit;
   color: inherit;
+}
+/* Inside the dark rooms the ink ring would vanish, so focus turns white there. */
+.bg-navy :focus-visible,
+.plan :focus-visible,
+.ask :focus-visible {
+  outline-color: var(--focus-on-dark);
 }
 .visually-hidden {
   position: absolute;

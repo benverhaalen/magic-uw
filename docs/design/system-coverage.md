@@ -12,7 +12,7 @@ Version 2 · September 26, 2026. **Design maturity is separate from feature impl
 | My UW | Access useful UW academic/administrative context; see planning adapters and source constraints | Nav destination accepted; page composition and primary tasks need Ben's input | Define the first useful task before a teammate invents a dashboard; no registration/write capability implied |
 | Calendar | Understand commitments; week/month; request study suggestions | View/default/suggestion semantics accepted; Sean's Today domain work reviewed separately | Week/month visual design, overlap/timezone and proposal acceptance flow |
 | Profile/settings | Account entry, preferences and actual connections | Bottom profile/expanded name accepted; broader settings composition unspecified | Font/branding configuration and later shell customization; respect real capability boundaries |
-| Public website | Understand product → legitimate download or GitHub | Marketing-draft structure with fonts and colours mapped to `tokens.css` (Fraunces stands in for Cooper); rendered at desktop and phone widths locally | Wizard branding in the app needs Ben’s agreement; replace Fraunces if a servable Cooper or new face is chosen; live deploy check |
+| Public website | Understand product → legitimate download or GitHub | Marketing-draft structure; brand colours from the cardinal wizard palette, ink/surfaces/fonts from `tokens.css` (Fraunces stands in for Cooper); rendered at desktop and phone widths locally | Cardinal vs ember shell and wizard in the app need Ben’s agreement; replace Fraunces if a servable Cooper or new face is chosen; live deploy check |
 
 ## Current owners and change impact
 
