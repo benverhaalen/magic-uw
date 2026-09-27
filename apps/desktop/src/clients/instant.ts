@@ -1,10 +1,10 @@
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import type { ClientId, ClientMode, InstantSupport } from "@magic/contracts";
 import { RunnerError, runProcess, type CliCommand } from "@magic/runner";
-import { allowedEnv, clientIdSchema, resolveClient, type ClientsDeps } from "./profiles";
+import { allowedEnv, clientIdSchema, resolveClient, writeFileAtomic, type ClientsDeps } from "./profiles";
 
 /**
  * owner: client-health (D50). Instant mode: the student's own, already signed-in Claude Code or
@@ -358,7 +358,5 @@ export async function writeClientMode(id: ClientId, mode: ClientMode, userData: 
   const modes = { ...(await readClientModes(userData)), [clientIdSchema.parse(id)]: mode };
   const path = modesPath(userData);
   await mkdir(userData, { recursive: true });
-  const temp = `${path}.${process.pid}.tmp`;
-  await writeFile(temp, `${JSON.stringify({ modes }, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-  await rename(temp, path);
+  await writeFileAtomic(path, `${JSON.stringify({ modes }, null, 2)}\n`);
 }
