@@ -21,6 +21,7 @@ import { judgmentResultSchema } from "@magic/ai";
 import { evidenceFor } from "./evidence";
 import { courseIncluded } from "./access";
 import { createHash } from "node:crypto";
+import { guideQuery } from "../../packs/guide/src/query"; // owner: guides
 
 /** The one mapping from stored resources to what a view shows: deadline, label, order. */
 export function resourceViews(store: Store, list: Resource[]): ResourceView[] {
@@ -255,5 +256,9 @@ export function runQuery(store: Store, request: QueryRequest, context: QueryCont
         complete: true,
       };
     }
+    // owner: guides. guide.view: the personalised view of a cached study guide, 0 model calls.
+    case "guide":
+      return guideQuery(store, request, context.now());
+    // end owner: guides
   }
 }
