@@ -1,4 +1,4 @@
-# Magic Canvas design system
+# My Magic UW design system
 
 Version 3 · September 26, 2026 · Component system candidate; foundation palette/type accepted (D27). Evidence for rendered components and transfer lives in the [coverage map](docs/design/system-coverage.md); a rule is not proof of implementation.
 
@@ -36,6 +36,16 @@ The Home anchor is approximately 95% desired as a static screen in Ben's judgmen
 Before presenting a new desktop family as Magic, demonstrate the identity in code against the actual Home reference: loaded Cooper/Geist, real Lucide glyphs, the matched sidebar, shell treatment and curves. Approximate serif lettering, generic icons and a vaguely warm palette do not pass this gate. Generated images can explore a component but cannot establish exact typography or icon fidelity. Use the matched desktop context when judging shell relationships. Standalone component and foundation sheets are appropriate for bounded details; they do not prove whole-frame fidelity.
 
 Calibrate a useful subset of typography, materials and recipes through **intended image → extracted roles/relationships → fresh component code → rendered comparison and interaction checks**. Then test a related surface from a fresh description without supplying its bespoke layout or the old Home CSS. A copied Home cannot establish transfer. New features may extend the first version as their needs become clear; all future screens need not be specified now. See the [image-to-code sequence](.agents/skills/magic-design/references/image-to-code.md).
+
+## Accepted corrections that govern current consumers
+
+Recorded September 27, 2026 from the active build conversation; exact quotes and scope are in the [decision record](docs/design/decision-record.md#current-desktop-corrections--recorded-september-27-2026-original-message-timestamps-unknown).
+
+- **Hard constraints:** visible name My Magic UW; no decorative left-edge accent stripes; no em dashes in app-authored UI copy. Preserve raw source evidence separately. Calendar grid separators and semantic full outlines are not accent stripes.
+- **Reference-judged direction:** restore the original Home’s richer filled colors and warm gradient through meaningful identity, action and compact content selection. Arbitrary positional recoloring or higher saturation alone does not satisfy this direction. Compare the actual Home reference at the normal viewport.
+- **Content and behavior:** audit source → structured projection → UI. Preserve raw titles and stable account/course identity while selecting concise labels. Home’s empty day uses a small honest message instead of an empty hour grid; due-today tasks and all-day entries stay independently accessible. Partial or stale coverage must not imply a free day. The full Calendar retains its week/month structure.
+
+These corrections supersede any older examples showing accent stripes, authored em dashes, an always-visible empty Home hour grid or the former visible brand. They do not relax Cooper/Geist, Lucide, geometry, keyboard/focus, evidence or capability rules. Uncorrected consumers remain pending in the [adoption record](docs/design/adoption.md), regardless of passing documentation review.
 
 ## Read only the relevant packet
 

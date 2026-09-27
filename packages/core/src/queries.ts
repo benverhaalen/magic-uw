@@ -19,12 +19,15 @@ import type {
 import { resolveDeadline } from "@magic/domain";
 import { judgmentResultSchema } from "@magic/ai";
 import { evidenceFor } from "./evidence";
-import { courseIncluded } from "./access";
+import { courseIncluded, courseInclusion } from "./access";
 import { createHash } from "node:crypto";
 
 /** The one mapping from stored resources to what a view shows: deadline, label, order. */
 export function resourceViews(store: Store, list: Resource[]): ResourceView[] {
-  const evidence = evidenceFor(store);
+  const included = courseInclusion(store);
+  const sources = new Map(store.sources().map(source => [source.id, source]));
+  const permitted = (resource: Resource) => !resource.deleted && included(resource) && sources.get(resource.sourceId)?.status !== "inaccessible";
+  const evidence = evidenceFor(store, permitted);
   const judgments = store.judgments();
   return list
     .map((r) => {
@@ -44,7 +47,8 @@ export function resourceViews(store: Store, list: Resource[]): ResourceView[] {
           : null;
       return {
         ...r,
-        deadline: resolveDeadline(evidence.deadlines(r), evidence.unresolvedDeadlines(r)),
+        deadline: permitted(r) ? resolveDeadline(evidence.deadlines(r), evidence.unresolvedDeadlines(r)) : resolveDeadline([]),
+        deadlineContributors: evidence.contributors(r).map(source => ({ resourceId: source.id, contentHash: source.contentHash })),
         kindLabel: label,
       };
     })

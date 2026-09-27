@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 export type DesktopView = 'today' | 'courses' | 'myuw' | 'calendar' | 'resource' | 'sources' | 'privacy' | 'consent' | 'notebook' | 'practice' | 'insights' | 'settings';
-type Place = { view: DesktopView; resourceId: string | null; scroll: number; focus: string | null; anchor: string | null; offset: number };
-const initial: Place = { view: 'today', resourceId: null, scroll: 0, focus: null, anchor: null, offset: 0 };
+type Place = { view: DesktopView; resourceId: string | null; courseKey: string | null; disclosures: Record<string, boolean>; scroll: number; focus: string | null; anchor: string | null; offset: number };
+const initial: Place = { view: 'today', resourceId: null, courseKey: null, disclosures: {}, scroll: 0, focus: null, anchor: null, offset: 0 };
 export const resourceHref = (id: string) => `#resource/${encodeURIComponent(id)}`;
 export function useDesktopNavigation() {
   const [stack, setStack] = useState<Place[]>([initial]);
@@ -15,11 +15,12 @@ export function useDesktopNavigation() {
     const anchors = Array.from(pane?.querySelectorAll<HTMLElement>('[data-place-anchor]') ?? []);
     const top = pane?.getBoundingClientRect().top ?? 0;
     const anchor = anchors.find(node => node.getBoundingClientRect().bottom > top);
-    return { ...current, scroll: pane?.scrollTop ?? 0, focus, anchor: anchor?.dataset.placeAnchor ?? null, offset: anchor ? anchor.getBoundingClientRect().top - top : 0 };
+    const disclosures = Object.fromEntries(Array.from(pane?.querySelectorAll<HTMLDetailsElement>('details[data-place-disclosure]') ?? []).map(node => [node.dataset.placeDisclosure!, node.open]));
+    return { ...current, disclosures, scroll: pane?.scrollTop ?? 0, focus, anchor: anchor?.dataset.placeAnchor ?? null, offset: anchor ? anchor.getBoundingClientRect().top - top : 0 };
   }
-  function navigate(view: DesktopView, resourceId: string | null = null) {
-    if (current.view === view && current.resourceId === resourceId) return;
-    const next = { ...initial, view, resourceId };
+  function navigate(view: DesktopView, resourceId: string | null = null, courseKey: string | null = view === 'resource' ? current.courseKey : null) {
+    if (current.view === view && current.resourceId === resourceId && current.courseKey === courseKey) return;
+    const next = { ...initial, view, resourceId, courseKey };
     const saved = stack.slice(0, index + 1); saved[index] = capture();
     pending.current = next; setStack([...saved, next]); setIndex(saved.length);
   }
@@ -34,10 +35,13 @@ export function useDesktopNavigation() {
     pending.current = null;
     const pane = document.querySelector<HTMLElement>('.desktop-workspace');
     if (!pane) return;
+    for (const node of Array.from(pane.querySelectorAll<HTMLDetailsElement>('details[data-place-disclosure]'))) {
+      const open = place.disclosures[node.dataset.placeDisclosure!]; if (open !== undefined) node.open = open;
+    }
     const anchor = Array.from(pane.querySelectorAll<HTMLElement>('[data-place-anchor]')).find(node => node.dataset.placeAnchor === place.anchor);
     pane.scrollTop = anchor ? pane.scrollTop + anchor.getBoundingClientRect().top - pane.getBoundingClientRect().top - place.offset : place.scroll;
     const focus = Array.from(document.querySelectorAll<HTMLElement>('[data-focus-key], a[href]')).find(node => node.dataset.focusKey === place.focus || node.getAttribute('href') === place.focus);
     (focus ?? pane.querySelector<HTMLElement>('h1, h2'))?.focus({ preventScroll: true });
-  }, [index, current.view, current.resourceId]);
-  return { view: current.view, selectedId: current.resourceId, navigate, back: () => travel(-1), forward: () => travel(1), canBack: index > 0, canForward: index < stack.length - 1 };
+  }, [index, current.view, current.resourceId, current.courseKey]);
+  return { view: current.view, selectedId: current.resourceId, courseKey: current.courseKey, navigate, back: () => travel(-1), forward: () => travel(1), canBack: index > 0, canForward: index < stack.length - 1 };
 }

@@ -15,6 +15,14 @@ Ben's exact excerpts supplied in the current design conversation, recorded Septe
 
 These are direct excerpts, not newly recovered timestamped records. The [decision record](decision-record.md) separately records recovered D08 evidence semantics, D18 evidence across AI surfaces and D20 adaptive purpose. The rules below operationalize that direction; no fixed ranking formula, word limit or time window is approved by these examples.
 
+## Current copy and label constraints
+
+App-authored UI copy must never contain em dashes. Use a period, comma, colon or concise separate label as appropriate. Do not silently edit a quoted source or raw title to make a literal scan pass: preserve that evidence, and use a distinct concise display projection where needed. Visible product name is **My Magic UW**.
+
+Course labels must be audited through source → structured metadata → display projection → actual UI. Preserve raw title, account scope and course ID; prefer verified structured code/title and targeted parsing with a safe fallback. Model assistance is an option when needed, not authority to invent course facts or merge similarly named courses. Ellipsis alone does not normalize a title. Inspect real messy examples, missing metadata and same-name courses across accounts before adopting a formatter.
+
+Empty-state copy distinguishes a checked saved schedule from missing, incomplete and stale coverage. A healthy Home day with no timed commitments needs only a small message; recovery actions appear only when they have a real job. All-day entries and deadlines remain visible. This does not prescribe an empty full Calendar page.
+
 ## Produce the useful information before styling it
 
 Use this path in a generation brief and review the resulting content, not merely the presence of these instructions:

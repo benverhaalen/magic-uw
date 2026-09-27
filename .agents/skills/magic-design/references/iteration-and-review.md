@@ -50,6 +50,8 @@ If another worker changes the baseline, re-evaluate only affected contracts/stat
 
 Example: Ben says time text should match surrounding prose. Update its recipe and token binding; inspect an actual wrapped briefing line at normal and enlarged text; give the next critic that quote and screenshot. Merely appending “consistent type” to memory is insufficient.
 
+For current correction gates, inspect the [governing accepted rules](../../../../DESIGN.md#accepted-corrections-that-govern-current-consumers) and [copy/label constraints](../../../../docs/design/content-design.md#current-copy-and-label-constraints). Audit source → projection → UI, compare actual Home color/density with the original anchor, and exercise empty/partial/stale schedules. Scan authored UI copy and inspect raw-source display separately. Keep noncompliant consumers pending; preserve existing typography, geometry, focus and evidence gates.
+
 Maintain lightweight evidence records: requirement ID → affected component/path → relevant state → actual screenshot/test/observation → result/limit. Leave only unresolved or high-value regression cases active. Remove stale instructions rather than stacking contradictory amendments. Keep raw chats, X captures, private coursework and local research outside commits.
 
 ## Reference-driven specialist checkpoints

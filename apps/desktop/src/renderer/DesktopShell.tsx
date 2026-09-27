@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import type { ResourceView } from '@magic/contracts';
+import type { CourseCard } from '../../../../packages/domain/src/course-page';
 import type { DesktopView } from './navigation';
 // Lucide v0.468.0 nodes from lucide-static; ISC attribution: packages/ui/LICENSE.icons.
 // Existing vendor originals: docs/design/lab/vendor. Remaining nodes from the same pinned release.
@@ -19,9 +19,9 @@ export function Glyph({ name }: { name: 'home' | 'book' | 'calendar' | 'panel' |
   };
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
-export function DesktopShell({ view, title, courses, sample, busy, canBack, canForward, onBack, onForward, onNavigate, onCourse, onCompose, children }: {
-  view: DesktopView; title: string; courses: ResourceView[]; sample: boolean; busy: boolean; canBack: boolean; canForward: boolean;
-  onBack: () => void; onForward: () => void; onNavigate: (view: DesktopView) => void; onCourse: (course: ResourceView) => void; onCompose: () => void; children: ReactNode;
+export function DesktopShell({ view, title, courses, selectedCourseKey, sample, busy, canBack, canForward, onBack, onForward, onNavigate, onCourse, onCompose, children }: {
+  view: DesktopView; title: string; courses: CourseCard[]; selectedCourseKey: string | null; sample: boolean; busy: boolean; canBack: boolean; canForward: boolean;
+  onBack: () => void; onForward: () => void; onNavigate: (view: DesktopView) => void; onCourse: (key: string) => void; onCompose: () => void; children: ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false), [expanded, setExpanded] = useState(true);
   return <div className={`desktop-shell ${collapsed ? 'is-collapsed' : ''}`}>
@@ -34,7 +34,7 @@ export function DesktopShell({ view, title, courses, sample, busy, canBack, canF
     <aside className="desktop-sidebar" aria-label="Workspace"><div className="desktop-brand">My Magic UW</div>
       <nav aria-label="Main navigation">{([
         ['today', 'Home', 'home'], ['courses', 'Courses', 'book'], ['myuw', 'My UW', 'school'], ['calendar', 'Calendar', 'calendar'],
-      ] as const).map(([key, label, icon]) => <div key={key}><div className="desktop-nav-row"><button className={`desktop-nav ${view === key ? 'active' : ''}`} aria-label={label} aria-current={view === key ? 'page' : undefined} onClick={() => onNavigate(key)}><Glyph name={icon}/><span>{label}</span></button>{key === 'courses' && !collapsed && <button className={`desktop-expand ${expanded ? 'expanded' : ''}`} aria-label={expanded ? 'Collapse courses' : 'Expand courses'} aria-expanded={expanded} onClick={() => setExpanded(!expanded)}><Glyph name="chevron"/></button>}</div>{key === 'courses' && expanded && !collapsed && <div className="desktop-course-list">{courses.map(course => <button key={`${course.sourceId}:${course.courseId}`} onClick={() => onCourse(course)} title={course.courseName}>{course.courseName}</button>)}</div>}</div>)}</nav>
+      ] as const).map(([key, label, icon]) => <div key={key}><div className="desktop-nav-row"><button className={`desktop-nav ${view === key ? 'active' : ''}`} aria-label={label} aria-current={view === key ? 'page' : undefined} onClick={() => onNavigate(key)}><Glyph name={icon}/><span>{label}</span></button>{key === 'courses' && !collapsed && <button className={`desktop-expand ${expanded ? 'expanded' : ''}`} aria-label={expanded ? 'Collapse courses' : 'Expand courses'} aria-expanded={expanded} onClick={() => setExpanded(!expanded)}><Glyph name="chevron"/></button>}</div>{key === 'courses' && expanded && !collapsed && <div className="desktop-course-list">{courses.map(course => <button key={course.key} data-focus-key={`sidebar-course-${course.key}`} aria-current={selectedCourseKey === course.key ? "page" : undefined} className={selectedCourseKey === course.key ? "active" : undefined} onClick={() => onCourse(course.key)} title={course.courseName}>{course.code || course.courseName}</button>)}</div>}</div>)}</nav>
       <div className="desktop-profile"><button className="desktop-profile-button" aria-label="Workspace settings" onClick={() => onNavigate('privacy')}><span className="desktop-avatar" aria-hidden="true">{sample ? 'S' : 'Y'}</span><span>{sample ? 'Sample student' : 'Your workspace'}</span></button><button className="desktop-source-shortcut" onClick={() => onNavigate('sources')} aria-label="Connected sources"><Glyph name="settings"/></button></div>
     </aside>
     <main className="desktop-workspace" onClick={event => {

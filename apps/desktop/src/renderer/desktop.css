@@ -118,3 +118,7 @@
 @media (max-width: 650px) { .desktop-shell { --sidebar-width: 64px; } .desktop-brand,.desktop-nav span,.desktop-course-list,.desktop-expand,.desktop-profile-button>span:last-child,.desktop-source-shortcut { display: none; } .desktop-nav { justify-content: center; padding-inline: 5px; } .desktop-chrome { padding-left: 8px; } .desktop-page-title { left: 60%; max-width: 32%; } .desktop-state { display: none; } .home-layout { padding: 24px 18px; } .briefing-passage { flex-direction: column; align-items: stretch; } .briefing-action { flex-basis: auto; } .home-study-grid { grid-template-columns: 1fr; } .home-work-row { flex-wrap: wrap; gap: 8px; } .home-work-due { flex-basis: 100%; text-align: left; } .home-work-row>svg { display: none; } .desktop-workspace>.resource-detail,.desktop-courses { padding: 25px 20px; } }
 .desktop-workspace .resource-detail .facts>div { display: block; }
 .desktop-workspace .resource-detail .source-text { color: var(--magic-ink-prose); }
+
+.desktop-shell .today-rail.is-compact-empty { height: auto; }
+.rail-empty-schedule { padding: 4px 0 14px; color: var(--magic-ink-muted-strong); font-size: 13px; line-height: 1.5; }
+.rail-empty-schedule p { margin: 0 0 8px; }

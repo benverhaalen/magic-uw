@@ -17,6 +17,22 @@ import {
 
 const HOUR_PX = 44;
 
+/** Saved capture coverage is not a promise that no unobserved event exists. */
+export function calendarCoverageNeedsCheck(sources: SourceHealth[], now: string): boolean {
+  const calendars = sources.filter(source => source.kind === "calendar" || source.scope === "calendar");
+  return !calendars.length || calendars.some(source => source.status !== "ok" || !source.complete ||
+    !source.lastSuccessAt || !Number.isFinite(Date.parse(source.lastSuccessAt)) ||
+    Date.parse(now) - Date.parse(source.lastSuccessAt) > 24 * 60 * 60 * 1000);
+}
+export function emptyScheduleMessage(sources: SourceHealth[], hasAllDay: boolean, now: string): string {
+  const calendars = sources.filter(source => source.kind === "calendar" || source.scope === "calendar");
+  if (!calendars.length) return "No calendar source checked yet.";
+  if (calendars.some(source => source.status !== "ok" || !source.complete || !source.lastSuccessAt))
+    return "No timed events found. Calendar coverage is incomplete.";
+  if (calendarCoverageNeedsCheck(sources, now)) return "No timed events in the saved calendar. It may be out of date.";
+  return hasAllDay ? "No timed events in today’s saved schedule." : "No events today in the saved calendar.";
+}
+
 function clock(min: number) {
   const h = Math.floor(min / 60) % 24,
     m = min % 60;
@@ -46,7 +62,11 @@ export function TodayRail({
   changes = [],
   onSelect,
   onPlan,
+  compactEmpty = false,
+  onInspectSources,
 }: {
+  compactEmpty?: boolean;
+  onInspectSources?: () => void;
   resources: ResourceView[];
   sources: SourceHealth[];
   plan?: DayPlanEntry[];
@@ -75,6 +95,7 @@ export function TodayRail({
   const visible = rail.suggestions.filter(
     (s) => s.state !== "suggested" || showSuggestions,
   );
+  const isCompactEmpty = compactEmpty && rail.events.length === 0 && visible.length === 0;
   const pendingCount = rail.suggestions.filter((s) => s.state === "suggested").length;
   const [focusId, setFocusId] = useState<string | null>(null);
   const focused =
@@ -222,7 +243,7 @@ export function TodayRail({
   };
 
   return (
-    <aside className="today-rail" aria-label="Today's schedule">
+    <aside className={`today-rail${isCompactEmpty ? " is-compact-empty" : ""}`} aria-label="Today's schedule">
       <div className="rail-heading">
         <span>Due today</span>
         <span>{rail.due.length || ""}</span>
@@ -370,7 +391,10 @@ export function TodayRail({
           {e.title}
         </div>
       ))}
-      <div className="rail-grid" ref={grid}>
+      {isCompactEmpty ? <div className="rail-empty-schedule" role="status">
+        <p>{emptyScheduleMessage(sources, rail.allDay.length > 0, now)}</p>
+        {onInspectSources && calendarCoverageNeedsCheck(sources, now) && <button onClick={onInspectSources}>Check sources</button>}
+      </div> : <div className="rail-grid" ref={grid}>
         <div
           className="rail-grid-inner"
           style={{ height: hourCount * HOUR_PX + 12 }}
@@ -463,7 +487,7 @@ export function TodayRail({
             </p>
           )}
         </div>
-      </div>
+      </div>}
       {undo ? (
         <div className="rail-undo" role="status">
           <span>Skipped “{undo.title}”</span>

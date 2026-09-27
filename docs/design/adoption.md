@@ -26,7 +26,7 @@ The integrating agent inspects the claimed consumer and evidence before recordin
 
 ## Keep corrections connected
 
-Change the canonical rule, implementation and affected example together. Recheck real consumers of changed roles and a representative sibling. Repeated exceptions indicate a missing or unsuitable recipe to investigate, not a reason to add blanket prohibitions. Agent entry files link here rather than restating every rule.
+Change the canonical rule, implementation and affected example together. Preserve existing enforceable boundaries when propagating a correction. Apply the [current hard constraints and reference direction](../../DESIGN.md#accepted-corrections-that-govern-current-consumers), then inspect actual authored copy, source-derived labels, filled color/compactness and empty/partial/stale schedule states. A literal scan is useful for authored punctuation but cannot establish source fidelity or visual adoption. Recheck real consumers of changed roles and a representative sibling. Repeated exceptions indicate a missing or unsuitable recipe to investigate, not a reason to add blanket prohibitions. Agent entry files link here rather than restating every rule.
 
 Already-running sessions refresh changed guidance at natural boundaries and before shared-interface changes/integration. Pulling alone does not reload instructions. One integrator owns shared contract/token edits; feature agents keep their main task and use bounded handoffs.
 
@@ -69,3 +69,17 @@ Further checkpoint: real captured-course SQLite copy rendered in hidden native E
 Start Work is integrated in detail and flat Upcoming rows using one shared engine. Exact prepared destinations are visible before direct activation; pending/receipt/failure/retry are siblings of the row button. Rendered native synthetic verification passed visible prepared destinations → single-click dry-run receipt → same Home row focus. Pending activation uses aria-disabled plus an in-flight guard so focus survives. Headless native launch guard and preview-hash validation pass; successful external opening remains unverified. Independent visual review identified real remaining product gaps.
 
 Remaining: useful briefing/study synthesis, overdue priority and compact course/task variety, course identity/history integration, duplicate-link return anchors, Today date projection/evening range, report/action proportions, full Calendar week/month, current course/learning/backend provenance reconciliation, production font distribution and successful external app launch. Calendar currently exposes the existing Today rail only. This checkpoint does not establish whole-app completion.
+
+
+### September 27 integration correction propagation
+
+| Rule | Consumer | Evidence / remaining |
+| --- | --- | --- |
+| My Magic UW; exact Cooper/Geist; no decorative left accents | DesktopShell, Home, course detail | Native real-copy Home/course/detail inspected with loaded fonts, canonical tokens; incoming course styles use the same roles. Further course visual calibration pending. |
+| Stable course identity and return | Desktop navigation + course cards/sidebar/work rows | Native 6-course A→B→Back A and item→detail→Back preserve identity, scroll, focus and module/past disclosures. Raw long course labels and duplicated captured work still need upstream normalization/projection. |
+| Canonical evidence and private student reports | queries resourceViews + PersonalReport + storage | Tests cover prose/calendar hash changes, excluded/inaccessible evidence, CAS/Undo/restart and AI/MCP omission. Desktop does not infer submission, reading or mastery. |
+| Empty Home schedule; honest coverage | TodayRail compactEmpty from Home only | Unit coverage distinguishes absent/partial/stale/healthy/all-day; full Calendar behavior unchanged. Native empty-day visual/return checks remain pending at this checkpoint. Healthy state has no recovery button. Saved coverage older than 24 hours is labeled potentially stale. |
+| No authored em dashes | Desktop renderer and shared React literals | Literal scan contains none; core/domain remaining matches are source-parsing regex, not authored copy. Raw course/source evidence is preserved; separate display normalization remains pending. |
+| Richer anchor color and concise source-derived labels | Home and course projection | Canonical rules now govern selection and actual-surface critique. Actual-data Home still has repetitive tall work rows and weak synthesis. These consumers are not adopted as final merely because the rules were updated. |
+
+Pinned main integration includes canonical learning and prepared Start Work. Real-copy snapshot timing remains about 7.6 seconds, so IPC trimming and yielding are not a complete performance claim. No live external launcher, production-font distribution, terminal native flow or school write is demonstrated by this checkpoint. Private screenshots and coursework remain outside Git.

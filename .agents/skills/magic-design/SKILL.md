@@ -7,7 +7,7 @@ description: Design, extend, implement, or audit Magic Canvas interfaces and its
 
 ## Start with intent and the current artifact
 
-Read [the design system](../../../DESIGN.md) for governing principles and the task-specific reading map. For a small change, read only the affected contract. Before substantial work, inspect local changes and relevant upstream docs/code; fetch remote refs when available. Fast-forward only a compatible clean checkout. Do not overwrite, stash, merge or commit another contributor's work to make synchronization convenient.
+Apply its [current correction gates](../../../DESIGN.md#accepted-corrections-that-govern-current-consumers) and [adoption audit](../../../docs/design/adoption.md#keep-corrections-connected); a docs update never establishes consumer compliance. Read [the design system](../../../DESIGN.md) for governing principles and the task-specific reading map. For a small change, read only the affected contract. Before substantial work, inspect local changes and relevant upstream docs/code; fetch remote refs when available. Fast-forward only a compatible clean checkout. Do not overwrite, stash, merge or commit another contributor's work to make synchronization convenient.
 
 State the student's complete journey, normal entry/default state and observable benefit. The flagship is **evidence → useful synthesis → the right action and working context → a reliable return**. Optimizing a screenshot alone is insufficient. Determine the current requested stage: direction/system-only tasks stop there; an authorized image-to-code task proceeds through a working coded journey and verification.
 

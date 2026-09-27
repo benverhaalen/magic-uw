@@ -215,3 +215,6 @@ Generation and independent judging may proceed autonomously within accepted inte
 Ben: “Use My Magic UW”. Visible identity adopts this name, preserving Cooper/no logo and stable internal app/user-data identity.
 
 Ben: “you know when a component has like a vertical line on the left side. never do that. also use more color like the original picture”. Remove decorative left-edge accents. Color belongs in the original Home's filled actions, course surfaces and shell gradient; semantic full outlines and calendar grid lines remain useful. Actual-data Upcoming must be compact and meaningfully varied so Study stays visible; do not invent courses or recolor rows by position. See the [decision record](design/decision-record.md).
+
+
+Home Today correction, recorded September 27 from the active conversation: when there are no known timed commitments, use a small coverage-aware message rather than an empty hour grid. Keep due-today tasks and all-day entries independently accessible. Missing/partial/stale calendars do not establish an empty day; offer recovery only where useful. Full Calendar retains week/month navigation. App-authored UI copy never uses em dashes. Governing rules and superseded examples are tracked in [DESIGN](../DESIGN.md#accepted-corrections-that-govern-current-consumers); actual consumer compliance remains in [adoption](design/adoption.md).

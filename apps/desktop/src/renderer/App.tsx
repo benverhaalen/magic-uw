@@ -9,6 +9,8 @@ import type {
   SourceHealth,
 } from "@magic/contracts";
 import { MyUw, PlanningAlerts } from "./MyUw";
+import { CoursePageView, CoursesOverview } from "./courses/CoursePage";
+import { buildCourseCards, buildCoursePage } from "../../../../packages/domain/src/course-page";
 import { LocalAiPanel } from "./LocalAiPanel";
 import { LearningPanel } from "./LearningPanel";
 import { ProviderGuidance } from "./ProviderGuidance";
@@ -337,9 +339,9 @@ export function App() {
       return course?.course?.selection?.included ?? true;
     }) ?? [];
   const accountBySource = new Map(snapshot?.sources.map((source) => [source.id, source.accountScope]));
-  const courses = [...new Map(resources.map((resource) => [
-    `${accountBySource.get(resource.sourceId) ?? resource.sourceId}:${resource.courseId}`, resource,
-  ])).values()];
+  const courseInput = { resources, sources: snapshot?.sources ?? [], courseIntelligence: snapshot?.courseIntelligence, now: snapshot?.generatedAt ?? new Date().toISOString() };
+  const courseCards = buildCourseCards(courseInput);
+  const coursePage = navigation.courseKey ? buildCoursePage(courseInput, navigation.courseKey) : null;
   const selected =
     resources.find((resource) => resource.id === selectedId) ?? null;
   const unavailableSources =
@@ -373,9 +375,9 @@ export function App() {
   // end owner: T81
   return (
     <DesktopShell view={view} title={view === "resource" ? selected?.title ?? "Saved item" : ({today:"Home", courses:"Courses", myuw:"My UW", calendar:"Calendar", sources:"Connected sources", privacy:"Data & AI", consent:"Agreements"} as Partial<Record<View,string>>)[view] ?? "Workspace"}
-      courses={courses} sample={snapshot?.fixtureMode ?? false} busy={busy}
+      courses={courseCards} selectedCourseKey={navigation.courseKey} sample={snapshot?.fixtureMode ?? false} busy={busy}
       canBack={navigation.canBack} canForward={navigation.canForward} onBack={navigation.back} onForward={navigation.forward}
-      onNavigate={setView} onCourse={course => { setQuery(course.courseName); setView("courses"); }}
+      onNavigate={setView} onCourse={key => navigation.navigate("courses", null, key)}
       onCompose={() => {
         if (selected) { document.querySelector<HTMLElement>(".local-ai-panel")?.scrollIntoView({ behavior: "smooth" }); }
         setNotice(selected ? "Ask about this item in its Local AI section. Your model and sharing settings still apply." : "Page-wide chat is not connected yet. Open a course item to ask about its saved context with Local AI.");
@@ -486,9 +488,9 @@ export function App() {
             refresh={() => void perform(async () => window.magic.syncPlanning?.())}
             signIn={(service) => uwConsented /* owner: T06 */ ? void perform(async () => { await window.magic.signInUW?.(service); return window.magic.syncPlanning?.(); }) : openConsent()} />
         ) : view === "courses" ? (
-          <section className="desktop-courses"><h1 tabIndex={-1}>Courses</h1><label className="search-box"><Icon name="search"/><input aria-label="Search coursework" placeholder="Find a course, assignment or material" value={query} onChange={event => setQuery(event.target.value)}/></label>
-          {!query && <div className="desktop-course-cards">{courses.map(course => <button key={`${course.sourceId}:${course.courseId}`} onClick={() => setQuery(course.courseName)}><h2>{course.courseName}</h2><span>View saved coursework →</span></button>)}</div>}
-          <ResourceList resources={resources} sources={snapshot.sources} query={query} selectedId={null} busy={busy} onSelect={setSelectedId} onComplete={(resource, checked) => void run({type:"complete",id:resource.id,completed:checked})}/></section>
+          <section className="desktop-courses">
+            {navigation.courseKey ? coursePage ? <CoursePageView key={coursePage.key} page={coursePage} selectedId={null} onSelect={setSelectedId} onBack={() => navigation.navigate("courses")} open={open} detail={null}/> : <><h1 tabIndex={-1}>Course unavailable</h1><p>This course is no longer included in the saved workspace.</p><Action onClick={() => navigation.navigate("courses")}>View courses</Action></> : <CoursesOverview cards={courseCards} onOpen={key => navigation.navigate("courses", null, key)}/>}
+          </section>
         ) : view === "consent" ? (
           // owner: T06. Consent route: setup, a new recipient's consent, or Agreements.
           <ConsentSetup

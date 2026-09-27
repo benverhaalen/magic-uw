@@ -982,7 +982,7 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
                     (item) => {
                       if (item.module_id && item.module_id !== module.id)
                         throw new CanvasFailure("partial", "module_id_mismatch");
-                      return itemResource(item, course, origin);
+                      return itemResource(item, course, origin, module.id);
                     },
                     false,
                     { records: inline },

@@ -147,3 +147,14 @@ Ben's audit direction, same active build conversation:
 > “also when auditing have it try to find ways to fix data ingestion using llms or even just really good regex to make the information less messy. im mainly looking at course titles. also just keeping information as simple and as magic as the ui ref does and the planning skill says”
 
 Audit the full source → data → UI path. Investigate structured metadata, targeted parsing or bounded model assistance where it improves course labels; preserve raw titles and stable account/course identity. Select a useful compact label instead of treating CSS ellipsis as normalization. The next Home/course integration leaf owns this investigation; this renderer checkpoint does not claim it implemented.
+
+
+Ben, same active conversation, recorded September 27, 2026; original timestamps unknown:
+
+> “also update the design system when i course correct without weakening what makes the design system enforceable”
+
+Corrections change governing DESIGN, affected content/component contracts and actual-surface adoption criteria. No CI or hooks are added. A recorded rule is not evidence that every consumer complies.
+
+> “also think of edge cases, like if its saturday or something and there is no events on the calendar that day, should it show the calendar? i dont think so. i think it should have a small message instead. also never use any em dashes in the ui ever. continue to hand off to separate agents to have them critique the current state against the ref home photo that everything is based off of”
+
+Home’s empty timed schedule uses a compact honest message. Deadlines and all-day entries remain; partial/stale/missing coverage is distinguished, and full Calendar week/month grids remain. No authored UI em dashes. Preserve raw source evidence and audit its separate display handling. Independent critiques compare actual runtime captures with the original Home anchor; they do not substitute for source correctness or live interaction tests.

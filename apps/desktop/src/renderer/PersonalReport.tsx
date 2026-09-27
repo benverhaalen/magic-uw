@@ -2,20 +2,18 @@ import { useEffect, useRef, useState } from 'react';
 import type { Command, CommandResult, ResourceView, Snapshot } from '@magic/contracts';
 import { personalReportIssue, personalReportState, personalReportVersion } from '@magic/contracts';
 import { Confirmation } from '../../../../packages/ui/src';
-/** Mirror current core/evidence deadline provenance, then verify no displayed claim was omitted.
- * Unknown evidence cannot be confirmed. Calendar claims retain their independent hashes. */
+/** Use canonical provenance rather than reimplementing deadline extraction in the renderer.
+ * Unresolved mentions also contribute: changed wording must reopen a student report. */
 export function deadlineReportEvidence(resource: ResourceView, snapshot: Snapshot) {
-  const contributors = [resource];
-  for (const link of snapshot.links.filter(link => link.status === 'accepted' && link.type === 'same_as' && link.toId === resource.id)) {
-    const source = snapshot.resources.find(item => item.id === link.fromId && !item.deleted);
-    if (!source) return null;
-    if (source.calendar && !contributors.some(item => item.id === source.id)) contributors.push(source);
+  const contributors = resource.deadlineContributors;
+  if (!contributors?.length || contributors.length > 12 || !contributors.some(item => item.resourceId === resource.id)) return null;
+  const available = new Map(snapshot.resources.filter(item => !item.deleted).map(item => [item.id, item]));
+  for (const item of contributors) if (available.get(item.resourceId)?.contentHash !== item.contentHash) return null;
+  const byId = new Map(contributors.map(item => [item.resourceId, item.contentHash]));
+  for (const claim of [...resource.deadline.claims, ...(resource.deadline.unresolved ?? [])]) {
+    if (claim.span && byId.get(claim.span.resourceId) !== claim.span.contentHash) return null;
   }
-  const claimKey = (claim: ResourceView['deadlines'][number]) => JSON.stringify([claim.value, claim.kind, claim.quote, claim.authority, claim.scopeConfirmed]);
-  const actual = contributors.flatMap(item => item.deadlines).map(claimKey).sort();
-  const displayed = resource.deadline.claims.map(claimKey).sort();
-  if (actual.length !== displayed.length || actual.some((claim, index) => claim !== displayed[index]) || contributors.length > 12) return null;
-  return contributors.map(item => ({ resourceId: item.id, contentHash: item.contentHash }));
+  return contributors;
 }
 /** Student report only. Source submission and local work completion remain separate. */
 export function PersonalReport({ resource, snapshot, run }: {

@@ -145,7 +145,16 @@ export function createCore(store: Store, options: CoreOptions) {
   }
   function snapshot(search?: string): Snapshot {
     // owner: T15. The full snapshot stays for debugging; views use scoped queries (queries.ts).
-    const resources = resourceViews(store, store.resources(search));
+    // The renderer never reads captured raw HTML or document parts; on a real term they were ~75%
+    // of every command's payload (78 MB of 110 MB), which stalled first paint. Bodies stay in the
+    // store for MCP, context and scoped queries (queries.ts), which remain the long-term path.
+    const resources = resourceViews(store, store.resources(search)).map((view) => {
+      const { rawHtml: _html, parts: _parts, ...rest } = view as typeof view & {
+        rawHtml?: unknown;
+        parts?: unknown;
+      };
+      return rest as typeof view;
+    });
     const sources = store.sources();
     return {
       courseIntelligence: store.courseIntelligence().map((p) => ({

@@ -66,7 +66,7 @@ function PreparedWork({ resource, refreshKey, compact }: Props) {
       </ol>
       {set.notes.map(note => <p className="magic-start-work__note" key={note}>{note}</p>)}
       {set.held.length > 0 && <Disclosure label={`${set.held.length} related ${set.held.length === 1 ? "item" : "items"} held back`}>
-        <ul>{set.held.map(item => <li key={item.resourceId}>{item.title} — {item.reason}</li>)}</ul>
+        <ul>{set.held.map(item => <li key={item.resourceId}>{item.title} · {item.reason}</li>)}</ul>
       </Disclosure>}
       <Action disabled={!window.magic.startWork} pending={pending} onClick={() => void launch()}>
         Start work · open {set.items.length} {set.items.length === 1 ? "item" : "items"}
