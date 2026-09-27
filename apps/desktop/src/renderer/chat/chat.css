@@ -13,6 +13,10 @@
 .magic-chat-using button { border: 0; background: none; color: inherit; width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; cursor: pointer; }
 .magic-chat-using button:hover { background: var(--magic-fill-pressed-overlay); }
 .magic-chat-using .magic-chat-icon { width: 12px; height: 12px; }
+.magic-chat-origin > .magic-chat-meta { display: flex; align-items: center; gap: 8px; }
+.magic-chat-origin > .magic-chat-meta > span:not(:first-child, .magic-info, .magic-chat-detail)::before { content: "·"; margin-right: 8px; color: var(--magic-ink-muted); }
+.magic-chat-detail { font-size: var(--magic-type-meta); line-height: 1.5; color: var(--magic-ink-muted); }
+.magic-chat .magic-info { color: var(--magic-ink-muted); }
 .magic-chat-warning { margin: 0; font-size: var(--magic-type-meta); line-height: 1.5; color: var(--magic-ink-status-warning-candidate); }
 
 .magic-chat-thread { list-style: none; margin: 0; padding: 0; display: grid; gap: 34px; }
@@ -73,3 +77,11 @@
 
 @media (max-width: 1170px) { .magic-chat { padding-inline: 26px 20px; } .magic-chat-answer { gap: 16px; } .magic-chat-actions { flex-basis: 145px; } }
 @media (max-width: 650px) { .magic-chat { padding: 18px; } .magic-chat-answer { flex-direction: column; align-items: stretch; } .magic-chat-actions { flex-basis: auto; } .magic-chat-due-row { flex-wrap: wrap; gap: 8px; } .magic-chat-due-when { flex-basis: 100%; text-align: left; } .magic-chat-due-row > .magic-chat-icon { display: none; } }
+
+/* Grounded answer quotes and inspectable technical detail. */
+.magic-chat-quotes { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.magic-chat-quotes blockquote { margin: 4px 0 0 21px; font-size: var(--magic-type-compact-control); line-height: 1.5; color: var(--magic-ink-muted-strong); overflow-wrap: anywhere; }
+.magic-chat-quotes blockquote::before { content: "“"; }
+.magic-chat-quotes blockquote::after { content: "”"; }
+.magic-chat-tech summary { width: fit-content; font-size: var(--magic-type-meta); cursor: pointer; }
+.magic-chat-tech pre { margin: 6px 0 0; max-height: 160px; overflow: auto; font: 11px/1.5 var(--magic-font-interface); white-space: pre-wrap; overflow-wrap: anywhere; }
