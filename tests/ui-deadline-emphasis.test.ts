@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { IDENTITY_HUES, calendarDayDistance, createAssignmentTypeHues, deadlineEmphasis, deadlineSurface } from '../packages/ui/src/deadline-emphasis';
 import { localTime } from '../packages/domain/src/today-rail';
+import { parseHex, ratio, readTokens, resolve, tokenScope } from '../scripts/theme-contrast';
 
 const bin = (today: string, due: string | null, completed?: boolean) => deadlineEmphasis({ today, due, completed }).bin;
 
@@ -125,24 +126,21 @@ test('different courses start at different hues', () => {
 });
 
 // Contrast from the shipped values: ink never fades, so the strongest fill is the worst case.
-const tokens = readFileSync(new URL('../docs/design/tokens.css', import.meta.url), 'utf8');
+const tokens = readTokens();
 const recipe = readFileSync(new URL('../packages/ui/src/deadline-emphasis.css', import.meta.url), 'utf8');
-const token = (name: string) => new RegExp(`--${name}:\\s*(#[0-9a-f]{6})`, 'i').exec(tokens)![1];
-const luminance = (hex: string) => {
-  const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255)
-    .map(c => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-};
-const contrast = (a: string, b: string) => { const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+const scope = tokenScope(tokens);
 
-test('every hue, including neutral, keeps its paired ink at least 4.5:1 on its strongest fill', () => {
+test('every hue, including neutral, keeps its paired ink at least 4.5:1 on its strongest fill, in light and dark', () => {
   for (const hue of [...IDENTITY_HUES, 'neutral']) {
-    const rule = new RegExp(`\\[data-magic-hue=${hue}\\] \\{ --magic-deadline-strong: var\\(--magic-hue-${hue}-strong, (#[0-9a-f]{6})\\); --magic-deadline-pale: var\\(--magic-hue-${hue}-pale, (#[0-9a-f]{6})\\); --magic-deadline-ink: var\\(--magic-hue-${hue}-ink, (#[0-9a-f]{6})\\); \\}`).exec(recipe);
-    assert.ok(rule, `${hue} reads the palette role seam`);
-    const [, strong, pale, ink] = rule!;
-    for (const fill of [strong, pale, token('magic-surface-quiet')]) {
-      const ratio = contrast(ink, fill);
-      assert.ok(ratio >= 4.5, `${hue} ink ${ink} on ${fill}: ${ratio.toFixed(2)}`);
+    const rule = new RegExp(`\\[data-magic-hue=${hue}\\] \\{ --magic-deadline-strong: var\\(--magic-hue-${hue}-strong\\); --magic-deadline-pale: var\\(--magic-hue-${hue}-pale\\); --magic-deadline-ink: var\\(--magic-hue-${hue}-ink\\); \\}`).exec(recipe);
+    assert.ok(rule, `${hue} reads the palette role seam from the tokens`);
+    for (const theme of ['light', 'dark'] as const) {
+      const hex = (name: string) => parseHex(resolve(scope, name, theme));
+      const ink = hex(`magic-hue-${hue}-ink`);
+      for (const fill of [`magic-hue-${hue}-strong`, `magic-hue-${hue}-pale`, 'magic-surface-quiet']) {
+        const r = ratio(ink, hex(fill));
+        assert.ok(r >= 4.5, `${theme} ${hue} ink on ${fill}: ${r.toFixed(2)}`);
+      }
     }
   }
   assert.doesNotMatch(recipe, /opacity/, 'emphasis never fades text');

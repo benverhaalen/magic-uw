@@ -6,7 +6,7 @@
 .home-work-flag { font-size:12px; font-weight:550; }
 .home-work-details { flex:0 0 38px; display:flex; align-items:center; justify-content:center; color:inherit; border-radius:0 var(--magic-radius-card) var(--magic-radius-card) 0; }
 .home-work-details svg { width:15px; height:15px; }
-.home-work-details:hover { background:rgba(255,255,255,.28); }
+.home-work-details:hover { background:color-mix(in srgb, var(--magic-surface-raised) 28%, transparent); }
 .home-work-details:focus-visible { outline:2px solid var(--magic-focus); outline-offset:-2px; }
 .home-work-group { display:grid; gap:6px; }
 .home-group-more>summary,.home-more>summary { list-style:none; display:inline-flex; align-items:center; gap:6px; cursor:pointer; color:var(--magic-ink-muted-strong); font:400 12px/1.5 var(--magic-font-interface); padding:3px 2px; border-radius:var(--magic-radius-control); }

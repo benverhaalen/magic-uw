@@ -1,14 +1,14 @@
 /* owner: sources page. Page geometry is local; type, color and control roles come from tokens.
    Exception until shared flat roles exist: row tints and row actions use the light and middle
    stops of the paired identity fills as flat colors (the shared fills are gradients). */
-.sources-page { --sources-coral: #fbe8dd; --sources-coral-action: #f4b194; --sources-blue: #e5eefa; --sources-blue-action: #a9c7ee;
-  --sources-rose: #f8e5ed; --sources-rose-action: #eeb3c9; --sources-amber: #f8ecce; --sources-amber-action: #f0cd7c;
+.sources-page { --sources-coral: var(--magic-fill-tint-coral); --sources-coral-action: var(--magic-fill-tint-coral-action); --sources-blue: var(--magic-fill-tint-blue); --sources-blue-action: var(--magic-fill-tint-blue-action);
+  --sources-rose: var(--magic-fill-tint-rose); --sources-rose-action: var(--magic-fill-tint-rose-action); --sources-amber: var(--magic-fill-tint-amber); --sources-amber-action: var(--magic-fill-tint-amber-action);
   max-width: 1080px; padding: 28px 40px 48px; color: var(--magic-ink); font-size: 14px; line-height: 1.5; }
 .sources-page h1:focus { outline: none; }
 .sources-page p { margin: 0; }
 .sources-page .magic-ui-action { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
-.sources-page .magic-ui-action--primary { min-height: 38px; padding: 8px 14px; background: var(--sources-blue-action); color: var(--magic-ink-action); }
-.sources-page .magic-ui-action--primary:not(:disabled):not([aria-disabled=true]):hover { background: #97bbea; }
+.sources-page .magic-ui-action--primary { min-height: 38px; padding: 8px 14px; background: var(--magic-fill-action); color: var(--magic-ink-action); }
+.sources-page .magic-ui-action--primary:not(:disabled):not([aria-disabled=true]):hover { background: var(--magic-fill-action-hover); }
 .sources-page .magic-ui-action--primary:is(:disabled, [aria-disabled=true]) { background: var(--magic-fill-disabled); color: var(--magic-ink-disabled); }
 .sources-page .magic-ui-action--quiet { min-height: 34px; padding: 6px 8px; }
 .sources-glyph { flex-shrink: 0; }
@@ -46,7 +46,7 @@
 .source-connection-more[open] > summary .sources-glyph { transform: rotate(180deg); }
 .source-toggle:focus-visible, .source-course summary:focus-visible, .sources-settings summary:focus-visible, .source-input:focus-visible, .source-toggle-setting input:focus-visible, .sources-link:focus-visible { outline: 2px solid var(--magic-focus); outline-offset: 2px; }
 
-.source-connection-details { display: grid; gap: 14px; margin: 0 14px; padding: 14px 0 18px 56px; border-top: 1px solid #29231f1a; }
+.source-connection-details { display: grid; gap: 14px; margin: 0 14px; padding: 14px 0 18px 56px; border-top: 1px solid color-mix(in srgb, var(--magic-ink) 10%, transparent); }
 .source-lead { font-size: 15px; max-width: 70ch; }
 .source-connection-details h3 { margin: 0 0 8px; font: 600 var(--magic-type-label)/1.4 var(--magic-font-interface); letter-spacing: .04em; text-transform: uppercase; color: var(--magic-ink-muted-strong); }
 .source-facts { display: flex; flex-wrap: wrap; gap: 10px 32px; margin: 0; }
