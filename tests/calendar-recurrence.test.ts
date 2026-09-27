@@ -150,6 +150,28 @@ test("a canceled or moved day in an all-day repeating series is applied too", as
   assert.equal(resources.find((r) => r.calendar!.start === "2026-10-31")?.title, "Study week (moved)");
 });
 
+test("all-day dates keep their calendar day east of UTC", async () => {
+  // DATE values parse as local midnight; formatting them in UTC moved them a day early (CI runs in UTC).
+  const ics = [
+    "BEGIN:VCALENDAR", "VERSION:2.0",
+    "BEGIN:VEVENT", "UID:day@x", "SUMMARY:Reading day", "DTSTART;VALUE=DATE:20261028", "DTEND;VALUE=DATE:20261029", "END:VEVENT",
+    "END:VCALENDAR", "",
+  ].join("\r\n");
+  const previous = process.env.TZ;
+  try {
+    for (const zone of ["Pacific/Auckland", "Asia/Tokyo", "America/Chicago", "UTC"]) {
+      process.env.TZ = zone;
+      const { resources } = await parseCalendar(ics, {
+        canvasOrigin: "https://canvas.wisc.edu", accountScope: "a", courseId: "574", courseName: "C", now: () => NOW,
+      });
+      const day = resources.find((r) => r.calendar?.uid === "day@x")!.calendar!;
+      assert.equal(day.start, "2026-10-28", zone);
+    }
+  } finally {
+    if (previous === undefined) delete process.env.TZ; else process.env.TZ = previous;
+  }
+});
+
 test("expansion has an overall cap, and hitting it marks the read incomplete", async () => {
   // Ten hourly series: each hits the per-series cap, and together they pass the feed-wide cap.
   const events = Array.from({ length: 10 }, (_, i) => [
