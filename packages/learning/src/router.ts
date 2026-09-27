@@ -58,6 +58,10 @@ import {
 import { createAnalytics, refreshTopics, type ReferencesPort } from "./analytics";
 import type { AnalyticsOp, AnalyticsResult } from "./router-types";
 // end owner: analytics
+// owner: exam-prep. The exam blueprint, practice exam and interactive solving ops (additive).
+import { createExamOps, isExamRequest } from "./exam/router";
+import type { ExamEvidencePort } from "./exam/evidence";
+// end owner: exam-prep
 
 export interface StudyResource {
   id: string;
@@ -87,6 +91,9 @@ export interface LearningRouterDependencies {
   // owner: analytics. A fresh references port per analytics request (the pipeline's, or the current adapter).
   analyticsReferences?: () => ReferencesPort;
   // end owner: analytics
+  // owner: exam-prep. A fresh exam evidence port per request (assessments, scopes, the brief, material roles).
+  examEvidence?: () => ExamEvidencePort;
+  // end owner: exam-prep
 }
 export interface LearningRouter {
   handle(
@@ -840,6 +847,33 @@ export function createLearningRouter(
     }
   }
   // end owner: analytics
+  // owner: exam-prep. The exam ops borrow the trusted resolver, the checked pool and the course map.
+  const exam = deps
+    ? createExamOps({
+        store: deps.store,
+        ...(deps.examEvidence ? { evidence: deps.examEvidence } : {}),
+        time,
+        practiceScope: (courseId, anchorIds) => practiceScope(courseId, anchorIds),
+        courseContext,
+        currentPool,
+        map(ref) {
+          const m = courseMap(ref);
+          return {
+            topics: m.topics.map((t) => {
+              const mod = m.moduleOf(t);
+              return { id: t.id, label: m.label(t), moduleId: mod?.id ?? null, moduleLabel: mod ? m.label(mod) : null };
+            }),
+            modules: m.modules.map((u) => ({ id: u.id, label: m.label(u) })),
+          };
+        },
+        states(ref) {
+          const models = topicModels(ref, courseMap(ref).active);
+          return new Map([...models].map(([id, model]) => [id, model.band]));
+        },
+        refreshAnalytics,
+      })
+    : null;
+  // end owner: exam-prep
   return {
     analytics,
     async handle(raw, signal) {
@@ -855,6 +889,15 @@ export function createLearningRouter(
       if (op === "analytics.assignment" || op === "analytics.course" || op === "analytics.agendaHints")
         return analytics(request, signal);
       // end owner: analytics
+      // owner: exam-prep
+      if (exam && isExamRequest(request)) {
+        try {
+          return await exam.handle(request, signal);
+        } catch {
+          return fail(op, "The practice request could not be completed. Reload the session to check its saved state.", "failed");
+        }
+      }
+      // end owner: exam-prep
       const store = deps.store;
       try {
         if (op === "study.sessions") {
