@@ -138,13 +138,16 @@ function seed() {
       return { id, contentHash: r.contentHash, text, title: r.title, url: r.url, observedAt: base.toISOString(), eligible: true };
     }),
   });
-  const router = createLearningRouter({
-    store,
-    resolveContext: (id) => (id === "a1" ? context(id) : null),
-    now: () => now,
-    analyticsReferences: () => createCurrentReferences(owner),
-    coursework: () => owner,
-  });
+  // With `coursework` the router memoises the references port; without it, every request reads it afresh.
+  const makeRouter = (memo = true) =>
+    createLearningRouter({
+      store,
+      resolveContext: (id) => (id === "a1" ? context(id) : null),
+      now: () => now,
+      analyticsReferences: () => createCurrentReferences(owner),
+      ...(memo ? { coursework: () => owner } : {}),
+    });
+  const router = makeRouter();
   const signal = new AbortController().signal;
   const call = (request: LearningRequest): Promise<LearningResult> => router.handle(request, signal);
   const ok = async <T>(request: LearningRequest): Promise<T> => {
@@ -172,7 +175,7 @@ function seed() {
     owner.close();
     rmSync(dir, { recursive: true, force: true });
   };
-  return { owner, store, ref, rid, call, ok, mastery, answer, solidOneDay, setNow: (d: Date) => (now = d), done };
+  return { owner, store, ref, rid, call, ok, mastery, answer, solidOneDay, makeRouter, setNow: (d: Date) => (now = d), done };
 }
 
 const topicOf = (m: CourseMasteryData, id: string) => m.topics.find((t) => t.topicId === id)!;
@@ -471,5 +474,37 @@ test("copy: the mastery view's source passes the copy lint; its only percentages
     };
     visit(sf);
     for (const c of copy.filter((c) => c.includes("%"))) assert.match(c, /^`Current grade from your captured scores: \$\{grade\.percent\}%\.`$/, `${file}: a percentage outside the captured grade: ${c}`);
+  }
+});
+
+test("analytics.course and analytics.assignment answer exactly the same with the memoised references port, before and after a link changes", async () => {
+  const s = seed();
+  try {
+    s.answer("i5m", "t2", "mc", false, "2026-09-25T10:00:00.000Z");
+    const signal = new AbortController().signal;
+    const memo = s.makeRouter(true);
+    const fresh = () => s.makeRouter(false);
+    const requests = [
+      { op: "analytics.course", courseId: "SYN201", anchorIds: ["a1"] },
+      { op: "analytics.assignment", courseId: "SYN201", anchorIds: ["a1"], assignmentId: s.rid("a-2") },
+      { op: "analytics.agendaHints", courseId: "SYN201", anchorIds: ["a1"] },
+    ];
+    const compare = async (label: string) => {
+      for (const r of requests) {
+        const expected = await fresh().analytics(r, signal);
+        assert.equal(expected.status, "ok", `${label} ${r.op}: ${expected.message}`);
+        assert.deepEqual(await memo.analytics(r, signal), expected, `${label}: ${r.op} (first read)`);
+        assert.deepEqual(await memo.analytics(r, signal), expected, `${label}: ${r.op} (from the memo)`);
+      }
+    };
+    await compare("before");
+    // A new link changes Homework 2's references; the memo must drop what it kept.
+    const a2 = s.owner.resource(s.rid("a-2"))!;
+    s.owner.putLink({ id: "l-new", fromId: a2.id, toId: s.rid("f-88"), type: "supports", reason: "Named in class", status: "proposed", inputHash: a2.contentHash });
+    await compare("after a link");
+    const after = (await memo.analytics(requests[1], signal)).data as { topics: { conceptId: string }[] };
+    assert.ok(after.topics.some((t) => t.conceptId === "t4"), "the new link's topics appear");
+  } finally {
+    s.done();
   }
 });

@@ -806,6 +806,11 @@ export function createLearningRouter(
       // Stale rows are detected by their evidence mark on the next read.
     }
   }
+  // owner: mastery. The references port's answers, kept per course while their inputs' fingerprint
+  // holds (mastery/references-memo.ts); shared by the analytics and mastery ops.
+  const referencesMemo = new Map<string, ReferencesMemo>();
+  const references = (c: StudyContext, ref: string) =>
+    memoReferences(deps!.analyticsReferences!(), referenceFingerprint(deps!.coursework?.(), { accountScope: c.accountScope, courseId: c.courseId }), referencesMemo, ref);
   async function analytics(raw: unknown, signal: AbortSignal): Promise<AnalyticsResult> {
     const guess = typeof raw === "object" && raw !== null && "op" in raw ? raw.op : undefined;
     const named = ANALYTICS_OPS.find((o) => o === guess) ?? "analytics.course";
@@ -832,7 +837,7 @@ export function createLearningRouter(
         store: deps.store,
         ref: scope.ref,
         courseId: scope.c.courseId,
-        references: deps.analyticsReferences(),
+        references: references(scope.c, scope.ref), // owner: mastery: memoised port, same answers
         now: time(),
         practiceItems: [...pool.values()],
       });
@@ -853,7 +858,6 @@ export function createLearningRouter(
   // owner: mastery (D57). Course mastery: states with the delayed-recall tier, due-for-review,
   // one next step, per-exam slices, agenda roll-ups, past exams, grades, claims and hides.
   const masteryMemo = createMasteryMemo();
-  const referencesMemo = new Map<string, ReferencesMemo>();
   let handleRef: LearningRouter["handle"] | null = null;
   const MASTERY_OPS = new Set(["course.mastery", "mastery.assessment", "mastery.forItems", "mastery.history", "mastery.claim", "mastery.hide", "course.grades"]);
   type MasteryRequest = Extract<LearningRequest, { op: "course.mastery" | "mastery.assessment" | "mastery.forItems" | "mastery.history" | "mastery.claim" | "mastery.hide" | "course.grades" }>;
@@ -891,12 +895,11 @@ export function createLearningRouter(
     const pool = new Map<string, StoredItem>();
     for (const x of [...questionPool, ...cardPool(c, ref, items)]) pool.set(x.item.id, x);
     const coursework = deps!.coursework?.();
-    const course = { accountScope: c.accountScope, courseId: c.courseId };
     const input = {
       store,
       ref,
       courseId: c.courseId,
-      references: memoReferences(deps!.analyticsReferences(), referenceFingerprint(coursework, course), referencesMemo, ref),
+      references: references(c, ref),
       now: time(),
       practiceItems: [...pool.values()],
       items,
