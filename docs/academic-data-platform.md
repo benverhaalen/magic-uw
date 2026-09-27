@@ -1,46 +1,111 @@
-# My Magic UW: the course backend and an open academic data platform
+# My Magic UW: the open academic data platform
 
-**Status:** as of 2026-09-26 late, branch `feat/course-backend` at `33b1827`. The whole suite passes 540/540 there (Windows 11). Every part below carries a status label: *researched*, *proposed*, *built*, *tested in isolation* (merged with passing tests; the running app doesn't call it yet) or *integrated* (wired into the running app's path). The labels are defined in [architecture §1](course-backend-architecture.md#1-summary).
-**Canonical homes:** the build status per piece is [architecture §2](course-backend-architecture.md#2-where-we-are); the measurements, tests and live trial are in [the build record](course-backend-build-record.md); the product surfaces and pricing are in [the product direction](magic-canvas-direction.md). This document links to them rather than repeating them.
+**Status:** verified against `origin/main` at `699e386` (2026-09-27), where the whole suite passes 1,101/1,101 on Windows 11, and against the open pull requests. Every part below carries one of the status labels defined in [architecture §1.1](course-backend-architecture.md#11-status-labels): *researched, proposed, built, tested in isolation, integrated, demonstrated*.
+**Canonical homes:** the technical design, the status per area and the measured effect of each choice are in [the course backend architecture](course-backend-architecture.md); benchmarks in [benchmarks](benchmarks.md); the full business model in [business model](notes/business-model.md); product surfaces in [the product direction](magic-canvas-direction.md). This document links to them rather than repeating them.
 
 ## 1. What it is
 
-**A local-first, agent-first academic database that assembles a student's whole course world automatically.** The student signs in to UW once. Code inventories every place each course keeps content, reads what the student's own sign-in can already read, and stores it in one SQLite file on the student's computer: materials split into passages with exact offsets, assessments with their stated scope, links between them, and the access state of every course space. Code checks every quote, ID and date. The student's own AI client (Claude Code or Codex, in a profile the app owns) is called only where language has to be read or written, one checked call at a time. Study itself runs on code at zero model tokens.
+**A local-first, agent-first academic database that assembles a student's whole course world automatically, and an open platform other developers can build on.**
 
-It is two things at once:
-- **The backend of the My Magic UW desktop app.** Every My Magic UW feature reads from it.
-- **A platform other developers can build on.** The code is MIT. The packages are TypeScript over `node:sqlite`, and the store, retrieval, job drain, runner, prompt packs and learning engines can be used in-process today.
+The student signs in to UW once. Code inventories every place each course keeps content, reads what the student's own sign-in can already read, and stores it in one SQLite file on the student's computer: materials split into passages with exact offsets, assessments, dates, a reference graph between them, and the access state of every course space. Code checks every quote, ID and date. The student's own AI client is called only where language has to be read or written, one checked call at a time, and studying runs on code at zero model tokens.
 
-**What's been shown on a real account** (the operator's, 2026-09-26; counts only, [build record §6](course-backend-build-record.md#6-live-trial-results)): sign-in to connected in 16.5 s including typing; a first read of 6 current courses in 125 requests, 65 s and 3.3 MB; zero AI or Jev requests during sync. A parallel sync targeting ≤10 s is being built; that target is not met yet.
+It serves two audiences:
+- **Students, through the My Magic UW desktop app.** Every feature reads from this database.
+- **Developers, through an MIT codebase.** The same store is readable through a versioned, grant-scoped agent API and a read-only MCP course bank, and every package can be used in-process.
 
 ## 2. Why build on it
 
-| Part | What a developer gets | Where | Status |
+| What a developer gets | Why it matters | Status |
+|---|---|---|
+| A student's whole course, already connected and current | no LTI install, no admin setup, no scraping of your own; freshness is handled by the app | demonstrated (the operator's account, 6 live courses) |
+| Passages with offsets and a BM25 index | quotable, checkable context in milliseconds (search p95 4.8 ms at 5,000 resources, synthetic) | integrated |
+| A course graph built by code | material roles, dates, terms, formulas, assessments covered, and what each assignment references, each with its quote | demonstrated (#13) |
+| A versioned, read-only, grant-scoped API | the student decides which courses and data categories your tool sees, and every read leaves a receipt | tested in isolation |
+| A read-only MCP course bank | the student's own AI client can read their courses outside the app | integrated |
+| Prompt packs, a checked one-call runner, learning engines | build generation and study features without an agent loop, and study at 0 tokens | integrated in the app; in-process for developers |
+
+## 3. The agent-first academic database
+
+One SQLite file (`workspace.sqlite`), one writer (the app's worker), schema v13 on `main`. "Agent-first" means the data is shaped for a model's context window: small, cited, bounded units (passages with offsets, facts with quotes, graph edges with reasons) rather than whole documents, and every read has a token budget. The table-level layout per schema version is [architecture §5](course-backend-architecture.md#5-storage).
+
+```mermaid
+flowchart TB
+  subgraph PROV["Provenance"]
+    SRC["sources: account scope, course, health"] --> RES["resources: assignments, materials, events, messages"]
+    RES --> VER["resource_versions, resource_changes (change cursor)"]
+  end
+  subgraph TEXT["Text"]
+    PAS["passages: offsets, page or slide"] --> FTS["passage_fts: contentless FTS5, BM25"]
+  end
+  subgraph MAP["Course map"]
+    FACT["material_facts: role, dates, terms, formulas, covers; basis and quote"]
+    GRAPH["links, map_links, external_refs, resource_refs: the reference graph"]
+    SPACE["course_spaces: access state per tab, tool and platform"]
+    PROF["course_intelligence: the course profile; course_briefs: the syllabus brief"]
+    ASSESS["assessments, assessment_scope, course_sessions"]
+  end
+  subgraph STUDENT["Student-owned"]
+    LEARN["learning_*: concepts, items, cards, reviews, attempts, sessions, concept state"]
+    NOTES["notes, note_versions, note_links"]
+  end
+  subgraph LOCAL["Never leaves the machine"]
+    PLAN["planning_*: enrollment, DARS, holds"]
+  end
+  subgraph CTRL["Control"]
+    OPS["jobs, judgments, ledger, receipts, mcp_grants, consent and privacy preferences"]
+  end
+  RES --> PAS
+  RES --> FACT
+  RES --> GRAPH
+  PAS --> LEARN
+```
+
+| Group | What it holds | Tables | Status |
 |---|---|---|---|
-| **Typed contracts** | zod schemas and TypeScript types for captures, resources, commands and scoped queries, plus the course core: passages, assessments and scopes, map links, course spaces, extraction recipes, course briefs, material facts, the ledger | [`packages/contracts/src/index.ts`](../packages/contracts/src/index.ts), [`course-core.ts`](../packages/contracts/src/course-core.ts) | integrated |
-| **The store, schema v7** | one file, one writer; v5 course intelligence; v6 course core (passages, `passage_fts`, course sessions, assessments, `assessment_scope`, `map_links`, `course_spaces`, `extraction_recipes`, `course_briefs`, `material_facts`, `ledger`, job subjects); v7 learning and practice tables. Every new table cascades from its source, so purge is complete | [`packages/storage`](../packages/storage/src/index.ts): `createStore(path)` | integrated (the worker opens it; migrations run on open) |
-| **Passages** | materials split into passages with character offsets, and page, slide or time where known; indexed on every ingest | `store.passages(id)`, `store.passage(pid)` | integrated |
-| **Retrieval** | contentless passage FTS5; questions run as OR + BM25 with a term-coverage gate, so "not in your materials" is a real answer; a `lookup` mode that matches every term by prefix; scoped to chosen courses | `store.searchPassages({ query, courses?, k?, mode? })`; [`packages/retrieval`](../packages/retrieval/src/index.ts) | tested in isolation (no app surface calls it yet) |
-| **Scoped queries** | a 17.5 KB summary, paged course views, one resource, and a change cursor, instead of a 30.6 MB snapshot | `runQuery` in [`packages/core/src/queries.ts`](../packages/core/src/queries.ts), the `magic:query` channel | integrated as a channel; the UI still reads the full snapshot |
-| **Course map writes** | assessment scopes and briefs whose quotes are validated against the exact resource version; a student correction wins | `putAssessmentScope`, `putCourseBrief`, `putMapLink` | tested in isolation; the course pass that fills them is proposed (T21, T22) |
-| **Course spaces and access** | every tab, module item, external tool and linked platform per course, each with an access state (readable, needs UW sign-in, own login, link-only, blocked) | computed in [`apps/desktop/src/ingestion.ts`](../apps/desktop/src/ingestion.ts); `putCourseSpace`, `courseAccessSummary()` | computed on every sync (integrated, held in memory); persisting to `course_spaces` is tested in isolation |
-| **The job drain** | jobs with subjects (resource, course, assessment, source, pack); the drain leases only kinds that have a handler, so nothing spins | [`packages/core/src/drain.ts`](../packages/core/src/drain.ts): `createDrain`; `store.enqueueSubject` | tested in isolation (the worker still runs the earlier registry path) |
-| **The runner** | drives the student's own Claude Code or Codex one-shot (tools off, JSON schema, prompt on stdin), an API key or a local model; retry, then escalation; a background token budget; a warm session pool | [`packages/runner`](../packages/runner/src/index.ts): `createModelRunner`, `createClaudeBackend`, `createCodexBackend`, `createApiBackend`, `createLocalBackend`, `createSessionPool` | tested in isolation |
-| **Isolated client profiles** | the app runs the student's client under its own `CLAUDE_CONFIG_DIR` or `CODEX_HOME`, signed in by the student in a built-in terminal; the student's own settings are untouched | [`apps/desktop/src/clients/`](../apps/desktop/src/clients/profiles.ts), onboarding screens | integrated; isolation verified on Claude Code and Codex 0.156.1 and 0.144.1 ([build record §5](course-backend-build-record.md#5-scores-and-measurements)) |
-| **Prompt packs** | a versioned pack: role text, template, strict output schema, checks, Jev gates, cache key, data categories. Every quote is checked against the passages the call was given | [`packages/packs/core`](../packages/packs/core/src/index.ts): `definePack`, `quotesGrounded`, `buildPrompt`, `packCacheKey`; `runPack`, `readPackArtifact` in [`packages/core/src/jobs/pack.ts`](../packages/core/src/jobs/pack.ts) | tested in isolation; not yet run on real course content |
-| **Learning engines** | FSRS scheduling on `ts-fsrs` with pre-exam reviews against real exam dates; a knowledge model (Elo plus rules R1–R6, bands with hysteresis); typed-answer grading with key ideas; Learn and Write modes; a session builder; calibration; the coverage map per assessment | [`packages/learning/src`](../packages/learning/src/fsrs.ts) (no barrel; import each module) | tested in isolation; the app's `learning` command answers `not_built` until its router is wired (N25) |
-| **Read-only MCP course bank** | six stdio tools for the student's own AI client: `search`, `due_soon`, `recent_changes`, `course_overview`, `get_item`, `answer_course_question`; per-client grants, a token, a receipt per call | [`apps/desktop/src/mcp-server.ts`](../apps/desktop/src/mcp-server.ts), [`packages/core/src/mcp.ts`](../packages/core/src/mcp.ts) | integrated (on `main`); moving it behind a read-only reader is proposed (T50b) |
-| **The versioned platform (D42)** | see below | [plan D42](plans/2026-09-26-course-backend/plan.md), [spec F3](plans/2026-09-26-course-backend/spec.md) | **proposed**; `packages/agent-api` is a placeholder with no code |
+| **Courses and modules** | a course is `(accountScope, courseId)` on its sources; module items are resources carrying their module and position; each tab, external tool and linked platform is a course space with an access state (readable, needs UW sign-in, own login, link-only, blocked) | `sources`, `course_spaces`, `course_sessions`, `learning_courses` | integrated |
+| **Resources with versions** | every assignment, page, file, announcement, event and message, with every version kept and a sequenced change log | `resources`, `resource_versions`, `resource_changes`, `field_seen`, `completions` | integrated |
+| **Passages with offsets and FTS** | materials split into passages with character offsets (and page, slide or time where known); a contentless FTS5 index so the text is stored once | `passages`, `passage_fts`, `passage_vocab` | integrated |
+| **Material facts** | what code found in each material: its role, module or session, dates, terms, definitions, formulas and the assessments it covers, each with a basis and a quote | `material_facts`, `compile_runs` | demonstrated (#13) |
+| **The reference graph** | exact links with reasons; judged and course-pass links with their rung (code, Jev, pass, student); external links stored once per course and fetched only on demand | `links`, `map_links`, `external_refs`, `resource_refs` | integrated |
+| **Course profile and syllabus brief** | the course-intelligence profile (cited AI policy, grading, topics, expectations) today; the checked syllabus brief once the course pass writes it (open H6) | `course_intelligence`; `course_briefs` | profile integrated; brief storage tested in isolation, its writer proposed |
+| **Assessments and scope** | each assessment's stated scope with the instructor's quote, validated against the exact resource version | `assessments`, `assessment_scope` | tested in isolation (the mapping pass is proposed) |
+| **Learning state** | concepts, generated items with their source quotes and checks, flashcards with FSRS reviews, attempts, sessions, topic states, coverage per assessment | `learning_*` (v7, v8) | integrated |
+| **Notes** | a notes page per lecture, discussion and lab; versions; links to materials; template choices; remote copies in Word or Google Docs. Notes become passages, so search and ask use them | `notes`, `note_*` (v11) | integrated |
+| **Mail and calendar** | Outlook mail as metadata, a ≤255-character preview, a category with its reason and a link, never the body; calendar events with join links. "Sealed" (encrypted at rest) in v14 | resources under the Outlook sources; `life_items` | integrated; sealing built (#25) |
+| **Planning** | My UW enrollment, DARS audits, holds, course search. Local only: never sent to AI, Jev, MCP or the platform | `planning_*` | integrated |
+| **Control and audit** | the job queue, cached judgments, a ledger row per model call, a receipt per send or read, per-client grants, consent records | `jobs`, `judgments`, `ledger`, `receipts`, `mcp_grants`, `preferences` | integrated |
 
-**The planned platform shape (D42, proposed).** Today a developer uses the packages in-process, inside this repository. The external platform adds:
-- **A versioned read contract:** named SQL views `v<major>_<name>` and a typed SDK. The client states the contract version it wants, and a schema handshake answers whether it's supported. A view never changes shape within a major version; a missing field arrives as a new minor version.
-- **Scoped, revocable, per-tool tokens** that reuse the MCP grants, rechecked on every call, with a receipt per call. Localhost is not authorization.
-- **A narrow, atomic write path for student-owned artifacts only:** `deck.create`, `card.add`, `card.edit`, `note.save`, `review.record`. Each write is checked by code and reversible. Coursework and evidence tables are never writable, and planning data is never exposed.
-- **MIT**, with the framework packages importing nothing from the desktop app, the gateway or licence code.
+## 4. Access for tools and agents
 
-The evidence behind each choice (Zotero's version requests, AnkiConnect's "localhost alone is not authentication", Obsidian's atomic `process()`, Logseq's schema handshake) is recorded in [plan D42](plans/2026-09-26-course-backend/plan.md).
+Two read surfaces exist on `main`, and both share one grant session (`packages/agent-api/src/session.ts`): each call rechecks the grant, applies the sharing gate (`maySend`), scrubs known identities from what it returns, trims to a token budget instead of refusing, and records one receipt.
 
-## 3. Developer quickstart
+### 4.1 Agent API v1 (`@magic/agent-api`)
+
+Contract `magic.agent-api` **1.0.0**, exported as the `v1` namespace. Within a major version a result never changes shape; new fields arrive in a minor version, and a new major version ships beside the old one (`SUPPORTED_VERSIONS`). **Status: tested in isolation** (`tests/fix-platform-agent-api.test.ts`); developers use it in-process.
+
+| Verb | Input | Returns | Budget (tokens) |
+|---|---|---|---|
+| `courses()` | none | granted courses: name, resource count, open assignments, next due date, source coverage | 4,000 |
+| `courseGraph({ courseId })` | a course | counts by kind, accepted links by type, assignments without a due date, coverage | 4,000 |
+| `resources({ courseId?, kinds?, cursor?, limit? })` | a page of ≤100 | list rows without bodies, `total`, `nextCursor` | 8,000 |
+| `resource({ id })` | one id | the scrubbed item: an excerpt window, deadline, citation, freshness | 12,000 |
+| `searchPassages({ query, courseId?, limit? })` | ≤20 hits | passage search on the FTS index (BM25, OR), each hit an excerpt around the match with its citation | 8,000 |
+| `assignments({ courseId?, days? })` | a window in days | assignments with resolved due and planning dates, conflicts and completion, soonest first | 6,000 |
+| `agenda({ days? })` | | `status: "not_built"`: the core agenda merges planning class meetings, which never leave through the platform | 6,000 |
+
+### 4.2 The read-only MCP course bank
+
+Six stdio tools for the student's own AI client: `search`, `due_soon`, `recent_changes`, `course_overview`, `get_item` and `answer_course_question` (extractive: exact quotes with citations, no model call). The student creates a grant per client in Settings → Data & AI and exports a connection; the app writes a token file readable only by the current user and returns an `mcpServers` entry that launches `mcp-server.cjs --connection <file>`. The reader opens the database read-only and appends receipts to a side log the app imports. **Status: integrated** (`apps/desktop/src/mcp-server.ts`, `packages/core/src/mcp.ts`).
+
+### 4.3 What the platform will add (D42, proposed)
+
+- **A versioned SQL read contract:** named views `v<major>_<name>`, a typed `@magic/sdk`, and a handshake `{contract} → {supported, user_version}` so a separate process can read without importing the app's packages.
+- **Scoped, revocable, per-tool tokens** that reuse the grants; localhost is not authorization.
+- **A narrow, atomic write path for student-owned artifacts only:** `deck.create`, `card.add`, `card.edit`, `note.save`, `review.record`, each checked by code, reversible, with a before-image. Coursework and evidence are never writable, and planning is never exposed.
+
+The evidence behind each choice (Zotero's version requests, AnkiConnect's "localhost alone is not authentication", Obsidian's atomic `process()`, Logseq's schema handshake) is in [plan D42](plans/2026-09-26-course-backend/plan.md).
+
+## 5. Developer quickstart
 
 Node 24 and pnpm 10.29.2.
 
@@ -48,128 +113,125 @@ Node 24 and pnpm 10.29.2.
 git clone https://github.com/benverhaalen/magic-uw.git
 cd magic-uw
 pnpm install
-pnpm test        # the whole suite: 540/540 at 33b1827
+pnpm test        # the whole suite: 1,101/1,101 at 699e386
 pnpm check       # TypeScript across apps, packages and evals
 ```
 
-**Where things live:** `packages/contracts` (types) → `domain` → `core` (queries, drain, pack job, MCP, egress) → `storage` (the store) → `retrieval`, `connectors`, `ai`, `runner`, `packs/core`, `learning`. The desktop app is `apps/desktop` (main process, utility worker, renderer). Aliases such as `@magic/storage` are in `tsconfig.json` `paths`; a new package needs its alias there, or `pnpm check` fails with TS2307.
+**Where things live:** `packages/contracts` (types and schemas) → `domain` → `core` (queries, the job drain, the intent router, MCP, egress) → `storage` (the store) → `retrieval`, `connectors`, `ai`, `runner`, `packs/*`, `learning`, `notes`, `agent-api`. The desktop app is `apps/desktop` (main process, utility worker, renderer); the Jev gateway is `apps/gateway`. Aliases such as `@magic/storage` are in `tsconfig.json` `paths`; a new package needs its alias there, or `pnpm check` fails with TS2307.
 
-**Read the store in-process and register a job handler.** Save this as `.data/try.ts` (git ignores `.data/`) and run `pnpm exec tsx .data/try.ts` from the repository root. It uses the synthetic sample course; it ran cleanly at `33b1827`.
+**Build a study tool on the agent API.** Save this as `.data/quickstart.ts` (git ignores `.data/`) and run `pnpm exec tsx .data/quickstart.ts` from the repository root. It plays both sides on the synthetic sample course: the app (the writer, with the student's consent and a grant) and your tool (a read-only reader). It ran and type-checked at `699e386`.
 
 ```ts
-import { readFileSync } from "node:fs";
+import { createHash, randomBytes } from "node:crypto";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createStore } from "@magic/storage";
-import { createDrain } from "../packages/core/src/drain.ts";
+import { createReadApi } from "@magic/agent-api";
+import { defaultPrivacy } from "@magic/contracts";
+import { CONSENT_DISCLOSURE_VERSION } from "@magic/domain";
 
-const store = createStore(":memory:"); // or a file path; migrations run on open
-store.ingest(JSON.parse(readFileSync("fixtures/course.json", "utf8")));
+// 1. The app's writer: one SQLite file; migrations run on open. Load the synthetic sample course.
+const file = join(mkdtempSync(join(tmpdir(), "magic-quickstart-")), "workspace.sqlite");
+const writer = createStore(file);
+writer.ingest(JSON.parse(readFileSync("fixtures/course.json", "utf8")));
 
-for (const r of store.resources()) console.log(r.kind, r.title);
-const found = store.searchPassages({ query: "when is the essay due", k: 5 });
-console.log(found.notFound ? "not in your materials" : found.hits.map((h) => `${h.title}: ${h.excerpt}`));
-
-// A job: enqueue it against a subject, then drain with a handler for its kind.
-store.enqueueSubject(
-  { kind: "demo.count", subjectKind: "source", subjectId: "sample-course", sourceId: "sample-course", inputHash: "v1" },
-  new Date().toISOString(),
-);
-const drain = createDrain({
-  store,
-  handlers: { "demo.count": async (job) => console.log(job.kind, job.subjectId) },
+// 2. The student's side: consent to a recipient, share course text, and grant one tool one course.
+const now = new Date().toISOString();
+writer.setConsent!({ action: "grant", recipient: "claude", disclosureVersion: CONSENT_DISCLOSURE_VERSION }, now);
+writer.setPrivacy({ ...defaultPrivacy, mode: "selective_cloud", hostedProvider: "claude", shareCourseText: true });
+const token = randomBytes(32).toString("hex");
+writer.setMcpGrant({
+  id: "my-study-tool",
+  label: "My study tool",
+  recipient: "claude",
+  enabled: true,
+  courses: [{ accountScope: "synthetic", courseId: "sample-101" }],
+  categories: ["course_text"],
+  tokenHash: createHash("sha256").update(token).digest("hex"),
 });
-console.log(await drain.run()); // { done: 1, failed: 0, skipped: 0 }
-store.close();
+writer.close();
+
+// 3. Your tool: a read-only reader and the agent API v1, scoped by the grant, one receipt per call.
+const reader = createStore(file, { readOnly: true });
+const api = createReadApi(reader, { clientId: "my-study-tool", token }, { recordReceipt: (r) => console.log("receipt:", r.purpose) });
+console.log(api.contract, api.version);
+for (const c of api.courses().courses) console.log(c.course, c.resources, "resources,", c.openAssignments, "open");
+const { hits, trimmed } = api.searchPassages({ query: "essay thesis", limit: 3 });
+for (const h of hits) console.log("hit:", h.title);
+console.log("trimmed:", trimmed);
+console.log("due in 30 days:", api.assignments({ days: 30 }).items.length);
+reader.close();
 ```
 
-A handler throws to fail; the store retries with backoff, then gives up. A job whose subject changed before it finished is skipped, not applied.
+Its output at `699e386`: `magic.agent-api 1.0.0`, one receipt per call, the course `Writing 101 · Sample` with 10 resources and 4 open, two passage hits, and the assignments due in the next 30 days. Revoke the grant or turn sharing off in the writer and the next call throws.
 
-**Add a prompt pack.** A pack is data plus checks; `definePack` refuses a schema that strict structured output can't accept. This snippet runs and type-checks at `33b1827`.
+**Go further, in-process.**
+- **Register a background job:** add a `JobHandler` to the registry passed to `createCore({ jobs })`; the one drain runs it when the student is idle and never during a sync ([architecture §8](course-backend-architecture.md#8-one-job-drain)).
+- **Add a prompt pack:** `definePack` from `packages/packs/core` (a strict schema, code checks such as `quotesGrounded`, a cache key, data categories). `tests/packs.test.ts` runs one end to end against a fake CLI; `packages/packs/items` and `packages/packs/cards` are complete examples.
+- **Connect your own AI client** to the MCP course bank from Settings → Data & AI in the running app.
 
-```ts
-import { z } from "zod";
-import { definePack, quotesGrounded } from "@magic/packs";
+## 6. Building on it
 
-const cards = z.object({
-  cards: z.array(z.object({ front: z.string(), back: z.string(), sourceId: z.string(), quote: z.string() }).strict()).min(1),
-}).strict();
-type Cards = z.infer<typeof cards>;
-
-export const conceptCards = definePack<{ topic: string }, Cards>({
-  id: "concept-cards",
-  version: "v1",
-  tier: "pass",
-  system: "You write study cards from the passages. Quote the passage you used.",
-  template: (i) => `Make cards on: ${i.topic}`,
-  schema: cards,
-  checks: [quotesGrounded((o: Cards) => o.cards.map((c) => ({ sourceId: c.sourceId, quote: c.quote })))],
-  cacheKey: (i) => ({ topic: i.topic }),
-  categories: ["course_text"], // data categories for the consent decision (spec G)
-});
-```
-
-`runPack` runs it: the cache first (a hit costs 0 tokens), then the consent check, then one call through the runner, then the checks, with a ledger row per call. `readPackArtifact` reads a stored result without a runner. [`tests/packs.test.ts`](../tests/packs.test.ts) runs a pack end to end against a fake CLI; start from it.
-
-## 4. The decisions, with evidence
-
-| Decision | What we did | Why it wins | Evidence |
+| A tool a Badger developer could build | What it reads | Works today | Needs |
 |---|---|---|---|
-| **AI writes, code decides** ([spec §2](plans/2026-09-26-course-backend/spec.md)) | Code does whatever has one right answer (dates, IDs, permissions, quotes); Jev makes small typed judgments; the student's AI gets one checked call only where language must be read or written | The answers that must be exact never depend on a model; model calls are few and checkable | The quote checks in `putAssessmentScope`, `putCourseBrief` and `quotesGrounded`; runner tests check the tools-off argument lists (`tests/runner.test.ts`). Tested in isolation |
-| **Zero tokens during study** | `readPackArtifact` takes no runner, so a study-time read can't call a model; the learning engines have no runner dependency | Studying never spends the student's AI allowance or waits on a provider | `packages/core/src/jobs/pack.ts`; the learning suites. Tested in isolation; no study UI exists yet to show it end to end |
-| **The student's own AI in an isolated profile** (D35, D36, D45) | Detect the installed CLI with local version checks, run it under an app-owned `CLAUDE_CONFIG_DIR` or `CODEX_HOME`, and let the student sign in through the provider's own flow in a built-in terminal | No developer key and no hosted model spend on our side; the student's own Claude Code or Codex settings are untouched; the app never reads a credential | The isolated profile reports "Not logged in" and `~/.claude`, `~/.claude.json` and `~/.codex` stay untouched ([build record §5](course-backend-build-record.md#5-scores-and-measurements)); `CLAUDE_CONFIG_DIR` per [Claude Code env vars](https://code.claude.com/docs/en/env-vars) (checked 2026-09-26). Integrated. The subscription route itself is open decision H5 |
-| **Byte-stable prefix plus content-hash cache** | The role text and course frame form an identical prefix across calls for a course; results are keyed by a hash of the pack, prompt, input and passages | A repeat costs 0 tokens; the stable prefix lets the provider's own prompt cache hit | A cache hit writes a `cache_hit` ledger row with no model call (`tests/packs.test.ts`). Tested in isolation; the provider-side hit rate isn't measured |
-| **Warm sessions** (D38) | One warm CLI session per open course instead of a new process per call, with our own short system prompt | Seconds saved on every ask, and fewer fixed tokens | Measured on one laptop: about 2 s warm against 6–7 s cold; fixed tokens 11.3k → 2.8k ([plan D38](plans/2026-09-26-course-backend/plan.md)). Tested in isolation; spikes S1–S10 decide whether it's the default |
-| **Store vs link, and compressed summaries** (D40, D46) | Text that can be quoted becomes passages; tools and platforms with their own login become link cards opened in the browser; new payloads are compressed; a summary tier per material is planned | Stores what can be checked, never scrapes a third-party login, and keeps model context small | Size per 1,000 resources 15.6 → 10.3 MB (MT1, synthetic). Payload compression integrated; the summary tier is proposed |
-| **Per-course change detection from Canvas's own stream semantics** (D37) | A hot tick on `todo` and `upcoming_events`; a per-course content probe every 15 minutes and on focus; warm reads only of courses that moved | The account-wide activity stream doesn't carry files, pages or module items, so it can't see a quietly added lecture file | The stream's item types are listed in [canvas-lms `lib/api/v1/stream_item.rb`](https://github.com/instructure/canvas-lms/blob/master/lib/api/v1/stream_item.rb) (checked 2026-09-26). A hot tick costs 1–1.7% of a full sync; a new undated file was found within 15 minutes and only its course re-read (synthetic). Integrated |
-| **Access state per course space** (D41) | Every place a course keeps content gets a state: readable, needs UW sign-in, needs its own login, link-only or blocked | The student sees what the app can't reach instead of silent gaps; the app never launches an LTI tool | Live: 5 hidden Pages lists came back 404 and were marked inaccessible, not signed out ([build record §6](course-backend-build-record.md#6-live-trial-results)). Integrated in the sync; persistence tested in isolation |
-| **Consent before any network request** (T06) | One setup checkbox writes a consent record per recipient; main's gate and the worker's own public clients refuse every network channel without it; a new sensitive category is held for a preview bound to the payload's hash | The fewest clicks that still keep every send inspectable, with a receipt | A spy test counts 0 requests before the checkbox (`tests/egress.test.ts`). Integrated |
-| **Expiry confirmed before "Sign in again"** (T05c) | Only a login redirect, a login page, or a 401 whose body says `unauthenticated` counts as expiry; a permission error marks only that area | No false "Sign in again" when one course area is merely forbidden | `tests/session.test.ts`; the live trial's 404s were not treated as sign-outs. Integrated |
-| **Extraction recipes written once by a model, then replayed by code** (D32) | For a course platform code doesn't know, a model writes an extraction recipe keyed by host and layout hash; code replays it and records hits and misses | A layout costs one model call, not one per page | The `extraction_recipes` table and `putExtractionRecipe`, `extractionRecipe`, `recordRecipeUse`. Tested in isolation; the recipe-writing step is proposed |
-| **Contentless passage FTS** (D46) | FTS5 in contentless-delete mode keyed by passage rowid; excerpts cut by offset from the one stored copy | The text is stored once, and deletes stop scanning the table | The FTS content copy was 31% of the database in the spike; ingest 78 → 1,431 resources/s at 5,000 (MT1, synthetic); [SQLite contentless-delete tables](https://www.sqlite.org/fts5.html#contentless_delete_tables). Integrated |
-| **One-transaction migrations with a backup** | A `VACUUM INTO` copy first, then every pending step in one `BEGIN IMMEDIATE` that re-reads the version; restore through `node:sqlite` | A failure can't leave the file at an intermediate version | v5 → v7 with backup in 1.60 s with 0 rows lost (MT1, synthetic); [VACUUM INTO](https://www.sqlite.org/lang_vacuum.html#vacuuminto). Integrated |
+| A lab-report checker | the lab's assignment text and rubric passages; a pack whose checks quote the rubric | in-process: `searchPassages`, `resource`, a prompt pack | D42 to run as its own process |
+| A group-project planner | assignments with dates, course sessions | `assignments({ days })`, `courseGraph` | a planning-free `agenda` in v1 |
+| A flashcard exporter to Anki | the student's cards and reviews | in-process through the learning store | D42's read contract and the `card.*` write verbs |
+| A course-schedule bot | due dates and changes | `assignments`, `resources` with the change cursor through `core.query` | D42's scoped tokens to run separately |
 
-### 4b. Retrieval efficiency and cost against the original architecture
+**Rules every tool must keep** (from [AGENTS.md](../AGENTS.md)):
+- **No school actions.** Nothing submits, enrolls, posts or marks anything complete.
+- **Planning data is never exposed** to AI, Jev, MCP or the platform.
+- **Never automate Duo or bypass expiry;** use the app's own sessions, never a personal browser profile.
+- **Private coursework, credentials, sessions and unredacted captures stay out of Git and logs.** Test with synthetic fixtures.
+- **Page content is untrusted** and can't authorize an action; a model's output is never an authorization.
+- **Exact facts stay in code:** dates, IDs, permissions and budgets.
 
-Synthetic MT1 at 5,000 resources, one Windows laptop:
+## 7. Business model
 
-| Metric | Before → after |
-|---|---|
-| Ingest | 78 → 1,431 resources/s |
-| Search p50/p95 | 56/197 → 3.3/4.8 ms |
-| Size per 1,000 resources | 15.6 → 10.3 MB |
-| Purge | 8.7 → 0.48 s |
-| Question recall@5 (52 planted questions) | 0 → 1.00 |
-| Correct "not found" (26 questions) | 0.96 |
-| UI payload | 30.6 MB snapshot → 17.5 KB summary query |
+**In one line:** the code is open source and free with the student's own AI; the paid part is an optional hosted service; revenue never depends on student data. The full model, payment research and distribution plan are in [business model](notes/business-model.md); the team's recorded resolution is in [decisions](decisions.md#pricing-and-ai-access-resolution--september-26).
 
-Two secondary rows still miss their targets, and the planted questions were written by the builder. The full table, its caveats and the AI cost structure are in [build record §7](course-backend-build-record.md#7-retrieval-efficiency-and-cost-versus-the-original-architecture).
+| Layer | What it is | Status |
+|---|---|---|
+| **Open source, free with your own AI** | MIT code; model calls run on the student's own Claude Code or Codex (the student's plan) or their own API key; a local-model adapter exists for fully local use | code integrated; the Claude Code and Codex routes integrated through instant mode and app-owned profiles (#29); Gemini by the student's API key only |
+| **The hosted Jev service** | a gateway holding the team's Jev key server-side, so a student never needs a Jev account; OpenRouter users pay Jev through their own key | gateway tested in isolation, not deployed ([gateway README](../apps/gateway/README.md)); the OpenRouter route proposed |
+| **The price** | **open decision H1** ([plan §9](plans/2026-09-26-course-backend/plan.md#9-open-human-calls)): the operator's "free with your own keys; $5 lifetime for our hosted Jev service", against the team's recorded "$5 one-time app license" covering the service and company-funded Jev. Neither includes model usage. The payment provider is not chosen | proposed |
+| **A UW licence, after launch only** | a sanctioned connection (a university-issued Canvas developer key and approved Microsoft 365 access) and a campus review, at $1–2 per student. **No partnership exists; don't present one as existing** | proposed |
 
-## 5. Scorecard
+**Why the student's own subscription means no extra usage credits.** The app buys no model usage and resells none. It runs the student's already signed-in Claude Code or Codex on the student's computer, so generation is paid by the plan the student already has, with no second meter. The design keeps that use small: study runs at 0 tokens, a repeat hits the content-hash cache at 0 tokens, the byte-stable course prefix lets the provider's cache hit, instant mode cut fixed input by 57–70% (#29), and code answers most decisions before any model is asked.
 
-**How to read it.** Competitor cells come from each vendor's own pages, checked 2026-09-26; the reference numbers point to the sources list below. "Not stated" means we found no statement; it doesn't mean "no". Our cells carry their build status.
+**The honest caveat.** Those calls still **count toward the student's plan limits**. Anthropic states that "Advertised usage limits for Pro and Max plans assume ordinary, individual usage of Claude Code and the Agent SDK" (sourced: [Claude Code legal and compliance](https://code.claude.com/docs/en/legal-and-compliance), read 2026-09-27). The app's daily background budget and its pause after a usage limit exist to protect those limits, and client health shows the reset time when a limit is hit.
+
+**The open terms question (H5).** The same page states: "Anthropic does not permit third-party developers to offer Claude.ai login or to route requests through Free, Pro, or Max plan credentials on behalf of their users" (sourced, read 2026-09-27). The app never offers a login and never handles a credential: the student signs in to their own client through the provider's own flow, and the client runs on the student's machine. Whether that satisfies the provider's terms is **not settled** and is open decision H5; accepting Anthropic's Commercial Terms is a prerequisite before release. The sentence earlier documents quoted from that page ("Each end user must authenticate with their own Anthropic API key, Claude subscription plan credentials, or 3P inference provider credential") was **not found** on it on 2026-09-27. For Codex, no documented arrangement was found ([openai/codex#36886](https://github.com/openai/codex/issues/36886), sourced 2026-09-26, not re-checked); Gemini CLI's terms forbid third-party use of its sign-in ([tos-privacy.md](https://github.com/google-gemini/gemini-cli/blob/main/docs/resources/tos-privacy.md), sourced 2026-09-26, not re-checked), which is why Gemini is API-key only.
+
+## 8. Scorecard
+
+**How to read it.** Competitor cells come from each vendor's own pages, checked 2026-09-26; the reference numbers point to the sources below. "Not stated" means we found no statement; it doesn't mean "no". Our cells carry their build status.
 
 **Where we lead on evidence today:**
-- **Canvas connects automatically for a student alone,** with no admin setup. Every other tool that connects to Canvas needs an institution to enable it, or doesn't document Canvas at all.
+- **Canvas connects automatically for a student alone,** with no admin setup. Every other tool we checked that connects to Canvas needs an institution to enable it, or doesn't document Canvas at all.
 - **Local-first and open source, with Canvas.** Open Notebook and Anki are open and local, but have no LMS connection.
-- **No study-time token cost and no daily artifact quotas.** Studying runs on code; generated results are cached, so a repeat costs 0 tokens.
+- **No study-time token cost and no daily artifact quotas.** Studying runs on code; generated results are cached.
 - **Code-verified quotes.** Others cite sources; none states that the quote is checked against the source text.
 
-**Where quality is not yet measured.** We make no claim that our answers or questions are better than anyone's. The blind quality benchmark (spec B6; blind scoring on a public MIT OpenCourseWare course against a rubric fixed before the run; see [benchmarking](notes/benchmarking.md)) is **protocol fixed, run pending**. We found no published accuracy figures from any of the ten vendors below, so that run would be the first public measurement of its kind.
+**Where quality is not yet measured.** We make no claim that our answers or questions are better than anyone's. The blind quality run (spec B6, [benchmarking](notes/benchmarking.md)) has its protocol fixed; results go to [benchmarks](benchmarks.md). We found no published accuracy figures from any of the ten vendors below.
 
-### Magic Canvas
+### My Magic UW
 
-| Criterion | Magic Canvas | Status |
+| Criterion | My Magic UW | Status |
 |---|---|---|
-| Price for a student | Code MIT and free; generation runs on the student's own AI plan or key. The product price is open decision H1 ([plan §9](plans/2026-09-26-course-backend/plan.md#9-open-human-calls)): $5 lifetime for the hosted Jev service, or a $5 one-time licence | proposed |
-| Automatic Canvas connection for a student alone | yes: the student's own UW sign-in; no school deployment | integrated; shown on one live account |
-| Quoted, code-verified citations | every quote checked by code against the exact source version | validator tested in isolation; grounded chat proposed |
-| Exam-scope grounding | each assessment's scope stored with the instructor's quote, validated against the resource version | storage tested in isolation; the mapping pass proposed |
-| Spaced repetition | FSRS (`ts-fsrs`), with reviews placed before real exam dates | tested in isolation; UI proposed |
-| Per-topic progress analytics | per-topic knowledge states, calibration and a coverage map per assessment, all recomputable from raw answers | tested in isolation; display proposed |
+| Price for a student | code MIT and free; generation on the student's own AI plan or key; the product price is open decision H1 (§7) | proposed |
+| Automatic Canvas connection for a student alone | yes: the student's own UW sign-in; no school deployment | demonstrated (the operator's account) |
+| Quoted, code-verified citations | every quote checked by code against the exact source version | integrated (generation packs, guides); tested in isolation (grounded ask) |
+| Exam-scope grounding | each assessment's scope stored with the instructor's quote; material facts record which assessments a material covers | material facts demonstrated (#13); scope mapping proposed |
+| Spaced repetition | FSRS (`ts-fsrs`), with reviews placed before real exam dates | integrated |
+| Per-topic progress analytics | evidence-defined topic states (no percentages), recomputable from raw answers | integrated |
 | Local or offline | one SQLite file on the student's computer; study works offline; generation needs the student's AI or a local model | integrated |
 | Open source | MIT ([LICENSE](../LICENSE)) | integrated |
-| Usage quotas | none set by the app; the student's provider limits apply; a daily background token budget protects their plan | tested in isolation |
-| Cost during study | 0 model tokens | tested in isolation |
-| Published benchmarks | backend performance before and after, with the misses ([build record §5](course-backend-build-record.md#5-scores-and-measurements)); quality: protocol fixed, run pending | measured (performance); pending (quality) |
+| Usage quotas | none set by the app; the student's provider limits apply; a daily background budget protects them | integrated |
+| Cost during study | 0 model tokens | integrated |
+| Published benchmarks | backend performance before and after, with the misses ([benchmarks](benchmarks.md)); quality: protocol fixed, run pending | measured (performance); pending (quality) |
 
 ### AI assistants and notebooks
 
@@ -231,34 +293,32 @@ Two secondary rows still miss their targets, and the planted questions were writ
 
 The earlier two-product comparison, with its honest reading of where each competitor is ahead, is in [competitive comparison](notes/competitive-comparison.md).
 
-## 6. Open source for Badger developers
+## 9. Licensing and governance
 
-**Licence:** MIT ([LICENSE](../LICENSE)).
+**Licence: MIT** ([LICENSE](../LICENSE), copyright 2026 Ben Verhaalen). Anyone may use, modify and redistribute the code, including commercially, with the notice kept. The paid part of the business is the hosted service, never the code.
 
-**What you could build on it:**
+| Practice | Today | Status |
+|---|---|---|
+| Contribution flow | fork or branch as `feat/<name>`, keep `pnpm check` and `pnpm test` passing, add tests beside the existing ones in `tests/`, open a pull request to `main` | integrated (the team works this way) |
+| Continuous integration | `.github/workflows/verify.yml` runs `pnpm test` and `pnpm build` on Ubuntu for every push and pull request | integrated |
+| Shared interfaces | contracts, storage and core changes are reviewed as a team; a schema change goes through `packages/storage` only, as a new version with purge coverage | integrated |
+| API stability | `magic.agent-api` is versioned by major; a result never changes shape within one; a new major ships beside the old | tested in isolation |
+| Security reporting, contributor guide, code of conduct, maintainers list | not yet in the repository | proposed |
+| Third-party licences | recorded per dependency when added (for example `docx` MIT and `mammoth` BSD-2-Clause, #16); course corpora such as MIT OpenCourseWare (CC BY-NC-SA 4.0) are used locally for evaluation and never committed | integrated |
 
-| Tool | What it reads | Works today | Needs |
-|---|---|---|---|
-| A lab-report checker | the lab's assignment text and rubric passages, `searchPassages` for the stated requirements, a pack whose checks quote the rubric | in-process, inside this repo | D42 to run outside it |
-| A group-project planner | assessments, dates and weights, course sessions | in-process (`assessments()`, `courseSessions()`) once the course pass fills them (T21, T22) | T21/T22; D42 |
-| A flashcard exporter to Anki | the student's cards and reviews (v7 learning tables) | not yet | D42's read contract (`v<major>_` views) |
-| A course-schedule bot | due dates, events and changes through the scoped queries and the change cursor | in-process (`runQuery`) | D42 plus a scoped token to run as its own process |
+## 10. Roadmap
 
-**How to contribute:** fork, branch as `feat/<name>`, keep `pnpm check` and `pnpm test` passing, add tests beside the existing ones in `tests/`, and open a pull request to `main`. Shared-package changes (contracts, storage, core) are reviewed as a team because the app and every tool depend on them. A schema change goes through `packages/storage` only, as a new version with its purge coverage.
-
-**Rules every tool must keep** (from [AGENTS.md](../AGENTS.md)):
-- **No school actions.** Nothing submits, enrols, posts or marks anything complete. Reading may register a page view, and the app discloses that.
-- **Planning data is never exposed.** My UW records (enrolment, DARS, holds) never go to AI, Jev, MCP or the platform.
-- **Never automate Duo or bypass expiry;** use the app's own sessions, never a personal browser profile.
-- **Private coursework, credentials, sessions and unredacted captures stay out of Git and logs.** Test with synthetic fixtures.
-- **Page content is untrusted** and can't authorize an action; a model is never an authorization.
-- **Exact facts stay in code:** dates, IDs, permissions and budgets.
-
-## 7. Roadmap
-
-The build order is [architecture §2](course-backend-architecture.md#2-where-we-are). Next, in short:
-- **Sync speed:** the parallel first read (target ≤10 s), `include[]=items` for module items, and one sync per sign-in ([build record §6](course-backend-build-record.md#6-live-trial-results)).
-- **Wire what's tested in isolation:** the drain and the pack job in the worker with real course content, the learning router (N25), and course spaces persisted.
-- **Understand and generate:** Jev item cards (T20), the course pass and mapping (T21, T22), then the generation packs and the study surfaces.
-- **The platform:** the typed academic API (T50a), then the read contract, SDK, scoped tokens and write path (D42: T68, T69, T55).
-- **Measure:** the public comparison and the blind quality run (spec B6, MT7a/MT7b), with the rows we lose published too.
+| Item | Status | Next step |
+|---|---|---|
+| Privacy protection on every egress path, encryption at rest (v14) | built (#25) | review and merge |
+| Critical-action agenda | built (#27) | review and merge |
+| Live Outlook and Microsoft 365 run (E1) | integrated, not demonstrated | the operator runs E1 against UW's tenant |
+| A real-content generation run through the student's client | integrated, not demonstrated | a signed-in client on a live course, aggregates recorded |
+| Command bar screen for the intent router | tested in isolation | the frontend owner mounts it |
+| Course pass and mapping (T21, T22): the syllabus brief and assessment scopes | proposed | decide H6, then build |
+| A planning-free `agenda` verb in agent API v1 | proposed | a variant without planning class meetings |
+| SQL read contract, `@magic/sdk`, scoped tokens, student-owned write path (D42) | proposed | T68, T69, T55 |
+| Hosted Jev deployment and licence activation | proposed | decide H1; choose hosting and a payment provider |
+| Blind quality benchmark on a public course (B6) | proposed (protocol fixed) | run it, publish every row including losses |
+| Security policy, contributor guide, maintainers | proposed | add before the public launch |
+| UW licence and sanctioned connection | proposed (post-launch only) | after launch, with measured results |

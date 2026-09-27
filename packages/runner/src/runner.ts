@@ -201,6 +201,7 @@ export function createModelRunner(options: RunnerOptions): ModelRunner {
             outcome,
             checkErrors: outcome === "check_failed" ? [error.message] : [],
             errorKind: error.kind,
+            ...(error.blocked ? { blocked: error.blocked } : {}), // owner: client-detection: security receipt
           });
           if (error.kind === "usage_limit" && lane === "background")
             options.budget?.pauseForUsageLimit();

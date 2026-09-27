@@ -13,7 +13,10 @@ import { findQuote } from "../../../retrieval/src/quotes";
 import { contentCategories } from "../access";
 import { runPack } from "../jobs/pack";
 import { authorizer } from "./consent";
+import type { CoursePrefixSource } from "../course-facts/prefix"; // owner: course-facts
+import { BRIEF_POLICY_POINTER, briefHoldsPolicy } from "../course-facts/brief"; // owner: course-facts
 import type { AskResult, IntentStore, ResolvedCourse } from "./types";
+import { originalQuote, passageClass, type IntentProtection } from "../privacy/intent"; // owner: privacy
 
 export const ASK_TOKEN_BUDGET = 3000;
 const ASK_MAX_PASSAGES = 8;
@@ -26,6 +29,10 @@ export interface AskDeps {
   ledger: LedgerStore;
   now: () => Date;
   tokenBudget?: number;
+  /** owner: privacy. The router's protection; absent means none (a direct caller). */
+  protection?: IntentProtection;
+  /** owner: course-facts. The course prefix (brief + pack catalogue): used when the ask names one course. */
+  coursePrefix?: CoursePrefixSource;
 }
 
 const zero = () => ({ in: 0, cached: 0, out: 0 });
@@ -60,7 +67,11 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
     const r = store.resource(id);
     return r ? [r] : [];
   });
-  const categories = [...new Set(resources.flatMap((r) => contentCategories(r)))].sort();
+  // owner: course-facts. One course: the shared course prefix opens the prompt, as for packs and guides;
+  // the brief's sources are sent too, so their categories are checked and receipted.
+  const prefix = courses.length === 1 ? deps.coursePrefix?.(courses[0]!.ref) : undefined;
+  const briefResources = (prefix?.resourceIds ?? []).flatMap((id) => store.resource(id) ?? []);
+  const categories = [...new Set([...resources, ...briefResources].flatMap((r) => contentCategories(r)))].sort();
   const pack = { ...askPack, categories };
   const label = courses.length === 1 ? (courses[0]!.code ?? courses[0]!.name) : "Your courses";
   const policy = resources.find((r) => r.policy.mode !== "unknown")?.policy;
@@ -70,8 +81,19 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
     skeleton: courses.map((c) => `Course: ${c.code ? `${c.code}: ` : ""}${c.name}`).join("\n"),
     policy: policy ? `${policy.mode}: ${policy.evidence}` : "",
   };
-  const input = { question: question.trim().slice(0, 2000) };
-  const prompt = buildPrompt(pack, frame, input, passages);
+  // owner: course-facts
+  if (prefix) {
+    frame.brief = prefix.text;
+    if (policy && briefHoldsPolicy(policy.evidence, prefix.text)) frame.policy = `${policy.mode}: ${BRIEF_POLICY_POINTER}`;
+  }
+  // end owner: course-facts
+  // owner: privacy: the question is the student's; each passage is its resource's class.
+  const p = deps.protection?.request("ask");
+  const frozen = new Map(passages.map((x) => [x.sourceId, p ? p.frozen(x.text, passageClass(store.resource(meta.get(x.sourceId)!.resourceId))) : { text: x.text, spans: [] }]));
+  const sent = passages.map((x) => ({ ...x, text: frozen.get(x.sourceId)!.text }));
+  if (p) Object.assign(frame, { course: p.text(frame.course, "teaching"), skeleton: p.text(frame.skeleton, "teaching"), policy: p.text(frame.policy, "teaching"), ...(frame.brief !== undefined ? { brief: p.text(frame.brief, "teaching") } : {}) });
+  const input = { question: p ? p.text(question.trim().slice(0, 2000), "personal") : question.trim().slice(0, 2000) };
+  const prompt = buildPrompt(pack, frame, input, sent);
   const receiptIds: string[] = [];
   const authorize = authorizer(
     store,
@@ -81,7 +103,7 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
       title: "ask",
       text: prompt.input,
       policy: frame.policy,
-      resourceIds: resources.map((r) => r.id),
+      resourceIds: [...new Set([...resources.map((r) => r.id), ...(prefix?.resourceIds ?? [])])], // owner: course-facts: + the brief's sources
       characters: prompt.systemPrompt.length + prompt.input.length,
     },
     () => deps.now().toISOString(),
@@ -92,7 +114,7 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
     pack,
     frame,
     input,
-    passages,
+    sent, // owner: privacy
     { lane: "interactive", scope: courses.length === 1 ? "course" : "all", signal },
   );
   if (result.status === "blocked") return none("", { notFound: false, unavailable: result.reason });
@@ -100,7 +122,21 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
   if (result.status !== "done") return none("", { notFound: false, unavailable: result.message });
   const tokens = result.cached ? zero() : result.artifact.usage;
   const path = result.cached ? "cache" : "ai";
-  return { ...checkAnswer(result.artifact.output, passages, meta, (id) => store.resource(id)?.text ?? null), path, tokens };
+  // owner: privacy: quotes and sentences back in the original words before code checks the quotes.
+  const output = p
+    ? {
+        ...result.artifact.output,
+        sentences: result.artifact.output.sentences.map((s) => ({
+          ...s,
+          text: p.restore(s.text),
+          citations: s.citations.map((c) => {
+            const f = frozen.get(c.sourceId), original = passages.find((x) => x.sourceId === c.sourceId)?.text;
+            return { ...c, quote: (f && original !== undefined && originalQuote(f, original, c.quote)) || c.quote };
+          }),
+        })),
+      }
+    : result.artifact.output;
+  return { ...checkAnswer(output, passages, meta, (id) => store.resource(id)?.text ?? null), path, tokens };
 }
 
 /** Code checks every quote against its passage; a sentence with no checked quote is dropped. */

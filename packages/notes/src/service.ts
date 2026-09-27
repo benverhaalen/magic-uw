@@ -23,6 +23,7 @@ import type {
   NotesRequest,
   NotesResult,
   NotesSyncStatus,
+  Resource,
   SessionType,
   Store,
 } from "@magic/contracts";
@@ -42,7 +43,8 @@ import {
   type NoteSession,
   type SessionsPort,
 } from "./sessions";
-import { courseContext, scaffold, scaffoldBlocks, sessionLabel, sessionOrdinal, type CourseContext } from "./scaffold";
+import { courseContext, scaffold, scaffoldBlocks, SCAFFOLD_VERSION, sessionLabel, sessionOrdinal, type CourseContext } from "./scaffold";
+import type { CourseRef } from "../../contracts/src/course-core"; // owner: drain
 import { suggestTemplate, templateBlocks, templateInfo, TEMPLATES } from "./templates/index";
 import { blocksText, docxToHtml, htmlToBlocks, noteToDocx, sameContent } from "./docx";
 import type { NotesRemote } from "./remote";
@@ -136,10 +138,14 @@ export function createNotesService(deps: NotesServiceDeps) {
 
   // ---------- creating and refreshing scaffolds ----------
   const contexts = new Map<string, CourseContext>();
-  function contextFor(course: CanvasCourseInfo): CourseContext {
+  // owner: drain. The view, sessions port and context cache are parameters so `reconcile()` can
+  // run one course against its own narrow view while other notes operations use `view`.
+  type Reads = { v: NotesWorkspaceStore; p: typeof port; cache: Map<string, CourseContext> };
+  const shared = (): Reads => ({ v: view, p: port, cache: contexts });
+  function contextFor(course: CanvasCourseInfo, reads: Reads = shared()): CourseContext {
     const key = `${course.accountScope}\u0000${course.courseId}`;
-    let ctx = contexts.get(key);
-    if (!ctx) contexts.set(key, (ctx = courseContext(view, course)));
+    let ctx = reads.cache.get(key);
+    if (!ctx) reads.cache.set(key, (ctx = courseContext(reads.v, course)));
     return ctx;
   }
   function templateFor(course: CanvasCourseInfo, type: SessionType): { template: NoteTemplateId; reason: string } {
@@ -157,9 +163,17 @@ export function createNotesService(deps: NotesServiceDeps) {
     return `${shortCourse(course)} ${type} · ${sessionLabel({ ...s, startMinute: null, endMinute: null })}`;
   }
   function createForSession(course: CanvasCourseInfo, s: NoteSession): NoteRecord {
-    const ctx = contextFor(course);
-    const built = scaffold(store, ctx, s, sessionOrdinal(port, ctx, s));
-    const { template, reason } = templateFor(course, s.type);
+    return insertForSession(course, s, buildForSession(course, s));
+  }
+  function buildForSession(course: CanvasCourseInfo, s: NoteSession, reads: Reads = shared()) {
+    const ctx = contextFor(course, reads);
+    return { built: scaffold(store, ctx, s, sessionOrdinal(reads.p, ctx, s)), ...templateFor(course, s.type) };
+  }
+  function insertForSession(
+    course: CanvasCourseInfo,
+    s: NoteSession,
+    { built, template, reason }: ReturnType<typeof buildForSession>,
+  ): NoteRecord {
     const note = notes.insert(
       {
         id: `note-${createHash("sha256").update(`${course.accountScope}\u0000${s.id}`).digest("hex").slice(0, 20)}`,
@@ -191,30 +205,47 @@ export function createNotesService(deps: NotesServiceDeps) {
   }
   /** An untouched scaffold is rebuilt when its inputs changed; an edited note keeps its content. */
   function refreshNote(course: CanvasCourseInfo, n: NoteRecord, s: NoteSession): "refreshed" | "kept" {
+    const planned = planRefresh(course, n, s);
+    planned.apply?.();
+    return planned.outcome;
+  }
+  /**
+   * What refreshing one note would write, without writing it. `apply` re-reads the note first and
+   * writes nothing if it changed since (the student edited it while a batched run yielded).
+   */
+  function planRefresh(
+    course: CanvasCourseInfo,
+    n: NoteRecord,
+    s: NoteSession,
+    reads: Reads = shared(),
+  ): { outcome: "refreshed" | "kept"; apply?: () => void } {
     const ref = sessionRef(s);
     const moved = JSON.stringify(n.session) !== JSON.stringify(ref) || !n.scheduled;
-    if (n.state !== "untouched") {
-      if (moved) notes.patch(n.id, { session: ref, scheduled: true });
-      return "kept";
-    }
-    const ctx = contextFor(course);
-    const built = scaffold(store, ctx, s, sessionOrdinal(port, ctx, s));
-    if (built.hash === n.scaffoldHash) {
-      if (moved) notes.patch(n.id, { session: ref, scheduled: true });
-      return "kept";
-    }
-    notes.addVersion(n.id, scaffoldBlocks(built, n.template), "scaffold", {
-      scaffoldHash: built.hash,
-      session: ref,
-      scheduled: true,
-      moduleId: built.moduleId,
-      moduleName: built.moduleName,
-      title: titleFor(course, s),
-    });
-    notes.setLinks(n.id, built.links);
-    return "refreshed";
+    const unchanged = () => notes.note(n.id)?.revision === n.revision;
+    const move = moved ? () => void (unchanged() && notes.patch(n.id, { session: ref, scheduled: true })) : undefined;
+    if (n.state !== "untouched") return { outcome: "kept", ...(move ? { apply: move } : {}) };
+    const ctx = contextFor(course, reads);
+    const built = scaffold(store, ctx, s, sessionOrdinal(reads.p, ctx, s));
+    if (built.hash === n.scaffoldHash) return { outcome: "kept", ...(move ? { apply: move } : {}) };
+    return {
+      outcome: "refreshed",
+      apply() {
+        const current = notes.note(n.id);
+        if (!current || current.revision !== n.revision || current.state !== "untouched") return;
+        notes.addVersion(n.id, scaffoldBlocks(built, n.template), "scaffold", {
+          scaffoldHash: built.hash,
+          session: ref,
+          scheduled: true,
+          moduleId: built.moduleId,
+          moduleName: built.moduleName,
+          title: titleFor(course, s),
+        });
+        notes.setLinks(n.id, built.links);
+      },
+    };
   }
-  function currentCourses(): CanvasCourseInfo[] {
+  function currentCourses(reads: Pick<Reads, "v" | "p"> = shared()): CanvasCourseInfo[] {
+    const { v: view, p: port } = reads;
     const sources = new Map(view.sources().map((s) => [s.id, s]));
     const included = courseInclusion(view);
     const seen = new Set<string>();
@@ -279,6 +310,182 @@ export function createNotesService(deps: NotesServiceDeps) {
     }
     fingerprint = print;
     contexts.clear();
+    return stats;
+  }
+
+  // owner: drain. The incremental, sliced refresh the worker runs (never during a sync read).
+  const courseMarks = new Map<string, string>();
+  type ReconcileStore = NotesWorkspaceStore &
+    Partial<{ sourceResources(sourceId: string): Resource[]; courseDigest(course: CourseRef): string; courseDerivedHash(course: CourseRef): string | undefined; deriveBatch<T>(run: () => T): T }>;
+  /**
+   * A sessions port that reads each course's sessions once per start date, up to `to`, and answers
+   * a narrower range by filtering it: a session's ordinal (every session since the term began) no
+   * longer rescans the calendar for each session. The same answer: sessions are per-day records
+   * filtered by date, sorted by date then start.
+   */
+  function windowedSessions(inner: typeof port, to: string): typeof port {
+    const lists = new Map<string, NoteSession[]>();
+    return {
+      course: inner.course,
+      sessions(courseId, range) {
+        if (range.to > to) return inner.sessions(courseId, range);
+        const key = `${courseId}\u0000${range.from}`;
+        let all = lists.get(key);
+        if (!all) lists.set(key, (all = inner.sessions(courseId, { from: range.from, to })));
+        return all.filter((x) => x.date <= range.to);
+      },
+    };
+  }
+  /** A read-through view whose `resources()` is the given list (in `resources()` order). */
+  function narrowView(list: Resource[]): NotesWorkspaceStore {
+    return memoStore({ ...store, resources: (search?: string) => (search === undefined ? list : store.resources(search)) });
+  }
+  /**
+   * `refresh()`'s result, reached incrementally and in slices:
+   * - skipped when nothing it reads changed (the same fingerprint as `refresh()`);
+   * - per course, a fingerprint of that course's inputs (its resources, completions and derived
+   *   facts, the shared account-level lists, sessions sources, map links, profile, template choices,
+   *   its notes, the window); a course whose fingerprint is unchanged costs one comparison;
+   * - a changed course reads only the resources it can use (its own sources and the account-level
+   *   ones, not the whole workspace), plans each session's scaffold, and writes only notes whose
+   *   scaffold changed and that the student never edited, re-checked at write time;
+   * - writes go in one transaction per stretch of about `budgetMs`, with a yield between stretches;
+   *   the signal (a sync starting, a purge) stops it between stretches, and the next run continues.
+   */
+  async function reconcile(options: { signal?: AbortSignal; budgetMs?: number } = {}) {
+    const s = store as ReconcileStore;
+    const budgetMs = options.budgetMs ?? 8;
+    const stats = {
+      courses: 0, sessions: 0, created: 0, refreshed: 0, kept: 0, unscheduled: 0, skipped: false,
+      unchanged: 0, transactions: 0, maxBatchMs: 0, interrupted: false,
+    };
+    let stretch = performance.now();
+    const elapsed = () => performance.now() - stretch;
+    const breathe = async () => {
+      stats.maxBatchMs = Math.max(stats.maxBatchMs, elapsed());
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      stretch = performance.now();
+    };
+    let queue: (() => void)[] = [];
+    const flush = () => {
+      if (!queue.length) return;
+      const run = queue;
+      queue = [];
+      const apply = () => run.forEach((write) => write());
+      if (s.deriveBatch) s.deriveBatch(apply);
+      else apply();
+      stats.transactions++;
+    };
+    const stopped = () => {
+      flush();
+      stats.maxBatchMs = Math.max(stats.maxBatchMs, elapsed());
+      return { ...stats, interrupted: true };
+    };
+
+    const window = rollingWindow(now());
+    const print = inputsFingerprint(window);
+    if (print === fingerprint) return { ...stats, skipped: true };
+    const sources = store.sources().sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    const read = (id: string) => (s.sourceResources ? s.sourceResources(id) : store.resources().filter((r) => r.sourceId === id));
+    // The course list and inclusion read only the course records, not every resource.
+    const records = narrowView(sources.filter((x) => x.scope === "course").flatMap((x) => read(x.id)));
+    const courses = currentCourses({ v: records, p: createSessionsAdapter(() => records) });
+    const real = new Set(records.resources().filter((r) => r.kind === "course").map((r) => r.courseId));
+    const planning = store.planningSources().map((x) => `${x.id}:${x.observedAt}`);
+    const overrides = JSON.stringify(store.courseOverrides());
+    const selectedTerm = store.ingestionSettings().selectedTerm ?? "";
+    const digests = new Map<string, string>();
+    const digest = (c: CourseRef) => {
+      const key = `${c.accountScope}\u0000${c.courseId}`;
+      let d = digests.get(key);
+      if (d === undefined) digests.set(key, (d = s.courseDigest ? s.courseDigest(c) : ""));
+      return d;
+    };
+    if (elapsed() >= budgetMs) await breathe();
+
+    for (const course of courses) {
+      if (options.signal?.aborted) return stopped();
+      const key = `${course.accountScope}\u0000${course.courseId}`;
+      // What a course's notes can read: its own sources and the account-level lists.
+      const mine = sources.filter((x) => x.courseId === course.courseId || !real.has(x.courseId));
+      const groups = [...new Map(mine.map((x) => [`${x.accountScope}\u0000${x.courseId}`, { accountScope: x.accountScope, courseId: x.courseId }])).values()];
+      const ref = { accountScope: course.accountScope, courseId: course.courseId };
+      const markOf = () =>
+        createHash("sha256")
+          .update(
+            JSON.stringify([
+              SCAFFOLD_VERSION, window, course, groups.map((g) => [g, digest(g)]), s.courseDerivedHash?.(ref) ?? "",
+              store.mapLinks(ref), store.courseSessions(ref), planning, overrides, selectedTerm,
+              store.courseIntelligence().filter((p) => p.accountScope === course.accountScope && p.courseId === course.courseId),
+              (["lecture", "discussion", "lab"] as const).map((t) => notes.templateChoice(course.accountScope, course.courseId, t)),
+              notes.notes(ref).map((n) => [n.id, n.revision, n.state, n.scheduled, n.sessionId, n.sessionDate]),
+            ]),
+          )
+          .digest("hex");
+      if (courseMarks.get(key) === markOf()) {
+        stats.unchanged++;
+        if (elapsed() >= budgetMs) await breathe();
+        continue;
+      }
+      stats.courses++;
+      const list: Resource[] = [];
+      for (const x of mine) {
+        list.push(...read(x.id));
+        if (elapsed() >= budgetMs) {
+          await breathe();
+          if (options.signal?.aborted) return stopped();
+        }
+      }
+      const v = narrowView(list);
+      const reads: Reads = { v, p: windowedSessions(createSessionsAdapter(() => v), window.to), cache: new Map() };
+      const sessions = reads.p.sessions(course.courseId, window).filter((x) => x.type !== "other");
+      if (elapsed() >= budgetMs) {
+        await breathe();
+        if (options.signal?.aborted) return stopped();
+      }
+      if (sessions.length) {
+        contextFor(course, reads); // the course's inputs, in their own stretch (only when a session needs them)
+        if (elapsed() >= budgetMs) {
+          await breathe();
+          if (options.signal?.aborted) return stopped();
+        }
+      }
+      const listed = new Set(sessions.map((x) => x.id));
+      for (const session of sessions) {
+        stats.sessions++;
+        const existing = notes.noteBySession(course.accountScope, course.courseId, session.id);
+        if (!existing) {
+          const built = buildForSession(course, session, reads);
+          queue.push(() => {
+            if (!notes.noteBySession(course.accountScope, course.courseId, session.id)) insertForSession(course, session, built);
+          });
+          stats.created++;
+        } else {
+          const planned = planRefresh(course, existing, session, reads);
+          if (planned.apply) queue.push(planned.apply);
+          stats[planned.outcome]++;
+        }
+        if (elapsed() >= budgetMs) {
+          flush();
+          await breathe();
+          if (options.signal?.aborted) return stopped();
+        }
+      }
+      // A session the schedule no longer lists keeps its note; it is only marked.
+      for (const n of notes.notes(ref))
+        if (n.sessionId && n.scheduled && n.sessionDate && n.sessionDate >= window.from && n.sessionDate <= window.to && !listed.has(n.sessionId)) {
+          queue.push(() => {
+            if (notes.note(n.id)?.revision === n.revision) notes.patch(n.id, { scheduled: false }, false);
+          });
+          stats.unscheduled++;
+        }
+      flush();
+      // The mark after this pass's own writes, so an unchanged course is skipped next time.
+      courseMarks.set(key, markOf());
+      if (elapsed() >= budgetMs) await breathe();
+    }
+    fingerprint = print;
+    stats.maxBatchMs = Math.max(stats.maxBatchMs, elapsed());
     return stats;
   }
 
@@ -711,6 +918,6 @@ export function createNotesService(deps: NotesServiceDeps) {
     if (date !== "next") return port.sessions(courseId, { from: date, to: date }).find((s) => s.type === type) ?? null;
     return port.sessions(courseId, { from: today, to: addDays(today, 21) }).find((s) => s.type === type) ?? null;
   }
-  return { handle, refresh, syncTick, sessionOn, templates: TEMPLATES };
+  return { handle, refresh, reconcile /* owner: drain */, syncTick, sessionOn, templates: TEMPLATES };
 }
 export type NotesService = ReturnType<typeof createNotesService>;

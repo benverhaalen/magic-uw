@@ -90,6 +90,19 @@ export interface CanvasConnectorOptions
   onlyCourses?: string[];
   moduleRun?: CanvasModuleRun;
   onModuleRun?: (run: CanvasModuleRun) => void;
+  /**
+   * fix/current-courses-only. Discovery: the profile and the course lists only, so the student
+   * can choose courses before the first full read. No account lists, no course content.
+   */
+  catalogOnly?: boolean;
+}
+/**
+ * Canvas returns a course the student can no longer open as `{id, access_restricted_by_date:
+ * true}` only (lib/api/v1/course.rb course_json), so it has no name, term or dates: it is never
+ * stored or shown as a course (fix/current-courses-only).
+ */
+function nameless(course: CanvasCourse): boolean {
+  return !!course.access_restricted_by_date && !course.name?.trim();
 }
 // owner: T17. Scheduler order: essentials (0), then pages (1), then the background lists (2).
 const BACKGROUND_SCOPES = new Set([
@@ -223,6 +236,8 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
         courseOverrides: options.courseOverrides,
         selectedTerm: options.selectedTerm,
         currentTime: now(),
+        enrolledThisTerm: options.enrolledThisTerm,
+        enrollmentAuthoritative: options.enrollmentAuthoritative,
       });
       function source(
         courseId: string,
@@ -716,7 +731,8 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
             schema: summarySchema,
             path: "activity_stream/summary",
           },
-        ];
+        // fix/current-courses-only: discovery reads the course lists and nothing else.
+        ].filter(() => !options.catalogOnly);
         const accountReads = accountJobs.map((job) => ({
           job,
           promise: collect(
@@ -766,6 +782,7 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
           false,
         );
         for (const course of catalog.items) {
+          if (nameless(course)) continue;
           const restricted =
             course.access_restricted_by_date ||
             course.workflow_state === "unpublished";
@@ -790,6 +807,7 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
           for (const raw of historical.items) {
             if (listed.has(raw.id)) continue;
             listed.add(raw.id);
+            if (nameless(raw)) continue;
             const course: CanvasCourse = { ...raw, historicalOnly: true };
             const restricted = course.access_restricted_by_date || course.workflow_state === "unpublished";
             emit(course.id, courseName(course), "course",
@@ -851,7 +869,7 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
           }
         });
         const reconciled = Promise.allSettled([reconcileCatalog]);
-        if (http.needsSignIn) {
+        if (http.needsSignIn || options.catalogOnly) {
           await Promise.all([accountSettled, historicalSettled, reconciled]);
           return;
         }

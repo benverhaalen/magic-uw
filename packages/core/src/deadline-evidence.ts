@@ -15,7 +15,7 @@ import {
 
 const DAY = 86_400_000;
 /** Approximate UW term windows, used only when Canvas gives no course dates. Resolver adds slack. */
-function termFromName(name: string | undefined) {
+export function termFromName(name: string | undefined) {
   const m = /\b(fall|spring|summer)\s+(\d{4})\b/i.exec(name ?? "");
   if (!m) return null;
   const y = Number(m[2]);
@@ -51,8 +51,13 @@ export function proseDeadlines(
   const courseKey = (r: Resource) =>
     `${sources.get(r.sourceId)?.accountScope}:${r.courseId}`;
   const byCourse = new Map<string, Resource[]>();
-  for (const r of resources)
-    byCourse.set(courseKey(r), [...(byCourse.get(courseKey(r)) ?? []), r]);
+  // Appended in place: copying the course's list on every resource was quadratic in its size.
+  for (const r of resources) {
+    const key = courseKey(r);
+    const list = byCourse.get(key);
+    if (list) list.push(r);
+    else byCourse.set(key, [r]);
+  }
   const terms = new Map<string, ExtractionAnchors["term"]>();
   function term(key: string) {
     if (!terms.has(key)) {
@@ -77,6 +82,8 @@ export function proseDeadlines(
     if (r.kind === "message")
       return sources.get(r.sourceId)?.scope === "announcements" ? "announcement" : null;
     if (r.kind !== "material" || !r.text) return null;
+    // owner: site-recipes: a course website's organized items (D32) are page evidence, below Canvas.
+    if (sources.get(r.sourceId)?.kind === "site") return "page";
     if (r.externalId === "syllabus" || /\bsyllabus\b/i.test(r.title)) return "syllabus";
     return /\/pages\//.test(r.url) ? "page" : null;
   }

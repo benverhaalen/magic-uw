@@ -78,6 +78,10 @@ export function extractJson(text: string): unknown {
  * apps/desktop/src/clients/health.ts (`HEALTH_EVIDENCE`).
  */
 export function classifyFailure(text: string): RunnerErrorKind {
+  // owner: client-detection. macOS Keychain refusal (errSecInteractionNotAllowed; the CLIs' exit 36
+  // on macOS, which the backends append as "exit 36").
+  if (/errSecInteractionNotAllowed|user interaction is not allowed/i.test(text) || (process.platform === "darwin" && /\bexit 36\b/.test(text)))
+    return "keychain_locked";
   if (/not your usage limit|overloaded|temporarily limiting requests|experiencing high demand/i.test(text))
     return "unavailable";
   if (/workspace routing discovery failed|error sending request|stream disconnected|connection error|ENOTFOUND|ECONNREFUSED|ECONNRESET|EAI_AGAIN|getaddrinfo|network is unreachable|fetch failed/i.test(text))

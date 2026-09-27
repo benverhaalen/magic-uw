@@ -6,7 +6,7 @@
  */
 import type { Reference, ReferenceStrength } from "../../../contracts/src/course-core";
 import { analyzeLinks, classifyRole } from "./analyze";
-import { courseIndex, courseOfSource, type CourseIndex, type PipelineStore, type Res } from "./course-index";
+import { courseOfSource, graphCall, type CourseIndex, type GraphCall, type PipelineStore, type Res } from "./course-index";
 import { hasLinks } from "./write";
 
 export type { Reference };
@@ -44,12 +44,13 @@ function namePatterns(title: string): RegExp[] {
 const liveTitle = (ref: object): string | undefined =>
   "external" in ref ? ((ref as { external?: { title: string | null } }).external?.title ?? undefined) : undefined;
 
-export function references(store: PipelineStore, assignmentId: string): Reference[] {
+/** `call` shares the course's reads across one caller's many assignments (see `graphCall`). */
+export function references(store: PipelineStore, assignmentId: string, call: GraphCall = graphCall(store)): Reference[] {
   const found = store.resource(assignmentId);
   if (!found || found.deleted) return [];
   const course = courseOfSource(store, found.sourceId);
   if (!course) return [];
-  const index = courseIndex(store, course);
+  const index = call.index(course);
   const self = index.resources.get(assignmentId);
   if (!self) return [];
   const a = canonicalAssessment(index, self);
@@ -59,7 +60,7 @@ export function references(store: PipelineStore, assignmentId: string): Referenc
   const own = new Set(copies.map((r) => r.id));
   const out: Reference[] = [];
   const seen = new Set<string>();
-  const externals = new Map(store.externalRefs(course).map((e) => [e.id, e]));
+  const externals = new Map(call.externalRefs(course).map((e) => [e.id, e]));
   const add = (ref: Omit<Reference, "weight">, weight = strengthWeight[ref.strength]) => {
     const key = ref.resourceId ?? ref.externalUrl ?? "";
     if (!key || seen.has(key) || (ref.resourceId && own.has(ref.resourceId))) return;
@@ -85,7 +86,7 @@ export function references(store: PipelineStore, assignmentId: string): Referenc
   // 1-2. Direct links and named files/pages, from every captured copy of the assignment.
   const linkedModules: string[] = [];
   for (const copy of copies) {
-    const stored = store.resourceRefs(copy.id);
+    const stored = call.resourceRefs(copy.id);
     const refs = stored.length || !hasLinks(copy) ? stored : analyzeLinks(index, copy).refs;
     for (const ref of refs) {
       const target = ref.toResourceId ? index.resources.get(ref.toResourceId) : undefined;

@@ -83,7 +83,28 @@ export interface CourseFrame {
   profile?: string;
   skeleton: string;
   policy: string;
+  /**
+   * owner: course-facts. The course prefix: the brief (`syllabus.md`, with its constant preamble),
+   * then the pack catalogue. When present it is the whole system prompt, identical for every pack on
+   * the course, so the provider's prompt cache and the warm session reuse it; the input names the
+   * pack and carries the skeleton, policy, passages and question.
+   */
+  brief?: string;
 }
+// owner: course-facts
+/** One pack's catalogue entry: its id, version and instructions (the role text), byte-stable. */
+export function catalogueEntry(pack: { id: string; version: string; system: string }): string {
+  return `### ${pack.id}@${pack.version}\n${pack.system.replace(/\r\n?/g, "\n").trimEnd()}`;
+}
+/** The pack catalogue: every listed pack's instructions, sorted by id, byte-stable. */
+export function packCatalogue(packs: readonly { id: string; version: string; system: string }[]): string {
+  return [
+    "## Pack catalogue",
+    "Each request names one pack. Follow that pack's instructions and answer with that pack's output only.",
+    ...[...packs].sort((a, b) => a.id.localeCompare(b.id)).map(catalogueEntry),
+  ].join("\n\n");
+}
+// end owner: course-facts
 
 const lf = (text: string) => text.replace(/\r\n?/g, "\n").trimEnd();
 /**
@@ -96,6 +117,23 @@ export function buildPrompt<I, O>(
   input: I,
   passages: Passage[],
 ): { systemPrompt: string; input: string } {
+  // owner: course-facts
+  if (frame.brief !== undefined) {
+    const sources = passages.map((p) => `<passage id="${p.sourceId}">\n${lf(p.text)}\n</passage>`).join("\n");
+    // A pack in the prefix's catalogue is named; any other pack brings its own instructions.
+    const listed = frame.brief.includes(catalogueEntry(pack));
+    return {
+      systemPrompt: lf(frame.brief),
+      input: [
+        listed ? `## Task\nPack ${pack.id}@${pack.version}: follow its instructions in the pack catalogue.` : `## Task\n${lf(pack.system)}`,
+        `## Course\n${lf(frame.skeleton)}`,
+        `## Course AI policy\n${lf(frame.policy) || "No policy was found; coach conservatively."}`,
+        ...(sources ? [sources] : []),
+        lf(pack.template(input)),
+      ].join("\n\n"),
+    };
+  }
+  // end owner: course-facts
   const systemPrompt = [
     lf(pack.system),
     `## Course\n${lf(frame.skeleton)}`,

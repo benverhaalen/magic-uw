@@ -87,11 +87,18 @@ export async function compileCourse(store: PipelineStore, course: CourseRef, now
   const index = courseIndex(store, course);
   const roleOf = new Map<string, Role | undefined>();
   const assessments = assessmentsFor(index, roleOf);
+  // The index is the course's live inventory, and nothing changes it until the pass yields. After
+  // a yield, an unchanged inventory hash means every resource is still stored; once it moved, each
+  // remaining resource is checked as before (a full read per resource only when it can matter).
+  let verify = false;
   let n = 0;
   for (const r of index.resources.values()) {
-    if (!store.resource(r.id)) continue; // deleted while the pass yielded
+    if (verify && !store.resource(r.id)) continue; // deleted while the pass yielded
     writeResource(store, index, r, assessments, now, report);
-    if (++n % chunk === 0) await yieldToEvents();
+    if (++n % chunk === 0) {
+      await yieldToEvents();
+      verify ||= store.courseInventoryHash(course) !== index.hash;
+    }
   }
   return report;
 }

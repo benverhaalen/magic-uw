@@ -510,6 +510,11 @@ export type ChangeWithSeq = ResourceChange & { seq: number };
 export interface CourseCoreStore {
   /** `kinds` limits the lease to those kinds; each subject kind has its own staleness rule. */
   lease(now: string, leaseMs: number, kinds?: readonly string[]): CourseJob | undefined;
+  /**
+   * owner: course-facts. Extends a running job's lease to `now + leaseMs` while the holder still owns
+   * it (same token, not yet expired). Returns the new lease end, or false when the lease was lost.
+   */
+  renewLease?(job: Pick<CourseJob, "id" | "leaseToken">, now: string, leaseMs: number): string | false;
   enqueueSubject(job: SubjectJobInput, now: string): boolean;
 
   passages(resourceId: string): Passage[];
@@ -541,6 +546,8 @@ export interface CourseCoreStore {
   /** Replaces the resource's facts for that analyzer version; offsets checked against the text. */
   putMaterialFacts(value: MaterialFactsInput): WriteResult;
   materialFacts(resourceId: string): MaterialFact[];
+  /** The course's live resources the material pipeline classified with the role `syllabus` (current text only). */
+  syllabusRoleIds(course: CourseRef): string[];
 
   addLedgerEntry(value: LedgerEntry): void;
   ledger(limit?: number): LedgerEntry[];

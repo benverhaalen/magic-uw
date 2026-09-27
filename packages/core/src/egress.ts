@@ -167,7 +167,7 @@ function canonical(value: unknown): string {
 export function buildReceipt(
   manifest: Pick<
     ContextManifest,
-    "recipient" | "purpose" | "categories" | "resourceIds" | "characters"
+    "recipient" | "purpose" | "categories" | "resourceIds" | "characters" | "protection"
   >,
   status: EgressReceipt["status"],
   at: string,
@@ -182,6 +182,8 @@ export function buildReceipt(
     characters: manifest.characters,
     status,
     createdAt: at,
+    // owner: privacy: counts per protected kind, never values.
+    ...(manifest.protection ? { protection: { ...manifest.protection } } : {}),
   };
 }
 

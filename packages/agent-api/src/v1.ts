@@ -10,6 +10,7 @@ import { z } from "zod";
 import type { Resource, Store } from "@magic/contracts";
 import { fitToBudget, type DetailLevel } from "./budget";
 import { openSession, withOneRead, type Credentials, type ReadSession, type SessionOptions } from "./session";
+import { renderCourseBrief } from "../../core/src/course-facts/brief"; // owner: course-facts
 
 export const CONTRACT = "magic.agent-api" as const;
 export const VERSION = "1.0.0" as const;
@@ -23,6 +24,7 @@ export const BUDGET_TOKENS = {
   searchPassages: 8000,
   assignments: 6000,
   agenda: 6000,
+  courseBrief: 6000, // owner: course-facts
 } as const;
 export type Verb = keyof typeof BUDGET_TOKENS;
 
@@ -55,6 +57,7 @@ export const inputSchemas = {
     })
     .strict(),
   agenda: z.object({ days: z.number().int().min(1).max(60).default(7) }).strict(),
+  courseBrief: z.object({ courseId: id }).strict(), // owner: course-facts
 } satisfies Record<Verb, z.ZodType>;
 export type Input<V extends Verb> = z.input<(typeof inputSchemas)[V]>;
 
@@ -121,6 +124,16 @@ export interface ResultsV1 {
   searchPassages: Meta & { hits: ItemV1[] };
   assignments: Meta & { items: AssignmentV1[] };
   agenda: Meta & { status: "not_built"; items: [] };
+  // owner: course-facts. The course's syllabus.md, scrubbed for this connection.
+  courseBrief: Meta & { brief: CourseBriefV1 };
+}
+/** owner: course-facts. The checked course brief (syllabus.md): code-rendered, quote-verified. */
+export interface CourseBriefV1 {
+  courseId: string;
+  /** Markdown; roster names, emails and phone numbers replaced. */
+  text: string;
+  /** sha256 of the brief before this connection's scrub: equal hashes mean an unchanged brief. */
+  hash: string;
 }
 
 const meta = (trimmed: boolean): Meta => ({ contract: CONTRACT, version: VERSION, trimmed });
@@ -144,6 +157,7 @@ export interface ReadApiV1 {
   searchPassages(input: Input<"searchPassages">): ResultsV1["searchPassages"];
   assignments(input?: Input<"assignments">): ResultsV1["assignments"];
   agenda(input?: Input<"agenda">): ResultsV1["agenda"];
+  courseBrief(input: Input<"courseBrief">): ResultsV1["courseBrief"]; // owner: course-facts
 }
 
 /** The v1 reader for one grant. The store may be the read-only reader or the app's writer. */
@@ -354,6 +368,32 @@ export function createReadApi(store: Store, credentials: Credentials, options: S
     // TODO(D42): the core agenda (packages/core/src/graph/agenda.ts) merges the planning enrollment's
     // class meetings, and planning data never leaves through the platform. v1 answers "not_built"
     // until a planning-free agenda variant exists, rather than guessing or leaking.
+    // owner: course-facts. Same grant, scrub and receipt path as every verb; refused when any source
+    // the brief draws on isn't shared with this connection.
+    courseBrief: (input) =>
+      run("courseBrief", input, (session, { courseId }) => {
+        const items = session.resources().filter((r) => r.courseId === courseId);
+        const first = items[0];
+        if (!first) throw new Error("Course unavailable within this connection's permissions.");
+        const brief = renderCourseBrief(store, { accountScope: scopeOf(session, first), courseId });
+        const allowed = new Map(items.map((r) => [r.id, r]));
+        if (!brief || brief.resourceIds.some((id) => !allowed.has(id)))
+          throw new Error("The course brief draws on sources this connection can't read.");
+        const text = session.scrubFor(first)(brief.text);
+        const used = brief.resourceIds.map((id) => allowed.get(id)!);
+        return {
+          count: 1,
+          build: (level) => {
+            // Over budget: whole lines from the top (the header and sources come first).
+            const limit = level.window * 3;
+            const cut = text.length <= limit ? text : text.slice(0, text.lastIndexOf("\n", limit) + 1);
+            return { ...meta(cut.length < text.length), brief: { courseId, text: cut, hash: brief.hash } };
+          },
+          items: () => used,
+          private: true,
+        };
+      }),
+    // end owner: course-facts
     agenda: (input) =>
       run("agenda", input, () => ({
         count: 0,

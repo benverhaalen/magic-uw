@@ -70,7 +70,8 @@ export function sqlLedgerStore(store: Pick<CourseCoreStore, "addLedgerEntry" | "
         ? ["cache", "", "cache_hit", "0", ""]
         : (() => {
             const e = r as Exclude<LedgerRecord, { outcome: "cache_hit" }>;
-            return [e.client, e.lane, e.outcome, String(e.attempt), e.errorKind ?? ""];
+            // owner: client-detection: the security receipt of a blocked tool use (kind/name only).
+            return [e.client, e.lane, e.outcome, String(e.attempt), e.errorKind ?? "", e.blocked ? `${e.blocked.event}/${e.blocked.tool}` : ""];
           })();
       const e = r as Exclude<LedgerRecord, { outcome: "cache_hit" }>;
       store.addLedgerEntry({
@@ -96,7 +97,7 @@ export function sqlLedgerStore(store: Pick<CourseCoreStore, "addLedgerEntry" | "
         .ledger(5000)
         .reverse()
         .flatMap((row): LedgerRecord[] => {
-          const [, client, lane, outcome, attempt, errorKind] = row.id.split(META);
+          const [, client, lane, outcome, attempt, errorKind, blocked] = row.id.split(META);
           const courseId = row.course ? `${row.course.accountScope}:${row.course.courseId}` : "";
           if ((filter.courseId && filter.courseId !== courseId) || (filter.pack && filter.pack !== row.pack)) return [];
           const usage = { in: row.tokensIn, cached: row.tokensCached, out: row.tokensOut };
@@ -119,6 +120,7 @@ export function sqlLedgerStore(store: Pick<CourseCoreStore, "addLedgerEntry" | "
               outcome: outcome as LedgerOutcome,
               checkErrors: Array.from({ length: row.checkFailures }, () => "(detail not stored)"),
               ...(errorKind ? { errorKind: errorKind as RunnerErrorKind } : {}),
+              ...(blocked ? { blocked: { event: blocked.split("/")[0], tool: blocked.split("/").slice(1).join("/") } } : {}),
               courseId,
               cacheKey: "",
             },
