@@ -5,6 +5,7 @@ import { captureBatchSchema, planningCaptureSchema, type PlanningCapture } from 
 import fixture from "../../../fixtures/course.json";
 import { randomUUID } from "node:crypto";
 import { createLocalService } from "./local-service";
+import { createLearningService } from "./learning-service";
 import { createIngestion } from "./ingestion";
 import { dirname } from "node:path";
 import {
@@ -55,6 +56,7 @@ const core = createCore(store, {
     : {}),
 });
 const local = createLocalService(store, core);
+const learning = createLearningService(store, core);
 const hostRequests = new Map<
   string,
   { resolve(value: any): void; reject(error: Error): void }
@@ -301,8 +303,32 @@ port.on("message", async ({ data }: { data: any }) => {
     await ingestion.stop();
     clearInterval(tick);
     local.cancel();
+    learning.cancel();
     await core.close();
     port.postMessage({ kind: "closed" });
+    return;
+  }
+  if (data.kind === "learning-cancel") {
+    learning.cancel(data.id);
+    return;
+  }
+  if (data.kind === "learning") {
+    try {
+      let result: unknown;
+      switch (data.operation) {
+        case "learning-list": result = learning.list(data.request); break;
+        case "learning-get": result = learning.get(data.request); break;
+        case "learning-start": result = await learning.start(data.id, data.request); break;
+        case "learning-act": result = await learning.act(data.id, data.request); break;
+        case "learning-draft": result = learning.saveDraft(data.request); break;
+        default: throw new Error("Invalid learning operation.");
+      }
+      port.postMessage({ kind: "local-response", id: data.id, result });
+    } catch (error) {
+      port.postMessage({ kind: "local-response", id: data.id, error:
+        error instanceof Error && error.name !== "ZodError" && error.name !== "AbortError"
+          ? error.message : "Learning was cancelled or the request was invalid." });
+    }
     return;
   }
   if (data.kind === "local-cancel") {
@@ -339,8 +365,10 @@ port.on("message", async ({ data }: { data: any }) => {
     ingestion.suspend();
     await ingestion.tick();
   }
-  if (["import", "planning-import", "fixture", "privacy", "purge"].includes(data.command?.type))
+  if (["import", "planning-import", "fixture", "privacy", "purge", "course-override"].includes(data.command?.type)) {
     local.cancel();
+    learning.cancel();
+  }
   try {
     port.postMessage({
       kind: "response",

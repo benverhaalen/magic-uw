@@ -126,3 +126,7 @@ The utility worker persists normalized captures and computes comparisons. Shared
 ## Course intelligence compiler
 
 Local captures now materialize versioned account/course profiles in SQLite schema 5, including structured grading/assessment facts and source-bound policy/topic passages. The ordinary `store.ingest` path performs deterministic compilation; desktop background work can optionally select additional semantic passages with the installed local model. It does not wait on or send data to hosted AI. The compiler preserves immutable evidence versions and dynamic source health separately, and the local tutor consumes the resulting effective policy. See [compiler contracts, reference transfers and limits](course-intelligence.md). This is not a grade predictor, exam blueprint, or complete syllabus interpreter.
+
+## Learning session surface
+
+The [learning-session adapter](learning-sessions.md) follows the shared course-backend architecture. It owns a UI projection and orchestration, not migrations, a model runner, or an independent study engine. Repository and checked-item operations bind to the shared learning backend; explicit explanations bind to prompt packs. Missing bindings fail visibly.

@@ -10,6 +10,7 @@ import type {
 } from "@magic/contracts";
 import { MyUw, PlanningAlerts } from "./MyUw";
 import { LocalAiPanel } from "./LocalAiPanel";
+import { LearningPanel } from "./LearningPanel";
 import { ProviderGuidance } from "./ProviderGuidance";
 import { IngestionControls, McpConnections } from "./IngestionControls";
 
@@ -852,6 +853,7 @@ function ResourceDetail({
             "No AI policy was found in the captured material. Coaching is the default."}
         </p>
       </section>
+      <LearningPanel key={`${resource.id}:${source?.accountScope}:${resource.contentHash}:${JSON.stringify(snapshot.privacy)}`} resource={resource} accountScope={source?.accountScope} />
       <LocalAiPanel
         key={`${resource.contentHash}:${JSON.stringify(snapshot.privacy)}`}
         resource={resource}

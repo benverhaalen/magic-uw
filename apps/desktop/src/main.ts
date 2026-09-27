@@ -28,6 +28,7 @@ import {
   captureEnvelopeSchema,
   planningCaptureSchema,
   localQuestionSchema,
+  learningStartSchema, learningActSchema, learningDraftSchema,
   type CommandResult,
 } from "@magic/contracts";
 const headless = process.env.MAGIC_HEADLESS === "1";
@@ -516,7 +517,7 @@ app
       );
     });
     async function localOperation(
-      operation: "status" | "ask",
+      operation: "status" | "ask" | "learning-list" | "learning-get" | "learning-start" | "learning-act" | "learning-draft",
       request?: unknown,
     ): Promise<unknown> {
       await ready;
@@ -526,16 +527,17 @@ app
           () => {
             localCalls.delete(id);
             worker.postMessage({ kind: "local-cancel", id });
+            worker.postMessage({ kind: "learning-cancel", id });
             reject(
               new Error(
-                "Local AI timed out. Your saved coursework is still available.",
+                "The request timed out. Your saved coursework is still available.",
               ),
             );
           },
-          operation === "ask" ? 180000 : 75000,
+          ["ask", "learning-start", "learning-act"].includes(operation) ? 180000 : 75000,
         );
         localCalls.set(id, { resolve, reject, timer });
-        worker.postMessage({ kind: "local", id, operation, request });
+        worker.postMessage({ kind: operation.startsWith("learning-") ? "learning" : "local", id, operation, request });
       });
     }
     ipcMain.handle("magic:local-status", (event) => {
@@ -549,6 +551,29 @@ app
     ipcMain.handle("magic:local-cancel", (event) => {
       validateSender(event);
       worker.postMessage({ kind: "local-cancel" });
+    });
+    for (const operation of ["list", "get"] as const) {
+      ipcMain.handle(`magic:learning-${operation}`, (event, id) => {
+        validateSender(event);
+        if (typeof id !== "string" || !id || id.length > 500) throw new Error("Invalid learning resource.");
+        return localOperation(`learning-${operation}`, id);
+      });
+    }
+    ipcMain.handle("magic:learning-start", (event, request) => {
+      validateSender(event);
+      return localOperation("learning-start", learningStartSchema.parse(request));
+    });
+    ipcMain.handle("magic:learning-act", (event, request) => {
+      validateSender(event);
+      return localOperation("learning-act", learningActSchema.parse(request));
+    });
+    ipcMain.handle("magic:learning-draft", (event, request) => {
+      validateSender(event);
+      return localOperation("learning-draft", learningDraftSchema.parse(request));
+    });
+    ipcMain.handle("magic:learning-cancel", (event) => {
+      validateSender(event);
+      worker.postMessage({ kind: "learning-cancel" });
     });
     ipcMain.handle("magic:open", async (event, url) => {
       validateSender(event);
@@ -854,6 +879,16 @@ app
           !imported.snapshot.fixtureMode
         )
           throw new Error("Fixture import failed");
+        const learningResource = imported.snapshot.resources.find((item: { kind: string }) => item.kind === "assignment");
+        const missingLearningBackend = await window.webContents.executeJavaScript(
+          `window.magic.learningList(${JSON.stringify(learningResource.id)}).then(()=>false, error=>/not (connected|available)|unavailable|not yet|not installed/i.test(error.message))`,
+        );
+        if (!missingLearningBackend) throw new Error("Missing shared learning backend was not disclosed");
+        const staleLearningRejected = await window.webContents.executeJavaScript(
+          `window.magic.learningStart(${JSON.stringify({ resourceId: learningResource.id, inputHash: "wrong", operationId: "smoke-stale" })}).then(()=>false,()=>true)`,
+        );
+        if (!staleLearningRejected) throw new Error("Learning boundary accepted an invalid resource");
+        await window.webContents.executeJavaScript("window.magic.cancelLearning()");
         const planningStamp = new Date().toISOString();
         const planningScope = { kind: "terms", key: "synthetic-smoke" };
         const planningFixture = {

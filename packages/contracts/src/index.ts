@@ -1,3 +1,4 @@
+import type { LearningBridge } from "./learning";
 import { z } from "zod";
 import {
   planningCaptureSchema,
@@ -6,6 +7,7 @@ import {
   type PlanningScope,
 } from "./planning";
 export * from "./planning";
+export * from "./learning";
 export * from "./course-intelligence";
 import type {
   CourseIntelligence,
@@ -895,7 +897,7 @@ export function localContextPayload(
     policy: payload.policy.slice(0, 2000),
   };
 }
-export interface AppBridge {
+export interface AppBridge extends Partial<LearningBridge> {
   execute(command: Command): Promise<CommandResult>;
   openExternal(url: string): Promise<void>;
   importFile(): Promise<CommandResult | null>;
