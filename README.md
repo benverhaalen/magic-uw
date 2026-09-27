@@ -53,7 +53,7 @@ The app starts empty with hosted AI sharing off. Load the labelled synthetic sam
 | [Benchmarks](docs/benchmarks.md) | performance and quality measurements, methods, and the rows we lose |
 | [Academic data platform](docs/academic-data-platform.md) | the database for developers: agent API, MCP course bank, quickstart, business model |
 | [Status, September 27](docs/status-2026-09-27.md) | the backend lane's morning report: measurements and what was broken then |
-| [Break card](docs/break-card.md) | our Art of the Break entry: checked quotes, unchecked sentences |
+| [Break card (PDF)](docs/break-card.pdf) | our one-page Art of the Break entry: checked quotes, unchecked sentences ([full write-up](docs/break-card.md)) |
 | [Documentation index](docs/README.md) | every document, grouped |
 
 Private course data, credentials, sessions and unredacted captures never belong in this repository; examples are synthetic.

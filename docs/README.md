@@ -58,7 +58,7 @@ Every document in `docs/`, listed once. Start with [the architecture](architectu
 | Document | What it answers |
 |---|---|
 | [Benchmarks](benchmarks.md) | every measurement with its method, and what isn't measured yet |
-| [Break card](break-card.md) | our Art of the Break entry: checks that confirmed the evidence but not the claim, with before/after rates |
+| [Break card (PDF)](break-card.pdf) | our one-page Art of the Break entry ([full write-up](break-card.md)): checks that confirmed the evidence but not the claim, with before/after rates |
 | [Research status](research.md) | checked references and unresolved evidence |
 | [Tool evaluation](tool-evaluation.md) | candidate tools, licences, benchmark provenance |
 | [Research notes index](notes/README.md) | the notes below, with their status |
