@@ -9,6 +9,7 @@ import { randomUUID } from "node:crypto";
 import { createLocalService } from "./local-service";
 import { createIngestion } from "./ingestion";
 import { createLearningRouter, type StudyContext } from "../../../packages/learning/src/router";
+import { createCurrentReferences } from "../../../packages/learning/src/analytics"; // owner: analytics
 import { createStudyContextResolver } from "./learning-context";
 import { dirname } from "node:path";
 import {
@@ -69,6 +70,10 @@ const core = createCore(store, {
   seams: { learning: createLearningRouter({
     store: store.learning,
     resolveContext: (resourceId): StudyContext | null => resolveStudyContext(resourceId),
+    // owner: analytics. One references port per analytics request, over the coursework store; the
+    // material pipeline's adapter replaces this factory when it lands.
+    analyticsReferences: () => createCurrentReferences(store),
+    // end owner: analytics
   }), pack: generation.pack /* owner: generation */ },
   ...(process.env.MAGIC_GATEWAY_URL
     ? {
