@@ -379,3 +379,31 @@ test("before Canvas: only an open, unsubmitted quiz or exam asks to prep first",
   void CATALOGUE;
   void READING;
 });
+
+test("Study & Learn: every work item across courses, grouped by due date, each row opening its space; the Home card shows the next three", async () => {
+  const { StudyLearnPage, HomeStudyCard, actionFor } = await import("../apps/desktop/src/renderer/study-prep/StudyLearn");
+  const f = catalogueFixture();
+  try {
+    const list = studyPrepQuery(f.store, { view: "study.prep" }, NOW.toISOString()) as List;
+    assert.equal(list.status, "list");
+    const titles = list.items.map((i) => i.title);
+    for (const t of ["Quiz 3", "Midterm 2", "Problem Set 4", "Lab 3: Sampling with the Oscilloscope", "Homework 5", "Attendance Week 6"]) assert.ok(titles.includes(t), t);
+    assert.ok(list.items.every((x, i, all) => i === 0 || (all[i - 1]!.date ?? "9999") <= (x.date ?? "9999")), "soonest first");
+    const lab = list.items.find((i) => i.title.startsWith("Lab 3"))!;
+    assert.equal(lab.type, "lab");
+    assert.equal(actionFor(lab, "c"), "cards");
+    assert.equal(actionFor(lab, "t"), "quiz");
+    assert.equal(actionFor(list.items.find((i) => i.title === "Midterm 2")!, "t"), "exam");
+    const html = renderToStaticMarkup(React.createElement(StudyLearnPage, { initial: list }));
+    for (const g of ["This week", "Later", "Past"]) assert.ok(html.includes(`>${g}`), g);
+    assert.ok(!html.includes(">Today"), "nothing in the fixture is due today, so there is no Today group");
+    assert.match(html, /data-study-row/);
+    assert.match(html, /Problem set/);
+    assert.match(html, /SIG 203 Synthetic Signals and Computation/);
+    const card = renderToStaticMarkup(React.createElement(HomeStudyCard, { initial: list, onSeeAll: () => {} }));
+    assert.equal((card.match(/>Prep</g) ?? []).length, Math.min(3, list.upcoming.length));
+    assert.match(card, /See all/);
+  } finally {
+    f.store.close();
+  }
+});

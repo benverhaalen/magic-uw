@@ -139,8 +139,48 @@
 .sp-link-button { border: 0; background: none; padding: 0; color: var(--magic-ink-muted); font: inherit; font-size: var(--magic-type-meta); text-decoration: underline; cursor: pointer; }
 .sp-dialog > .sp { border: 0; }
 
+/* The study action roles from the design system: its study fill where the tokens define one (the
+   desktop design branch does), the selection fill before. */
+.sp-action.is-open { background: var(--magic-fill-action-study, var(--magic-fill-selection)); color: var(--magic-ink-action-study, var(--magic-ink)); }
+
+/* ---------- Study & Learn ---------- */
+.sp-study-learn { display: flex; flex-direction: column; gap: 1rem; max-width: 64rem; font: var(--magic-type-control) / 1.4 var(--magic-font-interface); color: var(--magic-ink); }
+.sp-sl-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; }
+.sp-sl-head h1 { margin: 0; font-size: var(--magic-type-page-title); }
+.sp-sl-filters { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.sp-sl-filters .sp-search { margin: 0; min-width: 12rem; }
+.sp-sl-filters select { height: 1.875rem; padding: 0 0.5rem; border: 1px solid var(--magic-line-field); border-radius: var(--magic-radius-field); background: var(--magic-surface-raised); color: var(--magic-ink); font: inherit; font-size: var(--magic-type-compact-control); }
+.sp-sl-group { display: grid; gap: 0.375rem; }
+.sp-sl-group > .sp-group-title { margin: 0; display: flex; align-items: center; gap: 0.5rem; }
+.sp-sl-skeleton { display: grid; gap: 0.5rem; }
+.sp-work-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.25rem; }
+.sp-work-row { display: grid; grid-template-columns: 7rem minmax(0, 1fr) auto; align-items: center; gap: 0.75rem; width: 100%; min-height: 3rem; padding: 0.375rem 0.75rem; border: 1px solid var(--magic-line-quiet); border-radius: var(--magic-radius-card); background: var(--magic-surface-raised); color: var(--magic-ink); font: inherit; text-align: left; cursor: pointer; transition: background-color 120ms ease; }
+.sp-work-row:hover { background: var(--magic-fill-secondary); }
+.sp-work-row:focus-visible { outline: 2px solid var(--magic-focus); outline-offset: 1px; }
+.sp-work-row.is-done .sp-work-title { color: var(--magic-ink-muted); }
+.sp-work-when { display: flex; flex-direction: column; font-size: var(--magic-type-meta); color: var(--magic-ink-muted); font-variant-numeric: tabular-nums; }
+.sp-work-when strong { color: var(--magic-ink); font-size: var(--magic-type-compact-control); }
+.sp-work-main { display: flex; flex-direction: column; gap: 0.125rem; min-width: 0; }
+.sp-work-meta { display: flex; align-items: center; gap: 0.375rem; min-width: 0; }
+.sp-work-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-work-side { display: flex; align-items: center; gap: 0.5rem; color: var(--magic-ink-muted); }
+.sp-course-chip { max-width: 16rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 0.375rem; border-radius: var(--magic-radius-tag-candidate); background: var(--magic-fill-tag-candidate); color: var(--magic-ink-tag-candidate); font-size: var(--magic-type-label); line-height: 1.25rem; }
+.sp-type-chip { padding: 0 0.375rem; border: 1px solid var(--magic-line-quiet); border-radius: var(--magic-radius-tag-candidate); color: var(--magic-ink-muted-strong); font-size: var(--magic-type-label); line-height: 1.125rem; white-space: nowrap; }
+.sp-type-chip.is-missing { color: var(--magic-ink-status-error-candidate); border-color: transparent; background: var(--magic-fill-status-error-candidate); }
+
+/* ---------- Home card ---------- */
+.sp-home-card { display: grid; gap: 0.5rem; padding: 0.75rem 0.875rem; border: 1px solid var(--magic-line-quiet); border-radius: var(--magic-radius-card); background: var(--magic-surface-raised); color: var(--magic-ink); font: var(--magic-type-control) / 1.4 var(--magic-font-interface); }
+.sp-home-head { display: flex; align-items: center; justify-content: space-between; }
+.sp-home-head h2 { margin: 0; font-size: var(--magic-type-section); }
+.sp-home-head .sp-link-button { display: inline-flex; align-items: center; gap: 0.125rem; text-decoration: none; color: var(--magic-ink-link); }
+.sp-home-card ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.375rem; }
+.sp-home-card li { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.sp-home-main { display: flex; flex-direction: column; gap: 0.0625rem; min-width: 0; }
+.sp-home-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-home-main .sp-course-chip { align-self: flex-start; }
+
 @media (prefers-reduced-motion: reduce) {
   .sp-view, .sp-need, .sp-skeleton { animation: none; }
-  .sp-action, .sp-upcoming-row, .sp-progress-bar, .sp-flashcard { transition: none; }
+  .sp-action, .sp-upcoming-row, .sp-work-row, .sp-progress-bar, .sp-flashcard { transition: none; }
   .sp-flashcard:active { transform: none; }
 }

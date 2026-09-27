@@ -36,7 +36,7 @@ import { isPipelineStore } from "../graph/course-index";
 import { courseInclusion } from "../access";
 import { STUDY_PREP_PACK_VERSION } from "../../../packs/study-prep/src/index";
 import { allScopeHash, collapse, courseRows, courseScope, dueOf, isPrepStore, loadPrep, selectScope, type Prep, type PrepStore, type Selection } from "./scope";
-import { GENERATING_TIMEOUT_MS, readRecord, type PrepRecord } from "./records";
+import { GENERATING_TIMEOUT_MS, preparedItems, readRecord, type PrepRecord } from "./records";
 import { codeType, decideType, readTypes } from "./item-type";
 import { latestItems, linkedReview, readLinks } from "./links";
 import { announcementsFor, buildSections, sessionsFor } from "./sections";
@@ -265,19 +265,47 @@ export function materialsOf(store: PrepStore, prep: Prep, sel: Selection, now: D
   return out;
 }
 
-function itemState(store: PrepStore, courseRef: string, itemId: string, byId: Map<string, Resource>, now: Date, review: { cards: number; due: number; questions: number }): StudyPrepItemState {
+function itemState(store: PrepStore, courseRef: string, itemId: string, byId: Map<string, Resource>, now: Date, review: { cards: number; due: number; questions: number }, prepared: Set<string>): StudyPrepItemState {
   const materials = {} as StudyPrepItemState["materials"];
   const hash = allScopeHash(courseRef, itemId);
   for (const kind of STUDY_PREP_KINDS) {
-    const record = readRecord(store.learning, courseRef, itemId, hash, kind);
+    // Only items the index lists have records: the rest read nothing.
+    const record = prepared.has(itemId) ? readRecord(store.learning, courseRef, itemId, hash, kind) : null;
     const st = recordState(record, byId, now);
     materials[kind] = { status: st.status, count: st.shown ? countOf(kind, st.shown) : 0 };
   }
   return { materials, cards: review.cards, due: review.due, questions: review.questions };
 }
 
-/** Upcoming exams and quizzes of one course, with readiness and what is prepared; each assignment's state when asked. */
-function courseList(store: PrepStore, accountScope: string, courseId: string, now: Date, withAssignments: boolean): { upcoming: StudyPrepUpcoming[]; assignments: Record<string, StudyPrepItemState> } | null {
+/** Cards and questions made for each item (explicit links), counted once per course. */
+function linkedCounts(items: Map<string, StoredItem>, cards: LearningCard[], links: Record<string, { forItems: string[] }>, now: Date) {
+  const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).toISOString();
+  const cardOf = new Map(cards.filter((c) => !c.isConceptTrack).map((c) => [c.itemId, c]));
+  const out = new Map<string, { cards: number; due: number; questions: number }>();
+  for (const [id, l] of Object.entries(links)) {
+    const x = items.get(id);
+    if (!x) continue;
+    for (const item of l.forItems) {
+      const c = out.get(item) ?? { cards: 0, due: 0, questions: 0 };
+      if (x.item.kind === "card" || x.item.kind === "cloze") {
+        c.cards++;
+        const card = cardOf.get(id);
+        if (!card || card.fsrs.due <= cutoff) c.due++;
+      } else c.questions++;
+      out.set(item, c);
+    }
+  }
+  return out;
+}
+
+const LIST_PAST_DAYS = 30;
+const LIST_AHEAD_DAYS = 120;
+
+/**
+ * One course's list: its upcoming exams and quizzes (readiness and what is prepared), every work
+ * item in the list window (Study & Learn), and each assignment's state (course rows).
+ */
+function courseList(store: PrepStore, accountScope: string, courseId: string, now: Date, withAssignments: boolean): { upcoming: StudyPrepUpcoming[]; items: StudyPrepUpcoming[]; assignments: Record<string, StudyPrepItemState> } | null {
   const course = { accountScope, courseId };
   const sources = new Map(store.sources().map((s) => [s.id, s]));
   const resources = courseRows(store, course).filter((r) => !r.deleted && r.courseId === courseId && sources.get(r.sourceId)?.accountScope === accountScope);
@@ -287,58 +315,54 @@ function courseList(store: PrepStore, accountScope: string, courseId: string, no
   const courseRef = `${accountScope}:${courseId}`;
   const courseName = resources.find((r) => r.courseName)?.courseName ?? courseId;
   const port = createExamEvidence({ resources: () => resources, sources: () => store.sources(), courseResources: () => resources, assessments: (c) => store.assessments(c) });
-  const upcomingRows = port.assessments(accountScope, courseId).filter((a) => {
+  const exams = port.assessments(accountScope, courseId);
+  const upcomingRows = exams.filter((a) => {
     const d = daysAway(a.date, now);
     return d === null || d >= 0;
   });
-  const assignmentRows = withAssignments
-    ? resources.filter((r) => {
-        if (r.kind !== "assignment") return false;
-        const d = dueOf(r);
-        const t = d ? Date.parse(d) : NaN;
-        return Number.isFinite(t) && t >= now.getTime() - 7 * DAY && t <= now.getTime() + ASSIGNMENT_HORIZON_DAYS * DAY;
-      })
-    : [];
-  if (!upcomingRows.length && !assignmentRows.length) return { upcoming: [], assignments: {} };
+  const inWindow = (date: string | null) => {
+    const t = date ? Date.parse(date) : NaN;
+    return Number.isFinite(t) && t >= now.getTime() - LIST_PAST_DAYS * DAY && t <= now.getTime() + LIST_AHEAD_DAYS * DAY;
+  };
   const items = latestItems(store.learning, courseRef);
   const cards = store.learning.cards({ courseRef });
   const links = readLinks(store.learning, courseRef);
   const types = readTypes(store.learning, courseRef);
+  const prepared = preparedItems(store.learning, courseRef);
+  const counts = linkedCounts(items, cards, links, now);
   const m = upcomingRows.length ? courseMastery(store, courseRef, accountScope, courseId, now) : null;
   const masteryAssessments = m ? m.course().assessments : [];
-  const upcoming = upcomingRows.map((a: ExamAssessment): StudyPrepUpcoming => {
+  const view = (a: ExamAssessment): StudyPrepUpcoming => {
     const r = a.resourceId ? (byId.get(a.resourceId) ?? null) : null;
     const decided = decideType(codeType({ assessment: { kind: a.kind as never, title: a.title }, resource: r }), types[a.id], a.kind === "quiz" ? "quiz" : "exam");
     const ma = masteryAssessments.find((x) => x.assessmentId === a.id || (!!a.resourceId && x.assessmentId === a.resourceId));
-    const review = linkedReview(items, cards, links, { itemId: a.id, resourceIds: new Set(), topicIds: new Set(ma?.topicIds ?? []), whole: true }, now);
+    const review = ma ? linkedReview(items, cards, links, { itemId: a.id, resourceIds: new Set(), topicIds: new Set(ma.topicIds), whole: true }, now) : (counts.get(a.id) ?? { cards: 0, due: 0, questions: 0 });
     return {
-      id: a.id,
-      kind: a.kind === "quiz" ? "quiz" : "assessment",
-      type: decided.type,
-      typeReason: decided.reason,
-      typeBasis: decided.basis,
-      resourceId: a.resourceId,
-      title: a.title,
-      courseId,
-      courseName,
-      date: a.date,
-      daysAway: daysAway(a.date, now),
-      where: null,
-      points: r?.points ?? null,
-      weight: weightOf(a, r),
-      status: statusOf(r, now),
-      url: r?.url ?? null,
+      id: a.id, kind: a.kind === "quiz" ? "quiz" : "assessment", type: decided.type, typeReason: decided.reason, typeBasis: decided.basis, resourceId: a.resourceId, title: a.title, courseId, courseName,
+      date: a.date, daysAway: daysAway(a.date, now), where: null, points: r?.points ?? null, weight: weightOf(a, r), status: statusOf(r, now), url: r?.url ?? null,
       mastery: ma ? { label: ma.label, counts: { solid: ma.counts.solid, getting_there: ma.counts.getting_there, iffy: ma.counts.iffy, not_seen: ma.counts.not_seen }, total: ma.topicIds.length } : null,
-      state: itemState(store, courseRef, a.id, byId, now, review),
+      state: itemState(store, courseRef, a.id, byId, now, review, prepared),
     };
-  });
-  const assignments: Record<string, StudyPrepItemState> = {};
-  const refs = (id: string) => (store.resourceRefs ? store.resourceRefs(id).flatMap((x) => (x.toResourceId ? [x.toResourceId] : [])) : []);
-  for (const r of assignmentRows) {
-    const review = linkedReview(items, cards, links, { itemId: r.id, resourceIds: new Set([r.id, ...refs(r.id)]), topicIds: new Set(), whole: false }, now);
-    assignments[r.id] = itemState(store, courseRef, r.id, byId, now, review);
+  };
+  const upcoming = upcomingRows.map(view);
+  // Every work item in the window: exams and quizzes by their course-map id, every other assignment by its resource.
+  const examResources = new Set(exams.flatMap((a) => (a.resourceId ? [a.resourceId] : [])));
+  const list: StudyPrepUpcoming[] = exams.filter((a) => inWindow(a.date)).map((a) => upcoming.find((u) => u.id === a.id) ?? view(a));
+  for (const r of resources) {
+    if (r.kind !== "assignment" || examResources.has(r.id)) continue;
+    const due = dueOf(r);
+    if (!inWindow(due)) continue;
+    const decided = decideType(codeType({ resource: r }), types[r.id], "problem_set");
+    list.push({
+      id: r.id, kind: "assignment", type: decided.type, typeReason: decided.reason, typeBasis: decided.basis, resourceId: r.id, title: r.title, courseId, courseName,
+      date: due, daysAway: daysAway(due, now), where: null, points: r.points ?? null, weight: weightOf(null, r), status: statusOf(r, now), url: r.url || null,
+      mastery: null,
+      state: itemState(store, courseRef, r.id, byId, now, counts.get(r.id) ?? { cards: 0, due: 0, questions: 0 }, prepared),
+    });
   }
-  return { upcoming, assignments };
+  const assignments: Record<string, StudyPrepItemState> = {};
+  if (withAssignments) for (const x of list) if (x.kind === "assignment") assignments[x.id] = x.state;
+  return { upcoming, items: list, assignments };
 }
 
 export function studyPrepQuery(store: Store, request: Request, nowIso: string): StudyPrepResult {
@@ -354,16 +378,20 @@ export function studyPrepQuery(store: Store, request: Request, nowIso: string): 
       ? [{ accountScope: courseScope(store, courseId), courseId }]
       : [...new Map(store.sources().filter((s) => s.kind === "canvas" || s.kind === "fixture").map((s) => [`${s.accountScope}:${s.courseId}`, { accountScope: s.accountScope, courseId: s.courseId }])).values()];
     const upcoming: StudyPrepUpcoming[] = [];
+    const items: StudyPrepUpcoming[] = [];
     let assignments: Record<string, StudyPrepItemState> = {};
     for (const c of courses) {
       if (!c.accountScope) continue;
       const list = courseList(store, c.accountScope, c.courseId, now, !!courseId);
       if (!list) continue;
       upcoming.push(...list.upcoming);
+      items.push(...list.items);
       if (courseId) assignments = list.assignments;
     }
-    upcoming.sort((a, b) => (a.date ?? "9999").localeCompare(b.date ?? "9999") || a.courseName.localeCompare(b.courseName) || a.title.localeCompare(b.title));
-    return { ...base, courseId, status: "list", upcoming, assignments, ms: ms() };
+    const byDate = (a: StudyPrepUpcoming, b: StudyPrepUpcoming) => (a.date ?? "9999").localeCompare(b.date ?? "9999") || a.courseName.localeCompare(b.courseName) || a.title.localeCompare(b.title);
+    upcoming.sort(byDate);
+    items.sort(byDate);
+    return { ...base, courseId, status: "list", upcoming, items, assignments, ms: ms() };
   }
   if (!courseId) return { ...base, courseId, status: "empty", message: "Choose a course.", ms: ms() };
   const prep = loadPrep(store, courseId, itemId, now);

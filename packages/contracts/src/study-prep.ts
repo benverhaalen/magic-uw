@@ -323,6 +323,8 @@ export type StudyPrepResult =
       /** Null: every included course (Study & Learn). */
       courseId: string | null;
       upcoming: StudyPrepUpcoming[];
+      /** Every work item (assignments, quizzes, exams) due from 30 days ago to 120 days ahead, soonest first (Study & Learn). */
+      items: StudyPrepUpcoming[];
       /** Course lists only: each assignment's study state, for its row. */
       assignments: Record<string, StudyPrepItemState>;
       modelCalls: 0;

@@ -12,13 +12,18 @@ import { createStore } from "../packages/storage/src/index";
 import { syntheticCorpus } from "../evals/perf/synthetic";
 import { studyPrepQuery } from "../packages/core/src/study-prep/query";
 import type { Concept } from "../packages/learning/src/store";
-import type { StudyPrepResult } from "@magic/contracts";
+import type { StudyPrepKind, StudyPrepResult } from "@magic/contracts";
+import * as React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { ItemSpaceView } from "../apps/desktop/src/renderer/study-prep/ItemSpace";
+
+(globalThis as { React?: typeof React }).React = React;
 
 const now = new Date("2026-10-20T15:00:00.000Z");
 const p95 = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.ceil(0.95 * xs.length) - 1]!;
 const p50 = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]!;
 
-test("study.prep median < 100 ms over 40 warm calls on a 5,000-resource store (0 tokens)", { timeout: 300_000 }, () => {
+test("study.prep median < 100 ms, item spaces paint < 150 ms and the global list < 100 ms on a 5,000-resource store (0 tokens)", { timeout: 300_000 }, () => {
   const dir = mkdtempSync(join(tmpdir(), "magic-study-prep-perf-"));
   const store = createStore(join(dir, "workspace.sqlite"), { now: () => now });
   try {
@@ -73,6 +78,44 @@ test("study.prep median < 100 ms over 40 warm calls on a 5,000-resource store (0
     }
     console.log(`STUDY-PREP-PERF ${JSON.stringify({ resources: 5000, courseResources: course.length, sources: ok.sources.length, topics: ok.overview.topics.length, coldMs: +cold.toFixed(1), p50Ms: +p50(samples).toFixed(1), p95Ms: +p95(samples).toFixed(1) })}`);
     assert.ok(p50(samples) < 100, `median ${p50(samples).toFixed(1)} ms (p95 ${p95(samples).toFixed(1)} ms, logged only)`);
+
+    // Paint from local data: the item-space query plus rendering its view (the same markup React
+    // commits), for the exam and for an assignment; and Study & Learn's list across every course.
+    // Gated on the median locally; report-only on CI (a loaded runner must not decide it).
+    const gate = (name: string, ms: number, budget: number) => {
+      if (process.env.CI) console.log(`STUDY-PREP-PERF ${name} ${ms.toFixed(1)} ms (budget ${budget}, report-only on CI)`);
+      else assert.ok(ms < budget, `${name}: median ${ms.toFixed(1)} ms, budget ${budget} ms`);
+    };
+    const assignment = course.find((r) => r.kind === "assignment")!;
+    const paint = (itemId: string) => {
+      const t0 = performance.now();
+      const r = studyPrepQuery(store, { view: "study.prep", courseId: "perf-101", itemId }, at);
+      assert.equal(r.status, "ok");
+      renderToStaticMarkup(
+        React.createElement(ItemSpaceView, {
+          data: r as Extract<StudyPrepResult, { status: "ok" }>, view: "need", setView: () => {}, ticked: null, setTicked: () => {}, chips: new Set<string>(), setChips: () => {},
+          selection: { resourceIds: undefined, topicIds: [] }, scope: { courseId: "perf-101", itemId }, pending: new Set<StudyPrepKind>(), notice: null, generate: () => {}, activate: () => {}, load: () => {},
+        }),
+      );
+      return performance.now() - t0;
+    };
+    const median = (f: () => number) => {
+      f();
+      return p50(Array.from({ length: 30 }, f));
+    };
+    const examPaint = median(() => paint("perf-mid"));
+    const assignmentPaint = median(() => paint(assignment.id));
+    const global = median(() => {
+      const t0 = performance.now();
+      const r = studyPrepQuery(store, { view: "study.prep" }, at);
+      assert.equal(r.status, "list");
+      return performance.now() - t0;
+    });
+    const upcoming = studyPrepQuery(store, { view: "study.prep" }, at);
+    console.log(`STUDY-PREP-PAINT ${JSON.stringify({ examPaintP50Ms: +examPaint.toFixed(1), assignmentPaintP50Ms: +assignmentPaint.toFixed(1), globalListP50Ms: +global.toFixed(1), upcoming: upcoming.status === "list" ? upcoming.upcoming.length : 0 })}`);
+    gate("exam space paint", examPaint, 150);
+    gate("assignment space paint", assignmentPaint, 150);
+    gate("global upcoming list", global, 100);
   } finally {
     store.close();
     rmSync(dir, { recursive: true, force: true });

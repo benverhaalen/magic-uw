@@ -64,6 +64,27 @@ export function writeRecord(learning: LearningStore, courseRef: string, assessme
     createdAt: at,
     sources: [],
   });
+  markPrepared(learning, courseRef, assessmentId, at);
+}
+
+/**
+ * The course's items that have any study material, so a list of hundreds of items reads records
+ * only for the few that have them (one artifact read per course instead of six per item).
+ */
+const indexKey = (courseRef: string) => `study-prep-index-v1-${sha(courseRef).slice(0, 40)}`;
+export function preparedItems(learning: LearningStore, courseRef: string): Set<string> {
+  const body = learning.artifact(indexKey(courseRef))?.body as { items?: unknown } | undefined;
+  return new Set(Array.isArray(body?.items) ? (body.items as string[]) : []);
+}
+function markPrepared(learning: LearningStore, courseRef: string, itemId: string, at: string): void {
+  const items = preparedItems(learning, courseRef);
+  if (items.has(itemId)) return;
+  items.add(itemId);
+  const key = indexKey(courseRef);
+  learning.putArtifact({
+    id: key, courseRef, kind: "pack" as ArtifactKind, scope: { pointer: "study-prep-index" }, cacheKey: key,
+    body: { v: 1, items: [...items] }, removedCount: 0, status: "ready", generator: null, pack: "study-prep-index", packVersion: "v1", createdAt: at, sources: [],
+  });
 }
 
 const passageKey = (courseRef: string, assessmentId: string, scopeHash: string, content: string) =>

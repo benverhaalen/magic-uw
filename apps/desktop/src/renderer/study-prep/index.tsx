@@ -5,6 +5,7 @@ import "./study-prep.css";
 import "./item-space.css";
 
 export { ItemSpace } from "./ItemSpace";
+export { StudyLearnPage, HomeStudyCard } from "./StudyLearn";
 export {
   CourseStudyPrep,
   ItemSpaceHost,
