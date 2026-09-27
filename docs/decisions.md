@@ -114,3 +114,21 @@ Ben resolved the pricing/provider disagreement with: "nathaniels is the way" (th
 - **Disclosure flow accepted:** Ben chose "Adopt this flow (Recommended)": consent once per provider, visible selected context and a receipt per request, with a blocking preview for the first sharing of a new sensitive category or when the student enables **always preview**. Keep the exact outgoing payload inspectable. Code must enforce course/category grants and revocation on every request; ongoing consent does not permit new categories or recipients. Disclosure timing does not relax data minimization or identity scrubbing.
 - These answers resolve commercial direction, paid-provider access, Jev billing, and disclosure timing. Other research-branch choices, including runtime permissions and storage/MCP architecture, still need scoped integration review; this is not a blanket branch merge.
 - Existing local-model code stays documented honestly. Automatic local model setup is no longer a launch requirement. No runtime, payment, or account settings were changed by this documentation correction.
+
+## 2026-09-26 — Today rail suggestions and day plan
+
+Implemented on `sean/today-calendar-rail`; **proposed for Ben's review, not accepted team direction.** Source: Sean, this project conversation, September 26 (original timestamps unavailable). Exact requests include:
+
+> i dont want the calendar to feel crowded … look at priority of assignments and things to get a deeper understing on how to suggest ways to fill your day
+
+> these tasks should cross out if submitted on canvas, as it pulls this data or be manually done if it is a task like studying or going over notes
+
+Implementation choices, in code at `packages/domain/src/today-rail.ts`:
+
+- **Priority order:** overdue work Canvas still accepts before its lock date; due within 24 hours; tight for its estimated effort; spaced exam review; then other work due this week. Soonest due date breaks ties. Grade share orders only the last group, and only when that course's assignment-group weights total 100%. Raw points are never compared across courses.
+- **Effort** is a typical range by item type, labeled an estimate; unknown types say so. **Exam review** is split into sessions (up to three) because spaced practice outperforms cramming.
+- **Breathing room:** at most 3 hours of suggested work, 3 work blocks, 15-minute breaks after blocks and classes, nothing within 15 minutes of now or after 10 PM, and prep only before titled class sessions.
+- **Completion:** assignment blocks cross out only on a Canvas-reported submission; study blocks (prep, exam review) are marked done by the student as a self-report. Skipped blocks do not return that day; edited blocks keep the student's time and title.
+- **Storage:** decisions are one local `preferences` entry (`dayPlan`), chosen over a new table to avoid changing the shared schema version during the event. Revisit with a dedicated table if the plan grows beyond a day view.
+
+Open for Ben: styling within the Home visual direction, whether the cap/cutoff should become settings, and multi-day planning.
