@@ -1,3 +1,4 @@
+import { judgmentFailureError } from "./judgment-errors";
 import { createLocalCourseExtractor } from "@magic/ai";
 import { createStore } from "@magic/storage";
 import { createCore } from "@magic/core";
@@ -56,6 +57,7 @@ const core = createCore(store, {
   fixture: captureBatchSchema.parse(fixture),
   courseExtractor: createLocalCourseExtractor(),
   planningPublicClient: publicClients.core, // owner: T06
+  madgrades: { read: (request, signal) => hostRead("madgrades-read", { request }, signal) },
   planningHttp: { read: (request, signal) => hostRead("planning-public-read", { request }, signal) },
   seams: { learning: createLearningRouter({
     store: store.learning,
@@ -340,7 +342,7 @@ port.on("message", async ({ data }: { data: any }) => {
     const p = pending.get(data.id);
     pending.delete(data.id);
     if (p) {
-      if (data.error) p.reject(new Error("Judgment unavailable"));
+      if (data.error) p.reject(judgmentFailureError(data));
       else p.resolve(data.result);
     }
     return;

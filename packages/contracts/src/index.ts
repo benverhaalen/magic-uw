@@ -14,6 +14,8 @@ import type {
   CourseIntelligenceView,
   EffectiveCoursePolicy,
 } from "./course-intelligence";
+import { identityRosterSchema, citationClaimSchema, type IdentityRoster, type RedactionSummary, type CitationResult, type AutoIdentityState, type AutoIdentityUpdate } from "./identity";
+export * from "./identity";
 
 export const instant = z.iso.datetime({ offset: true });
 const id = z.string().min(1).max(256);
@@ -182,6 +184,8 @@ export const courseMetadataSchema = z
     startAt: optionalInstant,
     endAt: optionalInstant,
     selection: courseSelectionSchema.optional(),
+    /** Teacher display names; retained (not scrubbed) in hosted payloads. */
+    instructors: z.array(z.string().min(1).max(300)).max(50).optional(),
   })
   .strict();
 export const moduleItemSchema = z
@@ -489,12 +493,64 @@ export interface IngestReport {
   diagnostics?: CaptureDiagnostic[];
   readId?: string;
 }
+/**
+ * Read-time deadline evidence. These fields are derived deterministically from
+ * saved text, never persisted, so the stored `deadlineClaimSchema` is unchanged.
+ */
+export type DeadlineOrigin =
+  | "canvas"
+  | "announcement"
+  | "assignment_text"
+  | "syllabus"
+  | "page"
+  | "calendar"
+  | "title";
+/** A literal slice of one saved resource version. */
+export interface DeadlineSpan {
+  resourceId: string;
+  version: number;
+  contentHash: string;
+  field: "title" | "text";
+  start: number;
+  end: number;
+  text: string;
+}
+export interface DeadlineClaimDetails {
+  origin?: DeadlineOrigin;
+  span?: DeadlineSpan;
+  /** late_until/closes refine `lock`; exam refines `event`. */
+  detail?: "late_until" | "closes" | "exam";
+  /** "day": the text names a date without a usable time; value is that day's start in America/Chicago. */
+  precision?: "minute" | "day";
+  /** How a missing year or relative day was anchored. Absent when fully explicit. */
+  inference?: "year_from_term" | "year_from_source_date" | "relative_to_post";
+  /** For an explicit change: the prior date the text says it replaces, when stated and resolvable. */
+  supersedes?: string;
+  /** When the source said this (announcement post time), used to order changes. */
+  statedAt?: string;
+  note?: string;
+}
+export type DeadlineEvidenceClaim = DeadlineClaim & DeadlineClaimDetails;
+/** A deadline-like phrase that could not be pinned to an instant without inventing information. */
+export interface UnresolvedDeadlineMention {
+  kind: DeadlineClaim["kind"];
+  origin: DeadlineOrigin;
+  span: DeadlineSpan;
+  reason: string;
+}
 export interface DeadlineResolution {
   dueAt: string | null;
   planningAt: string | null;
   conflict: boolean;
-  claims: DeadlineClaim[];
+  claims: DeadlineEvidenceClaim[];
   reason: string;
+  /** Value from the highest-authority tier, shown with its basis even while a conflict keeps `dueAt` null. */
+  preferredAt?: string | null;
+  basis?: DeadlineOrigin | "explicit_change" | null;
+  /** Per-claim explanations: superseded, disagreeing, unconfirmed, or lower authority. */
+  notes?: string[];
+  unresolved?: UnresolvedDeadlineMention[];
+  lockAt?: string | null;
 }
 /**
  * Hosted AI a student can choose. `chatgpt` stays accepted so stored preferences keep
@@ -868,6 +924,9 @@ export interface Store {
   ): void;
   lease(now: string, leaseMs: number): Job | undefined;
   finish(job: Job, error?: string, now?: string): boolean;
+  /** Defer this leased job and its kind without spending an attempt; survives restart. */
+  defer(job: Job, runAfter: string, reason: string, now?: string): boolean;
+  jobCooldown(kind: string): string | undefined;
   jobs(): Job[];
   judgment(key: string): Judgment | undefined;
   putJudgment(value: Judgment): boolean;
@@ -876,6 +935,10 @@ export interface Store {
   attempts(resourceId?: string): Attempt[];
   addReceipt(value: EgressReceipt): void;
   receipts(): EgressReceipt[];
+  identityRoster(): IdentityRoster;
+  setIdentityRoster(value: IdentityRoster): void;
+  autoIdentities(): AutoIdentityState;
+  recordAutoIdentity(value: AutoIdentityUpdate): void;
   purge(): void;
 }
 export interface ContextManifest {
@@ -888,6 +951,9 @@ export interface ContextManifest {
   allowed: boolean;
   reason: string;
   payload: { course: string; title: string; text: string; policy: string };
+  /** Present when free text was scrubbed for a hosted recipient; payload is the exact outgoing text. */
+  redaction?: RedactionSummary;
+  citationProjections?: { resourceId: string; contentHash: string; field: "text"; projectionId: string }[];
 }
 export interface ResourceView extends Resource {
   deadline: DeadlineResolution;
@@ -1351,6 +1417,10 @@ export const commandSchema = z.discriminatedUnion("type", [
       batch: planningCaptureSchema,
     })
     .strict(),
+  // Historical grade evidence for one course; refresh reads Madgrades through the desktop host.
+  z.object({ type: z.literal("planning-grades"), courseKey: z.string().regex(/^uw:\d{1,6}:[A-Z0-9]{1,12}$/), refresh: z.boolean().default(false) }).strict(),
+  // Handled by the desktop host's protected secret vault; never forwarded to the workspace or stored in records.
+  z.object({ type: z.literal("madgrades-token"), token: z.string().regex(/^[A-Za-z0-9_-]{16,128}$/).nullable() }).strict(),
   z
     .object({
       type: z.literal("snapshot"),
@@ -1399,6 +1469,8 @@ export const commandSchema = z.discriminatedUnion("type", [
     })
     .strict(),
   z.object({ type: z.literal("enrich"), id }).strict(),
+  z.object({ type: z.literal("identity-roster"), value: identityRosterSchema }).strict(),
+  z.object({ type: z.literal("validate-citations"), claims: z.array(citationClaimSchema).min(1).max(200) }).strict(),
   z
     .object({
       type: z.literal("link"),
@@ -1440,6 +1512,7 @@ export const commandSchema = z.discriminatedUnion("type", [
 export type Command = z.infer<typeof commandSchema>;
 export type CommandResult = {
   planningComparison?: PlanningComparison;
+  planningGrades?: PlanningGradeSummary;
   snapshot: Snapshot;
   manifest?: ContextManifest;
   message?: string;
@@ -1449,6 +1522,7 @@ export type CommandResult = {
   pack?: unknown;
   workspace?: WorkspaceResult;
   // end owner: T05b
+  citations?: CitationResult[];
 };
 export const localQuestionSchema = z
   .object({
@@ -1596,6 +1670,20 @@ export interface PlanningComparison {
     historicalAverage: number | null;
     historicalCount: number | null;
   }[];
+}
+/** Count-weighted historical grade evidence for one course. Never a prediction or ranking input. */
+export interface PlanningGradeAggregate {
+  average: number | null; includedCount: number; excludedCount: number; totalCount: number;
+  status: "known" | "partial" | "unknown";
+}
+export interface PlanningGradeSummary {
+  courseKey: string;
+  createdAt: string;
+  refresh: { status: string; message: string } | null;
+  warnings: string[];
+  terms: (PlanningGradeAggregate & { termCode: string; label: string; sourceUrl: string; observedAt: string })[];
+  instructors: (PlanningGradeAggregate & { instructorId: string; names: string[]; termCodes: string[]; sectionCount: number; coTaughtSectionsExcluded: number })[];
+  overall: (PlanningGradeAggregate & { termCount: number }) | null;
 }
 export interface Connector {
   id: string;
