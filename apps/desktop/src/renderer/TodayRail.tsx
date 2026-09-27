@@ -111,6 +111,7 @@ function TodayRailContent({
   const now = suppliedNow ?? clockNow;
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const rail = useMemo(
+    // These rows already carry canonical identity, conflict evidence and personal choices.
     () => buildTodayRail(scheduleRailResources(resources), now, timeZone, plan),
     [resources, now, timeZone, plan],
   );

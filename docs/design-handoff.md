@@ -31,6 +31,18 @@ Renderer paths above are under `apps/desktop/src/renderer`. Contracts and comman
 
 ## What is verified and what remains
 
+### Main reconciliation and live-window boundary · September 27, 09:58 UTC
+
+This merge includes upstream main `5372c5a` (PR #41). Its raw assignment-copy projection retains verified account/course/provider identity and submission workflow handling; missing scope cannot merge unknown accounts, and differing due evidence stays explicit. The designed Home/Calendar continue through their existing canonical schedule projection, including personal date choices and source-only obligations. Eighteen focused raw/canonical projection tests and the full build pass. This does not resolve the saved fourteen-versus-six Canvas count or demonstrate a new live capture.
+
+Published settings/avatar source is `f6e5b29`. The actual app remains main/renderer `f5a2df5`; at 09:57 UTC its avatar received only the exact published containment CSS without reloading. The complete wizard head was inspected at 32px; current route, sidebar, scroll and empty composer were unchanged. Grouped settings are not yet demonstrated in that visible window.
+
+**Current first demo is voice:** user-started microphone → real transcript → the connected-agent/Jev dispatch path → visible navigation/action result → immediate Stop. Local Python/Whisper/ffmpeg/model availability is checked; microphone capture, real transcript, external observation/action and Stop in the shipped app are not yet demonstrated. The private Opus mic/session implementation and complementary native default-browser transport must converge on the same dispatch/cancellation contract. Final-utterance local transcription is not streaming or duplex speech. Irrelevant snapshot refreshes must not interrupt voice; account, consent, selected-source access and effective policy changes must invalidate the relevant request.
+
+All learning-producing requests need the selected course/assignment's effective, versioned AI policy and exact source scope at the actual producer boundary, including cache reuse and late results. Administrative help and graded-work assistance must follow that specific policy rather than a blanket tutor prohibition. Calendar export's requested AI title cleanup must preserve exact dates, times, source facts and provenance; its private implementation remains unadopted.
+
+Latest fetched accounts branch is `origin/accounts-payments` at `a7f8cf3` (website header account control), following `d914cf2` (email sender/sign-in setup). Its team packet is `docs/accounts-and-payments.md` on that branch; it is inspected, not merged or a desktop voice prerequisite.
+
 ### Data & AI navigation follow-up · September 27, 09:50 UTC
 
 The next renderer batch groups existing settings under Cloud access, Information, AI tools, and Activity/deletion with heading-focus section links. Connected sources returns to the exact settings trigger; Review agreements → Not now returns to Data & AI without saving. Current PR #39 Jev and communications disclosures are preserved. The wizard avatar now fits its 32px container using `object-fit: contain` in both sidebar widths. Full build/typecheck passes; a copied-data normal-entry run demonstrated all four jumps, both return paths, both avatar sizes and no renderer/font errors. No privacy write or deletion was performed. Source publication and its later visible refresh remain separate receipts.

@@ -195,3 +195,18 @@ Aidan wrote "we"; Ben's agreement is as Aidan reported it and is not separately 
 - **Disclosure:** the setup agreement's Jev line and the Data & AI toggle now say the app contains our shared key and that announcements and email previews reach Jev with Course communications on. `CONSENT_DISCLOSURE_VERSION` moved to `setup-2026-09-27-jev`, so existing students accept again.
 - **Operating rules:** use a dedicated TypeSafe key for embedded builds, set account-side spend limits if TypeSafe offers them, and revoke and rebuild when a key is abused. Never commit or publicly publish `apps/desktop/dist/` from such a build.
 
+## 2026-09-27: Today rail counts each Canvas assignment once
+
+Fixed on `sean/rail-dedupe-done`, found from a live student workspace where Due today showed 12 rows: the same three assignments three times each, plus two already submitted. Canvas lists one assignment in several places, and each is saved as its own resource (unique per source and Canvas id): the course's assignments list, the account to-do list, upcoming events, and recent activity. `projectWork` (`packages/domain/src/work.ts`), which feeds the Today rail's Due today, overdue, and suggestion candidates, listed every copy.
+
+Rules, matching the existing `agenda()` merge in `packages/core/src/graph/agenda.ts`:
+
+- **One item per assignment:** copies are grouped by account, course, and Canvas id. Quizzes are grouped separately, because quiz ids and assignment ids are different numbers. Copies from different accounts are never merged. Without source details, copies in the same course still merge by id.
+- **Trusted copy:** the assignments or quizzes list first, then to-do, upcoming events, and activity. Its title, points, and due date are the ones shown.
+- **Done if any copy says so:** completed, submitted, excused, a submission time, or a submitted, graded, pending review, or complete workflow state. The to-do, upcoming, and activity copies carry no submission data, so trusting only one copy kept submitted work on the rail. Graded work with no submission time (paper or external-tool assignments) now counts as done.
+
+Not covered here, recorded for their owners: the Home list shows course-module copies of an assignment as a second "Partial capture" row (Home); a past-term course still marked active in Canvas is fully included, and the connector does not treat graded work as submitted (connectors). Marking one copy complete still writes a completion for that copy only; the rail now respects it through the any-copy rule.
+
+### Integration qualification — September 27, 2026
+
+The designed Home/Calendar use the existing account-scoped schedule projection before the rail. That consumer retains canonical contributor identity, disputed claims, module/feed obligations, and personal planning dates. The upstream raw-resource projection is also integrated, with two corrections: missing or unknown source/account metadata does **not** establish shared assignment identity, and divergent due claims are retained when verified copies merge. Already projected rows are not merged again. This supersedes the no-source merge fallback above. It does not resolve the saved fourteen-versus-six count: exact quiz/assignment crosswalk and calendar-only source state still require a successful authenticated capture.
