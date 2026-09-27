@@ -54,6 +54,7 @@ import { createPipelineLoop, type PipelineTiming } from "./jobs/pipeline";
 import { createEnrichJob, judgedHash } from "./jobs/enrich";
 // end owner: drain
 import { codeAssignmentKind, resourceViews, runQuery } from "./queries"; // owner: T15
+import { createNotifications } from "./notifications";
 /** The Jev kind question reads the title, about 2,000 characters, and the item's own stated policy, clipped. */
 const JEV_TEXT_CHARS = 2000;
 const JEV_POLICY_CHARS = 500;
@@ -156,6 +157,14 @@ export function createCore(store: Store, options: CoreOptions) {
     active: AbortController | undefined,
     working: Promise<void> | undefined,
     closed = false;
+  const notifications = createNotifications(store, {
+    now,
+    timeZone:
+      options.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+    gateway: options.gateway,
+    generation: () => generation,
+    closed: () => closed,
+  });
   // owner: drain. One drain for every job kind. The caller's kinds plus Jev's, which keeps its
   // egress checks through core's manifest and receipts; purge, privacy changes and close cancel it.
   let cancel = new AbortController();
@@ -242,6 +251,8 @@ export function createCore(store: Store, options: CoreOptions) {
       consents: store.consents?.() ?? [],
       dayPlan: store.dayPlan(),
       personalReports: store.personalReports(),
+      // Unsearched snapshots already hold every live view; the feed reuses them.
+      notifications: notifications.feed(search ? undefined : resources),
       gitlabLinks: store.gitlabLinks(),
     };
   }
@@ -468,7 +479,9 @@ export function createCore(store: Store, options: CoreOptions) {
       return;
     }
     wakePending = false;
-    working = extractCourses()
+    // Course messages and mail have their own category gate (communications); see notifications.ts.
+    working = (options.gateway ? notifications.triage() : Promise.resolve())
+      .then(extractCourses)
       .finally(() => {
         working = undefined;
         if (wakePending && !closed) wake();
@@ -477,6 +490,7 @@ export function createCore(store: Store, options: CoreOptions) {
   function interrupt() {
     generation++;
     active?.abort();
+    notifications.abort();
     // owner: drain: cancel in-flight job sends and stop the running slice between jobs.
     cancel.abort();
     cancel = new AbortController();
@@ -870,6 +884,12 @@ export function createCore(store: Store, options: CoreOptions) {
       }
       case "day-plan-remove":
         store.removeDayPlanEntry(command.key, command.date);
+        break;
+      case "notifications-read":
+        notifications.read(command.ids);
+        break;
+      case "notification-dismiss":
+        notifications.dismiss(command.id);
         break;
       case "gitlab-link": {
         const projectPath = gitlabProjectFromUrl(command.url.trim());

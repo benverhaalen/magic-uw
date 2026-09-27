@@ -17,6 +17,7 @@ import { LocalAiPanel } from "./LocalAiPanel";
 import { LearningPanel } from "./LearningPanel";
 import { ProviderGuidance } from "./ProviderGuidance";
 import { IngestionControls, McpConnections } from "./IngestionControls";
+import { WorkspaceTools } from "./backend"; // owner: ui-wiring: backend wiring previews
 // owner: T06
 import { ConsentSetup, hasUwConsent, missingConsents } from "./consent/ConsentSetup";
 // owner: T81
@@ -31,6 +32,7 @@ import { PersonalReport } from "./PersonalReport";
 import { Action, Disclosure } from "../../../../packages/ui/src";
 import { useDesktopNavigation, type DesktopView } from "./navigation";
 import { CourseSpaceDetails } from "./CourseSpaceDetails";
+import { NotificationsMenu } from "./NotificationsMenu";
 
 type View = DesktopView;
 // owner: T05b. Route slots, each rendering nothing until its task fills it: the notebook (T43),
@@ -502,6 +504,8 @@ export function App() {
           <InsightsSlot snapshot={snapshot} />
         ) : view === "settings" ? (
           <SettingsSlot snapshot={snapshot} />
+        ) : /* owner: ui-wiring */ view === "tools" ? (
+          <WorkspaceTools snapshot={snapshot} />
         ) : /* end owner: T05b */ view === "sources" ? (
           <SourcesPage snapshot={snapshot} run={run} busy={busy}
             onSignIn={signIn} onSync={sync} onSignOut={signOut} onImport={importFile}
