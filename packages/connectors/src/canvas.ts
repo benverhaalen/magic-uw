@@ -101,6 +101,8 @@ export interface CanvasConnectorOptions
    * can choose courses before the first full read. No account lists, no course content.
    */
   catalogOnly?: boolean;
+  /** fix/sync-events. With catalogOnly: also emit each included course's syllabus from the list row. */
+  syllabusFromCatalog?: boolean;
 }
 /**
  * Canvas returns a course the student can no longer open as `{id, access_restricted_by_date:
@@ -876,6 +878,9 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
         });
         const reconciled = Promise.allSettled([reconcileCatalog]);
         if (http.needsSignIn || options.catalogOnly) {
+          if (!http.needsSignIn && options.syllabusFromCatalog)
+            for (const course of catalog.items)
+              if (courseSelection(course, selection()).included) syllabus(course);
           await Promise.all([accountSettled, historicalSettled, reconciled]);
           return;
         }
@@ -1122,7 +1127,11 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
                   true,
                   [
                     {
-                      code: "unchanged_page_reused",
+                      // fix/sync-events: reused because this refresh already read it, not deferred.
+                      code:
+                        metadata && known.updatedAt === metadata.updated_at
+                          ? "unchanged_page_reused"
+                          : "page_read_this_run",
                       path: ["updated_at"],
                       severity: "warning",
                     },

@@ -12,7 +12,7 @@ import { DatabaseSync } from "node:sqlite";
 import { canvasFirstSync, runBaseline } from "./baseline";
 import { renderMarkdown } from "./report";
 import { documentStage } from "./documents"; // owner: acquisition
-import { runSyncAccount } from "./sync-account";
+import { runChangeChecks, runSyncAccount } from "./sync-account";
 
 /** `canvas`: only the first full Canvas sync (T17), for quick before/after runs. */
 /** `documents` (owner: acquisition): the course-file stage, earlier loop against the app's. */
@@ -74,7 +74,7 @@ async function main() {
       : suite === "documents"
         ? { metrics: { documentStage: await documentStage() }, recording: undefined }
         : suite === "sync"
-          ? { metrics: { syncAccount: await runSyncAccount() }, recording: undefined }
+          ? { metrics: { syncAccount: await runSyncAccount(), changeChecks: await runChangeChecks({ latencyMs: 150 }) }, recording: undefined }
           : await runBaseline();
   const report = {
     schema: "magic-perf/1",

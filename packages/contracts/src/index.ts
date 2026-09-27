@@ -1075,6 +1075,13 @@ export interface Store {
   resources(search?: string): Resource[];
   resource(id: string): Resource | undefined;
   /**
+   * fix/sync-events. A token that changes whenever the stored workspace is replaced rather than
+   * refreshed: an import, the sample fixture, or Delete local data (which clears it). Derived
+   * state (the refresh baselines) compares it to tell its store apart.
+   */
+  generation?(): string;
+  bumpGeneration?(): void;
+  /**
    * fix/current-courses-only. Earlier stored versions of one resource, newest first (read-only);
    * lets a caller put back a version a later observation overwrote, instead of deleting.
    */

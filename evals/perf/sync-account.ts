@@ -97,6 +97,9 @@ export function endpointOf(url: string): string {
 export function syntheticAccount(shape: AccountShape = LIVE_ACCOUNT, latencyMs = LATENCY_MS) {
   let revision = 0;
   const changed = new Map<string, number>(); // assignment id -> revision
+  // Teacher edits the manual-refresh checks apply (see runChangeChecks).
+  const edits = { syllabus: new Set<number>(), pages: new Set<string>(), files: new Set<number>(), announcements: new Set<number>() };
+  const EDITED = "2026-09-27T10:00:00Z";
   const current = Array.from({ length: shape.current }, (_, i) => 1001 + i);
   const shells = Array.from({ length: shape.shells }, (_, i) => 2001 + i);
   const concluded = Array.from({ length: shape.concluded }, (_, i) => 3001 + i);
@@ -117,7 +120,9 @@ export function syntheticAccount(shape: AccountShape = LIVE_ACCOUNT, latencyMs =
       ...(spring ? { restrict_enrollments_to_course_dates: true } : {}),
       start_at: spring ? "2026-01-13T06:00:00Z" : "2026-09-02T05:00:00Z",
       end_at: spring ? "2026-09-30T05:00:00Z" : "2026-12-23T06:00:00Z",
-      syllabus_body: `<p>Syllabus for course ${id}.</p><a href="${origin}/courses/${id}/files/${fileId(id, 0)}">Syllabus PDF</a>`,
+      syllabus_body: edits.syllabus.has(id)
+        ? `<p>Edited syllabus for course ${id}: the midterm moved to week 9.</p>`
+        : `<p>Syllabus for course ${id}.</p><a href="${origin}/courses/${id}/files/${fileId(id, 0)}">Syllabus PDF</a>`,
       calendar: { ics: `${origin}/feeds/calendars/course_SYNTH${id}.ics` },
     };
   };
@@ -177,9 +182,9 @@ export function syntheticAccount(shape: AccountShape = LIVE_ACCOUNT, latencyMs =
       page_id: course * 100 + n,
       url: pageSlug(course, n),
       title: `Topic ${n + 1}`,
-      updated_at: "2026-09-12T12:00:00Z",
+      updated_at: edits.pages.has(pageSlug(course, n)) ? EDITED : "2026-09-12T12:00:00Z",
       ...(withBody
-        ? { body: `<h2>Topic ${n + 1}</h2><p>Lecture notes for topic ${n + 1} in course ${course}.</p>${files.map((f) => `<a href="${origin}/courses/${course}/files/${f}">Reading ${f}</a>`).join("")}` }
+        ? { body: `<h2>Topic ${n + 1}</h2><p>${edits.pages.has(pageSlug(course, n)) ? "Edited notes" : "Lecture notes"} for topic ${n + 1} in course ${course}.</p>${files.map((f) => `<a href="${origin}/courses/${course}/files/${f}">Reading ${f}</a>`).join("")}` }
         : {}),
     };
   }
@@ -232,6 +237,9 @@ export function syntheticAccount(shape: AccountShape = LIVE_ACCOUNT, latencyMs =
   }
   function stream() {
     return current.flatMap((course) => [
+      ...(edits.announcements.has(course)
+        ? [{ id: course * 10 + 9, type: "Announcement", course_id: course, title: "New announcement: exam room", message: "<p>Room 1100.</p>", created_at: EDITED, updated_at: EDITED }]
+        : []),
       { id: course * 10 + 1, type: "Announcement", course_id: course, title: "Weekly update", message: "<p>Update</p>", created_at: "2026-09-20T12:00:00Z", updated_at: revision > 1 && course === 1002 ? "2026-09-26T16:00:00Z" : "2026-09-20T12:00:00Z" },
     ]);
   }
@@ -251,13 +259,18 @@ export function syntheticAccount(shape: AccountShape = LIVE_ACCOUNT, latencyMs =
     if (path === "/api/v1/users/self/activity_stream/summary") return json([{ type: "Announcement", count: 6 + revision, unread_count: 1 }]);
     if (path === "/api/v1/announcements") {
       const course = Number(u.searchParams.get("context_codes[]")?.replace("course_", ""));
-      return json(Array.from({ length: shape.announcementsPerCourse }, (_, n) => ({
-        id: course * 10 + n + 1,
-        title: `Announcement ${n + 1}`,
-        message: `<p>Reminder ${n + 1}.</p>`,
-        context_code: `course_${course}`,
-        posted_at: new Date(Date.UTC(2026, 8, 1 + n * 2)).toISOString(),
-      })));
+      return json([
+        ...Array.from({ length: shape.announcementsPerCourse }, (_, n) => ({
+          id: course * 10 + n + 1,
+          title: `Announcement ${n + 1}`,
+          message: `<p>Reminder ${n + 1}.</p>`,
+          context_code: `course_${course}`,
+          posted_at: new Date(Date.UTC(2026, 8, 1 + n * 2)).toISOString(),
+        })),
+        ...(edits.announcements.has(course)
+          ? [{ id: course * 10 + 9, title: "New announcement: exam room", message: "<p>Room 1100.</p>", context_code: `course_${course}`, posted_at: EDITED }]
+          : []),
+      ]);
     }
     const meta = /^\/api\/v1\/files\/(\d+)$/.exec(path);
     if (meta) {
@@ -295,7 +308,10 @@ export function syntheticAccount(shape: AccountShape = LIVE_ACCOUNT, latencyMs =
     if (items) return json(moduleItems(course, Number(items[1]) - course * 100));
     if (tail === "/pages") {
       if (shape.hiddenPages.includes(course)) return json({ message: "That page has been disabled for this course" }, 404);
-      if (u.searchParams.get("sort") === "updated_at") return json([page(course, 0, false)]);
+      if (u.searchParams.get("sort") === "updated_at") {
+        const edited = [...edits.pages].find((slug) => slug.startsWith(`topic-${course}-`));
+        return json([page(course, edited ? Number(edited.split("-").pop()) : 0, false)]);
+      }
       return json(Array.from({ length: shape.pagesPerCourse }, (_, n) => page(course, n, false)));
     }
     const slug = tail.match(/^\/pages\/(.+)$/);
@@ -305,12 +321,13 @@ export function syntheticAccount(shape: AccountShape = LIVE_ACCOUNT, latencyMs =
     }
     if (tail === "/files") {
       if (shape.hiddenFiles.includes(course)) return json({ status: "unauthorized", errors: [{ message: "user not authorized to perform that action" }] }, 403);
-      if (u.searchParams.get("sort") === "updated_at")
-        return json([{ id: fileId(course, 0), display_name: "syllabus.txt", updated_at: "2026-09-12T12:00:00Z", size: 2048 }]);
-      return json(Array.from({ length: shape.filesPerCourse }, (_, n) => ({
+      const added = edits.files.has(course) ? [900] : [];
+      const row = (n: number) => ({
         id: fileId(course, n), folder_id: 1, display_name: `reading-${fileId(course, n)}.txt`, filename: `reading-${fileId(course, n)}.txt`,
-        "content-type": "text/plain", size: fileSize(fileId(course, n)), updated_at: "2026-09-12T12:00:00Z",
-      })));
+        "content-type": "text/plain", size: fileSize(fileId(course, n)), updated_at: n === 900 ? EDITED : "2026-09-12T12:00:00Z",
+      });
+      if (u.searchParams.get("sort") === "updated_at") return json([row(added[0] ?? 0)]);
+      return json([...added, ...Array.from({ length: shape.filesPerCourse }, (_, n) => n)].map(row));
     }
     if (tail === "/folders") return json([{ id: 1, name: "course files", files_count: shape.filesPerCourse, folders_count: 0 }]);
     if (tail === "/assignment_groups") return json([{ id: 11, name: "Homework", group_weight: 100 }]);
@@ -370,6 +387,18 @@ export function syntheticAccount(shape: AccountShape = LIVE_ACCOUNT, latencyMs =
       changed.set(id, (changed.get(id) ?? 0) + 1);
       revision++;
     },
+    /** The due date `assignment(course, n)` now carries. */
+    dueAt: (course: number, n: number) => assignment(course, n).due_at,
+    /** A course added this term (the student enrolled late). */
+    addCourse() {
+      const id = 1001 + current.length;
+      current.push(id);
+      return id;
+    },
+    editSyllabus: (course: number) => void edits.syllabus.add(course),
+    editPage: (course: number, n: number) => void edits.pages.add(pageSlug(course, n)),
+    addFile: (course: number) => (edits.files.add(course), fileId(course, 900)),
+    announce: (course: number) => void edits.announcements.add(course),
     shape,
   };
 }
@@ -568,3 +597,69 @@ export async function runSyncAccount(options: { latencyMs?: number; shape?: Acco
 }
 
 class StopRun extends Error {}
+
+export interface ChangeCheck {
+  kind: string;
+  caught: boolean;
+  requests: number;
+  ms: number;
+  fullRead: boolean;
+}
+/**
+ * The changes a probe can miss, each followed by one manual refresh: a new course, a new file, a
+ * page edit, a syllabus edit, a due date moved outside the to-do window, an announcement. Each
+ * must be stored after that refresh.
+ */
+export async function runChangeChecks(options: { latencyMs?: number } = {}): Promise<ChangeCheck[]> {
+  const directory = mkdtempSync(join(tmpdir(), "magic-perf-sync-changes-"));
+  const account = syntheticAccount(LIVE_ACCOUNT, options.latencyMs ?? 0);
+  let at = new Date("2026-09-27T15:00:00Z");
+  const secrets = new Map<string, string>();
+  const store = createStore(join(directory, "sync.sqlite"));
+  const ingestion = createIngestion(store, {
+    directory,
+    now: () => at,
+    client: account.client,
+    canvasFetch: account.canvasFetch,
+    extractor: textExtractor,
+    acquisition: { ...ACQUISITION_APP, pool: false, ocrPagesPerRun: 0 },
+    secrets: async (operation, key, value) => {
+      if (operation === "set" && key && value) secrets.set(key, value);
+      return operation === "list" ? Object.fromEntries(secrets) : undefined;
+    },
+  });
+  const rows = () => store.resources();
+  const checks: Array<[string, () => void, () => boolean]> = [];
+  let fileId = 0, newCourse = 0;
+  checks.push(["new course", () => void (newCourse = account.addCourse()), () => rows().some((r) => r.courseId === String(newCourse) && r.kind === "assignment")]);
+  checks.push(["new file", () => void (fileId = account.addFile(1002)), () => rows().some((r) => r.file?.id === String(fileId) || r.document?.fileId === String(fileId))]);
+  checks.push(["page edit", () => account.editPage(1001, 5), () => rows().some((r) => r.url.endsWith("/pages/topic-1001-5") && r.text.includes("Edited notes"))]);
+  checks.push(["syllabus edit", () => account.editSyllabus(1004), () => rows().some((r) => r.courseId === "1004" && r.externalId === "syllabus" && r.text.includes("midterm moved"))]);
+  checks.push(["due date outside the to-do window", () => account.changeAssignment(1003, 7),
+    () => rows().some((r) => r.externalId === "100307" && r.deadlines.some((d) => d.kind === "due" && Date.parse(d.value) === Date.parse(account.dueAt(1003, 7))))]);
+  checks.push(["announcement", () => account.announce(1002), () => rows().some((r) => r.courseId === "1002" && r.title === "New announcement: exam room")]);
+  const results: ChangeCheck[] = [];
+  try {
+    await ingestion.reconnected();
+    await ingestion.tick("manual");
+    for (const [kind, apply, stored] of checks) {
+      apply();
+      at = new Date(at.getTime() + 2 * 60_000);
+      account.resetCounters();
+      const started = performance.now();
+      await ingestion.tick("manual");
+      results.push({
+        kind,
+        caught: stored(),
+        requests: account.counters.requests,
+        ms: Math.round(performance.now() - started),
+        fullRead: (account.counters.byEndpoint.get("/api/v1/courses/:id/assignment_groups") ?? 0) >= 6,
+      });
+    }
+    return results;
+  } finally {
+    await ingestion.stop();
+    store.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
