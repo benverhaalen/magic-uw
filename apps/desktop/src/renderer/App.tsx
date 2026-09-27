@@ -17,19 +17,12 @@ import { ConsentSetup, hasUwConsent, missingConsents } from "./consent/ConsentSe
 // owner: T81
 import { Onboarding, needsFirstRunSetup } from "./onboarding";
 import { TodayRail } from "./TodayRail";
+import { DesktopShell } from "./DesktopShell";
+import { Home, ObjectLink } from "./Home";
+import { Action, Disclosure } from "../../../../packages/ui/src";
+import { useDesktopNavigation, type DesktopView } from "./navigation";
 
-type View =
-  | "today"
-  | "courses"
-  | "myuw"
-  | "sources"
-  | "privacy"
-  | "consent"
-  // owner: T05b. Route slots; each owning task fills its slot and adds its navigation.
-  | "notebook"
-  | "practice"
-  | "insights"
-  | "settings";
+type View = DesktopView;
 // owner: T05b. Route slots, each rendering nothing until its task fills it: the notebook (T43),
 // practice and insights (P17), settings (T40) and the workspace command bar (D40).
 function NotebookSlot(_: { snapshot: Snapshot | null }) {
@@ -153,16 +146,25 @@ function Icon({
 }
 
 export function App() {
-  const [view, setView] = useState<View>("today");
+  const navigation = useDesktopNavigation();
+  const { view, selectedId } = navigation;
+  const setView = (next: View) => navigation.navigate(next);
+  const setSelectedId = (id: string | null) => id ? navigation.navigate("resource", id) : navigation.back();
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+
   const requestVersion = useRef(0);
   const busyRef = useRef(false);
   const mounted = useRef(true);
+
+  useEffect(() => {
+    const handle = (event: Event) => navigation.navigate("resource", (event as CustomEvent<string>).detail);
+    document.addEventListener("magic-resource-open", handle);
+    return () => document.removeEventListener("magic-resource-open", handle);
+  }, [navigation]);
 
   const refresh = useCallback(async () => {
     const version = ++requestVersion.current;
@@ -369,77 +371,15 @@ export function App() {
     );
   // end owner: T81
   return (
-    <div className="app-shell">
-      <aside className="sidebar" aria-label="Workspace">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            m
-          </span>
-          <span>Magic Canvas</span>
-        </div>
-        <nav aria-label="Main navigation">
-          {(
-            [
-              ["today", "Home"],
-              ["courses", "Courses"],
-              ["myuw", "My UW"],
-              ["sources", "Sources"],
-              ["privacy", "Data & AI"],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              className={`nav-button ${key === "sources" ? "nav-utility" : ""} ${view === key ? "active" : ""}`}
-              aria-current={view === key ? "page" : undefined}
-              onClick={() => setView(key)}
-            >
-              <Icon name={key === "privacy" ? "privacy" : key} />
-              {label}
-              {key === "today" && openItems > 0 ? (
-                <span className="nav-count">{openItems}</span>
-              ) : null}
-            </button>
-          ))}
-        </nav>
-        <div className="sidebar-bottom">
-          <div className="storage-label">
-            <Icon name="privacy" />
-            <span>Stored on this device</span>
-          </div>
-          <button
-            className="subtle-button privacy-shortcut"
-            onClick={() => setView("privacy")}
-          >
-            {snapshot?.privacy.mode === "selective_cloud"
-              ? "Selective cloud access"
-              : "Cloud access is off"}
-            <span aria-hidden="true">↗</span>
-          </button>
-        </div>
-      </aside>
-      <main className="workspace">
+    <DesktopShell view={view} title={view === "resource" ? selected?.title ?? "Saved item" : ({today:"Home", courses:"Courses", myuw:"My UW", calendar:"Calendar", sources:"Connected sources", privacy:"Data & AI", consent:"Agreements"} as Partial<Record<View,string>>)[view] ?? "Workspace"}
+      courses={courses} sample={snapshot?.fixtureMode ?? false} busy={busy}
+      canBack={navigation.canBack} canForward={navigation.canForward} onBack={navigation.back} onForward={navigation.forward}
+      onNavigate={setView} onCourse={course => { setQuery(course.courseName); setView("courses"); }}
+      onCompose={() => {
+        if (selected) { document.querySelector<HTMLElement>(".local-ai-panel")?.scrollIntoView({ behavior: "smooth" }); }
+        setNotice(selected ? "Ask about this item in its Local AI section. Your model and sharing settings still apply." : "Page-wide chat is not connected yet. Open a course item to ask about its saved context with Local AI.");
+      }}>
         <WorkspaceCommandBarSlot snapshot={snapshot} /* owner: T05b */ />
-        <header className="topbar">
-          <span>
-            {view === "today"
-              ? "Your workspace"
-              : view === "sources"
-                ? "Connected sources"
-                : view === "privacy" ? "Privacy & models" : view === "myuw" ? "My UW" : "Your courses"}
-          </span>
-          <div className="topbar-end">
-            {snapshot?.fixtureMode ? (
-              <span className="badge">Synthetic sample</span>
-            ) : null}
-            {busy ? (
-              <span role="status" className="muted">
-                Working…
-              </span>
-            ) : (
-              <span className="muted">Local workspace</span>
-            )}
-          </div>
-        </header>
         <div className="feedback-region">
           {error ? (
             <div className="message error" role="alert">
@@ -474,36 +414,6 @@ export function App() {
           </section>
         ) : view === "today" ? (
           <>
-            <div className="page-heading">
-              <div>
-                <p className="eyebrow">
-                  {new Intl.DateTimeFormat(undefined, {
-                    weekday: "long",
-                    month: "long",
-                    day: "numeric",
-                  }).format(new Date())}
-                </p>
-                <h1>Today</h1>
-              </div>
-              <div className="toolbar">
-                <button
-                  className="button"
-                  disabled={busy}
-                  onClick={() => void importFile()}
-                >
-                  Import capture
-                </button>
-                {window.magic.syncCanvas ? (
-                  <button
-                    className="button"
-                    disabled={busy}
-                    onClick={() => void sync()}
-                  >
-                    Refresh Canvas
-                  </button>
-                ) : null}
-              </div>
-            </div>
             <PlanningAlerts snapshot={snapshot} open={open} onPlanning={() => setView("myuw")} />
             {/* owner: T05c. Sign-in banner: an ended Canvas session is one click from a sign-in. */}
             {unavailableSources.some(
@@ -562,77 +472,22 @@ export function App() {
                 onSample={() => run({ type: "fixture" })}
               />
             ) : (
-              <div className={`today-layout ${selected ? "has-detail" : ""}`}>
-                <section className="resource-panel" aria-label="Coursework">
-                  <label className="search-box">
-                    <Icon name="search" />
-                    <input
-                      aria-label="Search coursework"
-                      placeholder="Find in your classes"
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                    />
-                    <kbd aria-hidden="true">⌕</kbd>
-                  </label>
-                  <ResourceList
-                    resources={resources}
-                    sources={snapshot.sources}
-                    query={query}
-                    selectedId={selected?.id ?? null}
-                    busy={busy}
-                    onSelect={setSelectedId}
-                    onComplete={(resource, checked) =>
-                      void run({
-                        type: "complete",
-                        id: resource.id,
-                        completed: checked,
-                      })
-                    }
-                  />
-                  <p className="list-footnote">
-                    Based on saved sources.
-                    {oldestCapture
-                      ? ` Oldest saved item capture: ${formatDate(oldestCapture, true)}.`
-                      : ""}{" "}
-                    Open an item to inspect its dates and evidence.
-                  </p>
-                </section>
-                {selected ? (
-                  <ResourceDetail
-                    key={selected.id}
-                    resource={selected}
-                    snapshot={snapshot}
-                    busy={busy}
-                    run={run}
-                    open={open}
-                    onClose={() => setSelectedId(null)}
-                  />
-                ) : (
-                  <div className="detail-placeholder">
-                    <Icon name="file" />
-                    <p>Select an item to see what’s behind it.</p>
-                  </div>
-                )}
-                <TodayRail
-                  resources={resources}
-                  sources={snapshot.sources}
-                  plan={snapshot.dayPlan}
-                  changes={snapshot.changes}
-                  onSelect={setSelectedId}
-                  onPlan={(command) => run(command)}
-                />
-              </div>
+              <Home snapshot={snapshot} resources={resources} onSelect={setSelectedId} onCourses={() => { setQuery(""); setView("courses"); }} onSources={() => setView("sources")} onPlan={command => run(command)} />
             )}
           </>
+        ) : view === "resource" ? (
+          selected ? <ResourceDetail key={selected.id} resource={selected} snapshot={snapshot} busy={busy} run={run} open={open} onClose={navigation.back} />
+            : <section className="initial-state"><h1 tabIndex={-1}>This item is no longer available.</h1><p>The saved item may have been removed or excluded. Your previous page is still available.</p><button className="button" onClick={navigation.back}>Go back</button></section>
+        ) : view === "calendar" ? (
+          <section className="desktop-calendar"><h1 tabIndex={-1}>Today’s calendar</h1><p className="muted">Saved commitments and accepted study blocks. Week and month views are not connected yet.</p><TodayRail resources={resources} sources={snapshot.sources} plan={snapshot.dayPlan} changes={snapshot.changes} onSelect={setSelectedId} onPlan={command => run(command)} /></section>
         ) : view === "myuw" ? (
           <MyUw snapshot={snapshot} busy={busy} run={run} open={open}
             refresh={() => void perform(async () => window.magic.syncPlanning?.())}
             signIn={(service) => uwConsented /* owner: T06 */ ? void perform(async () => { await window.magic.signInUW?.(service); return window.magic.syncPlanning?.(); }) : openConsent()} />
         ) : view === "courses" ? (
-          <><div className="page-heading"><h1>Courses</h1></div><div className="planning-content">
-            {courses.map((course) => <article className="planning-row" key={course.id}><h2>{course.courseName}</h2><button className="button" onClick={() => { setQuery(course.courseName); setSelectedId(null); setView("today"); }}>View coursework</button></article>)}
-            {!resources.length ? <p className="muted">Connect Canvas from Home to see your courses here.</p> : null}
-          </div></>
+          <section className="desktop-courses"><h1 tabIndex={-1}>Courses</h1><label className="search-box"><Icon name="search"/><input aria-label="Search coursework" placeholder="Find a course, assignment or material" value={query} onChange={event => setQuery(event.target.value)}/></label>
+          {!query && <div className="desktop-course-cards">{courses.map(course => <button key={`${course.sourceId}:${course.courseId}`} onClick={() => setQuery(course.courseName)}><h2>{course.courseName}</h2><span>View saved coursework →</span></button>)}</div>}
+          <ResourceList resources={resources} sources={snapshot.sources} query={query} selectedId={null} busy={busy} onSelect={setSelectedId} onComplete={(resource, checked) => void run({type:"complete",id:resource.id,completed:checked})}/></section>
         ) : view === "consent" ? (
           // owner: T06. Consent route: setup, a new recipient's consent, or Agreements.
           <ConsentSetup
@@ -688,8 +543,7 @@ export function App() {
             onConsent={openConsent /* owner: T06 */}
           />
         )}
-      </main>
-    </div>
+    </DesktopShell>
   );
 }
 
@@ -904,7 +758,7 @@ function ResourceDetail({
         </button>
       </div>
       <p className="detail-course">{resource.courseName}</p>
-      <h2>{resource.title}</h2>
+      <h2 tabIndex={-1}>{resource.title}</h2>
       <dl className="facts">
         <div>
           <dt>Due</dt>
@@ -949,12 +803,7 @@ function ResourceDetail({
           last successful capture.
         </div>
       ) : null}
-      <button
-        className="button source-button"
-        onClick={() => open(resource.url)}
-      >
-        Open original <Icon name="arrow" />
-      </button>
+      <Action onClick={() => open(resource.url)}>Open original <Icon name="arrow" /></Action>
       <p className="source-url">{resource.url}</p>
       <section className="detail-section">
         <h3>Instructions</h3>
@@ -964,54 +813,6 @@ function ResourceDetail({
           <p className="muted">No instructions were found in this capture.</p>
         )}
       </section>
-      <section className="detail-section">
-        <h3>Deadline evidence</h3>
-        <p className="muted small">{resource.deadline.reason}</p>
-        {resource.deadline.conflict && resource.deadline.planningAt ? (
-          <p className="evidence-note">
-            For planning: {formatDate(resource.deadline.planningAt, true)}.
-            Confirm the date in the source.
-          </p>
-        ) : null}
-        {resource.deadline.claims.length ? (
-          <ul className="evidence-list">
-            {resource.deadline.claims.map((claim, index) => (
-              <li key={`${claim.kind}-${claim.value}-${index}`}>
-                <div>
-                  <span className="badge">{claim.kind}</span>
-                  <span>{formatDate(claim.value, true)}</span>
-                </div>
-                <blockquote>
-                  {claim.quote || "Structured source field"}
-                </blockquote>
-                {!claim.scopeConfirmed ? (
-                  <span className="small attention-text">
-                    Not confirmed to apply to this item
-                  </span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="small muted">
-            No date claims are available in this capture.
-          </p>
-        )}
-      </section>
-      <section className="detail-section">
-        <h3>
-          Course AI policy <span className="badge">{resource.policy.mode}</span>
-        </h3>
-        <p className="source-text">
-          {resource.policy.evidence ||
-            "No AI policy was found in the captured material. Coaching is the default."}
-        </p>
-      </section>
-      <LocalAiPanel
-        key={`${resource.contentHash}:${JSON.stringify(snapshot.privacy)}`}
-        resource={resource}
-        privacyKey={JSON.stringify(snapshot.privacy)}
-      />
       {links.length ? (
         <section className="detail-section">
           <h3>Related material</h3>
@@ -1023,7 +824,7 @@ function ResourceDetail({
             );
             return (
               <div key={link.id} className="link-evidence">
-                <strong>{other?.title ?? "Related source"}</strong>
+                <strong>{other ? <ObjectLink resource={other}/> : "Related source is unavailable"}</strong>
                 <span className="small muted">
                   {link.type.replaceAll("_", " ")} · {link.status}
                 </span>
@@ -1065,6 +866,51 @@ function ResourceDetail({
           })}
         </section>
       ) : null}
+      <Disclosure label="Deadline evidence">
+        <p className="muted small">{resource.deadline.reason}</p>
+        {resource.deadline.conflict && resource.deadline.planningAt ? (
+          <p className="evidence-note">
+            For planning: {formatDate(resource.deadline.planningAt, true)}.
+            Confirm the date in the source.
+          </p>
+        ) : null}
+        {resource.deadline.claims.length ? (
+          <ul className="evidence-list">
+            {resource.deadline.claims.map((claim, index) => (
+              <li key={`${claim.kind}-${claim.value}-${index}`}>
+                <div>
+                  <span className="badge">{claim.kind}</span>
+                  <span>{formatDate(claim.value, true)}</span>
+                </div>
+                <blockquote>
+                  {claim.quote || "Structured source field"}
+                </blockquote>
+                {!claim.scopeConfirmed ? (
+                  <span className="small attention-text">
+                    Not confirmed to apply to this item
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="small muted">
+            No date claims are available in this capture.
+          </p>
+        )}
+      </Disclosure>
+      <Disclosure label={`Course AI policy · ${resource.policy.mode}`}>
+        <p className="source-text">
+          {resource.policy.evidence ||
+            "No AI policy was found in the captured material. Coaching is the default."}
+        </p>
+      </Disclosure>
+      <LocalAiPanel
+        key={`${resource.contentHash}:${JSON.stringify(snapshot.privacy)}`}
+        resource={resource}
+        privacyKey={JSON.stringify(snapshot.privacy)}
+      />
+
       <section className="detail-section">
         <h3>Data preview</h3>
         <p className="small muted">
