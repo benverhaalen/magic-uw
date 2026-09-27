@@ -1,6 +1,6 @@
 # Surface and evidence map
 
-Version 2 · September 26, 2026. **Design maturity is separate from feature implementation.** Consult [implementation status](../implementation-status.md) for production capability. A direction or specimen is not a shipped component. This map does not claim complete project visual approval.
+Version 3 · September 26, 2026. **Design maturity is separate from feature implementation.** Consult [implementation status](../implementation-status.md) for production capability. A direction or specimen is not a shipped component. This map does not claim complete project visual approval.
 
 | Surface | Student job / sources | Current design evidence | Next consequential question or test |
 | --- | --- | --- | --- |
@@ -26,4 +26,13 @@ The demo script added in `d1af79a` describes automatic session scheduling. Ben c
 
 ## Validation status
 
-The original Home is a visual anchor, not a full behavior test. Document review and unfinished transfer-validation limits are recorded in [validation](validation-v2.md). Test artifacts use synthetic content and remain distinct from production. No claim of usability research with students, assistive-technology certification, framework equivalence or integrated Electron/website behavior is made.
+The original Home is a visual anchor, not a full behavior test. Document review and unfinished transfer-validation limits are recorded in [current validation](validation-v3.md). Test artifacts use synthetic content and remain distinct from production. No claim of usability research with students, assistive-technology certification, framework equivalence or integrated Electron/website behavior is made.
+
+
+## Component-system checkpoint (v3)
+
+D27 accepts the foundation sheet's palette/type pairing for further component refinement. It does not approve every candidate boundary or prove complete screens. Start with the [foundation gallery](lab/foundations.html), then the [working component lab](lab/index.html). Local font configuration is documented in [validation](validation-v3.md); fallback is not a font match.
+
+Shared semantic CSS values now have actual consumers, including general command roles aliased by the earlier review names. A root browser check changed the shared command fill temporarily: six gallery consumers changed and restored together. Exact Cooper/Geist loads were inspected. This demonstrates those consumers, not every future framework.
+
+The rejected generated action/overlay images remain rejected. Their guessed fonts/icons and missing context exposed transfer failures; none replace the Home baseline. Current component tests are isolated and synthetic. Home, Calendar, website and real Electron integration retain the limits above.

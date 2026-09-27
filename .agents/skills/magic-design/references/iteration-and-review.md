@@ -1,6 +1,6 @@
 # Scoped iteration, independent review and handoffs
 
-Use for substantial visual/interaction work. A tiny edit needs a small check, not this entire process. Foundation-only tasks stop before implementation.
+Use for substantial visual/interaction work. A tiny edit needs a small check, not this entire process. Foundation-only tasks stop before production implementation. They may include authorized isolated image-to-code specimens that test the design system. When establishing the system, follow [calibration before product build](image-to-code.md).
 
 ## One useful loop
 
@@ -51,3 +51,8 @@ If another worker changes the baseline, re-evaluate only affected contracts/stat
 Example: Ben says time text should match surrounding prose. Update its recipe and token binding; inspect an actual wrapped briefing line at normal and enlarged text; give the next critic that quote and screenshot. Merely appending “consistent type” to memory is insufficient.
 
 Maintain lightweight evidence records: requirement ID → affected component/path → relevant state → actual screenshot/test/observation → result/limit. Leave only unresolved or high-value regression cases active. Remove stale instructions rather than stacking contradictory amendments. Keep raw chats, X captures, private coursework and local research outside commits.
+
+
+## Reference-driven specialist checkpoints
+
+Ben explicitly requests periodic handoffs to Opus to refine the system through reference-driven design. Use meaningful boundaries (new family, supported correction, first transfer), not a timer or a review per edit. Give the reviewer one named gap, relevant exact user excerpts, Home/component images, the applicable source adapter and its pinned primary mechanism, and actual implementation/state evidence. Ask which rule should change, what output it changes, and how to test/reverse it. Read the source sufficiently to verify the recommendation rather than promote the reviewer's authority. Keep user taste and product intent controlling. Record actual model identity; browser or framework behavior still requires direct verification. This produces bounded rule improvements, not ever-growing expert commentary.

@@ -1,52 +1,69 @@
 # Foundations and application rules
 
-Version 2. This page turns the [visual anchor](visual-baseline.md) into choices for unfamiliar surfaces. Extracted numbers are seeds; new layout rules below are proposals to test, not additional claims of Ben's approval.
+Version 3. Magic's established Home is the language reference; these rules preserve its relationships while allowing new compositions. Exact seeds and assets live in the [baseline](visual-baseline.md) and [tokens](tokens.css). New examples demonstrate a rule only within their tested scope.
 
-## Typography and readable density
+## Concrete identity gate
 
-Use the actual supplied Cooper Light BT for identity, centered page title and selected editorial/action roles; Geist for controls, metadata and sustained reading. Selective serif in Briefing and Upcoming is permitted. Verify loaded fonts before visual judgment; a fallback may test behavior but cannot settle wrapping or type balance. Keep private font binaries outside Git. Production font distribution remains a separate decision.
+The language consists of concrete assets and construction as well as relationships. Desktop calibration starts at the reference's 1440 × 900 view with its observed 234px sidebar, compact 55px top region, 13px workspace corners and narrow outer wrap. Load actual Cooper Light BT/Geist and use real Lucide glyphs, with the observed 1.65 stroke seed. Reproduce the layered ember gradient and continuous ivory workspace through the shared tokens. These measurements are comparison anchors; changed viewport/content requires deliberate adaptation, not an arbitrary replacement shell.
 
-Start from the measured scale in the baseline. Retain normal readable tracking unless a rendered comparison improves it. Do not create oversized page titles to signal importance. Establish hierarchy through position, spacing, weight and selective color first. Long course names, small metadata, narrow windows and enlarged text are primary design cases, not cleanup. Never shrink text merely to preserve a screenshot's row height.
+Before presenting a new desktop family, compare its enclosing frame to Home: font shapes and rhythm, glyph family/optical weight, sidebar proportions and selected state, wrap thickness and workspace curves. An overlay on a generic warm frame is insufficient. Do not tune new components around fallback metrics or count generated lettering/icons as exact assets. A rejected imitation cannot become the new baseline. Website composition remains separate, but still needs the actual permitted identity assets and a demonstrated visual transfer.
 
-Spacing expresses relationships: closest within a label/value or action group, modest between related rows, more between different student jobs. Start new compositions with a small repeated spacing set such as 4/8/12/16/24/32 CSS px; this is an implementation convenience, not a rule to round existing accepted geometry. Reuse a value only when its role repeats.
+## Typography and spacing
 
-## Color and gradients
-
-| Role | Application | Failure to catch |
+| Role | Magic application | Adaptation rule |
 | --- | --- | --- |
-| Brand | Ember/red shell wrapping ivory content | Gradient or large decoration competes with the student's briefing |
-| Action | Blue review/link affordance with readable paired ink | Blue used for unrelated status makes an action ambiguous |
-| Identity | Stable rose/blue/coral course or work association plus text | Reordering a list changes course identity; color alone identifies a course |
-| Learning | Warm gold activities with dark readable type | Decorative topic cards replace an already-selected useful activity |
-| Status | Explicit words and an appropriate signifier | A coral identity fill is mistaken for an error; a grade is shown as mastery |
-| Focus | Visible, contrasting keyboard locator | Border removal also removes focus indication |
+| Identity / editorial emphasis | Supplied Cooper Light BT for identity, the desktop page title and selected editorial/action text | Retain its contrast with Geist. Home explicitly permits serif in Briefing and Upcoming; this is not a requirement to make all prose serif. |
+| Reading / operation | Geist for sustained reading, controls and metadata | Preserve readable size, normal tracking and clear hierarchy under long content and enlarged text. |
+| Grouping | Close label/value or action groups; more space between different jobs | Repeat spacing when its meaning repeats. Start new geometry from a small scale such as 4/8/12/16/24/32px; do not round accepted relationships to satisfy a scale. |
 
-Keep fill/ink pairs together. Brand, identity and status are separate meanings even when hues overlap. CSS handles precise gradients; raster generation is optional for actual imagery with a defined role. Do not add imagery to every class because an asset pipeline exists. A generated subject illustration never establishes factual course content.
+Use the actual fonts before judging wrapping and balance. Fallbacks can exercise behavior but cannot validate the visual match. Private font binaries stay outside Git; production distribution remains unresolved. Position, spacing, weight and selective color establish hierarchy before a larger heading does. A website may need a larger editorial scale than the app; compare the same type relationship, not identical point sizes. Never shrink type to preserve a convenient row height.
 
-Use bounded gradients on flat surfaces, with quiet interiors and controlled saturation. Test the least contrasting region beneath text, not just one endpoint or a screenshot average. Alpha overlays must be checked against the composed background. Customizable shell color is later scope: any implementation must preserve ink/focus pairings and must not silently recolor semantic warnings.
+For image-to-code, record type size/weight/line-height relationships, text-to-action spacing, surface/ink pairs and boundary purposes before building. Compare an actual render at a known viewport; name the discrepancy and revise its cause. This adapts [Taste's extraction mechanism](../../.agents/skills/magic-design/references/source-adapters.md), not its compulsory generation quotas or landing-page defaults.
 
-The seed palette is not an accessibility certification. Normal text targets at least 4.5:1; qualifying large text at least 3:1. Necessary visual control boundaries and indicators need relevant non-text contrast checks. Test actual focus, hover, disabled and error treatments. See [research and standards](system-research.md).
+## Materials and semantic color
 
-## Borders, elevation and icons
+| Role | Magic starting point | Keep separate from |
+| --- | --- | --- |
+| Outer identity | Warm ember/red material framing an ivory working surface | Warnings and the page's primary information |
+| Main content | Continuous ivory surface with readable neutral ink | A mandatory card around each section |
+| Action | Deliberate blue and other established vibrant action surfaces with paired ink | Status or selected state without an explicit signifier |
+| Stable identity | Rose/blue/coral association for courses or work, always accompanied by text | List order and success/error meaning |
+| Learning activity | Warm gold with dark readable type | A universal color for all secondary actions |
+| Status | Explicit state words, appropriate signifier and readable treatment | Course identity, inferred mastery or decorative urgency |
+| Focus | Visible contrasting locator around the actual control | The default decorative border |
 
-Give each boundary a job: a workspace edge, quiet separator, grouped-control division or keyboard focus. A filled Upcoming row usually needs no additional outline; this does not prohibit a useful boundary in another context. Avoid a card surrounding another card merely to separate headings. Reserve elevation for real overlays/popovers, not ordinary work rows. Candidate action/tag/link tokens remain unresolved comparisons.
+Share roles across Magic surfaces; their proportions follow the job. The website can express warm identity without reproducing an application window. No new palette or aesthetic is implied by a new framework.
 
-Use Lucide consistently with round stroke caps/joins; start from the baseline stroke seed and inspect optical weight. Glyph size and target size are different. Small visible icons can sit in generous invisible targets. Favor at least 32px controls in compact desktop toolbars when layout allows; satisfy WCAG's 24px minimum or applicable exceptions without mistaking that minimum for ideal usability. Inline sentence links have different sizing constraints. Use accessible names; critical meaning must survive without hover.
+Keep fill/ink pairs together. Gradients are bounded, with quiet interiors and controlled saturation. Check the least contrasting region behind text and the final composed alpha overlay. CSS supplies exact gradients; raster assets need a genuine content or visual role. Generated images cannot establish course facts. Later shell customization must preserve ink/focus pairs and status meanings.
 
-Provider marks identify the actual verified destinations, using legitimate assets. Never substitute a Lucide glyph for a claimed provider logo. Do not imply VS Code, GitLab or a notes app will open unless that destination is matched and available.
+The seeds are not an accessibility certification. Normal text targets at least 4.5:1 and qualifying large text 3:1; necessary control boundaries and indicators require the applicable non-text contrast checks. Inspect actual hover, focus, disabled and error treatments. [Standards and research](system-research.md) provide the supporting scope.
 
-## Responsive behavior and platform adapters
+## Boundaries, icons and targets
 
-Preserve semantic reading order before preserving coordinates. Proposed adaptation order: reduce nonessential whitespace; collapse navigation using its existing control; reflow cards and optional action regions; move Today's context into the content flow when the reading pane would become cramped. Do not silently hide deadlines or source access. Keep relevant choices and scroll stable during resize. Breakpoints follow tested content pressure, not a device name. A Calendar may need a separately labeled agenda alternative for constrained layouts; this is an unresolved product proposal, not permission to delete the requested week/month views.
+A boundary should identify a workspace edge, control, separator, group or focus. Prefer alignment and spacing for ordinary related content; reserve elevation for overlays. A filled work row commonly needs no extra outline. This does not ban borders from fields, selection or another useful context. Tag/action outlines and inline link backing remain local refinement candidates.
 
-For web, use semantic HTML and a small mapping of the same tokens. For React/Electron, keep domain/source state outside presentational components and use the existing typed bridge for capabilities. Navigation identity must not be a display label. Use native link/button semantics and framework-appropriate routing/focus restoration; do not bolt page reloads onto an in-app Back operation. The public site's information/download journey uses its own composition. It shares identity/material/type roles, not fake desktop controls.
+Lucide is the chosen UI family, with round caps/joins and optically consistent weight. Centralize repeated glyph sizes in the component role; separate visible glyph size from the hit target. Start compact desktop targets at 32px where practical; check the WCAG 24px minimum or applicable exception, without treating a minimum as ideal usability. Inline links have different spacing constraints. Provide accessible names; critical meaning cannot depend on hover.
 
-Minimum practical checks for an affected surface: baseline laptop viewport, narrower window, enlarged text, keyboard-only entry/action/return, visible focus, and reduced motion if animated. For continuous prose, check reflow without horizontal scrolling; two-dimensional Calendar data may need a deliberate alternative. These checks are necessary evidence, not a claim of complete accessibility conformance.
+Use legitimate marks only for verified provider destinations. Profile images need a readable fallback. The shadcn contribution is role-level icon ownership and correct semantic composition, not adoption of its default glyph scale or theme. [Recipes](component-recipes.md) specify the operation.
 
-## Content, freshness and motion
+## Feedback and motion
 
-Prefer concrete object + consequence + useful next action. “CS639's lecture uses chapter 4” is helpful only when sources establish the association; “prepare for success” is not useful synthesis. Dates retain source timezone; relative times need an unambiguous exact value on inspection. Tags inherit prose type size and add padding around it.
+Every activation gives timely visible feedback. Keep usable content readable during refresh and preserve input after failure. Place recovery beside the affected result; make consequential updates available to assistive technology without announcing every streamed word. Refresh should not unexpectedly move the reading target.
 
-Use pending feedback immediately and show failure where its recovery lives. Keep saved facts readable while refresh is incomplete. Announce consequential status changes accessibly without making every streaming word a live announcement. New facts must not move the active reading target unexpectedly.
+Apply Emil's **frequency → purpose → simplest mechanism → interruption** sequence before adding motion. Frequent navigation should feel immediate. A transition must explain location, acknowledge input or clarify a state change; otherwise omit it. Name transitioned properties, retarget from current values on rapid reversal, and anchor an animated popover to its trigger. Ship reduced-motion and fine-pointer hover handling with it. Instant layout changes can be appropriate; a GPU-only recipe must not distort text or dictate product behavior.
 
-Movement explains a change, is interruptible, and respects reduced motion. Many frequent actions need no animation. Test rapid reversal and interrupted input rather than selecting durations as a style checklist.
+Recovery precedes animation. If a timer can remove an action, account for hidden tabs, hover and keyboard focus, or provide persistent recovery. Exercise rapid input and leaving/returning to the app. Adopted [Emil mechanisms](../../.agents/skills/magic-design/references/source-adapters.md) explain these checks; a duration table or code inspection cannot establish the feel.
+
+## Content and evidence
+
+Write the concrete object, consequence and useful next step. Do not fill empty space with generic encouragement, invented facts or an unnecessary button. Keep complete identity available when display names are shortened. Long labels wrap or truncate deliberately, without hiding facts required for the decision.
+
+Separate source facts, inference, self-report and view state. A changing source version invalidates dependent conclusions until checked; missing, partial and conflicting coverage need different explanations. Dates retain timezone and all-day semantics; relative time has an exact value on inspection. Domain bindings in [component contracts](component-contracts.md) give these principles their Magic meaning.
+
+## Responsive and platform adaptation
+
+Preserve semantic reading and focus order before coordinates. Use tested content pressure to select breakpoints. Reduce optional whitespace, reflow groups and collapse navigation through its existing control before making reading cramped. Keep source access and consequential timing available. Home's Today rail may move into content flow at constrained widths; this is an adaptation proposal to test, not permission to remove it. Calendar's week/month views remain required; an agenda alternative is a separate proposal.
+
+Web implementations use semantic HTML, real URLs and appropriate history. React/Electron separates domain and source state from presentation and uses existing typed capabilities; stable IDs, not display labels, identify routes and saved state. The public website shares identity roles while serving explanation and legitimate download/GitHub journeys. It does not inherit Mac controls, student data or implied app capabilities.
+
+Inspect a baseline laptop, a narrower window, enlarged text, keyboard entry/action/return and reduced motion when animated. Continuous reading reflows without horizontal scrolling; two-dimensional data needs a deliberate constrained treatment. These are practical checks on the affected output, not proof of complete accessibility or equivalence across platforms.

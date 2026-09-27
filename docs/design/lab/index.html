@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Magic Canvas · Component lab</title>
+    <link rel="stylesheet" href="components.css" />
+    <script src="local-fonts.js"></script>
+    <script defer src="lab.js"></script>
+  </head>
+  <body>
+    <svg aria-hidden="true" style="position: absolute; width: 0; height: 0">
+      <defs>
+        <symbol id="arrow" viewBox="0 0 24 24">
+          <path d="M5 12h14" />
+          <path d="m12 5 7 7-7 7" />
+        </symbol>
+        <symbol id="chevron" viewBox="0 0 24 24">
+          <path d="m6 9 6 6 6-6" />
+        </symbol>
+        <symbol id="close" viewBox="0 0 24 24">
+          <path d="M18 6 6 18M6 6l12 12" />
+        </symbol>
+      </defs>
+    </svg>
+    <header class="lab-top">
+      <span class="lab-window-dots" aria-hidden="true"
+        ><i></i><i></i><i></i></span
+      ><span>Component lab</span
+      ><span class="lab-top-note">Example date · Oct 6, 2026</span>
+    </header>
+    <aside class="lab-sidebar">
+      <p class="lab-wordmark">Magic Canvas</p>
+      <nav aria-label="Lab examples">
+        <a href="#main" class="lab-nav" aria-current="page"
+          ><svg
+            class="mc-glyph"
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            data-lucide="house"
+          >
+            <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
+            <path
+              d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"
+            /></svg
+          >Overview</a
+        >
+        <details open>
+          <summary class="lab-nav">
+            <svg
+              class="mc-glyph"
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              data-lucide="book-open"
+            >
+              <path d="M12 7v14" />
+              <path
+                d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"
+              /></svg
+            >Component families<svg
+              class="mc-glyph lab-nav-chevron"
+              aria-hidden="true"
+            >
+              <use href="#chevron" />
+            </svg>
+          </summary>
+          <div class="lab-nav-children">
+            <a href="#context-title"
+              >Context & action<small>Links · time · confirmation</small></a
+            ><a href="#items-title"
+              >Identity & work<small>Flat rows · long titles</small></a
+            ><a href="#control-families"
+              >Controls & feedback<small>Menu · forms · recovery</small></a
+            >
+          </div>
+        </details>
+        <a class="lab-nav" href="#lab-notes"
+          ><svg
+            class="mc-glyph"
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            data-lucide="file-text"
+          >
+            <path
+              d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"
+            />
+            <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+            <path d="M10 9H8" />
+            <path d="M16 13H8" />
+            <path d="M16 17H8" /></svg
+          >Usage notes</a
+        >
+      </nav>
+      <div class="lab-profile">
+        <span aria-hidden="true">MC</span>
+        <div>Design system<small>Local working specimen</small></div>
+      </div>
+    </aside>
+    <main class="lab-workspace" id="main">
+      <div class="lab-heading">
+        <div>
+          <h1>Useful context, clear next steps</h1>
+          <p class="mc-meta">
+            Working component lab · version 3 ·
+            <span id="font-state">checking fonts</span>
+          </p>
+        </div>
+        <button class="mc-action mc-action--secondary" id="plan-open">
+          Find time for the CS 310 midterm
+          <svg class="mc-glyph" aria-hidden="true"><use href="#arrow" /></svg>
+        </button>
+      </div>
+      <section class="lab-section" aria-labelledby="context-title">
+        <h2 id="context-title">Context & action</h2>
+        <div class="mc-context">
+          <p>
+            <a class="mc-link" href="#evidence" data-source="reading"
+              >CS 220’s next lecture</a
+            >
+            has three assigned readings covering testing, APIs and debugging
+            before
+            <time class="mc-time" datetime="2026-10-07T13:00:00-05:00"
+              >tomorrow · 1 PM</time
+            >. The lecture quizzes cover the pre-class readings.
+          </p>
+          <a class="mc-action" href="#evidence" data-source="reading"
+            >Review assigned readings
+            <svg class="mc-glyph" aria-hidden="true"><use href="#arrow" /></svg
+          ></a>
+        </div>
+        <div class="mc-context">
+          <div>
+            <p>
+              Your
+              <a class="mc-link" href="#evidence" data-source="exam"
+                >CS 310 and CS 220 midterms</a
+              >
+              overlap: both are scheduled for
+              <time class="mc-time" datetime="2026-11-12T17:45:00-06:00"
+                >Nov 12 · 5:45–7:15 PM</time
+              >. CS 220 lists a Nov 13 alternate; you’ll need to confirm whether
+              you can take it.
+            </p>
+            <p
+              id="ack-status"
+              class="mc-feedback lab-status"
+              aria-live="polite"
+            ></p>
+          </div>
+          <div class="mc-compound">
+            <a class="mc-action" href="#evidence" data-source="exam"
+              >Review exam options
+              <svg class="mc-glyph" aria-hidden="true">
+                <use href="#arrow" /></svg
+            ></a>
+            <div class="mc-confirmation">
+              <input
+                type="checkbox"
+                id="handled"
+                aria-describedby="ack-help"
+              /><label for="handled">I’ve handled this</label>
+            </div>
+          </div>
+        </div>
+        <p class="mc-passage">
+          The guest speaker for
+          <a class="mc-link" href="#evidence" data-source="guest"
+            >tomorrow’s DESIGN 210 lecture</a
+          >
+          is joining remotely. Your class still meets in Room 210; you do not
+          need to join a separate call.
+        </p>
+        <p id="ack-help" class="mc-meta lab-ack-note">
+          “Handled” records your choice in this browser for this example’s
+          source version. It does not confirm with an instructor.
+        </p>
+      </section>
+      <section class="lab-section" aria-labelledby="items-title">
+        <h2 id="items-title">Work, with its identity intact</h2>
+        <div class="lab-item-list">
+          <a class="mc-entity" href="#evidence" data-source="assignment"
+            ><span
+              ><span class="mc-entity__label">DESIGN 210 · 20 points</span
+              ><span class="mc-entity__title"
+                >End User Interview synthesis: findings, contrasting
+                perspectives and recommendations</span
+              ></span
+            ><time class="mc-entity__time" datetime="2026-10-09T23:59:00-05:00"
+              ><strong>Fri, Oct 9</strong>11:59 PM · Central</time
+            ><svg class="mc-glyph" aria-hidden="true">
+              <use href="#arrow" /></svg></a
+          ><a
+            class="mc-entity"
+            data-identity="blue"
+            href="#evidence"
+            data-source="reading"
+            ><span
+              ><span class="mc-entity__label">CS 220 · 10 points</span
+              ><span class="mc-entity__title">Interface exercise</span></span
+            ><time class="mc-entity__time" datetime="2026-10-07T23:59:00-05:00"
+              ><strong>Tomorrow</strong>11:59 PM · Central</time
+            ><svg class="mc-glyph" aria-hidden="true">
+              <use href="#arrow" /></svg></a
+          ><a
+            class="mc-entity"
+            data-identity="coral"
+            href="#evidence"
+            data-source="assignment"
+            ><span
+              ><span class="mc-entity__label">DESIGN 210 · 20 points</span
+              ><span class="mc-entity__title">Methods quiz</span></span
+            ><time class="mc-entity__time" datetime="2026-10-09T23:59:00-05:00"
+              ><strong>Fri, Oct 9</strong>11:59 PM · Central</time
+            ><svg class="mc-glyph mc-chevron" aria-hidden="true">
+              <use href="#chevron" /></svg
+          ></a>
+        </div>
+      </section>
+      <section class="lab-section" aria-labelledby="learning-title">
+        <h2 id="learning-title">Learning & time</h2>
+        <div class="lab-learning-grid">
+          <a
+            class="mc-action mc-action--learning"
+            href="#evidence"
+            data-source="reading"
+            ><span
+              ><small class="mc-entity__label">CS 310 · Midterm Nov 12</small
+              >Practice choosing a graph traversal<small class="mc-meta"
+                >From your assigned data structures readings</small
+              ></span
+            ><svg class="mc-glyph" aria-hidden="true"><use href="#arrow" /></svg
+          ></a>
+          <div class="mc-temporal">
+            <p>
+              <span class="mc-entity__label">Due today · DESIGN 210</span
+              ><strong>Study reflection</strong
+              ><time datetime="2026-10-06T23:59:00-05:00">11:59 PM</time>
+            </p>
+            <p class="mc-temporal__event">
+              <span class="mc-entity__label">Scheduled event · CS 310</span
+              ><strong>Lecture</strong
+              ><time datetime="2026-10-06T11:00:00-05:00"
+                >11–11:50 AM · Room 204</time
+              >
+            </p>
+            <p class="mc-temporal__now">
+              <span>9:40 AM</span><i aria-hidden="true"></i
+              ><span class="mc-meta">Example current time</span>
+            </p>
+          </div>
+        </div>
+      </section>
+      <section
+        class="lab-section lab-columns"
+        aria-label="Control families"
+        id="control-families"
+      >
+        <div>
+          <h2>Controls & states</h2>
+          <p class="mc-meta lab-section-note">
+            Actions stay distinct from information. Tab to inspect focus.
+          </p>
+          <div class="lab-controls">
+            <button class="mc-action" id="local-check">
+              Check this example
+              <svg class="mc-glyph" aria-hidden="true">
+                <use href="#arrow" />
+              </svg></button
+            ><button class="mc-action" disabled>Source unavailable</button
+            ><button
+              class="mc-action mc-action--secondary"
+              id="menu-trigger"
+              popovertarget="view-menu"
+              aria-haspopup="menu"
+              aria-expanded="false"
+            >
+              Jump to example
+              <svg class="mc-glyph" aria-hidden="true">
+                <use href="#chevron" />
+              </svg>
+            </button>
+          </div>
+          <p class="mc-feedback lab-status" id="check-status" role="status"></p>
+          <div class="lab-state">
+            <label
+              ><input type="checkbox" id="simulate-error" />Simulate local save
+              failure</label
+            ><button class="mc-action mc-action--quiet" id="reset">
+              Reset examples
+            </button>
+          </div>
+          <p class="mc-meta">
+            Failure is intentional when enabled. No external services are
+            called.
+          </p>
+        </div>
+        <div>
+          <h2>A small, useful form</h2>
+          <form class="lab-form" id="note-form" novalidate>
+            <div class="mc-field">
+              <label for="note">Note for your next study session</label
+              ><input
+                id="note"
+                name="note"
+                maxlength="160"
+                placeholder="e.g. Revisit the graph traversal example"
+                aria-describedby="note-help note-error"
+              />
+              <p class="mc-meta" id="note-help">
+                Only saved locally in this browser.
+              </p>
+              <p class="mc-field__error" id="note-error" hidden></p>
+            </div>
+            <div>
+              <button class="mc-action" type="submit" id="note-save">
+                Save note
+              </button>
+            </div>
+            <p class="mc-feedback" id="note-status" role="status"></p>
+          </form>
+        </div>
+      </section>
+      <section
+        id="evidence"
+        class="lab-section lab-source"
+        tabindex="-1"
+        hidden
+        aria-labelledby="evidence-title"
+      >
+        <button id="evidence-back" class="mc-action mc-action--quiet">
+          ← Return to your place
+        </button>
+        <h2 id="evidence-title">Example source</h2>
+        <p id="evidence-copy"></p>
+        <p class="mc-meta">
+          Synthetic evidence for inspecting component behavior. No learning
+          platform is connected.
+        </p>
+      </section>
+      <footer id="lab-notes" class="lab-footer mc-meta">
+        Isolated lab, not production Home. Private Cooper Light BT and Geist
+        fonts load only with explicit local configuration.
+        <span id="plan-status" role="status"></span>
+      </footer>
+    </main>
+    <div
+      id="view-menu"
+      class="mc-menu"
+      popover
+      role="menu"
+      aria-label="Example display"
+    >
+      <button role="menuitem" data-view="all" tabindex="-1">Overview</button
+      ><button role="menuitem" data-view="context" tabindex="-1">
+        Context and action</button
+      ><button role="menuitem" data-view="controls" tabindex="-1">
+        Controls and states
+      </button>
+    </div>
+    <dialog
+      class="mc-dialog"
+      id="plan-dialog"
+      aria-labelledby="plan-title"
+      aria-describedby="plan-description"
+    >
+      <div class="mc-dialog__header">
+        <div>
+          <p class="mc-meta">Suggested study time · synthetic example</p>
+          <h2 id="plan-title" tabindex="-1">Study for the CS 310 midterm</h2>
+        </div>
+        <button
+          class="mc-action mc-action--quiet mc-dialog__close"
+          id="plan-close"
+          aria-label="Close study planner"
+        >
+          <svg class="mc-glyph" aria-hidden="true"><use href="#close" /></svg>
+        </button>
+      </div>
+      <p id="plan-description" class="mc-meta" style="margin-top: 10px">
+        Practice choosing a graph traversal using your assigned readings.
+      </p>
+      <form id="plan-form" novalidate>
+        <div class="lab-suggestion">
+          <h3 id="suggested-time">Thu, Oct 8 · 3:15–4 PM</h3>
+          <p class="mc-meta">Central time · 45-minute session</p>
+          <p class="mc-meta" style="margin-top: 10px">
+            No conflict appears in this example’s connected events. Other
+            commitments may be missing.
+          </p>
+        </div>
+        <button
+          type="button"
+          id="adjust-time"
+          class="mc-action mc-action--quiet"
+          aria-expanded="false"
+          aria-controls="plan-adjust"
+        >
+          Adjust time
+          <svg class="mc-glyph" aria-hidden="true"><use href="#chevron" /></svg>
+        </button>
+        <div id="plan-adjust" class="lab-form" hidden>
+          <div class="mc-field">
+            <label for="plan-date">Study date</label
+            ><input
+              id="plan-date"
+              type="date"
+              value="2026-10-08"
+              aria-describedby="plan-error"
+            />
+          </div>
+          <div class="lab-time-fields">
+            <div class="mc-field">
+              <label for="plan-start">Start · Central</label
+              ><input
+                id="plan-start"
+                type="time"
+                value="15:15"
+                aria-describedby="plan-error"
+              />
+            </div>
+            <div class="mc-field">
+              <label for="plan-end">End · Central</label
+              ><input
+                id="plan-end"
+                type="time"
+                value="16:00"
+                aria-describedby="plan-error"
+              />
+            </div>
+          </div>
+        </div>
+        <p class="mc-field__error" id="plan-error" role="alert" hidden></p>
+        <p class="mc-feedback" id="plan-progress" role="status"></p>
+        <div class="mc-dialog__footer">
+          <button
+            type="button"
+            class="mc-action mc-action--quiet"
+            id="plan-cancel"
+          >
+            Cancel</button
+          ><button type="submit" class="mc-action" id="plan-save">
+            Add to my plan
+            <svg class="mc-glyph" aria-hidden="true"><use href="#arrow" /></svg>
+          </button>
+        </div>
+        <p class="mc-meta">
+          Saved in this browser only. No external calendar is connected.
+        </p>
+      </form>
+    </dialog>
+  </body>
+</html>

@@ -1,6 +1,6 @@
 # Visual baseline — cohesive Home v1
 
-Recorded September 26, 2026. This is a foundation for a later implementation, not an integrated theme or a fully approved universal design system. Preserve the Home Ben called “95% of what id want that static home page to look like essentially.” Refine the remaining details in place. See the [decision record](decision-record.md) for quote scope and the [component contracts](component-contracts.md) for behavior.
+Recorded September 26, 2026. This is calibration evidence for the design system, not an integrated theme or a fully approved universal design system. Preserve the Home Ben called “95% of what id want that static home page to look like essentially.” Use the original corrections to refine representative images and coded compositions, then prove the system can design a related surface from a description. The image is not a demand to preserve criticized details or incidental coordinates. See the [decision record](decision-record.md) for quote scope and the [component contracts](component-contracts.md) for behavior.
 
 ![Synthetic reference of the cohesive Home](assets/home-reference-v1.jpg)
 
