@@ -38,8 +38,12 @@ const FUNCTION_WORDS = new Set(
 );
 /** A blank covering more of the sentence than this leaves too little to recall from. */
 export const MAX_BLANK_SHARE = 0.6;
-/** The negation words the flaw rules want emphasised (packages/learning/src/flaws.ts). */
-const NEGATION = /\b(not|except|never|least|incorrect)\b/gi;
+/**
+ * The negation words the flaw rules want emphasised (packages/learning/src/flaws.ts). Boundaries
+ * are Unicode letters, not ASCII \b, so a target-language word that starts with one of these
+ * ("notó", "noté", "notícia") is never partly capitalised.
+ */
+const NEGATION = /(?<![\p{L}\p{N}])(not|except|never|least|incorrect)(?![\p{L}\p{N}])/giu;
 
 export function cardDrafts(output: CardsOutput): Draft[] {
   return output.cards.map((c, index): Draft => {

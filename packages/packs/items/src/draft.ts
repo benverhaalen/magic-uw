@@ -97,7 +97,7 @@ const DISCURSIVE = {
 export const SUBJECT_MIX: Record<string, { quiz: string; cards: string }> = {
   languages: {
     quiz: "Test meaning and form: multiple choice on what a word means or which form is correct, and true/false on usage. No numeric questions.",
-    cards: "Vocabulary term cards with the target-language word or phrase on the front and its meaning as the course gives it on the back (the app adds the reverse direction), and cloze cards that blank a conjugated form, ending or agreement in a sentence from the passage.",
+    cards: "Vocabulary term cards with the target-language word or phrase on the front and its meaning as the course gives it on the back (the app adds the reverse direction), and cloze cards that blank one whole conjugated or agreeing word (never part of a word) in a sentence from the passage.",
   },
   math: QUANTITATIVE,
   physical_science: QUANTITATIVE,
