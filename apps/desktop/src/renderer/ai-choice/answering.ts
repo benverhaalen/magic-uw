@@ -48,6 +48,8 @@ const stateWords: Record<ClientHealth["state"], string> = {
   usage_limited: "Usage limit reached",
   model_unavailable: "Model unavailable",
   offline: "Can't connect",
+  keychain_locked: "Keychain blocked", // owner: client-detection (the onboarding label)
+  tool_use_blocked: "Stopped: tried a tool", // owner: client-detection (the onboarding label)
 };
 const plan = (value?: string) => (value ? `${value[0]!.toUpperCase()}${value.slice(1)}` : null);
 
