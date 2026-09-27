@@ -617,6 +617,18 @@ async function notesTick() {
 const notesTimer = setInterval(notesTick, 30_000);
 notesTimer.unref();
 // end owner: notes
+// owner: stall-audit. The window re-reads its snapshot only when the workspace changed: once a
+// second this compares the store's write count (one statement, no table read) and tells main,
+// which forwards `magic:changed` to the window. Idle, nothing is sent and no snapshot is built.
+let announcedVersion = store.dataVersion();
+const changeWatch = setInterval(() => {
+  const version = store.dataVersion();
+  if (version === announcedVersion || version < 0) return;
+  announcedVersion = version;
+  port.postMessage({ kind: "changed" });
+}, 1_000);
+changeWatch.unref();
+// end owner: stall-audit
 port.on("message", async ({ data }: { data: any }) => {
   // owner: privacy. Main's install secret: at-rest key for the store, pseudonym key for sends.
   if (data.kind === "privacy-key") {
@@ -779,6 +791,7 @@ port.on("message", async ({ data }: { data: any }) => {
     await ingestion.stop();
     clearInterval(tick);
     clearInterval(notesTimer); // owner: notes
+    clearInterval(changeWatch); // owner: stall-audit
     local.cancel();
     await core.close();
     port.postMessage({ kind: "closed" });

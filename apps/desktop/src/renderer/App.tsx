@@ -198,13 +198,45 @@ export function App() {
   useEffect(() => {
     mounted.current = true;
     void refresh();
-    const timer = window.setInterval(() => {
-      if (!document.hidden) void refresh();
-    }, 2000);
+    // owner: stall-audit. Re-read only when the workspace changed (the worker says so), at most
+    // every 2 s, one read at a time, and not while hidden (a change then is read on return).
+    // Idle, nothing is read. A bridge without onChanged keeps the 2 s poll.
+    let reading = false,
+      pending = false,
+      lastRead = Date.now(),
+      trailing: number | undefined;
+    const pull = () => {
+      pending = true;
+      if (reading || document.hidden || trailing !== undefined) return;
+      const wait = lastRead + 2000 - Date.now();
+      if (wait > 0) {
+        trailing = window.setTimeout(() => {
+          trailing = undefined;
+          if (pending) pull();
+        }, wait);
+        return;
+      }
+      pending = false;
+      reading = true;
+      lastRead = Date.now();
+      void refresh().finally(() => {
+        reading = false;
+        if (pending) pull();
+      });
+    };
+    const onVisible = () => {
+      if (!document.hidden && pending) pull();
+    };
+    const unsubscribe = window.magic?.onChanged?.(pull);
+    document.addEventListener("visibilitychange", onVisible);
+    const timer = unsubscribe ? undefined : window.setInterval(pull, 2000);
     return () => {
       mounted.current = false;
       requestVersion.current++;
+      unsubscribe?.();
+      document.removeEventListener("visibilitychange", onVisible);
       window.clearInterval(timer);
+      window.clearTimeout(trailing);
     };
   }, [refresh]);
 
