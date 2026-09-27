@@ -1,7 +1,9 @@
 // The AI fallback's added latency (the lead's requirement), measured where the app adds it:
 // dispatch time, from submit to the moment the model call is handed to the runner's backend.
-// With a warm pooled session and the fake CLI answering in a fixed 800 ms, the end-to-end time is
-// dominated by that 800 ms and its scheduling jitter, so it is reported, not asserted. Asserted:
+// Dispatch time does not depend on how long the model then takes, so it is measured over 72
+// interleaved rounds with the fake CLI answering in 40 ms (24 rounds at 800 ms let one GC pause
+// decide the p95 on a CI runner). A short 800 ms phase reports the end-to-end time, which is
+// dominated by that 800 ms and its jitter, so it is reported, not asserted. Asserted:
 // - the fallback's added dispatch time over calling the model directly: <= 2 ms at p95;
 // - the privacy pass's added dispatch time (protected vs unprotected fallback): <= 1 ms at p95;
 // - a code hit sends nothing and does no protection work.
@@ -24,9 +26,12 @@ import { NOW, TZ, workspace } from "./intent-fixtures";
 const here = dirname(fileURLToPath(import.meta.url));
 const fake: CliCommand = { file: process.execPath, prefixArgs: [join(here, "fixtures", "fake-cli", "fake-cli.mjs"), "claude"] };
 const LATENCY_MS = 800;
-// 24 interleaved rounds: the nearest-rank p95 is the 23rd of 24, so one scheduling outlier from
-// other test files running in parallel does not decide the comparison on its own.
-const N = 24;
+const DISPATCH_LATENCY_MS = 40;
+// 72 interleaved rounds: the nearest-rank p95 is the 69th of 72, so a few scheduling or GC
+// outliers from other test files running in parallel do not decide the comparison.
+const DISPATCH_N = 72;
+const E2E_N = 8;
+const classifyWith = (sleepMs: number) => ({ ...classify, sleepMs });
 const classify = {
   output: {
     kind: "intent-classify",
@@ -38,13 +43,13 @@ const host: IntentHost = { workspace: async (v) => ({ verb: v.verb, status: "ok"
 const p95 = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.ceil(0.95 * xs.length) - 1]!;
 const p50 = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.ceil(0.5 * xs.length) - 1]!;
 
-async function rig(speculation: "gate" | "race" = "gate") {
+async function rig(speculation: "gate" | "race" = "gate", latencyMs = LATENCY_MS) {
   const { store, batches } = workspace();
   const dir = await mkdtemp(join(tmpdir(), "intent-latency-"));
   const workDir = join(dir, "work");
   await mkdir(workDir);
   const log = join(dir, "log.jsonl");
-  const env = { FAKE_CLI_LOG: log, FAKE_CLI_STATE: join(dir, "state"), FAKE_CLI_RESPONSES: JSON.stringify([classify]) };
+  const env = { FAKE_CLI_LOG: log, FAKE_CLI_STATE: join(dir, "state"), FAKE_CLI_RESPONSES: JSON.stringify([classifyWith(latencyMs)]) };
   const pool = createSessionPool({ command: fake, workDir, env, fallback: createClaudeBackend({ command: fake, workDir, env }), kinds: { [classifyPack.id]: classifyPack.schema, [askPack.id]: askPack.schema } });
   // The dispatch mark: the moment the runner hands the call to the backend (the pool).
   let dispatchedAt = NaN;
@@ -70,64 +75,80 @@ async function rig(speculation: "gate" | "race" = "gate") {
   return { pool, make, sent, timed };
 }
 
-test("fallback adds <= 2 ms p95 of dispatch time over AI-only and privacy <= 1 ms; a code hit sends nothing and does no protection work (gate)", { timeout: 240_000 }, async () => {
-  const h = await rig("gate");
-  try {
-    const fallback = h.make();
-    const aiOnly = h.make({ codePath: false });
-    const unprotected = h.make({ protect: false });
-    // As at launch: each router's index and protection roster are built before the first command.
-    for (const r of [fallback, aiOnly, unprotected]) r.ready();
-    // Warm the pooled session (a spawn is not what's measured).
-    for (const r of [fallback, aiOnly, unprotected]) await h.timed(r, "zq warm the session up");
-    const fb = { ms: [] as number[], dispatch: [] as number[] };
-    const ai = { ms: [] as number[], dispatch: [] as number[] };
-    const bare = { ms: [] as number[], dispatch: [] as number[] };
-    for (let i = 0; i < N; i++) {
-      // Interleaved, so drift in the machine's load falls on all three alike.
-      const round = [
-        [fallback, fb, `zq sort out thing number ${i} for me`],
-        [aiOnly, ai, `zq sort out other thing ${i} for me`],
-        [unprotected, bare, `zq sort out bare thing ${i} for me`],
-      ] as const;
-      for (const [router, into, text] of round) {
-        const a = await h.timed(router, text);
-        assert.equal(a.r.path, "ai", JSON.stringify(a.r));
-        assert.equal(a.r.status, "ran");
-        assert.ok(Number.isFinite(a.dispatchMs), "the call reached the runner");
-        into.ms.push(a.ms);
-        into.dispatch.push(a.dispatchMs);
-      }
+type Rig = Awaited<ReturnType<typeof rig>>;
+/** Interleaved rounds over the three routers, so drift in the machine's load falls on all alike. */
+async function rounds(h: Rig, n: number) {
+  const fallback = h.make();
+  const aiOnly = h.make({ codePath: false });
+  const unprotected = h.make({ protect: false });
+  // As at launch: each router's index and protection roster are built before the first command.
+  for (const r of [fallback, aiOnly, unprotected]) r.ready();
+  // Warm the pooled session (a spawn is not what's measured).
+  for (const r of [fallback, aiOnly, unprotected]) await h.timed(r, "zq warm the session up");
+  const fb = { ms: [] as number[], dispatch: [] as number[] };
+  const ai = { ms: [] as number[], dispatch: [] as number[] };
+  const bare = { ms: [] as number[], dispatch: [] as number[] };
+  for (let i = 0; i < n; i++) {
+    const round = [
+      [fallback, fb, `zq sort out thing number ${i} for me`],
+      [aiOnly, ai, `zq sort out other thing ${i} for me`],
+      [unprotected, bare, `zq sort out bare thing ${i} for me`],
+    ] as const;
+    for (const [router, into, text] of round) {
+      const a = await h.timed(router, text);
+      assert.equal(a.r.path, "ai", JSON.stringify(a.r));
+      assert.equal(a.r.status, "ran");
+      assert.ok(Number.isFinite(a.dispatchMs), "the call reached the runner");
+      into.ms.push(a.ms);
+      into.dispatch.push(a.dispatchMs);
     }
+  }
+  return { fallback, fb, ai, bare };
+}
+
+test("fallback adds <= 2 ms p95 of dispatch time over AI-only and privacy <= 1 ms; a code hit sends nothing and does no protection work (gate)", { timeout: 240_000 }, async () => {
+  const stats = (xs: number[], d = 1) => ({ p50: +p50(xs).toFixed(d), p95: +p95(xs).toFixed(d) });
+  // Phase 1, asserted: dispatch time over many rounds (the model's own latency is irrelevant to it).
+  const h = await rig("gate", DISPATCH_LATENCY_MS);
+  let d: Awaited<ReturnType<typeof rounds>>;
+  let billed: number, hitWork: number;
+  const hits: number[] = [];
+  try {
+    d = await rounds(h, DISPATCH_N);
     const before = await h.sent();
     const work = intentProtectionWork();
-    const hits: number[] = [];
     for (const text of ["what's due tomorrow", "quiz me on recursion in cs 400", "go to philosophy", "flashcards due for econ", "search for utilitarianism"]) {
-      const c = await h.timed(fallback, text);
+      const c = await h.timed(d.fallback, text);
       assert.equal(c.r.path, "code", text);
       hits.push(c.ms);
     }
-    const billed = (await h.sent()) - before;
-    const hitWork = intentProtectionWork() - work;
-    const stats = (xs: number[], d = 1) => ({ p50: +p50(xs).toFixed(d), p95: +p95(xs).toFixed(d) });
-    const numbers = {
-      mode: "gate",
-      fakeLatencyMs: LATENCY_MS,
-      n: N,
-      dispatch: { fallback: stats(fb.dispatch, 2), aiOnly: stats(ai.dispatch, 2), unprotectedFallback: stats(bare.dispatch, 2) },
-      addedDispatchP95Ms: +(p95(fb.dispatch) - p95(ai.dispatch)).toFixed(2),
-      privacyDispatchP95Ms: +(p95(fb.dispatch) - p95(bare.dispatch)).toFixed(2),
-      endToEnd: { fallback: stats(fb.ms), aiOnly: stats(ai.ms), unprotectedFallback: stats(bare.ms), addedP95Ms: +(p95(fb.ms) - p95(ai.ms)).toFixed(1) },
-      codeHit: { ...stats(hits, 2), billedCalls: billed, protectionWork: hitWork },
-    };
-    console.log(`INTENT-LATENCY ${JSON.stringify(numbers)}`);
-    assert.equal(billed, 0, "a code hit sends nothing to the model");
-    assert.equal(hitWork, 0, "a code hit does no protection work");
-    assert.ok(p95(fb.dispatch) <= p95(ai.dispatch) + 2, `fallback dispatch p95 ${p95(fb.dispatch).toFixed(2)} ms vs AI-only ${p95(ai.dispatch).toFixed(2)} ms`);
-    assert.ok(p95(fb.dispatch) <= p95(bare.dispatch) + 1, `protected dispatch p95 ${p95(fb.dispatch).toFixed(2)} ms vs unprotected ${p95(bare.dispatch).toFixed(2)} ms`);
+    billed = (await h.sent()) - before;
+    hitWork = intentProtectionWork() - work;
   } finally {
     await h.pool.close();
   }
+  // Phase 2, reported only: the end-to-end time with the model answering in 800 ms.
+  const e = await rig("gate", LATENCY_MS);
+  let t: Awaited<ReturnType<typeof rounds>>;
+  try {
+    t = await rounds(e, E2E_N);
+  } finally {
+    await e.pool.close();
+  }
+  const { fb, ai, bare } = d;
+  const numbers = {
+    mode: "gate",
+    dispatch: { fakeLatencyMs: DISPATCH_LATENCY_MS, n: DISPATCH_N, fallback: stats(fb.dispatch, 2), aiOnly: stats(ai.dispatch, 2), unprotectedFallback: stats(bare.dispatch, 2) },
+    addedDispatchP95Ms: +(p95(fb.dispatch) - p95(ai.dispatch)).toFixed(2),
+    privacyDispatchP95Ms: +(p95(fb.dispatch) - p95(bare.dispatch)).toFixed(2),
+    endToEnd: { fakeLatencyMs: LATENCY_MS, n: E2E_N, fallback: stats(t.fb.ms), aiOnly: stats(t.ai.ms), unprotectedFallback: stats(t.bare.ms), addedP95Ms: +(p95(t.fb.ms) - p95(t.ai.ms)).toFixed(1) },
+    codeHit: { ...stats(hits, 2), billedCalls: billed, protectionWork: hitWork },
+  };
+  console.log(`INTENT-LATENCY ${JSON.stringify(numbers)}`);
+  assert.equal(billed, 0, "a code hit sends nothing to the model");
+  assert.equal(hitWork, 0, "a code hit does no protection work");
+  assert.ok(p95(fb.dispatch) <= p95(ai.dispatch) + 2, `fallback dispatch p95 ${p95(fb.dispatch).toFixed(2)} ms vs AI-only ${p95(ai.dispatch).toFixed(2)} ms`);
+  assert.ok(p95(fb.dispatch) <= p95(bare.dispatch) + 1, `protected dispatch p95 ${p95(fb.dispatch).toFixed(2)} ms vs unprotected ${p95(bare.dispatch).toFixed(2)} ms`);
 });
 
 test("race (send at once, abort on a code hit) gains nothing in-process: the synchronous resolver answers before the send leaves", { timeout: 120_000 }, async () => {

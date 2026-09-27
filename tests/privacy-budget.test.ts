@@ -1,8 +1,12 @@
 /**
- * The privacy cost budgets (the operator: "if privacy really adds latency it has to be miniscule"):
- * - the protection pass: <= 1 ms p95 for a 10 KB teaching text, <= 2 ms for 10 KB personal text,
- *   and a repeated send of the same text (cached by text hash and roster version) close to 0;
- * - encryption at rest: reading 2,000 messages stays within 10% of the unencrypted read, both the
+ * The privacy cost budgets (the operator: "if privacy really adds latency it has to be miniscule").
+ * Machine-independent: each is a ratio to a reference measured in the same run on the same data.
+ * - The protection pass: <= 6.5x (teaching) and <= 16x (personal) a plain scan of the same 10 KB
+ *   text with the full detector set, and a repeated send <= 2x. These ratios are the absolute
+ *   budgets (1 ms and 2 ms p95, 0.25 ms repeated) over the reference's p95 on the laptop they were
+ *   set on; the absolute numbers are reported with the machine named by
+ *   `pnpm magic:perf --suite privacy` (evals/perf/privacy.ts).
+ * - Encryption at rest: reading 2,000 messages stays within 10% of the unencrypted read, both the
  *   first read after the key arrives and later reads.
  * The command bar's budget (<= 1 ms added dispatch, 0 on a code hit) is in intent-latency.test.ts.
  */
@@ -12,54 +16,25 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createStore } from "@magic/storage";
-import { rosterFor } from "../packages/core/src/identity";
-import { protectText } from "../packages/core/src/privacy/protect";
-import { pseudonymSession } from "../packages/core/src/privacy/pseudonyms";
 import { deriveInstallKeys } from "../packages/core/src/privacy/at-rest";
+import { measureProtection, PROTECTION_BUDGET_RATIO } from "../evals/perf/privacy";
 
 const p95 = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.ceil(0.95 * xs.length) - 1]!;
 const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]!;
 
-const LECTURE =
-  "Recursion solves a problem by solving smaller instances of the same problem. Every recursive method needs a base case, and each call must make progress toward it. Consider the factorial: n! = n * (n-1)!, with 0! = 1. Configure the lab VM at 192.168.1.1 and run the tests. ";
-const MENTION = "Peer3 Person3 asked about tail calls in office hours; email qz@wisc.edu or call (608) 555-0142 with questions. ";
-const POST =
-  "Hi Peer4, it's Quentin. I finished the recursion lab and pushed it. My card is 5555 5555 5555 4444 for the club fee, and I live at 1234 Canaryhill Street if you want to study. ";
-const tenK = (seed: number, body: string, extra: string, every: number) => {
-  let t = `Week ${seed}. `;
-  for (let k = 1; t.length < 10240; k++) t += k % every === 0 ? extra : body;
-  return t.slice(0, 10240);
-};
-
-test("protection pass: <= 1 ms p95 per 10 KB teaching text, <= 2 ms personal; a repeated send costs close to 0", (t) => {
-  const store = createStore(":memory:");
-  store.recordAutoIdentity({ accountScope: "a", self: { names: ["Quentin Zabrowski"], emails: ["qz@wisc.edu"], netIds: ["qzab"], studentIds: ["9081234567"] } });
-  store.recordAutoIdentity({ accountScope: "a", courseId: "c", authors: Array.from({ length: 40 }, (_, i) => `Peer${i} Person${i}`) });
-  const roster = rosterFor(store, "c", "a");
+test("protection pass: within 6.5x (teaching) and 16x (personal) of a plain full-detector scan at p95; a repeated send within 2x", (t) => {
   const results: Record<string, number> = {};
-  for (const [label, body, extra, cls, budget] of [
-    ["teaching", LECTURE, MENTION, "teaching", 1],
-    ["personal", POST, MENTION, "personal", 2],
-  ] as const) {
-    for (let i = 0; i < 30; i++) protectText(tenK(1e6 + i, body, extra, 12), roster, pseudonymSession("warm"), cls); // JIT warm-up
-    const cold: number[] = [], cached: number[] = [];
-    for (let i = 0; i < 200; i++) {
-      const text = tenK(i, body, extra, 12);
-      let a = performance.now();
-      const first = protectText(text, roster, pseudonymSession("cold"), cls);
-      cold.push(performance.now() - a);
-      a = performance.now();
-      const again = protectText(text, roster, pseudonymSession("again"), cls);
-      cached.push(performance.now() - a);
-      if (i === 0) assert.equal(again.spans.length, first.spans.length);
-    }
-    results[`${label}ColdP95Ms`] = +p95(cold).toFixed(3);
-    results[`${label}CachedP95Ms`] = +p95(cached).toFixed(3);
-    assert.ok(p95(cold) <= budget, `${label}: p95 ${p95(cold).toFixed(3)} ms > ${budget} ms`);
-    assert.ok(p95(cached) <= 0.25, `${label} cached: p95 ${p95(cached).toFixed(3)} ms`);
+  for (const cls of ["teaching", "personal"] as const) {
+    const s = measureProtection(cls);
+    const ref = p95(s.reference);
+    results[`${cls}ReferenceP95Ms`] = +ref.toFixed(3);
+    results[`${cls}PassP95Ms`] = +p95(s.cold).toFixed(3);
+    results[`${cls}CachedP95Ms`] = +p95(s.cached).toFixed(3);
+    results[`${cls}Ratio`] = +(p95(s.cold) / ref).toFixed(2);
+    assert.ok(p95(s.cold) <= PROTECTION_BUDGET_RATIO[cls] * ref, `${cls}: pass p95 ${p95(s.cold).toFixed(3)} ms > ${PROTECTION_BUDGET_RATIO[cls]}x reference ${ref.toFixed(3)} ms`);
+    assert.ok(p95(s.cached) <= PROTECTION_BUDGET_RATIO.cached * ref, `${cls} cached: p95 ${p95(s.cached).toFixed(3)} ms > ${PROTECTION_BUDGET_RATIO.cached}x reference ${ref.toFixed(3)} ms`);
   }
   t.diagnostic(`PRIVACY-BUDGET ${JSON.stringify(results)}`);
-  store.close();
 });
 
 test("encryption at rest: reading 2,000 messages stays within 10% of unencrypted, first read after the key and later reads", (t) => {
