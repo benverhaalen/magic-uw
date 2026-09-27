@@ -233,7 +233,8 @@ export function resolveDeadline(
  * another version is not current, so changing the disclosure asks again.
  */
 // T30: bumped for the Outlook (Microsoft Graph) line, OUTLOOK_GRAPH_DISCLOSURE in contracts.
-export const CONSENT_DISCLOSURE_VERSION = "setup-2026-09-26-outlook";
+// embedded-jev: bumped for the Jev line (announcements, email, and the key shipped in the app).
+export const CONSENT_DISCLOSURE_VERSION = "setup-2026-09-27-jev";
 /**
  * Storage attaches the consent records to `privacy()` under this registered symbol as a
  * non-enumerable, frozen property. Spread, JSON, structured clone (IPC) and zod parsing all

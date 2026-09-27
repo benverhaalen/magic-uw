@@ -14,7 +14,7 @@ A context register, not an implementation backlog. No ownership is assigned.
 | Working method          | Reference-driven design across research, architecture, interface, implementation, and verification; inspect and test the transferred mechanism                               |
 | Current technical focus | Data access, local records, provenance, linking, and freshness                                                                                                               |
 | Computation             | Code for exact facts; Jev for typed judgments; language models for prose and deeper reasoning                                                                                |
-| Jev billing             | Company gateway pays for Claude/Codex/Gemini; OpenRouter users pay through their own key. Our TypeSafe key stays server-side. OpenRouter route is not built |
+| Jev billing             | Company gateway pays for Claude/Codex/Gemini; OpenRouter users pay through their own key. Our TypeSafe key stays server-side, except temporary [embedded-key builds](#2026-09-27--embedded-jev-key-temporary). OpenRouter route is not built |
 | Identity scrubbing      | Before hosted processing, remove student identities and unnecessary personal identifiers; retain relevant instructor/author names. Policy accepted; scrubber not implemented |
 | School actions          | Read only: no submitting, enrolling, or posting                                                                                                                              |
 | Learning policy         | Course policy first; coach when vague or silent                                                                                                                              |
@@ -179,3 +179,19 @@ Decisions and their reasons:
 - **Email (added after main gained Graph mail, #12).** Aidan chose which email can notify: advisor mail, course staff, university offices, meeting cancellations, job-interview invitations, clubs and publication updates, and relevant campus events; mail already read in Outlook never counts toward the badge. Canvas notification emails are dropped because the Canvas change already notifies. Code sets every level from the mail's code category and literal subject/preview rules. Jev (`mail.triage.v1`) may raise, never lower; it receives only the code's sender role, the subject and Outlook's ≤255-character preview (identity-scrubbed), plus a matched course's upcoming work, never a sender name or address. Mail reading itself has not yet run against Microsoft or UW (E1 pending), so email notifications are demonstrated on synthetic mail only.
 - **Placement:** mounted in the current top bar; Ben's Home layout owns the final position.
 - **Announcement rule tightened after the field-test benchmark.** Any single keyword ("deadline", "quiz", "location") used to make an announcement important, which marked about half of a real student's announcements important. It is now judged per sentence: a clear change phrase (cancelled, no class, postponed, moved to, room change) or a topic word together with a change word in the same sentence, unless a negation says nothing changed. Aidan, September 27: “exam should always flag as important, different than deadline or assignment” — so exam, midterm and final mentions stay important on their own. Quizzes follow the change-word rule. The same test decides urgent course-staff email.
+
+## 2026-09-27 — Embedded Jev key (temporary)
+
+Aidan chose to ship Jev with the owner's TypeSafe key built into the desktop app until a hosted gateway exists. Source: Aidan, this project conversation, September 27, 2026 (about 4 a.m. Central; original message timestamps unavailable), answering a choice between the key on every laptop, the student's own key, a local model, and code rules only:
+
+> we pick option A
+
+> we understand this is a vulnerability and want to ship it anyway for now due to our short time frame we have a long term plan
+
+Aidan wrote "we"; Ben's agreement is as Aidan reported it and is not separately recorded here. This **reverses, for embedded builds only,** the September 26 rule that our TypeSafe key stays server-side ([pricing resolution](#pricing-and-ai-access-resolution--september-26)). The OpenRouter route and a hosted gateway remain the intended long-term paths.
+
+- **Accepted risk:** anyone with a build that carries the key can extract it and spend on the owner's TypeSafe account outside the app. In-app caps do not bound that; only TypeSafe-side account limits and key revocation do. The TypeSafe customer agreement has not been checked for this use.
+- **Mechanism:** `MAGIC_EMBED_TYPESAFE_KEY` at build time (`scripts/build.ts`) is compiled into `main.cjs` only; the desktop main process then runs the existing gateway on `127.0.0.1` with the repo-default caps per laptop (`apps/desktop/src/embedded-jev.ts`). The worker, renderer, logs and Git never receive it. A configured `MAGIC_GATEWAY_URL` takes precedence. Builds without the variable embed nothing and notifications run on code rules.
+- **Disclosure:** the setup agreement's Jev line and the Data & AI toggle now say the app contains our shared key and that announcements and email previews reach Jev with Course communications on. `CONSENT_DISCLOSURE_VERSION` moved to `setup-2026-09-27-jev`, so existing students accept again.
+- **Operating rules:** use a dedicated TypeSafe key for embedded builds, set account-side spend limits if TypeSafe offers them, and revoke and rebuild when a key is abused. Never commit or publicly publish `apps/desktop/dist/` from such a build.
+

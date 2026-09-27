@@ -201,10 +201,15 @@ export function ConsentSetup({
               <dt>Jev</dt>
               <dd>
                 Our judgment service, run with TypeSafe. Purpose: sorting your
-                course items (for example, essay or problem set). Receives the
-                course name, item title, instructions and policy text, only
-                after you turn Jev on in Data &amp; AI. Our key stays on our
-                server.
+                course items (for example, essay or problem set) and, with
+                Course communications on, raising important announcements and
+                email in Notifications. Receives the course name, item title,
+                instructions and policy text, plus announcement text and email
+                subjects and previews when Course communications is on. Email
+                senders are described by role, not name or address. Only after
+                you turn Jev on in Data &amp; AI. Requests go to TypeSafe
+                directly from this app, which contains our shared key, or
+                through our gateway when one is set up. We pay for usage.
               </dd>
             </>
           ) : null}

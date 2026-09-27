@@ -5,6 +5,10 @@ import { copyFile, readFile, readdir } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 const fonts = "packages/ui/assets/fonts";
 const karma = await readFile(join(fonts, "Karma-Medium.ttf"));
+// owner: embedded-jev. Only a builder who sets MAGIC_EMBED_TYPESAFE_KEY embeds the owner's key
+// (September 27 decision in docs/decisions.md). The key is extractable from that build, so it
+// only reaches apps/desktop/src/embedded-jev.ts in main.cjs; dist/ is gitignored. Never printed.
+const embeddedKey = process.env.MAGIC_EMBED_TYPESAFE_KEY?.trim() ?? "";
 await build({
   entryPoints: [
     "apps/desktop/src/main.ts",
@@ -21,7 +25,11 @@ await build({
   external: ["electron", "pdfjs-dist/*"],
   sourcemap: false,
   logLevel: "warning",
+  define: { __MAGIC_EMBEDDED_TYPESAFE_KEY__: JSON.stringify(embeddedKey) },
 });
+console.log(embeddedKey
+  ? "Embedded Jev: this build carries the TypeSafe key. Do not commit or publish dist/ publicly."
+  : "Embedded Jev: no key embedded; Jev needs MAGIC_GATEWAY_URL.");
 // owner: acquisition: the extraction thread (extract-pool.ts), beside the utility bundle.
 await build({
   entryPoints: ["packages/connectors/src/extract-worker.ts"],

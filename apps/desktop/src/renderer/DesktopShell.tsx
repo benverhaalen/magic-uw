@@ -24,9 +24,9 @@ export function Glyph({ name }: { name: 'home' | 'book' | 'calendar' | 'panel' |
 // No verified display name or photo reaches the renderer yet (the Canvas profile feeds only the
 // local scrubbing roster), so the account shows a neutral glyph, never a guessed initial or name.
 export const profileLabel = (sample: boolean) => sample ? 'Sample student' : 'Your account';
-export function DesktopShell({ view, title, courses, selectedCourseKey, sample, busy, canBack, canForward, onBack, onForward, onNavigate, onCourse, onCompose, status, launcher, children }: {
+export function DesktopShell({ view, title, courses, selectedCourseKey, sample, busy, canBack, canForward, onBack, onForward, onNavigate, onCourse, onCompose, status, launcher, trailing, children }: {
   view: DesktopView; title: string; courses: CourseCard[]; selectedCourseKey: string | null; sample: boolean; busy: boolean; canBack: boolean; canForward: boolean;
-  onBack: () => void; onForward: () => void; onNavigate: (view: DesktopView) => void; onCourse: (key: string) => void; onCompose: () => void; status?: ReactNode; launcher?: ReactNode; children: ReactNode;
+  onBack: () => void; onForward: () => void; onNavigate: (view: DesktopView) => void; onCourse: (key: string) => void; onCompose: () => void; status?: ReactNode; launcher?: ReactNode; trailing?: ReactNode; children: ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false), [expanded, setExpanded] = useState(true);
   const launcherRef = useRef<HTMLDivElement>(null);
@@ -63,7 +63,7 @@ export function DesktopShell({ view, title, courses, selectedCourseKey, sample, 
       <span className="desktop-history-slot" data-available={canForward}>
         <button ref={forwardRef} aria-label="Go forward" aria-hidden={!canForward} tabIndex={canForward ? 0 : -1} onClick={() => { if (canForward) onForward(); }}><Glyph name="forward"/></button>
       </span>
-    </div><span className="desktop-page-title" title={title}>{title}</span><div className="desktop-status">{status}<span className="desktop-state">{sample ? 'Sample data' : busy ? 'Working…' : ''}</span></div></header>
+    </div><span className="desktop-page-title" title={title}>{title}</span><div className="desktop-status">{status}<span className="desktop-state">{sample ? 'Sample data' : busy ? 'Working…' : ''}</span>{trailing}</div></header>
     <aside className="desktop-sidebar" aria-label="Workspace">
       <nav aria-label="Main navigation">{([
         ['today', 'Home', 'home'], ['courses', 'Courses', 'book'], ['myuw', 'My UW', 'school'], ['calendar', 'Calendar', 'calendar'],
