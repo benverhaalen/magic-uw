@@ -33,10 +33,22 @@ export function linkExactEvidence(store: Store) {
   const key = (r: Resource, url = r.url) =>
     `${sources.get(r.sourceId)?.accountScope}:${r.courseId}:${normalized(url, r.courseId)}`;
   const byUrl = new Map<string, Resource[]>();
+  // The first captured assignment per account, course and Canvas ID: the calendar link's target.
+  const assignmentByKey = new Map<string, Resource>();
   for (const r of resources) {
     const k = key(r);
-    byUrl.set(k, [...(byUrl.get(k) ?? []), r]);
+    const list = byUrl.get(k);
+    if (list) list.push(r);
+    else byUrl.set(k, [r]);
+    const source = sources.get(r.sourceId);
+    if (r.kind === "assignment" && source?.scope === "assignments") {
+      const a = JSON.stringify([source.accountScope, r.courseId, r.externalId]);
+      if (!assignmentByKey.has(a)) assignmentByKey.set(a, r);
+    }
   }
+  // Rejections read once: a putLink below never makes a link rejected, and re-putting a rejected
+  // link (same values, its status kept) leaves the same row.
+  const rejected = new Set(store.links().filter((l) => l.status === "rejected").map((l) => l.id));
   function link(
     from: Resource,
     to: Resource,
@@ -45,8 +57,7 @@ export function linkExactEvidence(store: Store) {
   ) {
     if (from.id === to.id) return;
     const id = `exact:${hash(`${from.id}:${to.id}:${type}`)}`;
-    if (store.links().some((l) => l.id === id && l.status === "rejected"))
-      return;
+    if (rejected.has(id)) return;
     store.putLink({
       id,
       fromId: from.id,
@@ -59,15 +70,10 @@ export function linkExactEvidence(store: Store) {
   }
   for (const resource of resources) {
     if (resource.calendar?.assignmentExternalId) {
-      const target = resources.find(
-        (r) =>
-          r.kind === "assignment" &&
-          r.externalId === resource.calendar?.assignmentExternalId &&
-          r.courseId === resource.courseId &&
-          sources.get(r.sourceId)?.accountScope ===
-            sources.get(resource.sourceId)?.accountScope &&
-          sources.get(r.sourceId)?.scope === "assignments",
-      );
+      const own = sources.get(resource.sourceId);
+      const target = own
+        ? assignmentByKey.get(JSON.stringify([own.accountScope, resource.courseId, resource.calendar.assignmentExternalId]))
+        : undefined;
       if (target)
         link(
           resource,
@@ -140,6 +146,7 @@ export function evidenceFor(store: Store, permitted: (resource: Resource) => boo
     const target = key && assignments.get(key);
     if (target && target.id !== resource.id) exactContributors.set(target.id, [...(exactContributors.get(target.id) ?? []), resource]);
   }
+  const siteSources = new Set([...sources.values()].filter(s => s.kind === "site").map(s => s.id));
   const links = allLinks
     .filter(
       (l) => l.status === "accepted" && byId.has(l.fromId) && byId.has(l.toId),
@@ -174,7 +181,11 @@ export function evidenceFor(store: Store, permitted: (resource: Resource) => boo
       return [
         ...resource.deadlines.map((c) => ({
           ...c,
-          origin: resource.calendar ? ("calendar" as const) : ("canvas" as const),
+          origin: resource.calendar
+            ? ("calendar" as const)
+            : siteSources.has(resource.sourceId)
+              ? ("page" as const)
+              : ("canvas" as const),
         })),
         ...(exactContributors.get(resource.id) ?? []).flatMap(contributor => contributor.kind === "event"
           ? feedClaim(contributor)

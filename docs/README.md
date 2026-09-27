@@ -27,6 +27,7 @@ We are entering Applied AI & Automation, DoIT's Badgers Building for Badgers, an
 | [Academic data platform](academic-data-platform.md)   | **Start here for the backend and for developers:** the app's backend as an open, local-first academic database; status per part, quickstart, decisions with evidence, sourced scorecard |
 | [Current desktop handoff](design-handoff.md) | **Start here for frontend work:** one published branch, normal entry points, integrated consumers, tested journeys and remaining gaps |
 | [Design system](../DESIGN.md) | Accepted visual and behavior requirements, canonical roles, and consumer adoption gates |
+| [Benchmarks](benchmarks.md) | How the app is measured and every result: method, performance, quality, robustness, the competitor protocol and what is not yet measured |
 | [Marketing materials](../marketing/README.md)          | Website page directions, wizard logo pack, and team photos (design exports, not the built site)          |
 | [Home and visual direction](home-design-direction.md) | Current flagship Home, near-approved layout/type, remaining local refinements and reference transfers |
 | [My Magic UW direction](magic-canvas-direction.md) | Course backend lane: the whole product, frontend surfaces, open-source academic data platform plus paid product, roadmap (open decisions marked) |

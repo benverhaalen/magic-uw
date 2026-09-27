@@ -9,10 +9,15 @@ const karma = await readFile(join(fonts, "Karma-Medium.ttf"));
 // (September 27 decision in docs/decisions.md). The key is extractable from that build, so it
 // only reaches apps/desktop/src/embedded-jev.ts in main.cjs; dist/ is gitignored. Never printed.
 const embeddedKey = process.env.MAGIC_EMBED_TYPESAFE_KEY?.trim() ?? "";
+// owner: T05e. The Remember my sign-in build switch (plan D39): a UW-licensed build runs
+// `MAGIC_REMEMBER_SIGNIN=off pnpm build`. The value is baked into the bundle, so an environment
+// variable at run time can't turn the feature back on.
+const rememberSignIn = process.env.MAGIC_REMEMBER_SIGNIN === "off" ? "off" : "on";
 await build({
   entryPoints: [
     "apps/desktop/src/main.ts",
     "apps/desktop/src/preload.ts",
+    "apps/desktop/src/signin-preload.ts", // owner: T05e: the UW sign-in window's preload
     "apps/desktop/src/worker.ts",
     "apps/desktop/src/mcp-server.ts",
   ],
@@ -25,7 +30,7 @@ await build({
   external: ["electron", "pdfjs-dist/*"],
   sourcemap: false,
   logLevel: "warning",
-  define: { __MAGIC_EMBEDDED_TYPESAFE_KEY__: JSON.stringify(embeddedKey) },
+  define: { __MAGIC_EMBEDDED_TYPESAFE_KEY__: JSON.stringify(embeddedKey), "process.env.MAGIC_REMEMBER_SIGNIN": JSON.stringify(rememberSignIn) },
 });
 console.log(embeddedKey
   ? "Embedded Jev: this build carries the TypeSafe key. Do not commit or publish dist/ publicly."

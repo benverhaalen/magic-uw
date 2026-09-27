@@ -19,6 +19,7 @@ export const DEFAULT_PATHS = [
   "apps/desktop/src/renderer/notebook",
   "apps/desktop/src/renderer/practice",
   "apps/desktop/src/renderer/insights",
+  "apps/desktop/src/renderer/backend/mastery", // owner: mastery (D57)
 ];
 
 export interface Rule {

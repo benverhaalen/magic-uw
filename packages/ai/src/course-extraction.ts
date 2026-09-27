@@ -9,7 +9,8 @@ const sourceSchema = z.object({
   text: z.string().max(200000), kind: z.string().max(100), externalId: z.string().max(500),
 });
 const inputSchema = z.object({ inputHash: z.string().min(1).max(200),
-  resources: z.array(sourceSchema).max(1000) });
+  resources: z.array(sourceSchema).max(1000),
+  syllabusResourceIds: z.array(z.string().min(1).max(500)).max(10).optional() });
 const candidateSchema = z.object({
   kind: z.enum(["ai_policy", "grading", "topic", "assessment"]),
   resourceId: z.string().min(1).max(500), contentHash: z.string().min(1).max(200),
@@ -21,6 +22,8 @@ const responseSchema = z.object({ candidates: z.array(candidateSchema).max(40) }
 export interface LocalCourseExtractionInput {
   inputHash: string;
   resources: Pick<Resource, "id" | "contentHash" | "text" | "kind" | "externalId">[];
+  /** The syllabus sources code selected (D34); they count as the syllabus for course-level facts. */
+  syllabusResourceIds?: string[];
 }
 
 /** Optional local semantic selection; no construction I/O, cloud route or model install.
@@ -39,9 +42,11 @@ export function createLocalCourseExtractor(options: {
       const parsed = inputSchema.safeParse(input);
       if (!parsed.success) return null;
       if (new Set(parsed.data.resources.map(r => r.id)).size !== parsed.data.resources.length) return null;
-      const eligible = parsed.data.resources.filter(r =>
-        r.externalId === "syllabus" || r.kind === "assignment")
-        .sort((a, b) => Number(b.externalId === "syllabus") - Number(a.externalId === "syllabus") || a.id.localeCompare(b.id));
+      const chosen = new Set(parsed.data.syllabusResourceIds ?? []);
+      const isSyllabus = (r: { id: string; externalId: string }) => r.externalId === "syllabus" || chosen.has(r.id);
+      const eligible = parsed.data.resources.filter(r => isSyllabus(r) || r.kind === "assignment")
+        .sort((a, b) => Number(chosen.has(b.id)) - Number(chosen.has(a.id))
+          || Number(isSyllabus(b)) - Number(isSyllabus(a)) || a.id.localeCompare(b.id));
       const selected: z.infer<typeof sourceSchema>[] = [];
       const omitted = new Set<string>();
       let remaining = MAX_CHARACTERS;

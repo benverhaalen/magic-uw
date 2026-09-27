@@ -9,6 +9,7 @@ import {
   type Tier,
 } from "./types";
 import { contentFile, extractJson, failure } from "./util";
+import { codexStreamCheck } from "./tripwire"; // owner: client-detection
 
 export interface CodexTierModel {
   /** Omitted: the CLI's built-in default, which the student's plan serves by construction. */
@@ -49,6 +50,10 @@ export function codexArgs(o: { schemaPath: string } & CodexTierModel): string[] 
     "read-only",
     "--ignore-user-config",
     "--skip-git-repo-check",
+    // owner: client-detection (security): never ask to approve anything; with the read-only
+    // sandbox and the tool features off (clients/instant.ts), nothing is approved either.
+    "-c",
+    'approval_policy="never"',
   ];
   if (o.model) args.push("-m", o.model);
   if (o.effort) args.push("-c", `model_reasoning_effort="${o.effort}"`);
@@ -130,12 +135,14 @@ export function createCodexBackend(options: CodexOptions): ModelBackend {
         env: cliEnvironment(options.env),
         timeoutMs: call.timeoutMs,
         signal: call.signal,
+        // owner: client-detection (security): any tool item kills the run and discards its output.
+        onStdoutLine: codexStreamCheck,
       });
       try {
         return parseCodexEvents(run.stdout, tier.model ?? "");
       } catch (error) {
         if (run.code !== 0 && error instanceof RunnerError && error.kind === "invalid_output")
-          throw failure(run.stderr, `codex exited ${run.code}`);
+          throw failure(`${run.stderr}\nexit ${run.code}`, `codex exited ${run.code}`);
         throw error;
       }
     },

@@ -169,6 +169,7 @@ export function MyUwPage({ snapshot, busy, run, open, signIn, refresh }: MyUwPro
 
   return <div className={`myuw-page${firstConnection ? " myuw-page--connect" : ""}`} ref={root}>
     <div className="myuw-main">
+      {snapshot.planning?.unreadable ? <p role="status" className="myuw-outcome">Some saved planning records cannot be opened on this device. Refresh planning to read them again; this view is incomplete until then.</p> : null}
       {firstConnection ? <ConnectionEntry busy={busy} canSignIn={canSignIn} signIn={signIn} />
         : <Briefing model={model} establishedEnroll={establishedEnroll} busy={busy} canSignIn={canSignIn} signIn={signIn} reveal={reveal} />}
       {!firstConnection || model.checkedAt ? <div className="myuw-status" role="status">

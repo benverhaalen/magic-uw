@@ -18,7 +18,8 @@ import type { CourseCoreStore, CourseRef } from "../../contracts/src/course-core
 import { maySend, resolveDeadline } from "../../domain/src/index";
 import { contentCategories, courseInclusion } from "../../core/src/access";
 import { evidenceFor } from "../../core/src/evidence";
-import { outgoingProjection, payloadScrubber } from "../../core/src/identity";
+// owner: privacy: the protection pass (roster + class-scoped detectors + per-request pseudonyms).
+import { classOf, protectedPayloadScrubber, protectedProjection, type ContentClass, type ProtectedScrubber } from "../../core/src/privacy/protect";
 import { porterStem, queryTerms, MAX_SEARCH_K } from "../../retrieval/src/index";
 import type { DetailLevel } from "./budget";
 
@@ -110,19 +111,23 @@ export function openSession(
   };
   // Agent output goes to AI clients: every free-text field passes the hosted-payload scrubber.
   // Excerpt offsets are in scrubbed ("outgoing") coordinates; validate-citations maps them back.
-  const scrubbers = new Map<string, ReturnType<typeof payloadScrubber>>();
+  const scrubbers = new Map<string, ProtectedScrubber>(); // owner: privacy
   const memo = new Map<string, string>();
-  const out = (value: string, courseId: string, scope?: string) => {
+  const scrubberOf = (scope?: string) => {
     const scopeKey = scope ?? "";
     let scrubber = scrubbers.get(scopeKey);
-    if (!scrubber) scrubbers.set(scopeKey, (scrubber = payloadScrubber(store, true, scope)));
-    const key = `${scopeKey}\u0000${courseId}\u0000${value}`;
+    if (!scrubber) scrubbers.set(scopeKey, (scrubber = protectedPayloadScrubber(store, true, scope, `agent:${g.id}`)));
+    return scrubber;
+  };
+  const out = (value: string, courseId: string, scope?: string, cls: ContentClass = "personal") => {
+    const key = `${scope ?? ""}\u0000${courseId}\u0000${cls}\u0000${value}`;
     let v = memo.get(key);
-    if (v === undefined) memo.set(key, (v = scrubber.field(value, courseId)));
+    if (v === undefined) memo.set(key, (v = scrubberOf(scope).field(value, courseId, cls)));
     return v;
   };
-  const scrubFor = (r: Resource) => (value: string) =>
-    out(value, r.courseId, sourceMap.get(r.sourceId)?.accountScope);
+  /** A resource's fields at its own class; `personal` for what others wrote about it (comments, grades). */
+  const scrubFor = (r: Resource, cls: ContentClass = classOf(r)) => (value: string) =>
+    out(value, r.courseId, sourceMap.get(r.sourceId)?.accountScope, cls);
   let allowedList: Resource[] | undefined;
   const resources = () => (allowedList ??= view.resources().filter((r) => allowed(r)));
   let evidence: ReturnType<typeof evidenceFor> | undefined;
@@ -152,6 +157,7 @@ export function openSession(
   function project(r: Resource, { level, around, dry }: ProjectOptions) {
     const source = sourceMap.get(r.sourceId)!;
     const s = scrubFor(r);
+    const personal = scrubFor(r, "personal"); // owner: privacy: grades and comments
     const text = s(r.text);
     const lead = Math.min(500, Math.floor(level.window / 4));
     const start = around === undefined ? 0 : Math.max(0, Math.min(around - lead, text.length - level.window));
@@ -159,7 +165,7 @@ export function openSession(
     // has exactly the real build's length.
     const projection = dry
       ? { id: DRY_PROJECTION_ID, text: text.slice(start, start + level.window), start, end: Math.min(text.length, start + level.window) }
-      : outgoingProjection(store, r, "text", { start, end: start + level.window });
+      : protectedProjection(store, r, "text", { start, end: start + level.window }, scrubberOf(source.accountScope)); // owner: privacy
     return {
       id: r.id,
       courseId: r.courseId,
@@ -200,7 +206,7 @@ export function openSession(
         ? {
             grade: {
               score: r.submission.score,
-              grade: typeof r.submission.grade === "string" ? s(r.submission.grade) : r.submission.grade,
+              grade: typeof r.submission.grade === "string" ? personal(r.submission.grade) : r.submission.grade,
               late: r.submission.late,
               missing: r.submission.missing,
               excused: r.submission.excused,
@@ -211,8 +217,8 @@ export function openSession(
         ? {
             comments: r.submission.comments?.slice(0, level.comments).map((c) => ({
               createdAt: c.createdAt,
-              text: clip(s(c.text), level.commentChars),
-              ...(c.authorName ? { authorName: s(c.authorName) } : {}),
+              text: clip(personal(c.text), level.commentChars),
+              ...(c.authorName ? { authorName: personal(c.authorName) } : {}),
             })),
           }
         : {}),
@@ -261,6 +267,12 @@ export function openSession(
     return found;
   }
 
+  // owner: privacy
+  function protectionOf(): { protection?: EgressReceipt["protection"] } {
+    const counts: NonNullable<EgressReceipt["protection"]> = {};
+    for (const sc of scrubbers.values()) for (const [k, n] of Object.entries(sc.counts())) counts[k as keyof typeof counts] = (counts[k as keyof typeof counts] ?? 0) + (n ?? 0);
+    return Object.keys(counts).length ? { protection: counts } : {};
+  }
   /** One receipt per call, over what was returned and what contributed to it. */
   function receipt(purpose: string, selected: Resource[], characters: number, withPrivate: boolean) {
     const all = [...new Map([...selected, ...contributors.values()].map((r) => [r.id, r])).values()];
@@ -282,6 +294,7 @@ export function openSession(
       characters,
       status: "sent",
       createdAt: now().toISOString(),
+      ...protectionOf(), // owner: privacy: counts per protected kind, never values
     };
     (options.recordReceipt ?? ((r: EgressReceipt) => store.addReceipt(r)))(value);
   }

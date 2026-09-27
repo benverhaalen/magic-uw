@@ -59,7 +59,7 @@ const forbidden = [
   "--full-auto",
 ];
 
-test("claude one-shot: exact spec E2 argv, prompt only on stdin, byte-stable prefix file, usage parsed", async () => {
+test("claude one-shot: exact argv (spec E2, streamed, deny hook), prompt only on stdin, byte-stable prefix file, usage parsed", async () => {
   const h = await harness([{ output: { front: "Q", back: "A" } }]);
   const backend = createClaudeBackend({ command: fake("claude"), workDir: h.workDir, env: h.env });
   const ledger: LedgerEntry[] = [];
@@ -73,11 +73,17 @@ test("claude one-shot: exact spec E2 argv, prompt only on stdin, byte-stable pre
   const [call] = await h.calls();
   const prefixPath = call.argv[call.argv.indexOf("--system-prompt-file") + 1];
   const schemaJson = call.argv[call.argv.indexOf("--json-schema") + 1];
+  // client-detection (operator, defence in depth): streamed so the tripwire sees a tool use as it
+  // starts, and a deny-every-tool PreToolUse hook passed with --settings from the run folder.
+  const settingsPath = call.argv[call.argv.indexOf("--settings") + 1];
   assert.deepEqual(call.argv, [
-    "-p", "--output-format", "json", "--json-schema", schemaJson, "--tools", "",
+    "-p", "--output-format", "stream-json", "--verbose", "--settings", settingsPath,
+    "--json-schema", schemaJson, "--tools", "",
     "--strict-mcp-config", "--setting-sources", "project,local", "--no-session-persistence",
     "--system-prompt-file", prefixPath, "--model", "sonnet",
   ]);
+  assert.ok(settingsPath.startsWith(h.workDir));
+  assert.deepEqual(JSON.parse(await readFile(settingsPath, "utf8")).hooks.PreToolUse[0].hooks[0], { type: "command", command: "exit 2" });
   assert.equal(JSON.parse(schemaJson).type, "object");
   assert.equal(await readFile(prefixPath, "utf8"), SYSTEM);
   assert.equal(call.stdin, secretAsk);
@@ -100,7 +106,7 @@ test("the same prefix maps to the same file; a different course gets a different
   assert.equal((await readdir(join(h.workDir, "prefix"))).length, 2);
 });
 
-test("codex one-shot: exact spec E2 argv, prefix leads stdin, strong tier adds effort, usage parsed", async () => {
+test("codex one-shot: exact argv (spec E2, no git check, never asks), prefix leads stdin, strong tier adds effort, usage parsed", async () => {
   const h = await harness([{ output: { front: "Q", back: "A" }, usage: { input_tokens: 500, cached_input_tokens: 400, output_tokens: 30 } }]);
   const backend = createCodexBackend({ command: fake("codex"), workDir: h.workDir, env: h.env });
   const runner = createModelRunner({ backend });
@@ -113,6 +119,8 @@ test("codex one-shot: exact spec E2 argv, prefix leads stdin, strong tier adds e
     "exec", "-", "--json", "--output-schema", schemaPath, "--ephemeral", "-s", "read-only", "--ignore-user-config",
     // Codex refuses a non-git folder without it (verified on 0.156.1); the app's folders never are one.
     "--skip-git-repo-check",
+    // client-detection (security review): never ask for approval, in both modes.
+    "-c", 'approval_policy="never"',
   ]);
   assert.equal(JSON.parse(await readFile(schemaPath, "utf8")).additionalProperties, false);
   assert.ok(first.stdin.startsWith(SYSTEM));

@@ -231,9 +231,14 @@ export function courseCoreRepository(
     transaction<T>(operation: () => T): T;
     timestamp(value: string): string;
     versionText(resourceId: string, version?: number): VersionText | undefined;
+    /** owner: privacy: seals life_items sender and gist at rest. */
+    sealText?: (value: string, aad: string) => string;
+    openText?: (value: string, aad: string) => string;
   },
 ): CourseCoreMethods {
   const { transaction, timestamp, versionText } = deps;
+  const sealText = deps.sealText ?? ((v: string) => v); // owner: privacy
+  const openText = deps.openText ?? ((v: string) => v); // owner: privacy
 
   function sourceCourse(sourceId: string): { accountScope: string; courseId: string } {
     const row = prepare("SELECT account_scope, course_id FROM sources WHERE id = ?").get(sourceId);
@@ -657,6 +662,15 @@ export function courseCoreRepository(
         return { ok: true };
       });
     },
+    syllabusRoleIds(course) {
+      return (
+        prepare(
+          `SELECT DISTINCT f.resource_id FROM material_facts f JOIN resources r ON r.id = f.resource_id
+           JOIN sources s ON s.id = r.source_id WHERE s.account_scope = ? AND s.course_id = ? AND r.deleted = 0
+           AND f.kind = 'role' AND f.value = 'syllabus' AND f.text_hash = r.text_hash ORDER BY f.resource_id`,
+        ).all(course.accountScope, course.courseId) as Row[]
+      ).map((r) => String(r.resource_id));
+    },
     materialFacts(resourceId) {
       return (
         prepare(
@@ -754,8 +768,8 @@ export function courseCoreRepository(
          area=excluded.area,course_id=excluded.course_id,sender=excluded.sender,title=excluded.title,date=excluded.date,
          labels=excluded.labels,link=excluded.link,duplicate_of=excluded.duplicate_of,gist=excluded.gist`,
       ).run(
-        l.id, l.sourceId, l.area, l.courseId, nullable(l.sender), l.title, l.date && timestamp(l.date),
-        JSON.stringify(l.labels), l.link, l.duplicateOf, l.gist,
+        l.id, l.sourceId, l.area, l.courseId, l.sender ? sealText(l.sender, "life_items.sender") : nullable(l.sender), l.title, l.date && timestamp(l.date),
+        JSON.stringify(l.labels), l.link, l.duplicateOf, sealText(l.gist, "life_items.gist"), // owner: privacy
       );
     },
     lifeItems(area) {
@@ -769,13 +783,13 @@ export function courseCoreRepository(
         sourceId: String(r.source_id),
         area: r.area as LifeItem["area"],
         courseId: str(r.course_id),
-        sender: str(r.sender),
+        sender: r.sender === null || r.sender === undefined ? str(r.sender) : openText(String(r.sender), "life_items.sender") || null, // owner: privacy
         title: String(r.title),
         date: str(r.date),
         labels: JSON.parse(String(r.labels)),
         link: String(r.link),
         duplicateOf: str(r.duplicate_of),
-        gist: String(r.gist),
+        gist: openText(String(r.gist), "life_items.gist"), // owner: privacy
       }));
     },
   };

@@ -30,7 +30,7 @@ My Magic UW is a desktop study app for UW–Madison students. The student signs 
 
 ## 3. Frontend: everything we're building
 
-Every surface follows [DESIGN.md](../DESIGN.md) and the near-approved Home. A new visual family or consequential workflow change goes to Ben as a concrete comparison first. The exact channels and commands each surface calls are in [architecture §5](course-backend-architecture.md#5-frontend-surfaces-the-backend-serves).
+Every surface follows [DESIGN.md](../DESIGN.md) and the near-approved Home. A new visual family or consequential workflow change goes to Ben as a concrete comparison first. The exact channels and commands each surface calls are in [architecture §11](course-backend-architecture.md#11-frontend-surfaces-the-backend-serves).
 
 | Surface | What it does | Backend it uses | Status | Design note |
 |---|---|---|---|---|
@@ -47,7 +47,7 @@ Every surface follows [DESIGN.md](../DESIGN.md) and the near-approved Home. A ne
 | **Notes tree** | the `.docx` tree and each session's note, opened in the student's editor | T59 | proposed | |
 | **Today rail integration** | lectures, events, the day plan and today's study sessions | the team's day-plan work (PR #2, pending merge) and the unified schedule | the rail is the team's, in progress; our schedule proposed | the rail's structure is kept |
 | **Planning (My UW)** | enrollment, holds, appointments, DARS, Course Search & Enroll | the planning adapters on `main` | built on `main` (the team's) | local only; never to AI, Jev or MCP |
-| **Settings** | AI clients and keys; "Keep me signed in"; "Remember my sign-in"; consent and agreements; purge | onboarding (T40), session (T05c), consent (T06), D39 | "Keep me signed in", consent and agreements integrated; clients and keys proposed; "Remember my sign-in" proposed (open H2) | |
+| **Settings** | AI clients and keys; "Keep me signed in"; "Remember my sign-in"; consent and agreements; purge | onboarding (T40), session (T05c), consent (T06), D39 | "Keep me signed in", consent and agreements integrated; clients and keys proposed; "Remember my sign-in" built and tested in isolation, its Forget row under Sources ▸ UW Canvas (open H2) | |
 
 ## 4. NotebookLM, Quizlet and Anki: parity, and where we aim to outperform
 

@@ -59,9 +59,9 @@ export type PackJobResult<O> =
   /** Retry and escalation both failed the checks: the student decides what happens next. */
   | { status: "needs_student"; question: string; options: ("retry" | "narrow_scope" | "skip")[]; checkErrors: string[] }
   /** Background work waits: a usage limit, the daily budget, or a pause already in force. */
-  | { status: "paused"; kind: RunnerErrorKind; message: string }
+  | { status: "paused"; kind: RunnerErrorKind; message: string; resetsAt?: string }
   | { status: "blocked"; reason: string }
-  | { status: "failed"; kind: RunnerErrorKind; message: string };
+  | { status: "failed"; kind: RunnerErrorKind; message: string; resetsAt?: string };
 
 /**
  * Runs one pack (T13): cache first (a hit spends no tokens), then the egress check, then one
@@ -141,8 +141,8 @@ export async function runPack<I, O>(
       options.lane === "background" &&
       (error.kind === "usage_limit" || error.kind === "budget_exhausted" || error.kind === "background_paused")
     )
-      return { status: "paused", kind: error.kind, message: error.studentMessage };
-    return { status: "failed", kind: error.kind, message: error.studentMessage };
+      return { status: "paused", kind: error.kind, ...studentFacing(error) };
+    return { status: "failed", kind: error.kind, ...studentFacing(error) };
   }
 
   const gates: LearningArtifact["gates"] = [];
@@ -194,4 +194,13 @@ export function readPackArtifact<I, O>(
   if (!hit) return null;
   const output = pack.schema.safeParse(hit.output);
   return output.success ? { ...hit, output: output.data } : null;
+}
+
+/**
+ * owner: client-detection (e2e harness). The student's message for a failed run, with the reset
+ * time the client stated when it gave one (a usage limit), so the student learns when to retry.
+ */
+function studentFacing(error: RunnerError): { message: string; resetsAt?: string } {
+  if (!error.resetsAt) return { message: error.studentMessage };
+  return { message: `${error.studentMessage} Your plan says it resets ${error.resetsAt}.`, resetsAt: error.resetsAt };
 }

@@ -10,7 +10,7 @@ export type NoticeAction =
   | { kind: "quick_chat" }
   | { kind: "check_again" }
   | { kind: "switch" }
-  | { kind: "use_profile" }
+  | { kind: "use_profile"; label?: string }
   | { kind: "add_key" }
   | { kind: "link"; label: string; url: string };
 
@@ -73,10 +73,14 @@ export function healthCopy(h: ClientHealth, options: { chat?: boolean } = {}): H
       if (h.mode === "instant" && !h.instant.available)
         return {
           tone: "problem",
-          title: `Update ${name} to use it here`,
+          title: `Update ${name} to connect instantly`,
           cause: h.instant.reason ?? `This version of ${name} can't be run with My Magic UW's settings.`,
-          next: `Update ${name}, then check again. Or choose another AI.`,
-          actions: [{ kind: "link", label: `How to update ${name}`, url: INSTALL_URLS[h.id] }, { kind: "check_again" }, { kind: "switch" }],
+          next: `Update ${name}, then check again. Or use a separate sign-in for My Magic UW, which works with this version.`,
+          actions: [
+            { kind: "link", label: `How to update ${name}`, url: INSTALL_URLS[h.id] },
+            ...(h.modes.includes("isolated") ? [{ kind: "use_profile" as const, label: "Use a separate sign-in" }] : []),
+            { kind: "check_again" },
+          ],
         };
       return {
         tone: "wait",
@@ -147,6 +151,23 @@ export function healthCopy(h: ClientHealth, options: { chat?: boolean } = {}): H
           ? `Open Quick chat and type /model to see what your plan includes, or switch to ${other(h.id)}.`
           : `Check which models your plan includes in ${name} (/model), or switch to ${other(h.id)}.`,
         actions: [...chat(h), { kind: "switch" }],
+      };
+    case "keychain_locked": // owner: client-detection (macOS)
+      return {
+        tone: "problem",
+        title: `macOS blocked access to ${name}'s saved sign-in`,
+        cause: `${name} keeps its sign-in in your Keychain, and macOS didn't let it be read for My Magic UW.`,
+        next: "Open Terminal, run {command} once, allow Keychain access (Always Allow), then click Check again.",
+        command: h.id === "codex" ? "codex" : "claude",
+        actions: [{ kind: "check_again" }, ...chat(h)],
+      };
+    case "tool_use_blocked": // owner: client-detection (security)
+      return {
+        tone: "problem",
+        title: `${name} tried to use a tool`,
+        cause: `My Magic UW never lets the model run commands, edit files or browse. ${name} started to, so the run was stopped and its answer discarded.`,
+        next: "Try again. If it keeps happening, update the client or choose another AI, and tell us which version you have.",
+        actions: [{ kind: "check_again" }, { kind: "switch" }],
       };
     case "offline":
       return {

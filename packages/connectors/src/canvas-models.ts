@@ -42,6 +42,8 @@ export const courseSchema = z.object({
   end_at: date,
   concluded: z.boolean().optional(),
   access_restricted_by_date: z.boolean().optional(),
+  // fix/current-courses-only: whether the course's own dates govern enrollment (Course object).
+  restrict_enrollments_to_course_dates: z.boolean().nullable().optional(),
   term: z
     .object({
       id: canvasId.optional(),

@@ -1,5 +1,18 @@
 # My Magic UW desktop handoff
 
+## 2026-09-27 — main is the delivery target; backend wave reconciled
+
+Ben explicitly requested continuously publishing finished work to `main`. The existing `codex/desktop-design-integration` checkout remains the sole integration workspace; tested coherent checkpoints are reconciled with fresh `origin/main` and pushed normally to `main`, with no force push. The earlier frontend-only branch instruction below is superseded.
+
+This checkpoint merges main `aa1ff4504f17878c4c013fec632db5af4dc5d5a5` (PR #51). It preserves the designed shell, local voice page-navigation fence, personal date/report account and evidence boundaries, and snapshot resource-read reuse while adopting the shared privacy v14, remembered sign-in, document-window, course-facts, page-view, exam, mastery, and nonblocking job implementations. Backend availability does not mean every designed route is mounted. Targeted `study.prep` transfer and its account/policy-safe producer integration follow this checkpoint; Study, durable Chats, generic connected-agent/Jev voice control, and task-owned browser windows remain separate delivery work.
+
+The published `0fd78ff` footer/local-navigation repair is verified on copied data. The actual visible app remains the earlier `e7746ca` application (Electron 54767, monitor 54552); its Canvas read was busy at the last promotion preflight, so no reset or restart was forced. Preserve the populated profile and current draft on the next controlled update. Human microphone capture is still not established by source tests.
+
+Validation for the reconciled application: full TypeScript check and desktop/website build passed. The focused merge suite passed 93 checks initially; the remaining remembered-sign-in build assertion was updated to permit the embedded Jev define in the same object, and all 30 remembered-sign-in checks then passed. Forced-off sign-in behavior remains covered. A fresh fetch also found main `d286c06`, packet 16 only; it is preserved before publication. Nate owns the change-driven snapshot/per-page performance work; do not duplicate that refactor. Wave 2 PR #53 and floating-chat candidates remain outside this checkpoint.
+
+Ben also requested temporarily hiding user-facing date-conflict notices/actions without changing source evidence or personal-date resolution. That presentation change is assigned separately and is not part of this backend merge. Restore the notices only after the date-review experience is useful and agreed; evidence remains available internally.
+
+
 ## 2026-09-27 10:55 UTC — local navigation repair and Home enrollment footer
 
 Exact local voice page commands now return a navigation result in the main process without queueing a workspace snapshot. Unsupported speech remains fenced before any model request, and cancellation/context checks remain required. This removes the observed worker-timeout dependency for these commands; live human microphone capture is still a separate trial.
@@ -20,7 +33,7 @@ Verification: 42 focused trial/session/microphone/effect-fence/parity checks, 45
 
 **Accepted delivery rule (Ben, September 27):** ship the smallest useful safe integrated slice promptly for actual use, state exactly what is tested and unfinished, and refine from that feedback. Broader audit and polish work continues in parallel rather than blocking every useful slice. Startup, account/source, cancellation, and persistence safeguards still apply. This governs voice, readiness, dates, Calendar, My UW, and task workspaces.
 
-Use **`codex/desktop-design-integration`** as the single published frontend branch. It contains the shared desktop shell and integrated feature work. Leaf branches are working history, not alternative versions to assemble. The branch tip identifies published source. `git rev-parse --short HEAD` identifies the checkout, which may also contain uncommitted changes; it does not identify an already-open desktop runtime. Record source, published branch and actual renderer/main revisions separately. New work lands here after its interfaces and reachable journeys are checked.
+Historical branch guidance (superseded by the main delivery instruction above): use **`codex/desktop-design-integration`** as the single integration checkout. It contains the shared desktop shell and integrated feature work. Leaf branches are working history, not alternative versions to assemble. The branch tip identifies published source. `git rev-parse --short HEAD` identifies the checkout, which may also contain uncommitted changes; it does not identify an already-open desktop runtime. Record source, published branch and actual renderer/main revisions separately. New work lands here after its interfaces and reachable journeys are checked.
 
 ```sh
 git fetch origin

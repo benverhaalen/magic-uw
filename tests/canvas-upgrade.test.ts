@@ -60,15 +60,13 @@ test("synthetic university selects five classes, records exclusions, captures wh
         .map((batch) => [batch.source.courseId, batch]),
     ).values(),
   ];
-  assert.equal(catalog.length, 11);
+  // fix/current-courses-only: the fixture's nameless restricted row (301) is never stored as a course.
+  assert.equal(catalog.length, 10);
   assert.equal(
     catalog.filter((b) => b.resources[0]?.course?.selection?.included).length,
     5,
   );
-  assert.equal(
-    catalog.find((b) => b.source.courseId === "301")?.status,
-    "not_published",
-  );
+  assert.equal(catalog.find((b) => b.source.courseId === "301"), undefined);
   assert.ok(
     catalog
       .filter((b) => !b.resources[0]?.course?.selection?.included)

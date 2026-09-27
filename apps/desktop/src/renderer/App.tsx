@@ -52,6 +52,7 @@ import { useDesktopNavigation, type DesktopView } from "./navigation";
 import { CourseSpaceDetails } from "./CourseSpaceDetails";
 import { NotificationsMenu, notificationDestination, type NotificationDestination } from "./notifications";
 import { AccountSection } from "./AccountSection"; // owner: accounts
+import { RememberSignIn } from "./RememberSignIn"; // owner: T05e
 
 function ShellFeedback({ error, notice, view, onDismiss }: { error: string; notice: string; view: DesktopView; onDismiss: () => void }) {
   const details = useRef<HTMLDetailsElement>(null);
@@ -181,6 +182,10 @@ export function App() {
   const snapshotGate = useRef(new SnapshotGate());
   const busyRef = useRef(false);
   const mounted = useRef(true);
+  // Opening an item tells the worker, which reads the item's `read_once` links once.
+  useEffect(() => {
+    if (selectedId) void window.magic.execute({ type: "ui_event", value: { kind: "open", subject: selectedId } }).catch(() => {});
+  }, [selectedId]);
 
   useEffect(() => {
     const handle = (event: Event) => navigation.navigate("resource", (event as CustomEvent<string>).detail);
@@ -1213,10 +1218,14 @@ function Sources({
         {/* owner: T05c. Keep me signed in toggle. */}
         <KeepSignedInToggle busy={busy} />
         {/* end owner: T05c */}
+        {/* owner: T05e. Remember my sign-in: Forget my sign-in. */}
+        <RememberSignIn busy={busy} />
+        {/* end owner: T05e */}
         <p className="small muted">
           If UW requests Duo or a new sign-in, complete it in the browser.
           Previously captured records remain available when a session expires.
-          Clearing the UW session also disconnects a published Outlook calendar.
+          Clearing the UW session also disconnects a published Outlook calendar
+          and deletes a saved sign-in.
         </p>
       </section>
       <OutlookCalendar busy={busy} onSync={onSync} />
@@ -1514,6 +1523,7 @@ function Privacy({
             <option value="none">Local model</option>
             <option value="chatgpt">ChatGPT</option>
             <option value="claude">Claude</option>
+            <option value="codex">Codex</option>{/* owner: client-detection: the client a student can pick in onboarding */}
             <option value="gemini">Gemini</option>
           </select>
           <p className="small muted">
@@ -1614,8 +1624,8 @@ function Privacy({
           </div>
         )}
         <p className="small muted">
-          Deleting local data also clears app-owned UW sessions, calendar feed
-          secrets, downloaded documents, and exported MCP connections. It does
+          Deleting local data also clears app-owned UW sessions, a saved sign-in,
+          calendar feed secrets, downloaded documents, and exported MCP connections. It does
           not delete UW records.
         </p>
       </section>

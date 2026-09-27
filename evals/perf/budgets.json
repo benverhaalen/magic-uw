@@ -1,0 +1,41 @@
+{
+  "note": "Synthetic MT1 at 1,000 resources. ratios: an operation's time over a reference run back to back with it (least of several pairs). searchP50/P95: across 24 queries, over a fixed SQLite+zlib+JSON read workload. agendaP95 (across 8 days) and summary: in full resource reads of the same workspace. ingestRate: resources per unit of a fixed SQLite write workload (higher is better). Re-record: MAGIC_BUDGETS_RECORD=1 pnpm test:budgets",
+  "recordedAt": "2026-09-27T08:48:54.438Z",
+  "machine": {
+    "calibrationMs": 10.12
+  },
+  "size": 1000,
+  "tolerance": 0.25,
+  "ratios": {
+    "ingestRate": 163.9646,
+    "searchP95": 0.1443,
+    "searchP50": 0.0807,
+    "agendaP95": 2.7698,
+    "summary": 1.0037
+  },
+  "values": {
+    "summaryBytes": 9580,
+    "snapshotBytes": 6574412,
+    "searchZeroHitShare": 0.0417,
+    "dbBytesPer1000": 10125312,
+    "syncRequests": 65,
+    "syncBytes": 176959,
+    "syncReplayMisses": 0,
+    "zeroChangeSyncRequests": 63,
+    "zeroChangeSyncBytes": 176385
+  },
+  "statements": {
+    "store.resources": 1,
+    "query.summary": 18,
+    "query.resources (course page)": 5,
+    "query.resource": 7,
+    "store.searchPassages": 4,
+    "core.context (local)": 11,
+    "core.snapshot": 32,
+    "notes.tree": 5,
+    "learning.knowledge.state (10 anchors)": 169,
+    "graph.courseGraph": 332,
+    "graph.agenda": 249,
+    "workspace.due": 40
+  }
+}

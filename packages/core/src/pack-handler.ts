@@ -13,10 +13,18 @@ import type { BackendCall, ModelRunner } from "../../runner/src/index";
 import { createClaudeBackend, createSessionPool, type CliCommand, type PoolOptions, type SessionPool } from "../../runner/src/index";
 import { GUIDE_PACKS } from "../../packs/guide/src/index";
 // end owner: ai-paths
+import { courseFactsPack } from "./course-facts/extractor"; // owner: course-facts
+import { createCourseBriefs, type CourseBriefSource } from "./course-facts/brief"; // owner: course-facts
+import { BRIEF_POLICY_POINTER, briefHoldsPolicy, coursePrefixes } from "./course-facts/prefix"; // owner: course-facts
 import { buildPrompt, packCacheKey, type ArtifactStore, type CourseFrame, type LedgerStore, type PackSpec, type Passage } from "../../packs/core/src/index";
 import { learningArtifactStore, sqlLedgerStore } from "../../packs/core/src/learning-stores";
 import { quizDrafts, quizPack, type Draft, type GenerationInput } from "../../packs/items/src/index";
-import { cardDrafts, cardsPack } from "../../packs/cards/src/index";
+import { cardDrafts, cardsPack, reverseCards } from "../../packs/cards/src/index";
+import { subjectFamily } from "../../notes/src/templates/index";
+// owner: exam-prep. Step-by-step problems: authored by the model, checked by code, stored as problems.
+import { isProblemDraft, problemDrafts, problemsPack } from "../../packs/problems/src/index";
+import { checkAuthored, putProblem } from "../../learning/src/exam/problems";
+// end owner: exam-prep
 import { runPipeline, type CandidateItem, type PipelineResource, type StageName } from "../../learning/src/items";
 import { conceptId, normaliseLabel } from "../../learning/src/concepts";
 import { newCard } from "../../learning/src/fsrs";
@@ -24,17 +32,32 @@ import type { Concept, LearningStore } from "../../learning/src/store";
 import { eligibleStudySource } from "../../learning/src/router";
 import { findQuote } from "../../retrieval/src/quotes";
 import { contentCategories, courseInclusion } from "./access";
-import { payloadScrubber, rosterFor, scrubText, toOriginalSpan } from "./identity";
+import { rosterFor, toOriginalSpan } from "./identity";
+import { classOf, protectedPayloadScrubber, protectionCounts } from "./privacy/protect"; // owner: privacy
 import { buildReceipt, egressFor, payloadHash } from "./egress";
 import { runPack } from "./jobs/pack";
 // owner: guides
 import { generateGuide, guideView, isGuideKind, type GuideRunResult, type GuideViewResult } from "../../packs/guide/src/index";
 // end owner: guides
+// owner: mastery
+import { buildStrategy } from "../../packs/strategy/src/index";
+// end owner: mastery
 
-export type GenerationPackName = "quiz" | "cards";
+export type GenerationPackName = "quiz" | "cards" | "problems";
 /** Command pack names the handler answers to. */
-export const GENERATION_PACKS: Record<string, GenerationPackName> = { quiz: "quiz", items: "quiz", cards: "cards", flashcards: "cards" };
-export const DEFAULT_COUNT: Record<GenerationPackName, number> = { quiz: 8, cards: 10 };
+export const GENERATION_PACKS: Record<string, GenerationPackName> = { quiz: "quiz", items: "quiz", cards: "cards", flashcards: "cards", problems: "problems", solve: "problems" };
+export const DEFAULT_COUNT: Record<GenerationPackName, number> = { quiz: 8, cards: 10, problems: 4 };
+const NOUN: Record<GenerationPackName, string> = { quiz: "questions", cards: "cards", problems: "problems" };
+const PURPOSE: Record<GenerationPackName, string> = {
+  quiz: "Generate quiz questions from course materials",
+  cards: "Generate flashcards from course materials",
+  problems: "Generate step-by-step practice problems from course materials",
+};
+/** A problem check's reason ("restraint: …") as the pipeline stage it corresponds to. */
+const PROBLEM_STAGE: Record<string, StageName> = {
+  policy: "policy", open_graded: "policy", quote: "quote", verbatim: "quote", tags: "tags", schema: "schema", parse: "schema",
+  units: "schema", recompute: "executed", restraint: "flaws", distractors: "flaws",
+};
 /** Passages sent per call, by the store's token estimate. */
 export const PASSAGE_TOKEN_BUDGET = 6000;
 const MAX_PASSAGES = 24;
@@ -74,6 +97,11 @@ export interface PackHandlerDeps {
   artifacts?: ArtifactStore;
   ledger?: LedgerStore;
   now?: () => Date;
+  /**
+   * owner: course-facts. The course brief (`syllabus.md`) that opens every prompt about the course.
+   * Default: rendered from the store (no file). `null` turns it off (the old prefix).
+   */
+  brief?: CourseBriefSource | null;
 }
 export interface GenerateOptions {
   count?: number;
@@ -93,6 +121,10 @@ interface Scoped {
   restricted: boolean;
   /** The effective course policy (profile claims first; a restriction wins), as tutoring reads it. */
   policy: { mode: string; evidence: string } | undefined;
+  /** The subject family code derives from the course code and title (plan D35); "unknown" when it can't tell. */
+  family: string;
+  /** owner: course-facts. The resources the course brief in the prompt draws on (receipts and grants). */
+  briefResourceIds?: string[];
 }
 
 /** The course (and optional module or resources) the scope names, with only eligible, included study sources. */
@@ -117,6 +149,8 @@ function resolveScope(store: WorkspaceStore, scope: PackScope): Scoped | null {
     .filter((r) => !scope.moduleId || r.module?.id === scope.moduleId)
     .sort((a, b) => a.id.localeCompare(b.id));
   const label = resources.find((r) => r.courseName)?.courseName ?? scope.courseId;
+  const courseCode = course.find((r) => r.course?.courseCode)?.course?.courseCode ?? null;
+  const family = subjectFamily({ courseName: course.find((r) => r.courseName)?.courseName ?? label, courseCode }).family;
   return {
     accountScope,
     courseId: scope.courseId,
@@ -125,6 +159,7 @@ function resolveScope(store: WorkspaceStore, scope: PackScope): Scoped | null {
     resources,
     restricted,
     policy: policies.find((p) => p.mode !== "unknown") ?? policies[0],
+    family,
   };
 }
 
@@ -193,6 +228,10 @@ export function createPackHandler(deps: PackHandlerDeps) {
     return r ? { resourceId: r.id, contentHash: r.contentHash } : null;
   };
   const artifacts = deps.artifacts ?? learningArtifactStore(store.learning, sourceOf);
+  // owner: course-facts
+  const courseBrief: CourseBriefSource | null = deps.brief === undefined ? createCourseBriefs({ store }).courseBrief : deps.brief;
+  const coursePrefix = coursePrefixes(courseBrief);
+  // end owner: course-facts
   const ledger = deps.ledger ?? sqlLedgerStore(store, courseOf);
 
   /** Topic and section labels → concept tags; new labels become model-origin concepts under their section. */
@@ -247,11 +286,37 @@ export function createPackHandler(deps: PackHandlerDeps) {
     const itemIds: string[] = [];
     const drops: PackDrop[] = [];
     for (const d of drafts) {
-      const id = `${prefix}-${d.index}`;
+      // A code-derived card (a language card's reverse) is named after the card it comes from.
+      const id = d.derivedFrom === undefined ? `${prefix}-${d.index}` : `${prefix}-${d.derivedFrom}r`;
       if (d.problem) {
         drops.push({ index: d.index, stage: "schema", reason: d.problem });
         continue;
       }
+      // owner: exam-prep. A problem draft is checked by the exam engine and stored as a problem.
+      if (isProblemDraft(d)) {
+        const resourceId = resourceOf.get(d.sourceId) ?? "";
+        const r = byId.get(resourceId);
+        const found = r ? findQuote(r.text, d.quote) : null;
+        const checked = checkAuthored(d.solve, {
+          id,
+          courseRef: s.courseRef,
+          resource: r ? { id: r.id, kind: r.kind, text: r.text, contentHash: r.contentHash } : { id: resourceId, kind: "material", text: "", contentHash: "" },
+          span: r && found?.status === "unique" ? { start: found.start, end: found.end } : null,
+          courseRestricted: s.restricted,
+          openGraded: !r || !eligible.has(r.id),
+          conceptIds: (tags.get(d.index) ?? []).map((t) => t.conceptId),
+          generator,
+        });
+        if (!checked.problem) {
+          const first = checked.reasons[0] ?? "schema: rejected";
+          drops.push({ index: d.index, stage: PROBLEM_STAGE[first.split(":")[0]!] ?? "schema", reason: checked.reasons.join("; ") });
+          continue;
+        }
+        putProblem(store.learning, checked.problem, at.toISOString());
+        itemIds.push(id);
+        continue;
+      }
+      // end owner: exam-prep
       // Code grounds the quote: the stored quote is the exact span of the current resource text.
       const resourceId = resourceOf.get(d.sourceId) ?? "";
       const r = byId.get(resourceId);
@@ -326,11 +391,21 @@ export function createPackHandler(deps: PackHandlerDeps) {
       sections: units.map((u) => u.studentLabel ?? u.label),
       topics: concepts.filter((c) => c.kind === "concept").map((c) => c.studentLabel ?? c.label).slice(0, 60),
       focus,
+      ...(s.family !== "unknown" ? { subject: s.family } : {}),
     };
-    const frame = frameFor(s, units);
+    // owner: course-facts. The course prefix (brief + pack catalogue); the policy line points at the
+    // brief's AI section only when the brief holds every quote behind the policy.
+    const prefix = coursePrefix(s.courseRef);
+    const base = frameFor(s, units);
+    const frame: CourseFrame = prefix
+      ? { ...base, brief: prefix.text, ...(s.policy && briefHoldsPolicy(s.policy.evidence, prefix.text) ? { policy: `${s.policy.mode}: ${BRIEF_POLICY_POINTER}` } : {}) }
+      : base;
+    // end owner: course-facts
     return name === "quiz"
-      ? execute(quizPack, quizDrafts, name, scope, s, passages, resourceOf, input, frame, signal, options)
-      : execute(cardsPack, cardDrafts, name, scope, s, passages, resourceOf, input, frame, signal, options);
+      ? execute(quizPack, quizDrafts, name, scope, { ...s, briefResourceIds: prefix?.resourceIds ?? [] }, passages, resourceOf, input, frame, signal, options)
+      : name === "cards"
+        ? execute(cardsPack, cardDrafts, name, scope, { ...s, briefResourceIds: prefix?.resourceIds ?? [] }, passages, resourceOf, input, frame, signal, options)
+        : execute(problemsPack, problemDrafts, name, scope, { ...s, briefResourceIds: prefix?.resourceIds ?? [] }, passages, resourceOf, input, frame, signal, options); // owner: exam-prep
   }
 
   async function execute<O>(
@@ -357,12 +432,15 @@ export function createPackHandler(deps: PackHandlerDeps) {
     const runner = await deps.runner();
     try { validate(); } catch (error) { return empty(name, "blocked", (error as Error).message, s.courseRef); }
     const hosted = runner ? runner.client !== "local" : store.privacy().mode !== "local_only";
-    const roster = rosterFor(store, s.courseId, s.accountScope);
-    const scrubber = payloadScrubber(store, hosted, s.accountScope);
-    const scrub = (value: string) => scrubber.field(value, s.courseId);
+    // owner: privacy: the protection pass (roster + code detectors + per-request pseudonyms).
+    const scrubber = protectedPayloadScrubber(store, hosted, s.accountScope, `pack:${s.courseRef}`);
+    // Course labels, the frame and the assembled prompt are teaching text; a passage is its resource's class.
+    const scrub = (value: string) => scrubber.field(value, s.courseId, "teaching");
+    const passageClass = (sourceId: string) => { const r = store.resource(resourceOf.get(sourceId) ?? ""); return r ? classOf(r) : "personal"; };
+    scrubber.prime([...passages.map((p): [string, "teaching" | "personal"] => [p.text, passageClass(p.sourceId)]), ...[...input.sections, ...input.topics, ...input.focus, frame.course, frame.skeleton, frame.policy].map((t): [string, "teaching"] => [t, "teaching"])], s.courseId);
     // Freeze the exact passage projection; output citations may never search outside it.
     const frozen = new Map(passages.map((p) => [p.sourceId, {
-      original: p.text, result: hosted ? scrubText(p.text, roster) : { text: p.text, spans: [] },
+      original: p.text, result: scrubber.text(p.text, s.courseId, passageClass(p.sourceId)),
     }]));
     const draftsOf = (output: O) => toDrafts(output).slice(0, input.count).map((d) => {
       const p = frozen.get(d.sourceId);
@@ -375,7 +453,7 @@ export function createPackHandler(deps: PackHandlerDeps) {
     });
     passages = passages.map((p) => ({ ...p, text: frozen.get(p.sourceId)!.result.text }));
     input = { ...input, sections: input.sections.map(scrub), topics: input.topics.map(scrub), focus: input.focus.map(scrub) };
-    frame = { ...frame, course: scrub(frame.course), skeleton: scrub(frame.skeleton), policy: scrub(frame.policy) };
+    frame = { ...frame, course: scrub(frame.course), skeleton: scrub(frame.skeleton), policy: scrub(frame.policy), ...(frame.brief !== undefined ? { brief: scrub(frame.brief) } : {}) };
     const prompt = buildPrompt(pack, frame, input, passages);
     const cacheKey = payloadHash({ version: "pack-projection-v1", route: runner?.client ?? store.privacy().hostedProvider, fingerprint, key: packCacheKey(pack, prompt.systemPrompt, input, passages) });
     const receiptIds: string[] = [];
@@ -384,14 +462,16 @@ export function createPackHandler(deps: PackHandlerDeps) {
     const at = () => now().toISOString();
     const base = { ...empty(name, "done", "", s.courseRef), receiptIds };
     const finish = (artifact: { id: string; cacheKey: string; client: string; model: string; output: O; usage: PackRunResult["tokens"] }, cached: boolean): PackRunResult => {
-      const drafts = draftsOf(artifact.output);
+      const written = draftsOf(artifact.output);
+      // Languages: vocabulary in both directions (plan D35), derived by code at 0 tokens.
+      const drafts = name === "cards" && s.family === "languages" ? [...written, ...reverseCards(written)] : written;
       const generator = { client: artifact.client, model: artifact.model, promptVersion: `${pack.id}@${pack.version}` };
       const { itemIds, drops } = accept(s, pack.id, artifact.cacheKey, drafts, resourceOf, generator);
       const droppedBy: Partial<Record<StageName, number>> = {};
       for (const d of drops) droppedBy[d.stage] = (droppedBy[d.stage] ?? 0) + 1;
       return {
         ...base,
-        message: `${itemIds.length} ${name === "quiz" ? "questions" : "cards"} ready${drops.length ? `; ${drops.length} dropped by the checks` : ""}.`,
+        message: `${itemIds.length} ${NOUN[name]} ready${drops.length ? `; ${drops.length} dropped by the checks` : ""}.`,
         artifactIds: [artifact.id],
         itemIds,
         cached,
@@ -413,7 +493,9 @@ export function createPackHandler(deps: PackHandlerDeps) {
 
     const authorize = (recipient: string, categories: string[], payload?: unknown) => {
       validate();
-      categories = [...new Set([...categories, ...s.resources.flatMap(contentCategories)])];
+      // owner: course-facts: the brief's sources are sent too, so their categories are checked and receipted.
+      const briefResources = (s.briefResourceIds ?? []).flatMap((id) => store.resource(id) ?? []);
+      categories = [...new Set([...categories, ...s.resources.flatMap(contentCategories), ...briefResources.flatMap(contentCategories)])];
       const parsed = aiRecipientSchema.safeParse(recipient);
       if (!parsed.success) return { allowed: false, reason: "This recipient is not supported." };
       const permission = maySend(store.privacy(), recipient, categories);
@@ -421,13 +503,14 @@ export function createPackHandler(deps: PackHandlerDeps) {
       if (payload === undefined && permission.allowed) return permission;
       const m = {
         recipient: parsed.data,
-        purpose: `Generate ${name === "quiz" ? "quiz questions" : "flashcards"} from course materials`,
+        purpose: PURPOSE[name],
         categories,
-        resourceIds: s.resources.map((r) => r.id),
+        resourceIds: [...new Set([...s.resources.map((r) => r.id), ...(s.briefResourceIds ?? [])])],
         characters: JSON.stringify(payload ?? {}).length,
         allowed: permission.allowed,
         reason: permission.reason,
         payload,
+        ...(hosted ? { protection: protectionCounts(payload) } : {}), // owner: privacy
       };
       const decision = egressFor(store).check(m, { at: at(), background: lane === "background" });
       if (decision.status === "blocked") {
@@ -472,7 +555,7 @@ export function createPackHandler(deps: PackHandlerDeps) {
   }
   // owner: guides. The study-guide kinds (guide, briefing, faq, timeline, compare, conceptmap)
   // and `<kind>-view`, the 0-token personalised view (op "guide.view"), answer through this seam.
-  const guideDeps = { store, runner: deps.runner, artifacts, ledger, now };
+  const guideDeps = { store, runner: deps.runner, artifacts, ledger, now, prefix: coursePrefix /* owner: course-facts */ };
   function guides(packName: string, scope: PackScope, signal?: AbortSignal): Promise<GuideRunResult | GuideViewResult> | null {
     if (isGuideKind(packName)) return generateGuide(guideDeps, packName, scope, signal ? { signal } : {});
     const viewOf = /^([a-z]+)-view$/.exec(packName)?.[1];
@@ -480,11 +563,16 @@ export function createPackHandler(deps: PackHandlerDeps) {
     return null;
   }
   // end owner: guides
+  // owner: mastery (D57). "Build my strategy": one checked call over code-derived observations.
+  const strategy = (scope: PackScope, signal?: AbortSignal) => buildStrategy({ store, runner: deps.runner, artifacts, ledger, now }, scope, signal);
+  // end owner: mastery
   return {
     run,
     guides, // owner: guides
+    coursePrefix, // owner: course-facts: the same prefix for ask
     /** The CoreSeams.pack signature. */
-    pack: (packName: string, scope: PackScope, signal: AbortSignal) => guides(packName, scope, signal) /* owner: guides */ ?? run(packName, scope, signal),
+    pack: (packName: string, scope: PackScope, signal: AbortSignal) =>
+      (packName === "strategy" ? strategy(scope, signal) /* owner: mastery */ : null) ?? guides(packName, scope, signal) /* owner: guides */ ?? run(packName, scope, signal),
   };
 }
 
@@ -504,7 +592,7 @@ export function generatePack(
 // owner: ai-paths
 /** Pack id → output schema for every generation pack: the warm pool's union schema. */
 export function generationKinds(): PoolOptions["kinds"] {
-  return Object.fromEntries([quizPack, cardsPack, ...Object.values(GUIDE_PACKS)].map((p) => [p.id, p.schema as PoolOptions["kinds"][string]]));
+  return Object.fromEntries([quizPack, cardsPack, problemsPack, ...Object.values(GUIDE_PACKS), courseFactsPack /* owner: course-facts */].map((p) => [p.id, p.schema as PoolOptions["kinds"][string]]));
 }
 /**
  * The Claude route with one warm session per lane (D38): a follow-up pack call reuses the live

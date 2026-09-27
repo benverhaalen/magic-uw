@@ -1,0 +1,155 @@
+{
+  "synthetic": true,
+  "note": "A synthetic course for the item-quality harness (evals/items). Written by the harness builder, not independent gold; not real course material.",
+  "family": "languages",
+  "batch": {
+    "source": {
+      "id": "syn-span101-source",
+      "kind": "canvas",
+      "accountScope": "synthetic",
+      "courseId": "SYN-SPAN101",
+      "scope": "course",
+      "label": "SPANISH 101 Synthetic Elementary Spanish (Synthetic)"
+    },
+    "observedAt": "2026-09-20T15:00:00.000Z",
+    "complete": true,
+    "status": "ok",
+    "resources": [
+      {
+        "externalId": "syn-span101-course",
+        "kind": "course",
+        "courseId": "SYN-SPAN101",
+        "courseName": "SPANISH 101 Synthetic Elementary Spanish",
+        "title": "SPANISH 101 Synthetic Elementary Spanish",
+        "url": "https://example.edu/synthetic/syn-span101",
+        "text": "",
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "course": {
+          "courseCode": "FA26 SPANISH 101 001"
+        }
+      },
+      {
+        "externalId": "syn-span101-m1",
+        "kind": "material",
+        "courseId": "SYN-SPAN101",
+        "courseName": "SPANISH 101 Synthetic Elementary Spanish",
+        "title": "Module 1: Vocabulary for the home (Synthetic)",
+        "url": "https://example.edu/synthetic/syn-span101/m1",
+        "text": "Module 1 (synthetic): vocabulary for the home. This synthetic lesson is written for automated tests and is not real course material. The word perro means dog. The word gato means cat. The word casa means house. The word mesa means table. The word ventana means window. Nouns that end in -o are usually masculine, and nouns that end in -a are usually feminine. A cognate is a word that looks and means the same in two languages.",
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "policy": {
+          "mode": "coaching",
+          "evidence": "Synthetic: AI help is allowed for practice in this synthetic course."
+        }
+      },
+      {
+        "externalId": "syn-span101-m2",
+        "kind": "material",
+        "courseId": "SYN-SPAN101",
+        "courseName": "SPANISH 101 Synthetic Elementary Spanish",
+        "title": "Module 2: Present tense of -ar verbs (Synthetic)",
+        "url": "https://example.edu/synthetic/syn-span101/m2",
+        "text": "Module 2 (synthetic): the present tense of regular -ar verbs. The yo form of hablar is hablo. The tú form of hablar is hablas. The nosotros form of hablar is hablamos. The yo form of estudiar is estudio. The ella form of trabajar is trabaja. An infinitive is the base form of a verb that in Spanish ends in -ar, -er or -ir.",
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "policy": {
+          "mode": "coaching",
+          "evidence": "Synthetic: AI help is allowed for practice in this synthetic course."
+        }
+      },
+      {
+        "externalId": "syn-span101-m3",
+        "kind": "material",
+        "courseId": "SYN-SPAN101",
+        "courseName": "SPANISH 101 Synthetic Elementary Spanish",
+        "title": "Module 3: Ser and estar (Synthetic)",
+        "url": "https://example.edu/synthetic/syn-span101/m3",
+        "text": "Module 3 (synthetic): ser and estar. The verb ser describes identity and lasting traits. The verb estar describes location and temporary states. The yo form of ser is soy. The yo form of estar is estoy. The word biblioteca means library. The word cuaderno means notebook. The word lápiz means pencil.",
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "policy": {
+          "mode": "coaching",
+          "evidence": "Synthetic: AI help is allowed for practice in this synthetic course."
+        }
+      }
+    ]
+  },
+  "gold": [
+    {
+      "label": "perro",
+      "resource": "syn-span101-m1",
+      "quote": "The word perro means dog."
+    },
+    {
+      "label": "gato",
+      "resource": "syn-span101-m1",
+      "quote": "The word gato means cat."
+    },
+    {
+      "label": "casa",
+      "resource": "syn-span101-m1",
+      "quote": "The word casa means house."
+    },
+    {
+      "label": "mesa",
+      "resource": "syn-span101-m1",
+      "quote": "The word mesa means table."
+    },
+    {
+      "label": "ventana",
+      "resource": "syn-span101-m1",
+      "quote": "The word ventana means window."
+    },
+    {
+      "label": "cognate",
+      "resource": "syn-span101-m1",
+      "quote": "A cognate is a word that looks and means the same in two languages."
+    },
+    {
+      "label": "hablar (yo)",
+      "resource": "syn-span101-m2",
+      "quote": "The yo form of hablar is hablo."
+    },
+    {
+      "label": "hablar (tú)",
+      "resource": "syn-span101-m2",
+      "quote": "The tú form of hablar is hablas."
+    },
+    {
+      "label": "estudiar (yo)",
+      "resource": "syn-span101-m2",
+      "quote": "The yo form of estudiar is estudio."
+    },
+    {
+      "label": "infinitive",
+      "resource": "syn-span101-m2",
+      "quote": "An infinitive is the base form of a verb that in Spanish ends in -ar, -er or -ir."
+    },
+    {
+      "label": "ser (yo)",
+      "resource": "syn-span101-m3",
+      "quote": "The yo form of ser is soy."
+    },
+    {
+      "label": "estar (yo)",
+      "resource": "syn-span101-m3",
+      "quote": "The yo form of estar is estoy."
+    },
+    {
+      "label": "biblioteca",
+      "resource": "syn-span101-m3",
+      "quote": "The word biblioteca means library."
+    },
+    {
+      "label": "cuaderno",
+      "resource": "syn-span101-m3",
+      "quote": "The word cuaderno means notebook."
+    }
+  ]
+}

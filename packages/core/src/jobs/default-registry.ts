@@ -14,3 +14,12 @@ import { createJobRegistry } from "./registry";
 export function pipelineJobRegistry(): JobRegistry {
   return createJobRegistry([passagesResourceJob, cardJob, linkResourceJob, compileCourseJob]);
 }
+/**
+ * owner: drain. The registry the desktop app runs, with the pipeline loop's `derive` on: passages,
+ * facts and references and the course pass are reconciled in batches (`./derive`), so nothing is
+ * queued per row for them. Only kinds that need a queue stay (the cards stub; core adds Jev's).
+ * `pipelineJobRegistry` keeps the per-row path, which the equivalence test compares against.
+ */
+export function appJobRegistry(): JobRegistry {
+  return createJobRegistry([cardJob]);
+}

@@ -144,7 +144,8 @@ test("a crashed session respawns; two consecutive failures fall back to one-shot
     const log = await g.log();
     const oneShot = log.filter((l) => !l.event);
     assert.equal(oneShot.length, 1);
-    assert.deepEqual(oneShot[0].argv.slice(0, 3), ["-p", "--output-format", "json"]);
+    // client-detection: the one-shot streams (the tripwire reads it as it arrives).
+    assert.deepEqual(oneShot[0].argv.slice(0, 4), ["-p", "--output-format", "stream-json", "--verbose"]);
     assert.ok(g.events.some((e) => e.type === "fallback" && e.reason === "failures"));
     assert.equal(g.pool.lanes()[0].oneShot, true);
   } finally {

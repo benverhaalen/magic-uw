@@ -18,9 +18,21 @@ export interface CourseClaim {
   assignmentId?: string;
   label: string;
   value: string | number | boolean | null;
-  method: "structured" | "literal" | "local_model";
+  /** client_model: the student's own Claude Code or Codex ("Found by Claude/Codex"); local_model: Ollama. */
+  method: "structured" | "literal" | "local_model" | "client_model";
   evidence: CourseEvidence[];
   policyMode?: "restricted" | "coaching" | "allowed" | "unknown";
+}
+/** A syllabus source code selected for course-level facts (D34), with the rule that chose it. */
+export interface CourseSyllabusSource {
+  resourceId: string;
+  role: "primary" | "supplement";
+  /** 1 Canvas syllabus body, 2 Canvas page/file/module item, 3 linked course-site page, 4 front page. */
+  tier: 1 | 2 | 3 | 4;
+  reason: string;
+  title: string;
+  url: string;
+  hasText: boolean;
 }
 export interface CourseIntelligence {
   id: string;
@@ -44,6 +56,8 @@ export interface CourseIntelligence {
     reason: string;
   }[];
   dependencies: { resourceId: string; contentHash: string; version: number }[];
+  /** The selected syllabus source(s), at most two. Absent on profiles compiled before selection. */
+  syllabus?: CourseSyllabusSource[];
 }
 export interface CourseIntelligenceView extends CourseIntelligence {
   semantic?: {

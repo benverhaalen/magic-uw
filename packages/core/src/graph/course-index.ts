@@ -13,7 +13,7 @@
  * - body links are `{ url, text }` objects; `/equation_images/` and `/profile/` links are noise.
  */
 import type { Resource } from "@magic/contracts";
-import type { CourseCoreStore, CourseRef, GraphStore } from "../../../contracts/src/course-core";
+import type { CourseCoreStore, CourseRef, ExternalRef, GraphStore, ResourceRef } from "../../../contracts/src/course-core";
 import type { Store } from "@magic/contracts";
 import { canvasFileId } from "../../../connectors/src/canvas-references";
 
@@ -314,6 +314,34 @@ export function courseIndex(store: PipelineStore, course: CourseRef): CourseInde
   const index = buildCourseIndex(course, hash, store.courseResources(course));
   byCourse.set(key, index);
   return index;
+}
+
+/**
+ * The reads one graph call shares (an agenda, a course graph, one analytics request): each
+ * course's index and external references, and each resource's stored references, are read once
+ * for the call instead of once per assignment. A call only reads, so nothing here can go stale
+ * within it. Build one per call and drop it; `courseIndex` keeps the cache across calls.
+ */
+export interface GraphCall {
+  index(course: CourseRef): CourseIndex;
+  externalRefs(course: CourseRef): ExternalRef[];
+  resourceRefs(resourceId: string): ResourceRef[];
+}
+export function graphCall(store: PipelineStore): GraphCall {
+  const indexes = new Map<string, CourseIndex>();
+  const externals = new Map<string, ExternalRef[]>();
+  const refs = new Map<string, ResourceRef[]>();
+  const key = (course: CourseRef) => `${course.accountScope}\u0000${course.courseId}`;
+  const once = <T>(cache: Map<string, T>, k: string, read: () => T): T => {
+    let value = cache.get(k);
+    if (value === undefined) cache.set(k, (value = read()));
+    return value;
+  };
+  return {
+    index: (course) => once(indexes, key(course), () => courseIndex(store, course)),
+    externalRefs: (course) => once(externals, key(course), () => store.externalRefs(course)),
+    resourceRefs: (resourceId) => once(refs, resourceId, () => store.resourceRefs(resourceId)),
+  };
 }
 
 /** A resource's course, from its source (cached per store; refreshed when a source is new). */

@@ -47,17 +47,14 @@ test("active and completed discovery merge by ID and preserve restricted histori
     { ...past, id: 101, name: "Historical duplicate must not replace active" }]);
   const progress: { scope: string; records: number }[] = [];
   const batches = await pull(mock.fetch, { onProgress: (event) => progress.push(event) });
-  const catalog = courses(batches); assert.equal(catalog.length, 3);
+  // fix/current-courses-only: Canvas's nameless {id, access_restricted_by_date} row (202) is never stored as a course.
+  const catalog = courses(batches); assert.equal(catalog.length, 2);
   assert.equal(catalog.find((batch) => batch.source.courseId === "101")?.resources[0]?.title, current.name);
   const historical = catalog.find((batch) => batch.source.courseId === "201")!;
   assert.equal(historical.resources[0]?.course?.accessState, "concluded");
   assert.equal(historical.resources[0]?.course?.selection?.included, false);
   assert.ok(historical.diagnostics?.some((diagnostic) => diagnostic.code === "historical_course_metadata_only"));
-  const restricted = catalog.find((batch) => batch.source.courseId === "202")!;
-  assert.equal(restricted.status, "inaccessible"); assert.equal(restricted.complete, false);
-  assert.equal(restricted.resources[0]?.course?.accessRestricted, true);
-  assert.equal(restricted.resources[0]?.course?.accessState, "date_restricted");
-  assert.equal(restricted.resources[0]?.course?.selection?.included, false);
+  assert.equal(catalog.find((batch) => batch.source.courseId === "202"), undefined);
   assert.ok(mock.calls.some((url) => url.pathname === "/api/v1/courses/101/assignments"));
   assert.ok(!mock.calls.some((url) => /^\/api\/v1\/courses\/20[12](?:\/|$)/.test(url.pathname)));
   const reads = mock.calls.filter((url) => url.pathname === "/api/v1/courses");
