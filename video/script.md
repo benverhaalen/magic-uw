@@ -46,16 +46,16 @@ and both people's reactions. See `production.md` §2 for the physical setup.
 - Timer starts, both people go at once.
 - Person on raw Canvas: opens the assignment through Canvas's own navigation, then finds the
   lecture notes (switches to Modules or Files).
-- Person on Magic Canvas: same two tasks, both already surfaced in one view.
+- Person on My Magic UW: same two tasks, both already surfaced in one view.
 - Each says "got it" or raises a hand when they have both open; camera keeps rolling until both are
   done.
 
-**On-screen text (end card, added in edit):** `Canvas: [REAL TIME FROM LIVE RUN]  ·  Magic Canvas: [REAL TIME FROM LIVE RUN]`
+**On-screen text (end card, added in edit):** `Canvas: [REAL TIME FROM LIVE RUN]  ·  My Magic UW: [REAL TIME FROM LIVE RUN]`
 — **placeholder, not invented.** Fill in only after the live run in `production.md` §0.1/§2, and only
 with the real number from that specific take (not a rehearsed best-of, unless disclosed as one).
 
 **VO — layered under the end card, once the timer stops (~0:20–0:27):**
-> "This is Magic Canvas — one place for everything your school already gives you, built for every
+> "This is My Magic UW — one place for everything your school already gives you, built for every
 > Badger, not just one kind of student."
 
 This is the video's only explicit "what is it / who is it for" statement — everything before this is
@@ -109,7 +109,7 @@ straight screen-recording cut.
 ## 1:00–1:25 — CS-heavy student vs. reading/writing student, side by side
 
 **Visual:** Split screen, same timestamp on both sides. One half: Sean's real Econ/DS home screen.
-Other half: Ben's real CS home screen. Both running Magic Canvas at the same moment. **Two separate
+Other half: Ben's real CS home screen. Both running My Magic UW at the same moment. **Two separate
 screen recordings composited together in post** — doesn't need synchronized in-person filming like
 beat 1.
 
@@ -130,10 +130,10 @@ a documented catch (`story.md` open question #2).
 
 ## 1:25–1:45 — Privacy / differentiation
 
-**Visual:** A real MCP client (e.g. Claude Desktop) connected to Magic Canvas with a real grant —
+**Visual:** A real MCP client (e.g. Claude Desktop) connected to My Magic UW with a real grant —
 one course, `assignments` category only, `grades` off. It asks what's due this week, gets a real
 answer back with no grade data in it (grounded in `packages/core/src/mcp.ts`'s `due_soon` tool and
-its per-category permission check). Then, on screen, the connection is revoked in Magic Canvas's
+its per-category permission check). Then, on screen, the connection is revoked in My Magic UW's
 Data & AI view — the same client asks again and gets the actual block message back, live: *"This
 read was blocked or unavailable. Check the connection's course and data permissions in Magic
 Canvas."*
@@ -144,7 +144,7 @@ clean "ACCESS GRANTED" graphic the moment the first real answer comes back; a ha
 overlay, not a code-rendered effect (see `production.md` §5.2).
 
 **VO (proposed):**
-> "And it only reads. Magic Canvas never submits, enrolls, or posts anything for you — you decide
+> "And it only reads. My Magic UW never submits, enrolls, or posts anything for you — you decide
 > exactly what it can see, down to the category, and you can shut it off instantly."
 
 ---
@@ -158,7 +158,7 @@ demo invite, something else). Draft shape below, replace once Ben decides:
 stays out of the video, either business-model version.
 
 **VO placeholder shape:**
-> "Magic Canvas — school, finally in one place. [Ben's actual ask/close line here.]"
+> "My Magic UW — school, finally in one place. [Ben's actual ask/close line here.]"
 
 **Proposed direction:** no installer, distribution, or landing page exists yet — skip a "go download
 it" CTA. Tie the ask to something already real instead: DoIT's own track note that "standout

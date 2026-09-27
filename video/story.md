@@ -60,10 +60,10 @@ the actual `magic-uw` repo state:
 
 - **Opening beat: side-by-side stopwatch race — two real people, one shot, not a split screen.**
   Two people sitting side by side, each at their own laptop, filmed in a single continuous take —
-  not a software split-screen edit. One person on raw Canvas, the other on Magic Canvas, both racing
+  not a software split-screen edit. One person on raw Canvas, the other on My Magic UW, both racing
   the same task at the same time with a visible timer. Task: open your assignment, then your lecture
   notes (quiz review dropped, see below). In raw Canvas these live in different tools/tabs
-  (Assignments, Modules/Files) — in Magic Canvas they're one place. The visible time gap *is* the
+  (Assignments, Modules/Files) — in My Magic UW they're one place. The visible time gap *is* the
   pitch, and a single unedited shot of two real people is more credible than an edited split screen.
   This is how the video starts, confirmed direction, not a proposal.
 - **Race scope: assignments + lecture notes only, no quizzes.** Quiz review isn't built and isn't
@@ -148,7 +148,7 @@ New structure, race kept as-is, everything after it rebuilt:
    `production.md` tip #1, but it is real added editing time nobody's budgeted yet. Beat 4's
    split-screen is a standard compositing job, same category.
 8. **New 2026-09-26: an MCP client needs to actually be set up for beat 5.** The access-panel demo
-   needs a real MCP client (e.g. Claude Desktop) connected to Magic Canvas with a real grant (one
+   needs a real MCP client (e.g. Claude Desktop) connected to My Magic UW with a real grant (one
    course, `assignments` category only, no `grades`), so it can be revoked on camera. Nobody's done
    this yet; it's a real pre-production task, not just a script line. See the code-grounded plan in
    the notes for the exact tools involved (`due_soon`, the grant/revoke mechanics in
@@ -185,7 +185,7 @@ real access-grant/revoke mechanism, and a close.
 1. **The race (0:00–0:25) — CONFIRMED.** Two people, side by side at their own laptops, one
    continuous camera shot (not a split-screen edit). Task: open your assignment, then your lecture
    notes. One person on raw Canvas, tabbing between Assignments and Modules/Files; the other on
-   Magic Canvas, both in one place. Stop the clock, show the real gap. No narration during the race —
+   My Magic UW, both in one place. Stop the clock, show the real gap. No narration during the race —
    the timer and the visible reactions do the talking; the video's one "what is this/who's it for"
    VO line lands right after, under the end card. Both legs' code is now real, on `main`, via Ben's
    ingestion upgrade (open question #1). **Still blocked on:** an actual live run against a real UW
