@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { graphQuerySchema } from "../packages/contracts/src/course-core";
-import { compileCourse, createPipelineReferences, references, STRUCTURE_COVERS_WEIGHT, strengthWeight } from "../packages/core/src/graph/index";
+import { compileCourse, courseIndex, createPipelineReferences, references, STRUCTURE_COVERS_WEIGHT, strengthWeight } from "../packages/core/src/graph/index";
 import { course, idOf, NOW, seededStore } from "./pipeline-fixture";
 
 test("covers facts: a quoted covers is a reference, ranked after linked, named, module and syllabus ones", async () => {
@@ -53,4 +53,24 @@ test("graph queries are validated at the IPC boundary", () => {
   assert.equal(graphQuerySchema.safeParse({ type: "agenda", date: "2026-10-01", tz: "Not/AZone" }).success, false);
   assert.equal(graphQuerySchema.safeParse({ type: "references", assignmentId: "a", extra: 1 }).success, false);
   assert.equal(graphQuerySchema.safeParse({ type: "courseGraph", accountScope: "s", courseId: "" }).success, false);
+});
+
+test("external refs read access state from sync's course spaces; file links use sync's parser", async () => {
+  const store = seededStore();
+  await compileCourse(store, course, NOW);
+  const hw1 = idOf(store, "assignments", "1001");
+  const article = () => store.externalRefs(course).find((e) => e.url === "https://example.org/article")!;
+  assert.equal(article().accessState, null, "no space recorded yet");
+  store.putCourseSpace({
+    id: "space:1", sourceId: "src-assignments", kind: "course_site", host: "example.org", url: "https://example.org/article/",
+    title: "Article space", foundInResourceId: hw1, route: "public", readState: "found", readSourceId: null, lastReadAt: null,
+    recipeId: null, accessState: "link-only", accessReason: null, checkedAt: NOW, storeOrLink: "link",
+  });
+  assert.deepEqual([article().spaceId, article().accessState], ["space:1", "link-only"]);
+  // A link to another course's file is not this course's file, even when the ID matches a stored one.
+  const index = courseIndex(store, course);
+  assert.equal(index.resolve("https://canvas.wisc.edu/courses/101/files/5002/preview").type, "resource");
+  assert.equal(index.resolve("https://canvas.wisc.edu/files/5002/download").type, "resource");
+  assert.equal(index.resolve("https://canvas.wisc.edu/courses/999/files/5002").type, "unresolved");
+  store.close();
 });

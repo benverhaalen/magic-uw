@@ -152,10 +152,14 @@ export function graphRepository(
     },
     externalRefs(course) {
       return (
-        prepare("SELECT * FROM external_refs WHERE account_scope = ? AND course_id = ? ORDER BY url").all(
-          course.accountScope,
-          course.courseId,
-        ) as Row[]
+        // Access state is sync's fact (course_spaces); it is joined, not copied. The two URL forms
+        // differ only on a trailing slash (sync keeps it, the graph drops it).
+        prepare(
+          `SELECT e.*, c.id AS space_id, c.access_state AS space_access FROM external_refs e
+           LEFT JOIN course_spaces c ON c.id = (SELECT c2.id FROM course_spaces c2 WHERE c2.account_scope = e.account_scope
+             AND c2.course_id = e.course_id AND rtrim(c2.url, '/') = rtrim(e.url, '/') ORDER BY c2.checked_at DESC LIMIT 1)
+           WHERE e.account_scope = ? AND e.course_id = ? ORDER BY e.url`,
+        ).all(course.accountScope, course.courseId) as Row[]
       ).map(
         (r): ExternalRef => ({
           id: String(r.id),
@@ -170,6 +174,8 @@ export function graphRepository(
           foundInResourceId: str(r.found_in_resource_id),
           firstSeen: String(r.first_seen),
           lastSeen: String(r.last_seen),
+          spaceId: str(r.space_id),
+          accessState: (str(r.space_access) as ExternalRef["accessState"]) ?? null,
         }),
       );
     },

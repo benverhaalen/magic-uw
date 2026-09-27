@@ -1461,6 +1461,7 @@ export interface WorkspaceResult {
 // owner: T15. Scoped queries (O1): a view asks for what it shows instead of the whole workspace.
 export const queryRequestSchema = z.discriminatedUnion("view", [
   z.object({ view: z.literal("summary") }).strict(),
+  z.object({ view: z.literal("courseSpaces"), accountScope: id, courseId: id }).strict(),
   z
     .object({
       view: z.literal("resources"),
@@ -1526,6 +1527,7 @@ export interface CourseSummary {
   included: boolean;
 }
 export type QueryResult =
+  | { view: "courseSpaces"; items: import("./course-core").CourseSpace[] }
   | {
       view: "summary";
       generatedAt: string;

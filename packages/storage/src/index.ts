@@ -11,7 +11,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { backup, DatabaseSync, type StatementSync } from "node:sqlite";
 import { planningMigration, planningRepository } from "./planning";
 import { textHash } from "../../retrieval/src/index";
-import { COURSE_CORE_SCHEMA, courseCoreRepository } from "./course-core";
+import { COURSE_CORE_SCHEMA, COURSE_SPACE_OBSERVATION_MIGRATION, courseCoreRepository } from "./course-core";
 import { createPassageIndex, scopeToken } from "./passages";
 import { graphRepository, migrateGraph } from "./graph";
 import { LEARNING_SCHEMA } from "./learning";
@@ -77,7 +77,7 @@ import {
   type Store,
 } from "@magic/contracts";
 
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 const MAX_ATTEMPTS = 3;
 /** The latest pre-migration backup, beside the database (one kept; purge deletes it). */
 export function migrationBackupPath(path: string): string {
@@ -348,12 +348,13 @@ export function createStore(
   // v7: learning and practice tables (T10L, D17).
   steps.push([7, () => db.exec(LEARNING_SCHEMA + "PRAGMA user_version = 7;")]);
   steps.push([8, () => db.exec(LEARNING_V8 + "PRAGMA user_version = 8;")]);
-  // v9: the course graph (the material pipeline): external refs, resource refs, quoted facts.
+  steps.push([9, () => db.exec(COURSE_SPACE_OBSERVATION_MIGRATION + "PRAGMA user_version = 9;")]);
+  // v10: the course graph (the material pipeline): external refs, resource refs, quoted facts.
   steps.push([
-    9,
+    10,
     () => {
       migrateGraph(db);
-      db.exec("PRAGMA user_version = 9;");
+      db.exec("PRAGMA user_version = 10;");
     },
   ]);
   const migrationBackup = file ? migrationBackupPath(path) : null;

@@ -208,7 +208,7 @@ export interface MapLink extends MapLinkInput {
 // ---------- Inventory and access (D32, D40, D41) ----------
 export const spaceRoutes = ["api", "public", "uw-session", "canvas-session", "own-login", "lti"] as const;
 export const readStates = ["found", "read", "needs-signin", "blocked", "failed", "skipped"] as const;
-export const accessStates = ["readable", "needs-uw-signin", "needs-own-login", "link-only", "blocked"] as const;
+export const accessStates = ["unknown", "readable", "needs-uw-signin", "needs-own-login", "link-only", "blocked"] as const;
 export type AccessState = (typeof accessStates)[number];
 export const courseSpaceSchema = z
   .object({
@@ -228,7 +228,7 @@ export const courseSpaceSchema = z
     recipeId: idText.nullable(),
     accessState: z.enum(accessStates),
     accessReason: z.string().max(1000).nullable(),
-    checkedAt: instant,
+    checkedAt: instant.nullable(),
     /** D40: `link` is a click-to-open card; its content is never stored. */
     storeOrLink: z.enum(["store", "link"]),
   })
@@ -470,6 +470,12 @@ export interface ExternalRef extends ExternalRefInput {
   host: string;
   firstSeen: string;
   lastSeen: string;
+  /**
+   * Read at query time from sync's persisted `course_spaces` (same course and URL), never stored
+   * here: the space's ID and its observed access state. Null when sync hasn't recorded the URL.
+   */
+  spaceId: string | null;
+  accessState: AccessState | null;
 }
 /** One outgoing reference in a resource's body: a link, or a course file or page named in it. */
 export const resourceRefSchema = z

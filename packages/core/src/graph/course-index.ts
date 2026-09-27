@@ -15,6 +15,7 @@
 import type { Resource } from "@magic/contracts";
 import type { CourseCoreStore, CourseRef, GraphStore } from "../../../contracts/src/course-core";
 import type { Store } from "@magic/contracts";
+import { canvasFileId } from "../../../connectors/src/canvas-references";
 
 export type PipelineStore = Store & CourseCoreStore & GraphStore;
 export type Res = Resource & { scope: string };
@@ -92,7 +93,7 @@ export function normaliseUrl(input: string): string | undefined {
 function contentTypeOf(r: Res): ContentType | undefined {
   const scope = scopeName(r.scope);
   if (r.externalId === "syllabus" || scope === "syllabus") return "syllabus";
-  if (scope === "page" || scope === "pages") return "page";
+  if (scope === "page" || scope === "pages" || scope === "linked-page") return "page";
   if (scope === "files" || scope === "document" || r.document || r.file) return "file";
   if (scope === "assignments") return "assignment";
   if (scope === "quizzes") return "quiz";
@@ -108,6 +109,8 @@ function contentTypeOf(r: Res): ContentType | undefined {
 
 function better(scopes: string[], a: Res | undefined, b: Res): boolean {
   if (!a) return true;
+  // The copy with text wins (an extracted document over its metadata record), then the scope order.
+  if (!!b.text !== !!a.text) return !!b.text;
   const rank = (r: Res) => {
     const i = scopes.indexOf(scopeName(r.scope));
     return i < 0 ? scopes.length : i;
@@ -145,17 +148,17 @@ export function buildCourseIndex(course: CourseRef, hash: string, list: Res[]): 
       if (better(["syllabus"], syllabus, r)) syllabus = r;
       continue;
     }
-    if (scope === "page" || scope === "pages") {
+    if (scope === "page" || scope === "pages" || scope === "linked-page") {
       const match = /\/pages\/([^/?#]+)/.exec(r.url);
       if (match) {
         const slug = pageSlug(match[1]!);
-        if (better(["page", "pages"], pageBySlug.get(slug), r)) pageBySlug.set(slug, r);
+        if (better(["page", "linked-page", "pages"], pageBySlug.get(slug), r)) pageBySlug.set(slug, r);
       }
       continue;
     }
     if (scope === "files" || scope === "document" || r.file || r.document) {
       const id = r.file?.id ?? r.file?.fileId ?? r.document?.fileId ?? /\/files\/(\d+)/.exec(r.url)?.[1] ?? r.externalId;
-      if (better(["files", "document"], fileById.get(id), r)) fileById.set(id, r);
+      if (better(["document", "files", "file"], fileById.get(id), r)) fileById.set(id, r);
       continue;
     }
     if (scope === "module-items") {
@@ -236,22 +239,21 @@ export function buildCourseIndex(course: CourseRef, hash: string, list: Res[]): 
     const path = url.pathname.replace(/\/+$/, "");
     if (/^\/(equation_images|profile|users|conversations|accounts|login|images|media_objects_iframe)\b/.test(path))
       return { type: "ignore" };
-    const m = /^\/courses\/(\d+)(\/.*)?$/.exec(path);
-    if (!m) {
-      const file = /^\/files\/(\d+)/.exec(path);
-      if (file) {
-        const r = fileById.get(file[1]!);
-        return r ? { type: "resource", resource: r, kind: "file" } : { type: "unresolved", url: normal, kind: "file" };
-      }
-      return { type: "ignore" };
+    // File links: sync's parser (canvas-references.ts), so one parser decides what a file link is.
+    // It accepts /files/:id and /courses/:this/files/:id (optionally /download or /preview).
+    if (/^\/(?:courses\/\d+\/)?files\/\d+/.test(path)) {
+      const id = canvasFileId(input, url.origin, course.courseId);
+      const r = id ? fileById.get(id) : undefined;
+      return r ? { type: "resource", resource: r, kind: "file" } : { type: "unresolved", url: normal, kind: "file" };
     }
+    const m = /^\/courses\/(\d+)(\/.*)?$/.exec(path);
+    if (!m) return { type: "ignore" };
     const rest = m[2] ?? "";
     const sameCourse = m[1] === course.courseId;
     const hit = (r: Res | undefined, kind: ContentType | "module"): Resolution =>
       r && sameCourse ? { type: "resource", resource: r, kind } : { type: "unresolved", url: normal, kind };
     let p: RegExpExecArray | null;
     if ((p = /^\/pages\/([^/]+)/.exec(rest))) return hit(pageBySlug.get(pageSlug(p[1]!)), "page");
-    if ((p = /^\/files\/(\d+)/.exec(rest))) return hit(fileById.get(p[1]!), "file");
     if (/^\/assignments\/syllabus/.test(rest)) return hit(syllabus, "syllabus");
     if ((p = /^\/assignments\/(\d+)/.exec(rest))) return hit(assignmentById.get(p[1]!), "assignment");
     if ((p = /^\/quizzes\/(\d+)/.exec(rest))) return hit(quizById.get(p[1]!), "quiz");

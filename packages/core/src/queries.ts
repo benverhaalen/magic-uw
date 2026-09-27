@@ -8,6 +8,7 @@
  * `snapshot` command) for debugging.
  */
 import type {
+  CourseCoreStore,
   QueryRequest,
   QueryResult,
   Resource,
@@ -130,6 +131,10 @@ export interface QueryContext {
 /** Runs one scoped query. Pure over the store; the caller owns caching and IPC. */
 export function runQuery(store: Store, request: QueryRequest, context: QueryContext): QueryResult {
   switch (request.view) {
+    case "courseSpaces": {
+      const core = store as Store & Partial<CourseCoreStore>;
+      return { view: "courseSpaces", items: core.courseSpaces?.({ accountScope: request.accountScope, courseId: request.courseId }) ?? [] };
+    }
     case "summary": {
       const sources = store.sources();
       const all = store.resources();

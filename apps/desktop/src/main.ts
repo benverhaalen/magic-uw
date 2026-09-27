@@ -534,7 +534,7 @@ app
               Accept:
                 service === "kaltura" || service === "space"
                   ? "text/html"
-                  : "application/json",
+                  : service === "canvas" ? "application/json+canvas-string-ids" : "application/json",
             },
             signal,
           });
@@ -1219,7 +1219,7 @@ app
               method: "GET",
               credentials: "include",
               redirect: "manual",
-              headers: { Accept: "application/json" },
+              headers: { Accept: "application/json+canvas-string-ids" },
               signal: AbortSignal.timeout(10000),
             },
           );

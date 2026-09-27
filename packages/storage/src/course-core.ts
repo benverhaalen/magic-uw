@@ -320,7 +320,7 @@ export function courseCoreRepository(
       recipeId: str(r.recipe_id),
       accessState: r.access_state as CourseSpace["accessState"],
       accessReason: str(r.access_reason),
-      checkedAt: String(r.checked_at),
+      checkedAt: str(r.checked_at),
       storeOrLink: r.store_or_link as CourseSpace["storeOrLink"],
     };
   }
@@ -483,6 +483,15 @@ export function courseCoreRepository(
       const s = courseSpaceSchema.parse(value);
       const course = sourceCourse(s.sourceId);
       if (course.courseId === LIFE_COURSE_ID) throw new Error("Course spaces belong to a course.");
+      if (s.foundInResourceId) assertSameCourse(s.foundInResourceId, course);
+      if (s.readSourceId) {
+        const readCourse = sourceCourse(s.readSourceId);
+        if (readCourse.accountScope !== course.accountScope || readCourse.courseId !== course.courseId)
+          throw new Error("A space read source must belong to its course.");
+      }
+      const existing = prepare("SELECT account_scope, course_id FROM course_spaces WHERE id = ?").get(s.id);
+      if (existing && (existing.account_scope !== course.accountScope || existing.course_id !== course.courseId))
+        throw new Error("A space identity cannot move between accounts or courses.");
       prepare(
         `INSERT INTO course_spaces VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
          source_id=excluded.source_id,account_scope=excluded.account_scope,course_id=excluded.course_id,kind=excluded.kind,
@@ -493,7 +502,7 @@ export function courseCoreRepository(
       ).run(
         s.id, s.sourceId, course.accountScope, course.courseId, s.kind, s.host, s.url, s.title,
         s.foundInResourceId, s.route, s.readState, s.readSourceId, s.lastReadAt && timestamp(s.lastReadAt),
-        s.recipeId, s.accessState, s.accessReason, timestamp(s.checkedAt), s.storeOrLink,
+        s.recipeId, s.accessState, s.accessReason, s.checkedAt && timestamp(s.checkedAt), s.storeOrLink,
       );
     },
     courseSpaces(course) {
@@ -771,3 +780,30 @@ export function courseCoreRepository(
     },
   };
 }
+
+/** v9: discovery is not an access check. Historical readable rows without a successful
+ * read are ambiguous; preserve their membership but clear the unsupported access claim. */
+export const COURSE_SPACE_OBSERVATION_MIGRATION = `
+  ALTER TABLE course_spaces RENAME TO course_spaces_v7;
+  CREATE TABLE course_spaces (
+    id TEXT PRIMARY KEY, source_id TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    account_scope TEXT NOT NULL, course_id TEXT NOT NULL, kind TEXT NOT NULL, host TEXT NOT NULL,
+    url TEXT NOT NULL, title TEXT,
+    found_in_resource_id TEXT REFERENCES resources(id) ON DELETE SET NULL,
+    route TEXT NOT NULL, read_state TEXT NOT NULL,
+    read_source_id TEXT REFERENCES sources(id) ON DELETE SET NULL, last_read_at TEXT,
+    recipe_id TEXT REFERENCES extraction_recipes(id) ON DELETE SET NULL,
+    access_state TEXT NOT NULL, access_reason TEXT, checked_at TEXT, store_or_link TEXT NOT NULL
+  );
+  INSERT INTO course_spaces SELECT id,source_id,account_scope,course_id,kind,host,url,title,
+    found_in_resource_id,route,read_state,read_source_id,last_read_at,recipe_id,
+    CASE WHEN access_state='readable' AND last_read_at IS NULL THEN 'unknown' ELSE access_state END,
+    access_reason, CASE WHEN access_state='readable' AND last_read_at IS NULL THEN NULL ELSE checked_at END,
+    store_or_link FROM course_spaces_v7;
+  DROP TABLE course_spaces_v7;
+  CREATE INDEX course_spaces_source ON course_spaces(source_id);
+  CREATE INDEX course_spaces_course ON course_spaces(account_scope,course_id);
+  CREATE INDEX course_spaces_found_in ON course_spaces(found_in_resource_id);
+  CREATE INDEX course_spaces_read_source ON course_spaces(read_source_id);
+  CREATE INDEX course_spaces_recipe ON course_spaces(recipe_id);
+`;

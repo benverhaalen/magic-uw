@@ -41,7 +41,7 @@ test("external links: one compact record per course and URL, first and last seen
     assert.ok(video && video.hostClass && video.title === "Vectors video");
     // Nothing is fetched: the record holds only the URL, title and classification.
     assert.deepEqual(Object.keys(article[0]!).sort(), [
-      "accountScope", "courseId", "firstSeen", "foundInResourceId", "host", "hostClass", "id", "lastSeen", "sourceId", "title", "treatment", "url",
+      "accessState", "accountScope", "courseId", "firstSeen", "foundInResourceId", "host", "hostClass", "id", "lastSeen", "sourceId", "spaceId", "title", "treatment", "url",
     ]);
 
     // The coverage report sees the uncaptured file link and counts the external records.
@@ -62,7 +62,7 @@ test("external links: one compact record per course and URL, first and last seen
   }
 });
 
-test("schema v9 migrates additively and stays at the store's version", () => {
+test("schema v10 migrates additively and stays at the store's version", () => {
   const store = createStore(":memory:");
   for (const b of batches()) store.ingest(b);
   assert.equal(store.externalRefs(course).length, 0);
