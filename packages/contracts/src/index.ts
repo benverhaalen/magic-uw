@@ -739,6 +739,11 @@ export interface Store {
   dayPlan(): DayPlanEntry[];
   setDayPlanEntry(value: DayPlanEntry): void;
   removeDayPlanEntry(key: string, date: string): void;
+  /**
+   * Deletes a source the student disconnected and everything captured from it; returns the
+   * number of items removed. Not for failed or empty reads, which must never erase coursework.
+   */
+  removeSource(sourceId: string): number;
   resources(search?: string): Resource[];
   resource(id: string): Resource | undefined;
   sources(): SourceHealth[];

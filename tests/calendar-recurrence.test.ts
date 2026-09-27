@@ -33,6 +33,7 @@ const parse = () =>
     courseId: "574",
     courseName: "COMPSCI 574",
     now: () => NOW,
+    expandRecurrence: true,
   });
 
 test("a weekly class becomes one event per meeting, at the right local time across the DST change", async () => {
@@ -92,4 +93,41 @@ test("times with no zone, or a zone the file never defines, are still rejected",
   });
   assert.equal(resources.length, 0);
   assert.equal(diagnostics.filter((d) => d.code === "calendar_timezone_unresolved").length, 2);
+});
+
+test("Canvas course feeds keep main's behavior: a series stays one event and the read is incomplete", async () => {
+  const { calendarConnector } = await import("@magic/connectors");
+  const batches = [];
+  for await (const b of calendarConnector({
+    feedUrl: "https://canvas.wisc.edu/feeds/calendars/course_x.ics",
+    canvasOrigin: "https://canvas.wisc.edu",
+    accountScope: "a",
+    courseId: "574",
+    courseName: "COMPSCI 574",
+    client: { feed: async () => ICS } as never,
+    now: () => NOW,
+  }).pull())
+    batches.push(b);
+  const batch = batches[0]!;
+  const lectures = batch.resources.filter((r) => r.calendar?.uid === "lec@x");
+  assert.equal(lectures.length, 1, "not expanded into meetings");
+  assert.equal(lectures[0]!.calendar?.recurrenceId, undefined);
+  assert.ok(batch.diagnostics?.some((d) => d.code === "recurrence_not_expanded"));
+  // An incomplete read can never delete previously captured events.
+  assert.equal(batch.complete, false);
+});
+
+test("the Outlook feed expands a weekly class into one event per meeting", async () => {
+  const { outlookCalendarConnector } = await import("@magic/connectors");
+  const batches = [];
+  for await (const b of outlookCalendarConnector({
+    feedUrl: "https://outlook.office365.com/owa/calendar/a@wisc.edu/b/calendar.ics",
+    accountScope: "local",
+    client: { outlookFeed: async () => ICS } as never,
+    now: () => NOW,
+  }).pull())
+    batches.push(b);
+  const lectures = batches[0]!.resources.filter((r) => r.calendar?.uid === "lec@x");
+  assert.ok(lectures.length > 5, `expanded (${lectures.length})`);
+  assert.equal(batches[0]!.diagnostics?.some((d) => d.code === "recurrence_not_expanded") ?? false, false);
 });

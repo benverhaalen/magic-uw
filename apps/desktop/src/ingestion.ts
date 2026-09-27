@@ -177,22 +177,10 @@ export function createIngestion(store: Store, host: IngestionHost) {
     });
     if (outlookUrl) {
       for await (const batch of outlook.pull(signal)) save(batch);
-    } else if (outlookBefore) {
-      // Disconnected: a complete empty read removes the old meetings instead of leaving stale ones.
-      save({
-        source: {
-          id: outlook.id,
-          label: "Outlook calendar",
-          kind: "calendar",
-          accountScope: "local",
-          courseId: OUTLOOK_CALENDAR_COURSE_ID,
-          scope: "outlook_calendar",
-        },
-        observedAt: now().toISOString(),
-        complete: true,
-        status: "ok",
-        resources: [],
-      });
+    } else if (store.sources().some((s) => s.id === outlook.id)) {
+      // Disconnected by the student: delete the meetings outright. An empty "read" would be
+      // treated as a suspicious drop by the drift guard and keep them on screen.
+      store.removeSource(outlook.id);
     }
     changed ||= outlookBefore !== outlookHashes();
     return { changed };

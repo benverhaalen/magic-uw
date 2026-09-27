@@ -22,6 +22,11 @@ export interface CalendarConnectorOptions {
   now?: () => Date;
   /** Evidence link when an event has none. Defaults to the Canvas course page. */
   defaultUrl?: string;
+  /**
+   * Expand repeating events into one event per meeting. Only the Outlook feed does this.
+   * Canvas feeds keep one event per series and an incomplete read, so they never delete events.
+   */
+  expandRecurrence?: boolean;
 }
 function value(input: unknown): string {
   return typeof input === "string"
@@ -173,7 +178,9 @@ export async function parseCalendar(
       const allDay = event.datetype === "date";
       if (!event.uid || !date(event.start, allDay))
         throw new MaterialReadError("calendar_event_invalid");
-      if (!event.rrule) {
+      if (!options.expandRecurrence || !event.rrule) {
+        if (!options.expandRecurrence && (event.rrule || event.recurrences))
+          diagnostics.push({ code: "recurrence_not_expanded", path: [], severity: "warning" });
         build(event, event.start, event.end, allDay);
         continue;
       }
@@ -309,6 +316,7 @@ export function outlookCalendarConnector(options: {
           courseId: OUTLOOK_CALENDAR_COURSE_ID,
           courseName: "Outlook calendar",
           defaultUrl: OUTLOOK_CALENDAR_URL,
+          expandRecurrence: true,
           now: options.now,
         });
         yield captureBatchSchema.parse({

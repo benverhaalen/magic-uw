@@ -1126,6 +1126,18 @@ export function createStore(path: string): Store {
         readDayPlan().filter((e) => !(e.key === key && e.date === date)),
       );
     },
+    removeSource(sourceId) {
+      return transaction(() => {
+        const ids = (
+          db.prepare("SELECT id FROM resources WHERE source_id=?").all(sourceId) as Row[]
+        ).map((r) => String(r.id));
+        // The search index is not tied to resources by a foreign key; everything else cascades.
+        for (const id of ids)
+          db.prepare("DELETE FROM resource_search WHERE resource_id=?").run(id);
+        db.prepare("DELETE FROM sources WHERE id=?").run(sourceId);
+        return ids.length;
+      });
+    },
     setCompleted(id, completed) {
       if (!liveResource(id))
         throw new Error(
