@@ -9,10 +9,11 @@ import { cpus, totalmem, type as osType, release, version as osVersion, arch, pl
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
-import { runBaseline } from "./baseline";
+import { canvasFirstSync, runBaseline } from "./baseline";
 import { renderMarkdown } from "./report";
 
-const SUITES = ["baseline"] as const;
+/** `canvas`: only the first full Canvas sync (T17), for quick before/after runs. */
+const SUITES = ["baseline", "canvas"] as const;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 function parseSuite(argv: string[]): string | undefined {
@@ -63,7 +64,10 @@ async function main() {
   const dirty = git(["status", "--porcelain", "--untracked-files=normal"]).length > 0;
   const startedAt = new Date().toISOString();
   const started = performance.now();
-  const { metrics, recording } = await runBaseline();
+  const { metrics, recording } =
+    suite === "canvas"
+      ? { metrics: { canvasFirstSync: await canvasFirstSync() }, recording: undefined }
+      : await runBaseline();
   const report = {
     schema: "magic-perf/1",
     suite,
@@ -79,7 +83,7 @@ async function main() {
   mkdirSync(out, { recursive: true });
   writeFileSync(join(out, `${suite}.json`), JSON.stringify(report, null, 2) + "\n");
   writeFileSync(join(out, `${suite}.md`), renderMarkdown(report));
-  writeFileSync(join(out, "canvas-replay.json"), JSON.stringify(recording, null, 2) + "\n");
+  if (recording) writeFileSync(join(out, "canvas-replay.json"), JSON.stringify(recording, null, 2) + "\n");
   console.log(`magic:perf ${suite}: wrote ${join(out, `${suite}.json`)}${dirty ? " (dirty tree)" : ""}`);
 }
 

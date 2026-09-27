@@ -7,6 +7,10 @@ export interface SyntheticUniversityOptions {
   malformedAssignment?: boolean;
   pageCount?: number;
   origin?: string;
+  /** Modules per course (default 1). Module 1 keeps its two items; each further module has three. */
+  modulesPerCourse?: number;
+  /** Course ids whose Pages list is hidden from students (404), as on the live account. */
+  hiddenPages?: number[];
 }
 /** Entirely fabricated university; no captured identities, URLs, cookies or coursework. */
 export function createSyntheticCanvasUniversity(
@@ -145,7 +149,21 @@ export function createSyntheticCanvasUniversity(
           name: "Synthetic student - should not be stored",
           primary_email: "never-store@example.test",
         });
-      if (path === "/api/v1/courses") return json(courses);
+      // Canvas's course JSON always carries calendar.ics, in the list as on the detail read
+      // (lib/api/v1/course.rb add_helper_dependant_entries); a date-restricted row is id-only.
+      if (path === "/api/v1/courses")
+        return json(
+          courses.map((course) =>
+            "name" in course
+              ? {
+                  ...course,
+                  calendar: {
+                    ics: `${origin}/feeds/calendars/course_SYNTHETIC_CAPABILITY_${course.id}.ics`,
+                  },
+                }
+              : course,
+          ),
+        );
       if (path === "/api/v1/users/self/todo")
         return json([
           {
@@ -261,18 +279,10 @@ export function createSyntheticCanvasUniversity(
             ],
           },
         ]);
-      if (tail === "/modules")
-        return json([
-          {
-            id: 1,
-            name: "Week one",
-            position: 1,
-            items_count: 2,
-            state: "unlocked",
-          },
-        ]);
-      if (tail === "/modules/1/items")
-        return json([
+      const moduleCount = Math.max(1, options.modulesPerCourse ?? 1);
+      const moduleItems = (moduleId: number): unknown[] =>
+        moduleId === 1
+          ? [
           {
             id: 2,
             module_id: 1,
@@ -292,7 +302,40 @@ export function createSyntheticCanvasUniversity(
             title: "Course website",
             external_url: `https://courses.synthetic.test/${courseId}/spec.html`,
           },
-        ]);
+        ]
+          : Array.from({ length: 3 }, (_, index) => ({
+              id: moduleId * 100 + index,
+              module_id: moduleId,
+              type: index === 0 ? "SubHeader" : "ExternalUrl",
+              title: index === 0 ? `Week ${moduleId} overview` : `Week ${moduleId} reading ${index}`,
+              ...(index === 0
+                ? {}
+                : { external_url: `https://courses.synthetic.test/${courseId}/week-${moduleId}-${index}.html` }),
+            }));
+      if (tail === "/modules") {
+        // Canvas inlines a module's items only when asked (include[]=items) and only while the
+        // module has at most Api::MAX_PER_PAGE (100) visible items (lib/api/v1/context_module.rb).
+        const inline = url.searchParams.getAll("include[]").includes("items");
+        return json(
+          Array.from({ length: moduleCount }, (_, index) => {
+            const id = index + 1,
+              items = moduleItems(id);
+            return {
+              id,
+              name: id === 1 ? "Week one" : `Week ${id}`,
+              position: id,
+              items_count: items.length,
+              state: "unlocked",
+              ...(inline && items.length <= 100 ? { items } : {}),
+            };
+          }),
+        );
+      }
+      const itemsPath = tail.match(/^\/modules\/(\d+)\/items$/);
+      if (itemsPath && Number(itemsPath[1]) >= 1 && Number(itemsPath[1]) <= moduleCount)
+        return json(moduleItems(Number(itemsPath[1])));
+      if (tail === "/pages" && options.hiddenPages?.includes(courseId))
+        return json({ message: "That page has been disabled for this course" }, 404);
       if (tail === "/pages")
         return json([
           {
