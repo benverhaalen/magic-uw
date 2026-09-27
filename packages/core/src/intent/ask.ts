@@ -264,7 +264,49 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
   return { ...checkAnswer(output, passages, meta, (id) => store.resource(id)?.text ?? null), path, tokens };
 }
 
-/** Code checks every quote against its passage; a sentence with no checked quote is dropped. */
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const MONTH = "(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\\.?";
+const DATE_MD = new RegExp(`\\b${MONTH}\\s+(\\d{1,2})(?!\\d)`, "gi");
+const DATE_DM = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?${MONTH}(?![a-z])`, "gi");
+const WEEKDAY = /\b(mon|tue|wed|thu|fri|sat|sun)(?:day|sday|nesday|rsday|urday)?s?\b/gi;
+const MONTH_OR_DAY = new RegExp(`^(?:${MONTH}|(?:mon|tues?|wed(?:nes)?|thu(?:rs)?|fri|sat(?:ur)?|sun)(?:day)?s?)$`, "i");
+/** Capitalized words that are not names: titles and common words. */
+const NOT_NAMES = new Set(["i", "prof", "professor", "dr", "mr", "ms", "mrs", "the", "a", "an", "it", "this", "that", "you", "your", "yes", "no", "note", "also"]);
+const month = (m: string) => MONTHS.find((x) => m.toLowerCase().startsWith(x)) ?? m.toLowerCase();
+/** The exact claims a text makes: month-day dates, weekdays, numbers and capitalized names (not sentence-initial). */
+function claims(text: string): { dates: string[]; weekdays: string[]; numbers: string[]; names: string[] } {
+  const t = text.replace(/(\d),(?=\d{3}\b)/g, "$1");
+  const dates = [
+    ...[...t.matchAll(DATE_MD)].map((m) => `${month(m[1]!)} ${Number(m[2])}`),
+    ...[...t.matchAll(DATE_DM)].map((m) => `${month(m[2]!)} ${Number(m[1])}`),
+  ];
+  const weekdays = [...t.matchAll(WEEKDAY)].map((m) => m[1]!.toLowerCase());
+  const numbers = [...t.matchAll(/\d+(?:\.\d+)?/g)].map((m) => String(Number(m[0])));
+  const names: string[] = [];
+  let initial = true;
+  for (const token of t.split(/\s+/)) {
+    const word = token.replace(/^[("'“‘[]+/, "").replace(/[^A-Za-z'’-]+$/, "");
+    if (!initial && /^[A-Z][A-Za-z'’-]*$/.test(word) && !NOT_NAMES.has(word.toLowerCase()) && !MONTH_OR_DAY.test(word)) names.push(word.toLowerCase());
+    if (word || token) initial = /[.!?:]["'”’)]*$/.test(token);
+  }
+  return { dates, weekdays, numbers, names };
+}
+/** True when every date, weekday, number and name the sentence states is in its quotes. */
+export function claimsMatch(sentence: string, quotes: string): boolean {
+  const said = claims(sentence), shown = claims(quotes);
+  const words = new Set(quotes.toLowerCase().split(/[^a-z0-9'’-]+/).filter(Boolean));
+  return (
+    said.dates.every((d) => shown.dates.includes(d)) &&
+    said.weekdays.every((d) => shown.weekdays.includes(d)) &&
+    said.numbers.every((n) => shown.numbers.includes(n)) &&
+    said.names.every((n) => words.has(n))
+  );
+}
+
+/**
+ * Code checks every quote against its passage; a sentence with no checked quote is dropped, and a
+ * sentence whose dates, numbers or names differ from its checked quotes is replaced by the quotes.
+ */
 export function checkAnswer(
   output: AskOutput,
   passages: Passage[],
@@ -305,7 +347,15 @@ export function checkAnswer(
       dropped++;
       continue;
     }
-    sentences.push(`${s.text.trim()} ${marks.map((n) => `[${n + 1}]`).join("")}`);
+    const tags = marks.map((n) => `[${n + 1}]`).join("");
+    // The quote is real; the sentence must also say what it says. Every date, number and name in
+    // the sentence has to appear in its checked quotes, or the sentence gives way to the quotes.
+    if (!claimsMatch(s.text, marks.map((n) => citations[n]!.quote).join("\n"))) {
+      dropped++;
+      sentences.push(`${marks.map((n) => `“${citations[n]!.quote}”`).join(" ")} ${tags}`);
+      continue;
+    }
+    sentences.push(`${s.text.trim()} ${tags}`);
   }
   if (!sentences.length) return { text: NOT_IN_MATERIALS, citations: [], notFound: true, dropped };
   return { text: sentences.join(" "), citations, notFound: false, dropped };
