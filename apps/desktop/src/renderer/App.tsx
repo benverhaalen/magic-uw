@@ -1,4 +1,5 @@
 import { MagicGlyph } from '../../../../packages/ui/src/glyph';
+import { ItemSpaceHost, PrepFirstPrompt, StudyLearnPage, STUDY_LEARN_EVENT } from "./study-prep"; // owner: study-prep
 import { CoursesViewHeader } from './courses/CoursesViewToggle';
 import { CoursesWorkList, type WorkReportResult } from './courses/CoursesWorkView';
 import { projectCourseWork, isCourseWorkActionCurrent, type CourseWorkRow } from './courses/course-work-model';
@@ -162,6 +163,12 @@ export function App() {
   const navigation = useDesktopNavigation();
   const { view, selectedId } = navigation;
   const setView = (next: View) => navigation.navigate(next);
+  // owner: study-prep: Home's Study card "See all" opens Study & Learn.
+  useEffect(() => {
+    const on = () => navigation.navigate("study");
+    window.addEventListener(STUDY_LEARN_EVENT, on);
+    return () => window.removeEventListener(STUDY_LEARN_EVENT, on);
+  });
   const setSelectedId = (id: string | null) => id ? navigation.navigate("resource", id) : navigation.back();
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const chatAccountKey = snapshot ? `${snapshot.fixtureMode ? 'sample' : 'live'}:${[...new Set(snapshot.sources.map(source => source.accountScope ?? source.id))].sort().join('|')}` : 'loading';
@@ -442,7 +449,7 @@ export function App() {
   const needsSignIn = unavailableSources.some(
     (source) => source.status === "needs_sign_in",
   );
-  const pageTitle = view === "chat" ? "Chat" : view === "resource" ? selected?.kind === "assignment" ? "Assignment" : selected?.kind === "material" ? "Saved material" : "Saved item" : view === "courses" && coursePage ? coursePage.code || coursePage.courseName : ({today:"Home", courses:"Courses", myuw:"My UW", calendar:"Calendar", sources:"Connected sources", privacy:"Data & AI", consent:"Agreements"} as Partial<Record<View,string>>)[view] ?? "Workspace";
+  const pageTitle = view === "chat" ? "Chat" : view === "resource" ? selected?.kind === "assignment" ? "Assignment" : selected?.kind === "material" ? "Saved material" : "Saved item" : view === "courses" && coursePage ? coursePage.code || coursePage.courseName : ({today:"Home", courses:"Courses", myuw:"My UW", calendar:"Calendar", sources:"Connected sources", privacy:"Data & AI", consent:"Agreements", study:"Study & Learn"} as Partial<Record<View,string>>)[view] ?? "Workspace";
   const captureChatOrigin = (): ChatOrigin => {
     const place = navigation.capturePlace();
     return { view, resourceId: selectedId, courseKey: navigation.courseKey, label: pageTitle, focusKey: place.focus, anchor: place.anchor, offset: place.offset, scroll: place.scroll,
@@ -559,6 +566,8 @@ export function App() {
         ) : view === "resource" ? (
           selected ? <ResourceDetail key={selected.id} resource={selected} snapshot={snapshot} busy={busy} run={run} open={open} onClose={navigation.back} onSetup={() => openConsent()} onNotice={setNotice} />
             : <section className="initial-state"><h1 tabIndex={-1}>This item is no longer available.</h1><p>The saved item may have been removed or excluded. Your previous page is still available.</p><button className="button" onClick={navigation.back}>Go back</button></section>
+        ) : /* owner: study-prep */ view === "study" ? (
+          <StudyLearnPage />
         ) : view === "calendar" ? (
           <section className="desktop-calendar"><CalendarPage resources={resources} sources={snapshot.sources} links={snapshot.links} aliases={snapshot.courseWorkAdmission?.aliases} plan={snapshot.dayPlan ?? []} planning={snapshot.planning} personalEvents={snapshot.personalCalendarEvents ?? []}
             state={navigation.calendarState} onStateChange={navigation.updateCalendar} restoreFocusId={navigation.calendarFocus}
@@ -627,6 +636,8 @@ export function App() {
             }}
           />
         )}
+      <ItemSpaceHost />{/* owner: study-prep */}
+      <PrepFirstPrompt />{/* owner: study-prep */}
     </DesktopShell>
   );
 }
