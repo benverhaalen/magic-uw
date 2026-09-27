@@ -1424,6 +1424,82 @@ button {
     position: static;
   }
 }
+/* Account page */
+.account-card {
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.account-card .display {
+  font-size: clamp(40px, 5vw, 64px);
+}
+.account-card [hidden] {
+  display: none !important; /* the view rules below set display, so hidden must win */
+}
+.account-form,
+.account-card [data-view="sent"],
+.account-card [data-view="signed-in"] {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: flex-start;
+}
+.account-form label {
+  font-weight: 600;
+  font-size: 15px;
+}
+.field-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+}
+.field-row input {
+  flex: 1 1 240px;
+  min-height: 56px;
+  padding: 0 22px;
+  border: 1.5px solid var(--rule);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 17px;
+}
+.field-row input:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.status-card {
+  align-self: stretch;
+  background: #fff;
+  border-radius: 24px;
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+.status-line {
+  margin: 0;
+  font-family: var(--serif);
+  font-weight: var(--serif-weight);
+  font-size: 28px;
+  line-height: 1.15;
+  color: var(--navy);
+}
+.status-card .note {
+  margin: 0;
+  max-width: 34em;
+}
+.account-message:empty {
+  display: none;
+}
+.account-message {
+  margin: 0;
+  font-weight: 500;
+}
+
 @media (max-width: 640px) {
   .page,
   .rooms {

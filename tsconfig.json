@@ -33,7 +33,8 @@
     "apps/**/*.tsx",
     "scripts/**/*.ts",
     "tests/**/*.ts",
-    "evals/**/*.ts"
+    "evals/**/*.ts",
+    "api/**/*.ts"
   ],
   "exclude": ["node_modules", "**/dist/**"]
 }

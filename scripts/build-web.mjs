@@ -15,6 +15,7 @@ const nav = [
   ["devs", "/pricing/#pipeline", "For devs"],
   ["about", "/about/", "About us"],
   ["faq", "/faq/", "FAQ"],
+  ["account", "/account/", "Account"],
 ];
 
 const head = `<link rel="icon" href="/assets/logo/favicon.svg" type="image/svg+xml" />
@@ -81,4 +82,25 @@ await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });
 await copy(root);
 await cp("docs/design/tokens.css", join(out, "assets/tokens.css"));
+
+// Public account configuration for the browser (docs/accounts-and-payments.md). Only these three
+// values are ever written; the build stops if a secret key is supplied in their place.
+const publicConfig = {
+  supabaseUrl: process.env.SUPABASE_URL ?? "",
+  supabaseAnonKey: process.env.SUPABASE_ANON_KEY ?? "",
+  checkoutUrl: process.env.LEMONSQUEEZY_CHECKOUT_URL ?? "",
+};
+function isSecretKey(key) {
+  if (key.startsWith("sb_secret_")) return true;
+  const payload = key.split(".")[1];
+  if (!payload) return false;
+  try {
+    return JSON.parse(Buffer.from(payload, "base64url").toString("utf8")).role === "service_role";
+  } catch {
+    return false;
+  }
+}
+if (isSecretKey(publicConfig.supabaseAnonKey))
+  throw new Error("SUPABASE_ANON_KEY is a secret (service role) key. Use the anon/publishable key.");
+await writeFile(join(out, "assets/config.js"), `window.MAGIC_CONFIG = ${JSON.stringify(publicConfig)};\n`);
 console.log(`Built the website into ${out}.`);

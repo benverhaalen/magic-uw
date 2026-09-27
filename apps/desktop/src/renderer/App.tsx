@@ -21,6 +21,7 @@ import { Onboarding, needsFirstRunSetup } from "./onboarding";
 import { CourseSpaceDetails } from "./CourseSpaceDetails";
 import { TodayRail } from "./TodayRail";
 import { NotificationsMenu } from "./NotificationsMenu";
+import { AccountSection } from "./AccountSection"; // owner: accounts
 
 type View =
   | "today"
@@ -1685,6 +1686,7 @@ function Privacy({
           <div className="no-activity">No recorded AI data activity.</div>
         )}
       </section>
+      <AccountSection /> {/* owner: accounts */}
       <section className="settings-section danger-section">
         <h2>Delete local data</h2>
         <p>
