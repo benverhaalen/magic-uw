@@ -287,7 +287,10 @@ test("materialized copies are named, private, reused, and refuse non-document ty
     const first = await materializeCopy(dir, cached, ".pdf");
     assert.equal(first, join(await realpath(dir), ".open", "abc-123.pdf"));
     assert.equal(await readFile(first, "utf8"), "%PDF-1.4 synthetic");
-    assert.equal((await stat(join(dir, ".open"))).mode & 0o077, 0);
+    // Windows' mkdir cannot produce POSIX owner-only mode bits (stat reports 0o666); the folder
+    // still gets mode 0o700 on the POSIX platforms where it matters. Same guard as storage.test.ts.
+    if (process.platform !== "win32")
+      assert.equal((await stat(join(dir, ".open"))).mode & 0o077, 0);
     assert.equal(await materializeCopy(dir, cached, ".pdf"), first);
     await assert.rejects(materializeCopy(dir, cached, ".command"), /not opened automatically/);
   } finally {
