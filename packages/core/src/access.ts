@@ -4,6 +4,14 @@ import { OUTLOOK_CALENDAR_COURSE_ID, type McpCategory, type Resource, type Store
 export function courseIncluded(store: Store, resource: Resource): boolean {
   return courseInclusion(store)(resource);
 }
+/**
+ * A course resource's inclusion now, reading only that course's row instead of the workspace:
+ * the same answer as `courseInclusion(store)(course)` for a per-item recheck in a long run.
+ */
+export function courseRowIncluded(store: Store, course: Resource): boolean {
+  const current = store.resource(course.id);
+  return courseInclusion(store, current ? [current] : [])(course);
+}
 /** `resources` lets a caller that already loaded the workspace skip a second full read. */
 export function courseInclusion(
   store: Store,
