@@ -1,12 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { CourseIntelligenceView, ResourceView, SourceHealth } from "@magic/contracts";
+import type { CourseIntelligenceView, PlanningMeeting, ResourceView, SourceHealth } from "@magic/contracts";
 import { buildCoursePage, courseKey } from "../packages/domain/src/course-page";
 import {
   courseWork,
+  dueCivilDate,
   freshnessText,
+  gradeWeights,
   groupSummary,
+  nextClass,
+  groupHues,
   nextUp,
+  pageTypeGroups,
   shownFacts,
   unknownFacts,
 } from "../apps/desktop/src/renderer/courses/course-view";
@@ -77,11 +82,13 @@ test("group summaries count open undated work separately from finished work", ()
 
 test("stale, partial and unknown freshness never read as current", () => {
   const fmt = () => "Sep 26";
-  assert.deepEqual(freshnessText({ freshness: "current_capture", lastSuccessAt: now }, fmt), { text: "Checked Sep 26", attention: false });
+  assert.deepEqual(freshnessText({ freshness: "current_capture", lastSuccessAt: now }, fmt), { text: "Checked Sep 26", attention: false, cue: null });
   for (const freshness of ["stale", "partial", "unknown"] as const) {
     const result = freshnessText({ freshness, lastSuccessAt: now }, fmt);
     assert.equal(result.attention, true);
     assert.doesNotMatch(result.text, /^Checked/);
+    // A state that could hide changed coursework keeps a short visible cue beside the info disclosure.
+    assert.ok(result.cue);
   }
   assert.equal(freshnessText({ freshness: "stale", lastSuccessAt: null }, fmt).text, "Not checked yet");
   const stale = course(undefined, [source({ status: "needs_sign_in" })]);
@@ -140,4 +147,77 @@ test("coursework below next up never repeats a next-up entry", () => {
   assert.ok(listed.every((e) => !shown.has(e.key)));
   assert.equal(listed.length + work.next.length, work.counts.total);
   assert.deepEqual(work.rest.flatMap((g) => g.upcoming).map((e) => e.resource.title), ["Final"]);
+});
+
+test("grade weights stay exactly as listed: no normalizing, partial totals stay partial, bars on a fixed scale", () => {
+  const full = gradeWeights({ weights: [
+    { groupId: "a", name: "Attendance", weight: 10 },
+    { groupId: "m", name: "Memos", weight: 15, dropLowest: 1 },
+    { groupId: "e", name: "Essays", weight: 45 },
+    { groupId: "p", name: "Participation", weight: 10 },
+    { groupId: "g", name: "Group Project", weight: 20 },
+  ] })!;
+  assert.deepEqual(full.rows.map((w) => [w.name, w.weight, w.bar]), [
+    ["Attendance", 10, 10], ["Memos", 15, 15], ["Essays", 45, 45], ["Participation", 10, 10], ["Group Project", 20, 20],
+  ]);
+  assert.equal(full.rows[1]!.rules, "drops lowest 1");
+  assert.equal(full.listedTotal, 100);
+  assert.equal(full.unlisted, 0);
+
+  const partial = gradeWeights({ weights: [
+    { groupId: "x", name: "Exams", weight: 30 },
+    { groupId: "y", name: "Labs", weight: 25, dropHighest: 2 },
+    { groupId: "z", name: "Other", weight: null },
+  ] })!;
+  assert.deepEqual(partial.rows.map((w) => [w.weight, w.bar]), [[30, 30], [25, 25], [null, 0]]);
+  assert.equal(partial.listedTotal, 55);
+  assert.equal(partial.unlisted, 1);
+  assert.equal(partial.rows[1]!.rules, "drops highest 2");
+  assert.equal(gradeWeights({ weights: [{ groupId: "z", name: "Other", weight: null }] }), null);
+  assert.equal(gradeWeights({ weights: [{ groupId: "b", name: "Bonus", weight: 130 }] })!.rows[0]!.bar, 100);
+});
+
+test("due dates become local civil dates for deadline emphasis; missing or unreadable is unknown", () => {
+  // 03:30 UTC on Oct 1 is still Sep 30 in Chicago.
+  assert.equal(dueCivilDate(r({ title: "Late", ...due("2026-10-01T03:30:00.000Z") }), "America/Chicago"), "2026-09-30");
+  assert.equal(dueCivilDate(r({ title: "Late", ...due("2026-10-01T03:30:00.000Z") }), "UTC"), "2026-10-01");
+  assert.equal(dueCivilDate(r({ title: "Undated" }), "America/Chicago"), null);
+  assert.equal(dueCivilDate(r({ title: "Bad", ...due("not a date") }), "America/Chicago"), null);
+});
+
+test("type groups come from verified Canvas groups in Canvas order; ungrouped work has no type", () => {
+  const page = course();
+  const work = courseWork(page);
+  assert.deepEqual(pageTypeGroups(page, work).map((g) => [g.sourceId, g.externalId, g.assignmentGroup.position, g.title]), [
+    ["s1", "g1", 0, "Exams"], ["s1", "g2", 1, "Problem sets"],
+  ]);
+  assert.deepEqual(nextUp(page).map((x) => [x.entry.resource.title, x.groupId]), [["PS 2", "g2"], ["Midterm", "g1"], ["Final", "g1"]]);
+  // The lookup receives the group's own row source and id, never a title.
+  const seen: string[] = [];
+  const hues = groupHues(page, work, (r) => (seen.push(`${r.sourceId}:${r.courseId}:${r.assignmentGroupId}`), r.assignmentGroupId === "g1" ? "rose" : null));
+  assert.deepEqual([...hues], [["g1", "rose"]]);
+  assert.deepEqual(seen, ["s1:101:g1", "s1:101:g2"]);
+  const loose = courseWork(withAssignments([r({ title: "Exams practice", ...due("2026-10-01T17:00:00.000Z") })]));
+  assert.equal(loose.next[0]!.groupId, null);
+});
+
+test("next class comes only from a complete verified schedule, in the meeting's own time zone", () => {
+  const meeting: PlanningMeeting = {
+    kind: "class", mode: "scheduled", days: [2, 4], startMinute: 17 * 60 + 15, endMinute: 18 * 60 + 30,
+    startDate: "2026-09-02", endDate: "2026-12-10", timezone: "America/Chicago", location: "Room 101",
+  };
+  // Sunday Sep 27, 07:00 Chicago; the next Tue/Thu meeting is Tue Sep 29.
+  const sunday = "2026-09-27T12:00:00.000Z";
+  assert.deepEqual(nextClass({ meetings: [meeting], complete: true }, sunday), {
+    date: "2026-09-29", startMinute: 1035, endMinute: 1110, location: "Room 101",
+  });
+  // Tuesday 17:30 Chicago: today's class already started, so Thursday is next.
+  assert.equal(nextClass({ meetings: [meeting], complete: true }, "2026-09-29T22:30:00.000Z")!.date, "2026-10-01");
+  // Incomplete, asynchronous, unconfirmed, ended or missing schedules never produce a next class.
+  assert.equal(nextClass({ meetings: [meeting], complete: false }, sunday), null);
+  assert.equal(nextClass({ meetings: [{ ...meeting, mode: "asynchronous" }], complete: true }, sunday), null);
+  assert.equal(nextClass({ meetings: [{ ...meeting, startMinute: null }], complete: true }, sunday), null);
+  assert.equal(nextClass({ meetings: [{ ...meeting, endDate: "2026-09-20" }], complete: true }, sunday), null);
+  assert.equal(nextClass({ meetings: [{ ...meeting, kind: "exam" }], complete: true }, sunday), null);
+  assert.equal(nextClass(null, sunday), null);
 });
