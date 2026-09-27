@@ -1075,6 +1075,7 @@ app
           await outlook.disconnect().catch(() => {}); // owner: T30: tokens and state
           void postGraphScopes(); // owner: T30
           clientsRuntime?.terminal.closeAll(); // owner: T80
+          docWindows.closeAll(); // owner: doc-window: before persist:uw is cleared
           // owner: platform-fix. Both sessions lose their storage and their HTTP cache (sign-out
           // already cleared the cache; purge did not), and every app-owned folder goes.
           await purgeHostData({
@@ -1606,6 +1607,7 @@ app
         worker.postMessage({ kind: "refresh-cancel" });
         for (const c of sourceReads.values()) c.abort();
         signIn?.close();
+        docWindows.closeAll(); // owner: doc-window: no live document page outlives the clear
         await studentSession.clearStorageData();
         await studentSession.clearCache();
         await gitlabSession.clearStorageData();

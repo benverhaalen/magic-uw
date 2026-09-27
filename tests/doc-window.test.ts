@@ -4,6 +4,8 @@ import { join, sep } from "node:path";
 import { tmpdir } from "node:os";
 import {
   HEADLESS_DOCUMENT,
+  MAX_DOC_WINDOWS,
+  docWindowRegistry,
   handleOpenDocument,
   insideFolder,
   isDocumentUrl,
@@ -169,4 +171,27 @@ test("SSO carry-through: a login page left waiting reports false once and offers
   assert.deepEqual(reports, [false]);
   assert.equal(interactive, 1);
   sso.dispose();
+});
+
+test("sign-out and purge: closeAll destroys every open document window and forgets it", () => {
+  const destroyed: string[] = [];
+  const windows = docWindowRegistry<string, { destroy(): void }>();
+  for (const id of ["word", "gdoc"]) windows.add(id, { destroy: () => destroyed.push(id) });
+  windows.closeAll();
+  assert.deepEqual(destroyed, ["word", "gdoc"]);
+  assert.equal(windows.has("word"), false);
+  assert.equal(windows.has("gdoc"), false);
+  windows.closeAll();
+  assert.deepEqual(destroyed, ["word", "gdoc"], "a second closeAll closes nothing twice");
+});
+
+test("popups: the document-window count stops at the limit", () => {
+  const windows = docWindowRegistry<number, { destroy(): void }>();
+  for (let i = 0; i < MAX_DOC_WINDOWS; i++) {
+    assert.equal(windows.full(), false);
+    windows.add(i, { destroy() {} });
+  }
+  assert.equal(windows.full(), true);
+  windows.delete(0);
+  assert.equal(windows.full(), false);
 });

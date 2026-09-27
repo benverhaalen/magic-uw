@@ -7,14 +7,15 @@
  * - The document view: `persist:uw`, sandboxed, context-isolated, no Node, no preload, so the page
  *   has no bridge and no IPC; main's `validateSender` also rejects any sender but the workspace.
  * - Every main-frame navigation and redirect is checked (`navigationDecision`); popups to a
- *   document host open another document window, everything else goes to the default browser.
+ *   document host open another document window (at most MAX_DOC_WINDOWS), everything else goes
+ *   to the default browser. Sign-out and purge destroy every document window before the clear.
  * - The bar view: app-owned HTML on its own in-memory partition, no script. Its two links are
  *   intercepted here on `will-navigate`; nothing it loads can reach the document or the app.
  * - Nothing is typed, clicked, read or injected. The trial log records one boolean per window.
  */
 import { app, BaseWindow, dialog, WebContentsView, type DownloadItem, type WebContents } from "electron";
 import { join } from "node:path";
-import { externalUrl, insideFolder, navigationDecision, ssoTracker } from "./doc-window-policy";
+import { docWindowRegistry, externalUrl, insideFolder, navigationDecision, ssoTracker } from "./doc-window-policy";
 
 const BAR_HEIGHT = 40;
 const BAR_BASE = "https://magic-doc-bar.invalid/";
@@ -36,6 +37,8 @@ export interface DocWindows {
   owns(contents: WebContents): boolean;
   /** Called from the session's `will-download`: the normal save prompt, Downloads folder only. */
   download(item: DownloadItem, contents: WebContents): void;
+  /** Close every document window; sign-out and purge call it before clearing `persist:uw`. */
+  closeAll(): void;
 }
 
 export function createDocWindows(options: {
@@ -44,7 +47,7 @@ export function createDocWindows(options: {
   trialLog(event: { event: "doc-window.sso"; carried: boolean }): void;
   idleMs?: number;
 }): DocWindows {
-  const windows = new Map<WebContents, BaseWindow>();
+  const windows = docWindowRegistry<WebContents, BaseWindow>();
 
   function openExternalSafely(target: string) {
     try {
@@ -82,7 +85,7 @@ export function createDocWindows(options: {
     });
     win.contentView.addChildView(doc);
     win.contentView.addChildView(bar);
-    windows.set(doc.webContents, win);
+    windows.add(doc.webContents, win);
     let barShown = false;
     const layout = () => {
       if (win.isDestroyed()) return;
@@ -134,7 +137,10 @@ export function createDocWindows(options: {
     });
     contents.setWindowOpenHandler(({ url }) => {
       const decision = navigationDecision(url, "window-open");
-      if (decision === "allow") open(url);
+      // A page cannot fill the desktop: past the limit, a document popup opens nothing.
+      if (decision === "allow") {
+        if (!windows.full()) open(url);
+      }
       else if (decision === "external") openExternalSafely(url);
       return { action: "deny" };
     });
@@ -162,6 +168,7 @@ export function createDocWindows(options: {
   return {
     open,
     owns: (contents) => windows.has(contents),
+    closeAll: () => windows.closeAll(),
     download(item, contents) {
       const win = windows.get(contents);
       const downloads = app.getPath("downloads");

@@ -190,3 +190,27 @@ export function ssoTracker(options: { idleMs: number; report(carried: boolean): 
     },
   };
 }
+
+/** At most this many document windows are open at once; a page's popups past it open nothing. */
+export const MAX_DOC_WINDOWS = 5;
+
+/**
+ * The open document windows, keyed by their document view's contents. `closeAll` runs before a
+ * sign-out or purge clears `persist:uw`, so no live document page can write storage after it.
+ */
+export function docWindowRegistry<K, W extends { destroy(): void }>(limit = MAX_DOC_WINDOWS) {
+  const windows = new Map<K, W>();
+  return {
+    add: (key: K, win: W) => void windows.set(key, win),
+    get: (key: K) => windows.get(key),
+    has: (key: K) => windows.has(key),
+    delete: (key: K) => void windows.delete(key),
+    /** A page may open another document window only below the limit. */
+    full: () => windows.size >= limit,
+    closeAll() {
+      // `destroy`, not `close`: a page's beforeunload handler cannot keep its window open.
+      for (const win of [...windows.values()]) win.destroy();
+      windows.clear();
+    },
+  };
+}
