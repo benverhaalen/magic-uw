@@ -12,7 +12,6 @@
 .home-work-card { display:flex; align-items:stretch; border-radius:var(--magic-radius-card); min-width:0; }
 .magic-start-work--compact .home-work-row { flex:1; min-width:0; min-height:66px; padding:11px 8px 11px 16px; background:transparent; font:inherit; text-align:left; border:0; cursor:pointer; color:inherit; }
 .magic-start-work--compact .home-work-row[aria-disabled=true] { cursor:default; }
-.magic-start-work--compact .home-work-row:hover:not([aria-disabled=true]) .home-work-name { text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:3px; }
 .magic-start-work--compact .home-work-row:focus-visible { outline:2px solid var(--magic-focus); outline-offset:2px; }
 .home-work-summary { flex:1; min-width:0; display:flex; align-items:center; justify-content:space-between; gap:16px; }
 .home-work-name { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; font:500 var(--magic-type-work-title)/1.25 var(--magic-font-editorial); overflow-wrap:anywhere; }
