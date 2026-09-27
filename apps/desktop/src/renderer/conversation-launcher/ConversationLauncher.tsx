@@ -23,8 +23,18 @@ export interface LauncherVoice {
   state: LauncherVoiceState;
   /** Shown when the student presses an unavailable mic, or when an active session ends in error or unavailable. */
   reason?: string;
-  /** Recent levels in 0..1 from the actual input analyser, newest last. Only drawn while listening. */
+  /** The latest 100 characters received from actual local speech recognition. */
+  transcript?: string;
+  /** The current tail includes an unfinalized ASR hypothesis that may change. */
+  transcriptVolatile?: boolean;
+  /** A verified streaming recognizer can show partial words before the utterance ends. */
+  streamingSpeech?: boolean;
+  /** Real input levels remain available to the host, but the pill presents speech text. */
   levels?: readonly number[];
+  /** Capture can continue while a previous finalized utterance is being processed. */
+  capturing?: boolean;
+  queuedTurns?: number;
+  capturePaused?: boolean;
   onStart?: () => void;
   /** Must work without waiting for the model or network. */
   onStop?: () => void;
@@ -215,7 +225,7 @@ export function ConversationLauncher<O extends { label: string }>({
             onClick={() => { if (!sendBlocked) void submit(); }}><Glyph name="send"/></button>
         </div>
       </div>
-      {/* While typing, the colored Stop control carries the active voice state; levels return when collapsed. */}
+      {/* While typing, the colored Stop control carries the active voice state. */}
       {!open && <VoiceStatus voice={voice}/>}
       <button ref={mic} type="button" className="cl-icon cl-mic"
         aria-busy={voice.state === "starting" || voice.state === "transcribing" || voice.state === "working" || undefined}
@@ -227,14 +237,13 @@ export function ConversationLauncher<O extends { label: string }>({
   </div>;
 }
 
-/** Text for states without input, bars only from supplied levels. Nothing moves unless the input does. */
+/** Show only words returned by speech recognition. Audio level never becomes placeholder text. */
 function VoiceStatus({ voice }: { voice: LauncherVoice }): ReactNode {
-  if (voice.state === "starting") return <span className="cl-voice-text">Starting</span>;
-  if (voice.state === "transcribing") return <span className="cl-voice-text">Transcribing</span>;
-  if (voice.state === "working") return <span className="cl-voice-text">Working</span>;
-  if (voice.state !== "listening") return null;
-  const levels = voice.levels?.slice(-5) ?? [];
-  return <><span className="cl-voice-text">{levels.some(level => level > 0.096) ? 'Hearing you' : 'Listening'}</span>{!!levels.length && <span className="cl-levels" role="img" aria-label="Microphone input level">
-    {levels.map((level, index) => <span key={index} style={{ transform: `scaleY(${Math.max(0.01, Math.min(1, level))})` }}/>)}
-  </span>}</>;
+  const label = voice.state === "starting" ? "Starting" : voice.state === "listening" ? "Listening" : voice.state === "transcribing" ? "Transcribing" : voice.state === "working" ? "Working" : null;
+  if (!label) return null;
+  const text = voice.transcript || (voice.state === "listening" && !voice.streamingSpeech ? "Text appears after a pause" : "");
+  const captureLabel = voice.capturePaused ? " · mic paused, queue full" : voice.capturing && voice.state !== "listening" ? " · listening next" : "";
+  return <span className="cl-voice-status"><span className="cl-voice-text">{label}{captureLabel}</span>
+    {text && <span className="cl-voice-transcript" aria-live={voice.transcript && !voice.transcriptVolatile ? "polite" : "off"} aria-label={voice.transcript ? `Transcribed speech: ${voice.transcript}` : undefined}><span>{text}</span></span>}
+  </span>;
 }

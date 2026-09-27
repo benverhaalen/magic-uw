@@ -56,10 +56,16 @@ test('late ready response after Stop cannot clean up a newer recording session',
  assert.equal(f.tracks[1]!.stops,0,'old ready callback stopped new microphone track');assert.equal(f.contexts[1]!.closed,0);assert.equal(f.recorders[0]!.state,'recording');assert.equal(f.last().token?.sessionId,'synthetic-2');await f.mic.stop();
 });
 test('Stop during ASR latency prevents continuation or capture restart',async()=>{
- const f=fixture(),pending=deferred<any>();f.transcriptQueue.push(pending.promise);await f.mic.start();await f.utterance();assert.equal(f.transcriptions.length,1);await f.mic.stop();pending.resolve({status:'dispatched'});await tick();assert.equal(f.last().phase,'idle');assert.equal(f.recorders.length,1);assert.equal(f.frames.size,0);assert.equal(f.tracks[0]!.stops,1);
+ const f=fixture(),pending=deferred<any>();f.transcriptQueue.push(pending.promise);await f.mic.start();await f.utterance();assert.equal(f.transcriptions.length,1);assert.equal(f.recorders.length,2,'capture continues while ASR or agent works');await f.mic.stop();pending.resolve({status:'dispatched'});await tick();assert.equal(f.last().phase,'idle');assert.equal(f.recorders.length,2);assert.equal(f.frames.size,0);assert.equal(f.tracks[0]!.stops,1);
+});
+test('a second utterance queues during agent work, and Stop cancels it',async()=>{
+ const f=fixture(),pending=deferred<any>();f.transcriptQueue.push(pending.promise);await f.mic.start();await f.utterance();assert.equal(f.transcriptions.length,1);await f.utterance();assert.equal(f.transcriptions.length,1,'second turn waits for first result');assert.equal(f.last().queuedTurns,1);assert.equal(f.last().capturing,true);await f.mic.stop();pending.resolve({status:'dispatched'});await tick();assert.equal(f.transcriptions.length,1,'queued turn must not dispatch after Stop');assert.equal(f.last().phase,'idle');
+});
+test('bounded queue visibly pauses capture and resumes after work drains',async()=>{
+ const f=fixture(),pending=deferred<any>();f.transcriptQueue.push(pending.promise);await f.mic.start();await f.utterance();await f.utterance();await f.utterance();assert.equal(f.transcriptions.length,1);assert.equal(f.last().queuedTurns,2);assert.equal(f.last().capturePaused,true);assert.equal(f.last().capturing,false);pending.resolve({status:'dispatched'});await tick();await tick();assert.equal(f.transcriptions.length,3);assert.equal(f.last().capturePaused,false);assert.equal(f.last().capturing,true);await f.mic.stop();
 });
 test('old ASR completion after restart cannot overwrite new state or duplicate recorders',async()=>{
- const f=fixture(),pending=deferred<any>();f.transcriptQueue.push(pending.promise);await f.mic.start();await f.utterance();await f.mic.stop();await f.mic.start();pending.resolve({status:'dispatched'});await tick();assert.equal(f.recorders.length,2);assert.equal(f.tracks[1]!.stops,0);assert.equal(f.last().token?.sessionId,'synthetic-2');await f.mic.stop();
+ const f=fixture(),pending=deferred<any>();f.transcriptQueue.push(pending.promise);await f.mic.start();await f.utterance();await f.mic.stop();await f.mic.start();pending.resolve({status:'dispatched'});await tick();assert.equal(f.recorders.length,3);assert.equal(f.tracks[1]!.stops,0);assert.equal(f.last().token?.sessionId,'synthetic-2');await f.mic.stop();
 });
 test('late dataavailable from an old recorder cannot stop a newer session',async()=>{
  const f=fixture();await f.mic.start();const old=f.recorders[0]!;await f.mic.stop();await f.mic.start();old.data(2_000_001);await tick();assert.equal(f.tracks[1]!.stops,0,'old recorder data stopped new session');assert.equal(f.last().phase,'listening');await f.mic.stop();
@@ -71,7 +77,7 @@ test('quiet input never dispatches and active analyser samples drive real level 
  const f=fixture();await f.mic.start();f.step(100,.05);assert.ok(Math.abs(f.last().levels.at(-1)!-.4)<.00001);await f.mic.stop();await f.mic.start();f.step(10_100,0);await tick();assert.equal(f.transcriptions.length,0);assert.equal(f.recorders.length,3);await f.mic.stop();
 });
 test('stale token events cannot replace active session or deliver old transcript',async()=>{
- const f=fixture();await f.mic.start();const old=f.starts[0]!;await f.mic.stop();await f.mic.start();f.emit({type:'state',state:{phase:'transcribing',token:old}});f.emit({type:'transcript',token:old,operationId:'old',text:'open calendar',matched:true} as VoiceEvent);assert.equal(f.last().phase,'listening');assert.equal(f.delivered.length,0);await f.mic.stop();
+ const f=fixture();await f.mic.start();const old=f.starts[0]!;await f.mic.stop();await f.mic.start();f.emit({type:'state',state:{phase:'transcribing',token:old}});f.emit({type:'transcript-partial',token:old,operationId:'old',text:'open cal'});f.emit({type:'transcript',token:old,operationId:'old',text:'open calendar'});assert.equal(f.last().phase,'listening');assert.equal(f.delivered.length,0);await f.mic.stop();
 });
 test('device ended closes capture and reports recovery even if bridge Stop rejects',async()=>{
  const f=fixture();await f.mic.start();f.setFailStop();f.tracks[0]!.dispatchEvent(new Event('ended'));await tick();assert.equal(f.last().reason,'device-unavailable');assert.equal(f.tracks[0]!.stops,1);assert.equal(f.contexts[0]!.closed,1);assert.equal(f.frames.size,0);

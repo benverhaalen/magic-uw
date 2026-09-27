@@ -46,3 +46,19 @@ test("launcher mic: error and unavailable states remain pressable so the reason 
   assert.match(unavailable, /aria-label="Voice unavailable"/);
   assert.doesNotMatch(unavailable, /cl-mic"[^>]*aria-disabled/);
 });
+
+test("active voice pill shows real transcript text and distinct phases without waveform words", () => {
+  const props = { here: { key: "home", label: "Home" }, captureOrigin: () => ({ label: "Home" }), onSubmit: () => ({ accepted: true }) };
+  const listening = renderToStaticMarkup(createElement(ConversationLauncher, { ...props, voice: { state: "listening", transcript: "Open Wikipedia", streamingSpeech: false } }));
+  assert.match(listening, /Listening/);
+  assert.match(listening, /Open Wikipedia/);
+  assert.doesNotMatch(listening, /cl-levels|Hearing you/);
+  const waiting = renderToStaticMarkup(createElement(ConversationLauncher, { ...props, voice: { state: "listening", streamingSpeech: false } }));
+  assert.match(waiting, /Text appears after a pause/);
+  const transcribing = renderToStaticMarkup(createElement(ConversationLauncher, { ...props, voice: { state: "transcribing", transcript: "Open Wikipedia" } }));
+  assert.match(transcribing, /Transcribing/);
+  assert.match(transcribing, /Open Wikipedia/);
+  const working = renderToStaticMarkup(createElement(ConversationLauncher, { ...props, voice: { state: "working", transcript: "Open Wikipedia" } }));
+  assert.match(working, /Working/);
+  assert.match(working, /Open Wikipedia/);
+});

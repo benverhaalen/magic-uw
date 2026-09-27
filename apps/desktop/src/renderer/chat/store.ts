@@ -408,6 +408,8 @@ function applyIntent(chat: Chat, x: Exchange, r: IntentResult, rt: ChatRuntime, 
     const unique = [...new Map(items.map((i) => [i.id, i])).values()].slice(0, 4);
     return update(chat, x, { state: "done", step: null, result: { kind: "choose", scopeLabel: scopeLabel(scope), items: unique, searched: true, wider: false } });
   }
+  // owner: voice-plan. The connected planner's final line, observed-result based; never a grounded answer.
+  if (r.action === "voice.plan") return update(chat, x, { state: "done", step: null, result: { kind: "note", text: String((r.result as { say?: unknown } | null)?.say ?? "Done.").slice(0, 400) } });
   return update(chat, x, { state: "done", step: null, result: { kind: "note", text: `Magic ran ${r.action}.` } });
 }
 

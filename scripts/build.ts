@@ -35,6 +35,9 @@ await build({
 console.log(embeddedKey
   ? "Embedded Jev: this build carries the TypeSafe key. Do not commit or publish dist/ publicly."
   : "Embedded Jev: no key embedded; Jev needs MAGIC_GATEWAY_URL.");
+// Compile the product-owned macOS default-browser observer beside main.cjs.
+// Unsupported platforms retain the typed unavailable result from the caller.
+execFileSync(process.execPath, ["scripts/build-native-browser.mjs"], { stdio: "inherit" });
 // Runtime window/Dock icon; editable vector and packaging assets stay in source.
 for (const extension of ["png", "icns", "ico"])
   await copyFile(join("apps/desktop/assets", `app-icon.${extension}`), join("apps/desktop/dist", `app-icon.${extension}`));
