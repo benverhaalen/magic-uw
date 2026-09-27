@@ -1,10 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createStore } from "@magic/storage";
-import { createCore, scrubText, rosterFor, toOriginalSpan } from "@magic/core";
+import { createHash } from "node:crypto";
+import { createCore, scrubText, rosterFor, toOriginalSpan, validateCitations } from "@magic/core";
 import { gatewayClient } from "@magic/ai";
 import { captureBatchSchema, defaultPrivacy, type CaptureBatch } from "@magic/contracts";
-import { courseResource, courseSchema } from "../packages/connectors/src/canvas-models";
+import { courseResource, courseSchema, profileIdentity } from "../packages/connectors/src/canvas-models";
+import { canvasConnector } from "../packages/connectors/src/canvas";
+import { createSyntheticCanvasUniversity } from "../packages/connectors/src/canvas-fixture";
+import { createMcpService } from "../packages/core/src/mcp";
 
 // Entirely synthetic people and coursework.
 const course = "hist-210";
@@ -225,4 +229,116 @@ test("roster persists locally and is cleared by purge; Canvas teachers become re
   const resource = courseResource(parsed, "https://canvas.example.edu", {});
   assert.deepEqual(resource.course?.instructors, ["Elena Ruiz"]);
   assert.ok(!JSON.stringify(resource).includes("avatar"));
+});
+
+test("Canvas profile fields become the student's own identity", () => {
+  assert.deepEqual(
+    profileIdentity({ id: "1", name: "Avery Quinlan", short_name: "Avery", sortable_name: "Quinlan, Avery", login_id: "aquinlan", primary_email: "AQuinlan@wisc.edu" }),
+    { names: ["Avery Quinlan", "Avery"], emails: ["aquinlan@wisc.edu"], netIds: ["aquinlan"], studentIds: [] },
+  );
+  assert.equal(profileIdentity({ id: "1" }), undefined);
+});
+
+const syncNow = () => new Date("2026-09-26T15:00:00Z");
+test("a fresh Canvas sync with zero manual setup scrubs the student's own name, email and NetID from the Jev payload", async () => {
+  const university = createSyntheticCanvasUniversity({ rateLimit: false });
+  const injected = "Lead: Avery Quinlan (aquinlan, aquinlan@wisc.edu). Pair with Rowan Tessier; questions to Dana Whitfield.";
+  const fetch = (async (url: string, init?: RequestInit) => {
+    const response = await university.fetch(url, init);
+    if (new URL(url).pathname !== "/api/v1/courses/101/assignments" || !response.ok) return response;
+    const rows = (await response.json()) as Array<{ id: number; description: string }>;
+    for (const row of rows) if (row.id === 1001) row.description = `<p>${injected}</p>`;
+    return new Response(JSON.stringify(rows), { status: response.status, headers: response.headers });
+  }) as typeof globalThis.fetch;
+  const store = createStore(":memory:");
+  const batches: CaptureBatch[] = [];
+  // Same hook the desktop ingestion passes: identities go to the local roster, batches to coursework.
+  for await (const b of canvasConnector({
+    origin: "https://canvas.synthetic.test", fetch, now: syncNow, sleep: async () => {}, random: () => 0,
+    onIdentity: (identity) => store.recordAutoIdentity(identity),
+  }).pull()) {
+    batches.push(b);
+    store.ingest(b);
+  }
+  // Profile and topic-author identities never enter coursework (the assignment text above was injected on purpose).
+  assert.ok(!JSON.stringify(batches).includes("Quinlan, Avery"));
+  const discussions = batches.filter((b) => b.source.scope === "discussions" || b.source.scope === "announcements");
+  assert.ok(discussions.length > 0);
+  assert.ok(!JSON.stringify(discussions).includes("Rowan Tessier"));
+  assert.ok(!JSON.stringify(discussions).includes("Dana Whitfield"));
+  assert.deepEqual(store.identityRoster(), { peers: [], retain: [] });
+  const bodies: string[] = [];
+  let token: string | null = null;
+  const fetcher = (async (url: URL, init: RequestInit) => {
+    if (String(url).endsWith("/v1/devices")) return new Response(JSON.stringify({ token: "t".repeat(32) }), { status: 200 });
+    bodies.push(String(init.body));
+    return new Response(JSON.stringify(judgment), { status: 200 });
+  }) as typeof globalThis.fetch;
+  const gateway = gatewayClient("http://127.0.0.1:9/", { read: async () => token, write: async (t) => void (token = t) }, fetcher);
+  // Real clock: jobs queued during ingest use the store's wall-clock time.
+  const core = createCore(store, { fixture: batch(), gateway });
+  const essay = core.snapshot().resources.find((r) => r.text.includes("Avery Quinlan"));
+  assert.ok(essay, "injected assignment captured");
+  await core.execute({ type: "privacy", value: { ...defaultPrivacy, mode: "selective_cloud", jevEnabled: true, shareCourseText: true } });
+  await core.execute({ type: "enrich", id: essay.id });
+  await core.settled();
+  const sent = bodies.find((b) => b.includes("Lead:"));
+  assert.ok(sent, "the injected assignment was sent to Jev");
+  for (const secret of ["Avery", "Quinlan", "aquinlan", "Rowan", "Tessier"]) assert.ok(!sent.includes(secret), secret);
+  assert.match(sent, /Lead: \[STUDENT_SELF\] \(\[NETID_1\], \[EMAIL_1\]\)\. Pair with \[STUDENT_1\]; questions to Dana Whitfield\./);
+  await core.close();
+});
+
+test("automatic refreshes merge with, and never erase, manual roster entries", () => {
+  const store = createStore(":memory:");
+  store.ingest(batch());
+  const person = (names: string[], netIds: string[] = []) => ({ names, emails: [], netIds, studentIds: [] });
+  store.setIdentityRoster({ self: person(["Ben Student"]), peers: [person(["Maya Chen"])], retain: [] });
+  store.recordAutoIdentity({ accountScope: "a", self: { ...person(["Avery Quinlan"], ["aquinlan"]), emails: ["aquinlan@wisc.edu"] } });
+  store.recordAutoIdentity({ accountScope: "a", courseId: course, authors: ["Rowan Tessier"] });
+  store.recordAutoIdentity({ accountScope: "a", self: person(["Avery Q. Quinlan"], ["aquinlan"]) });
+  store.recordAutoIdentity({ accountScope: "a", courseId: course, authors: ["Jo Park"] });
+  assert.deepEqual(store.identityRoster().peers[0]!.names, ["Maya Chen"]);
+  assert.deepEqual(store.identityRoster().self!.names, ["Ben Student"]);
+  assert.deepEqual(store.autoIdentities().accounts.a!.authorsByCourse[course], ["Rowan Tessier", "Jo Park"]);
+  const r = rosterFor(store, course);
+  assert.deepEqual(r.people.find((p) => p.token === "STUDENT_SELF")!.person.names, ["Ben Student", "Avery Q. Quinlan"]);
+  // Peers: manual first, then derived authors (comment + topic authors) sorted.
+  const text = scrubText("Ben Student, Avery Q. Quinlan, Maya Chen, Rowan Tessier, Jo Park and Elena Ruiz", r).text;
+  assert.equal(text, "[STUDENT_SELF], [STUDENT_SELF], [STUDENT_1], [STUDENT_3], [STUDENT_2] and Elena Ruiz");
+  store.close();
+});
+
+test("MCP output is scrubbed, keeps teacher names, and its citations resolve to original spans", async () => {
+  const store = createStore(":memory:");
+  const token = "m".repeat(64);
+  const b = batch();
+  store.ingest({ ...b, source: { ...b.source, kind: "canvas", accountScope: "acct" } });
+  store.recordAutoIdentity({ accountScope: "acct", self: { names: ["Avery Quinlan"], emails: [], netIds: ["aquinlan"], studentIds: [] } });
+  store.setIdentityRoster(roster);
+  store.setPrivacy({ ...defaultPrivacy, mode: "selective_cloud", hostedProvider: "claude", shareCourseText: true, shareComments: true, shareCommunications: true });
+  store.setMcpGrant({
+    id: "claude-desktop", label: "Claude", recipient: "claude", enabled: true,
+    courses: [{ accountScope: "acct", courseId: course }], categories: ["course_text", "comments", "communications"],
+    tokenHash: createHash("sha256").update(token).digest("hex"),
+  });
+  const service = createMcpService(store, "claude-desktop", token, syncNow);
+  const d = store.resources().find((r) => r.title === "Week 3: tariffs")!;
+  const essay = store.resources().find((r) => r.title === "Tariff essay")!;
+  const item = service.call("get_item", { id: d.id }) as { text: string; excerpt: { start: number; basis: string }; citation: { contentHash: string } };
+  const search = JSON.stringify(service.call("search", { query: "tariff Maya" }));
+  const comments = JSON.stringify(service.call("get_item", { id: essay.id }));
+  for (const out of [JSON.stringify(item), search, comments])
+    for (const secret of ["Maya", "maya.chen", "Sam Rivera", "srivera7", "9081234567"]) assert.ok(!out.includes(secret), secret);
+  assert.ok(item.text.includes("Professor Elena Ruiz"));
+  assert.ok(comments.includes('"authorName":"Elena Ruiz"'));
+  assert.ok(comments.includes('"authorName":"[STUDENT_2]"'));
+  assert.equal(item.excerpt.basis, "outgoing");
+  const quote = "[STUDENT_1] argued that the tariff";
+  const at = item.text.indexOf(quote) + item.excerpt.start;
+  const [result] = validateCitations(store, [{ resourceId: d.id, contentHash: item.citation.contentHash, quote, start: at, end: at + quote.length }]);
+  assert.equal(result!.status, "supported");
+  assert.equal(result!.original!.text, "Maya Chen argued that the tariff");
+  await service.server.close();
+  store.close();
 });

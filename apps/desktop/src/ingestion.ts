@@ -564,6 +564,8 @@ export function createIngestion(store: Store, host: IngestionHost) {
         courseOverrides: store.courseOverrides(),
         knownResources: store.resources(),
         now,
+        // Local scrubbing roster (preferences table); never part of coursework captures.
+        onIdentity: (identity) => store.recordAutoIdentity(identity),
         onCalendarFeed: (feed) =>
           host
             .secrets(

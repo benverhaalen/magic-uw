@@ -39,6 +39,7 @@ export function createSyntheticCanvasUniversity(
       workflow_state: "available",
       enrollments: [{ type: "student", enrollment_state: "active" }],
       term: { id: 10, name: "Fall 2026 to 2027" },
+      teachers: [{ id: 700 + index, display_name: "Dana Whitfield" }],
       syllabus_body: `<p>Synthetic course syllabus.</p><a href="https://courses.synthetic.test/${101 + index}/">Course site</a>`,
     })),
     ...[
@@ -142,8 +143,12 @@ export function createSyntheticCanvasUniversity(
       if (path === "/api/v1/users/self/profile")
         return json({
           id: 9001,
-          name: "Synthetic student - should not be stored",
-          primary_email: "never-store@example.test",
+          // Synthetic identity. It may only reach the local scrubbing roster, never coursework or snapshots.
+          name: "Avery Quinlan",
+          short_name: "Avery",
+          sortable_name: "Quinlan, Avery",
+          login_id: "aquinlan",
+          primary_email: "aquinlan@wisc.edu",
         });
       if (path === "/api/v1/courses") return json(courses);
       if (path === "/api/v1/users/self/todo")
@@ -187,6 +192,7 @@ export function createSyntheticCanvasUniversity(
             id: id * 10,
             title: "Course announcement",
             context_code: `course_${id}`,
+            author: { id: 700, display_name: "Dana Whitfield" },
             message: `<p>See <a href="https://courses.synthetic.test/${id}/spec.html">the spec</a>.</p>`,
             posted_at: "2026-09-25T12:00:00Z",
           },
@@ -367,6 +373,9 @@ export function createSyntheticCanvasUniversity(
             id: 5,
             title: "Explain your approach",
             message: "<p>Bring an example.</p>",
+            // A classmate-started topic: the author is a student, not a teacher.
+            user_name: "Rowan Tessier",
+            author: { id: 9102, display_name: "Rowan Tessier" },
           },
         ]);
       return json({}, 404);

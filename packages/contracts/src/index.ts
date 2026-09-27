@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { planningCaptureSchema, type PlanningCapture, type PlanningRecord, type PlanningScope } from "./planning";
 export * from "./planning";
-import { identityRosterSchema, citationClaimSchema, type IdentityRoster, type RedactionSummary, type CitationResult } from "./identity";
+import { identityRosterSchema, citationClaimSchema, type IdentityRoster, type RedactionSummary, type CitationResult, type AutoIdentityState, type AutoIdentityUpdate } from "./identity";
 export * from "./identity";
 
 export const instant = z.iso.datetime({ offset: true });
@@ -709,6 +709,8 @@ export interface Store {
   receipts(): EgressReceipt[];
   identityRoster(): IdentityRoster;
   setIdentityRoster(value: IdentityRoster): void;
+  autoIdentities(): AutoIdentityState;
+  recordAutoIdentity(value: AutoIdentityUpdate): void;
   purge(): void;
 }
 export interface ContextManifest {

@@ -44,19 +44,30 @@ export const scrubNote =
 const lower = (value: string) => value.normalize("NFKC").trim().toLocaleLowerCase();
 const collapse = (value: string) => lower(value).replace(/\s+/g, " ");
 
+function mergePeople(people: (IdentityPerson | undefined)[]): IdentityPerson | undefined {
+  const present = people.filter((p): p is IdentityPerson => !!p);
+  if (!present.length) return undefined;
+  const union = (key: keyof IdentityPerson) => [...new Set(present.flatMap((p) => p[key]))];
+  return { names: union("names"), emails: union("emails"), netIds: union("netIds"), studentIds: union("studentIds") };
+}
+
 /**
- * Stored roster plus identities captured for this course: teacher names are
- * retained, submission-comment authors who are not teachers are scrubbed.
+ * Manual roster merged with identities captured automatically: the Canvas
+ * profile as the student's own identity; non-teacher discussion/announcement
+ * and submission-comment authors as peers. Teacher names are retained; a
+ * student's identity never is. Automatic entries never replace manual ones.
  */
 export function rosterFor(store: Store, courseId: string): EffectiveRoster {
   const base = store.identityRoster();
+  const auto = Object.values(store.autoIdentities().accounts);
+  const self = mergePeople([base.self, ...auto.map((a) => a.self)]);
   const inCourse = store
     .resources()
     .filter((r) => !r.deleted && r.courseId === courseId);
   const instructors = [
     ...new Set(inCourse.flatMap((r) => r.course?.instructors ?? [])),
   ];
-  const students = [base.self, ...base.peers]
+  const students = [self, ...base.peers]
     .filter((p): p is IdentityPerson => !!p)
     .flatMap((p) => p.names.map(collapse));
   const keep = new Set(
@@ -64,9 +75,11 @@ export function rosterFor(store: Store, courseId: string): EffectiveRoster {
   );
   const derived = [
     ...new Set(
-      inCourse
-        .flatMap((r) => r.submission?.comments ?? [])
-        .map((c) => c.authorName?.trim())
+      [
+        ...inCourse.flatMap((r) => r.submission?.comments ?? []).map((c) => c.authorName),
+        ...auto.flatMap((a) => a.authorsByCourse[courseId] ?? []),
+      ]
+        .map((n) => n?.trim())
         .filter((n): n is string => !!n && n.length >= 2),
     ),
   ]
@@ -77,7 +90,7 @@ export function rosterFor(store: Store, courseId: string): EffectiveRoster {
     ...derived.map((n) => ({ names: [n], emails: [], netIds: [], studentIds: [] })),
   ];
   const people = [
-    ...(base.self ? [{ token: "STUDENT_SELF", person: base.self }] : []),
+    ...(self ? [{ token: "STUDENT_SELF", person: self }] : []),
     ...peers.map((person, i) => ({ token: `STUDENT_${i + 1}`, person })),
   ];
   // A student's identity is never retained, even if it also appears as a teacher.
@@ -105,32 +118,86 @@ const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const particles = new Set(["de", "da", "del", "di", "du", "van", "von", "la", "le", "bin", "al", "st"]);
 const honorific = /(?:\b(?:prof(?:essor)?|dr|instructor|lecturer)\.?\s+)$/i;
 
-function nameCandidates(text: string, name: string, kind: Candidate["kind"], key: string) {
-  const out: Candidate[] = [];
-  const parts = name.normalize("NFKC").trim().split(/\s+/).filter(Boolean);
-  const run = (source: string, flags: string) => {
-    for (const m of text.matchAll(new RegExp(source, flags)))
-      out.push({
-        start: m.index,
-        end: m.index + m[0].length,
-        kind,
-        key,
-        honorific: honorific.test(text.slice(Math.max(0, m.index - 16), m.index)),
-      });
+interface Entry { token?: string; retain: boolean }
+interface Matcher {
+  full?: RegExp;
+  tokens?: RegExp;
+  ids?: RegExp;
+  fullKeys: Map<string, Entry>;
+  tokenKeys: Map<string, Entry>;
+  idKeys: Map<string, RedactionKind>;
+}
+/** Normalizes a matched full-name form: case, whitespace, and "Last, First" spacing. */
+const fullKey = (s: string) => lower(s).replace(/\s*,\s*/g, ", ").replace(/\s+/g, " ");
+const compiled = new WeakMap<EffectiveRoster, Matcher>();
+/** One alternation per form (longest first), compiled once per roster. */
+function matcher(roster: EffectiveRoster): Matcher {
+  const cached = compiled.get(roster);
+  if (cached) return cached;
+  const fullKeys = new Map<string, Entry>(), tokenKeys = new Map<string, Entry>();
+  const idKeys = new Map<string, RedactionKind>();
+  const fullSources = new Set<string>(), tokenSources = new Set<string>(), idSources = new Set<string>();
+  const add = (map: Map<string, Entry>, key: string, token: string | undefined) => {
+    const e = map.get(key) ?? { retain: false };
+    if (token) e.token ??= token;
+    else e.retain = true;
+    map.set(key, e);
   };
-  // Full names are matched case-insensitively with flexible whitespace.
-  run(B + parts.map(escape).join("\\s+") + E, "giu");
-  if (parts.length >= 2)
-    run(B + `${escape(parts.at(-1)!)},\\s*${escape(parts[0]!)}` + E, "giu");
-  // Single name parts only match capitalized or upper-case forms, so common
-  // words ("will", "grace") are not removed from ordinary prose.
-  if (parts.length >= 2)
-    for (const part of parts) {
-      if (part.length < 2 || particles.has(part.toLocaleLowerCase())) continue;
-      const cap = part[0]!.toLocaleUpperCase() + part.slice(1);
-      const forms = [...new Set([cap, part.toLocaleUpperCase()])].map(escape);
-      run(B + `(?:${forms.join("|")})` + E, "gu");
+  const register = (name: string, token?: string) => {
+    const parts = name.normalize("NFKC").trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return;
+    // Full names: case-insensitive with flexible whitespace, plus "Last, First".
+    add(fullKeys, fullKey(parts.join(" ")), token);
+    fullSources.add(parts.map(escape).join("\\s+"));
+    if (parts.length >= 2) {
+      add(fullKeys, fullKey(`${parts.at(-1)}, ${parts[0]}`), token);
+      fullSources.add(`${escape(parts.at(-1)!)}\\s*,\\s*${escape(parts[0]!)}`);
+      // Single parts only match capitalized or upper-case forms, so common
+      // words ("will", "grace") survive in ordinary prose.
+      for (const part of parts) {
+        if (part.length < 2 || particles.has(part.toLocaleLowerCase())) continue;
+        for (const f of new Set([part[0]!.toLocaleUpperCase() + part.slice(1), part.toLocaleUpperCase()])) {
+          add(tokenKeys, f, token);
+          tokenSources.add(escape(f));
+        }
+      }
     }
+  };
+  for (const { token, person } of roster.people) {
+    for (const n of person.names) register(n, token);
+    for (const id of person.netIds) {
+      idKeys.set(lower(id), "netid");
+      idSources.add(escape(id));
+    }
+    for (const id of person.studentIds) {
+      idKeys.set(lower(id), "student_id");
+      idSources.add(escape(id));
+    }
+  }
+  for (const n of roster.retain) register(n);
+  const alt = (xs: Set<string>) => [...xs].sort((a, b) => b.length - a.length).join("|");
+  const m: Matcher = { fullKeys, tokenKeys, idKeys };
+  if (fullSources.size) m.full = new RegExp(`${B}(?:${alt(fullSources)})${E}`, "giu");
+  if (tokenSources.size) m.tokens = new RegExp(`${B}(?:${alt(tokenSources)})${E}`, "gu");
+  if (idSources.size) m.ids = new RegExp(`${B}(?:${alt(idSources)})${E}`, "giu");
+  compiled.set(roster, m);
+  return m;
+}
+function nameCandidates(text: string, m: Matcher) {
+  const out: Candidate[] = [];
+  const run = (re: RegExp | undefined, keys: Map<string, Entry>, key: (s: string) => string) => {
+    if (!re) return;
+    for (const hit of text.matchAll(re)) {
+      const e = keys.get(key(hit[0]));
+      if (!e) continue;
+      const honor = honorific.test(text.slice(Math.max(0, hit.index - 16), hit.index));
+      // A form shared by a student and a teacher is scrubbed unless an honorific marks the teacher.
+      const kind = e.token && !(e.retain && honor) ? "student_name" : "retain";
+      out.push({ start: hit.index, end: hit.index + hit[0].length, kind, key: e.token ?? "", honorific: honor });
+    }
+  };
+  run(m.full, m.fullKeys, fullKey);
+  run(m.tokens, m.tokenKeys, (s) => s);
   return out;
 }
 
@@ -162,20 +229,13 @@ export function scrubText(text: string, roster: EffectiveRoster): ScrubResult {
       const [start, end] = p.group ? m.indices![p.group]! : [m.index, m.index + m[0].length];
       found.push({ start, end, kind: p.kind, key: lower(text.slice(start, end)) });
     }
-  for (const { person } of roster.people) {
-    for (const netId of person.netIds)
-      for (const m of text.matchAll(new RegExp(B + escape(netId) + E, "giu")))
-        found.push({ start: m.index, end: m.index + m[0].length, kind: "netid", key: lower(netId) });
-    for (const sid of person.studentIds)
-      for (const m of text.matchAll(new RegExp(`(?<!\\d)${sid}(?!\\d)`, "g")))
-        found.push({ start: m.index, end: m.index + m[0].length, kind: "student_id", key: sid });
-  }
+  const m = matcher(roster);
+  if (m.ids)
+    for (const hit of text.matchAll(m.ids))
+      found.push({ start: hit.index, end: hit.index + hit[0].length, kind: m.idKeys.get(lower(hit[0]))!, key: lower(hit[0]) });
   // Identifier patterns always win over names (an instructor email is still an email).
   const identifiers = resolve(found);
-  const names: Candidate[] = [];
-  for (const { token, person } of roster.people)
-    for (const n of person.names) names.push(...nameCandidates(text, n, "student_name", token));
-  for (const n of roster.retain) names.push(...nameCandidates(text, n, "retain", ""));
+  const names = nameCandidates(text, m);
   const chosen = resolve(names, identifiers)
     .filter((c) => c.kind !== "retain")
     .sort((a, b) => a.start - b.start);

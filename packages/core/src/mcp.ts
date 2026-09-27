@@ -10,6 +10,7 @@ import {
 import { maySend, resolveDeadline } from "@magic/domain";
 import { contentCategories, courseInclusion } from "./access";
 import { evidenceFor } from "./evidence";
+import { payloadScrubber } from "./identity";
 
 export const mcpArgumentsSchema = z
   .object({
@@ -85,6 +86,17 @@ export function createMcpService(
         contentCategories(r).every(permitted)
       );
     };
+    // MCP output goes to hosted AI clients: scrub every free-text field with the
+    // same scrubber as hosted payloads. Excerpt offsets are in scrubbed ("outgoing")
+    // coordinates of the item's text, so validate-citations maps them back locally.
+    const scrubber = payloadScrubber(store, true);
+    const memo = new Map<string, string>();
+    const out = (value: string, courseId: string) => {
+      const key = `${courseId}\u0000${value}`;
+      let v = memo.get(key);
+      if (v === undefined) memo.set(key, (v = scrubber.field(value, courseId)));
+      return v;
+    };
     const allResources = store.resources();
     const resources = allResources.filter((r) => allowed(r));
     const evidence = evidenceFor(store);
@@ -113,9 +125,12 @@ export function createMcpService(
         ) ?? [];
     function project(r: Resource) {
       const source = sourceMap.get(r.sourceId)!;
+      const s = (value: string) => out(value, r.courseId);
+      const text = s(r.text);
+      const deadline = resolveDeadline(evidence.deadlines(r));
       const match =
         terms
-          .map((t) => r.text.toLocaleLowerCase().indexOf(t))
+          .map((t) => text.toLocaleLowerCase().indexOf(t))
           .filter((n) => n >= 0)
           .sort((a, b) => a - b)[0] ?? 0;
       const start =
@@ -125,17 +140,18 @@ export function createMcpService(
       return {
         id: r.id,
         courseId: r.courseId,
-        course: r.courseName,
-        title: r.title,
+        course: s(r.courseName),
+        title: s(r.title),
         kind: r.kind,
-        text: r.text.slice(start, start + 8000),
-        excerpt: { start, end: Math.min(r.text.length, start + 8000) },
-        deadline: resolveDeadline(evidence.deadlines(r)),
+        text: text.slice(start, start + 8000),
+        excerpt: { start, end: Math.min(text.length, start + 8000), basis: "outgoing" as const },
+        deadline: { ...deadline, claims: deadline.claims.map((c) => ({ ...c, quote: s(c.quote) })) },
         citation: {
           url: safeUrl(r.url),
           version: r.version,
+          contentHash: r.contentHash,
           observedAt: r.observedAt,
-          source: source.label,
+          source: s(source.label),
         },
         parts: r.parts?.slice(0, 40).map((p) => ({
           page: p.page,
@@ -143,7 +159,7 @@ export function createMcpService(
           section: p.section,
           start: p.start,
           end: p.end,
-          text: p.text.slice(0, 2000),
+          text: s(p.text).slice(0, 2000),
         })),
         freshness: {
           status: source.status,
@@ -162,7 +178,13 @@ export function createMcpService(
             }
           : {}),
         ...(permitted("comments") && r.submission
-          ? { comments: r.submission.comments }
+          ? {
+              comments: r.submission.comments?.map((c) => ({
+                ...c,
+                text: s(c.text),
+                ...(c.authorName ? { authorName: s(c.authorName) } : {}),
+              })),
+            }
           : {}),
         // No raw HTML, identities, local paths, secret URLs, or arbitrary source payloads.
       };
@@ -266,8 +288,8 @@ export function createMcpService(
           score: terms.reduce(
             (n, t) =>
               n +
-              (r.title.toLowerCase().includes(t) ? 4 : 0) +
-              (r.text.toLowerCase().includes(t) ? 1 : 0),
+              (out(r.title, r.courseId).toLowerCase().includes(t) ? 4 : 0) +
+              (out(r.text, r.courseId).toLowerCase().includes(t) ? 1 : 0),
             0,
           ),
         }));

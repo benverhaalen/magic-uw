@@ -96,3 +96,32 @@ export interface CitationResult {
   cited?: { start: number; end: number };
   containsRedaction?: boolean;
 }
+
+/**
+ * Identities captured automatically during a sync (never stored in resources,
+ * snapshots or MCP output). One update either sets the account's own identity
+ * from the Canvas profile or adds non-teacher authors seen in a course.
+ */
+export const autoIdentityUpdateSchema = z
+  .object({
+    accountScope: z.string().min(1).max(256),
+    self: identityPersonSchema.optional(),
+    courseId: z.string().min(1).max(256).optional(),
+    authors: z.array(name).max(2000).optional(),
+  })
+  .strict();
+export type AutoIdentityUpdate = z.input<typeof autoIdentityUpdateSchema>;
+export const autoIdentityStateSchema = z
+  .object({
+    accounts: z.record(
+      z.string().max(256),
+      z
+        .object({
+          self: identityPersonSchema.optional(),
+          authorsByCourse: z.record(z.string().max(256), z.array(name).max(2000)).default({}),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+export type AutoIdentityState = z.infer<typeof autoIdentityStateSchema>;
