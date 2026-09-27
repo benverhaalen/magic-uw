@@ -24,26 +24,37 @@ import { courseIncluded } from "./access";
 import { createHash } from "node:crypto";
 import { guideQuery } from "../../packs/guide/src/query"; // owner: guides
 
+/** Canvas submission types that name the kind exactly; code decides these, Jev never sees them. */
+const EXACT_KINDS: Record<string, "quiz" | "discussion"> = { online_quiz: "quiz", discussion_topic: "discussion" };
+/** The assignment kind code can decide from Canvas `submissionTypes`, or null when it is ambiguous. */
+export function codeAssignmentKind(r: Pick<Resource, "kind" | "submissionTypes">): "quiz" | "discussion" | null {
+  if (r.kind !== "assignment" || !r.submissionTypes?.length) return null;
+  const kinds = new Set(r.submissionTypes.map((t) => EXACT_KINDS[t] ?? null));
+  return kinds.size === 1 ? [...kinds][0]! : null;
+}
+
 /** The one mapping from stored resources to what a view shows: deadline, label, order. */
 export function resourceViews(store: Store, list: Resource[]): ResourceView[] {
   const evidence = evidenceFor(store);
   const judgments = store.judgments();
   return list
     .map((r) => {
-      const judgment = judgments.find(
+      // store.judgments() holds only judgments whose input (content or text hash) is current,
+      // so a text-hash judgment stays visible after a grade or submission change (O5).
+      const judgment = judgments.findLast(
         (j) =>
           j.resourceId === r.id &&
-          j.inputHash === r.contentHash &&
           j.questionVersion === "assignment.kind.v1",
       );
       const parsed = judgmentResultSchema.safeParse(judgment?.result);
       // Provisional display threshold; never presented as calibrated correctness.
-      const label =
-        parsed.success &&
+      const exact = codeAssignmentKind(r);
+      const label = exact ??
+        (parsed.success &&
         parsed.data.kind !== "other" &&
         (parsed.data.probabilities[parsed.data.kind] ?? 0) >= 0.9
           ? parsed.data.kind.replaceAll("_", " ")
-          : null;
+          : null);
       return {
         ...r,
         deadline: resolveDeadline(evidence.deadlines(r), evidence.unresolvedDeadlines(r)),

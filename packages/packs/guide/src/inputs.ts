@@ -4,6 +4,7 @@
  * and the top passages per topic for the scope. No new extractor runs here.
  */
 import type { CourseCoreStore, PackScope, Resource, Store } from "@magic/contracts";
+import { effectiveCoursePolicy } from "../../../domain/src/course-intelligence";
 import type { CourseFrame, Passage } from "../../core/src/index";
 import type { Concept, LearningStore } from "../../../learning/src/store";
 import { normaliseLabel } from "../../../learning/src/concepts";
@@ -58,7 +59,13 @@ export function selectGuideInputs(store: GuideStore, kind: GuideKind, scope: Pac
   const ref = { accountScope, courseId: scope.courseId };
   const course = inCourse.filter((r) => sources.get(r.sourceId)!.accountScope === accountScope);
   const label = course.find((r) => r.courseName)?.courseName ?? scope.courseId;
-  if (course.some((r) => r.policy.mode === "restricted"))
+  // One policy source with tutoring and the quiz/cards packs: profile claims first, a restriction wins.
+  const intelligence = store
+    .courseIntelligence()
+    .filter((ci) => ci.accountScope === accountScope && ci.courseId === scope.courseId)
+    .sort((a, b) => b.version - a.version)[0];
+  const policies = course.map((r) => effectiveCoursePolicy(intelligence, r));
+  if (policies.some((p) => p.mode === "restricted"))
     return { ok: false, status: "blocked", message: "This course restricts AI-made study material, so nothing was generated.", courseRef };
 
   // The scope: a module, or an assessment (its linked materials, else the whole course, searched by its stated scope).
@@ -96,10 +103,6 @@ export function selectGuideInputs(store: GuideStore, kind: GuideKind, scope: Pac
   const touching = allConcepts.filter((c) => c.sources.some((s) => allowed.has(s.resourceId)));
   const whole = !scope.moduleId && !scope.assessmentId && !scope.resourceIds?.length;
   const concepts = focus.length ? focus : touching.length || !whole ? touching : allConcepts;
-  const intelligence = store
-    .courseIntelligence()
-    .filter((ci) => ci.accountScope === accountScope && ci.courseId === scope.courseId)
-    .sort((a, b) => b.version - a.version)[0];
   const profileTopics = (intelligence?.claims ?? [])
     .filter((c) => c.kind === "topic" && (whole || c.evidence.some((e) => allowed.has(e.resourceId))))
     .map((c) => collapse(String(c.value ?? c.label)))
@@ -181,7 +184,7 @@ export function selectGuideInputs(store: GuideStore, kind: GuideKind, scope: Pac
     profileChars += line.length;
   }
   const aiPolicy = intelligence?.claims.find((c) => c.kind === "ai_policy");
-  const policy = course.find((r) => r.policy.mode !== "unknown")?.policy ?? course[0]?.policy;
+  const policy = policies.find((p) => p.mode !== "unknown") ?? policies[0];
   const frame: CourseFrame = {
     courseId: courseRef,
     course: label,

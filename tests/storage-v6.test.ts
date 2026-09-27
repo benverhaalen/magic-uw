@@ -131,6 +131,7 @@ function populate(file: string) {
 /** Turns a v6 file into the exact v5 shape (the shipped v1–v5 DDL), with field history rows. */
 const TO_V5 = `
   ${LEARNING_TABLES.slice().reverse().map((t) => `DROP TABLE ${t};`).join(" ")}
+  DROP TABLE resource_refs; DROP TABLE external_refs;
   DROP TABLE note_sync_settings; DROP TABLE note_remotes; DROP TABLE note_suggestions; DROP TABLE note_template_choices;
   DROP TABLE note_links; DROP TABLE note_versions; DROP TABLE notes;
   DROP TABLE passage_vocab; DROP TABLE passage_fts; DROP TABLE passages; DROP TABLE counters;
@@ -374,6 +375,8 @@ test("purge enumerates every table: zero rows everywhere, FTS empty, backup dele
       store.putExtractionRecipe({ id: "rec", host: "example.test", layoutHash: "h", version: 1, recipe: { selector: "main" }, validatedAt: null });
       store.putCourseSpace({ id: "sp", sourceId: "canvas-course-1", kind: "external_tool", host: "tool.example.test", url: "https://tool.example.test/x", title: TOKEN, foundInResourceId: syllabus.id, route: "lti", readState: "skipped", readSourceId: null, lastReadAt: null, recipeId: "rec", accessState: "link-only", accessReason: null, checkedAt: t(9), storeOrLink: "link" });
       assert.deepEqual(store.putMaterialFacts({ resourceId: syllabus.id, textHash: textHash(syllabus.title, syllabus.text), analyzerVersion: "a1", facts: [{ kind: "term", start: 0, end: 7, value: "BIO 101" }] }), { ok: true });
+      const ref = store.putExternalRef({ sourceId: "canvas-course-1", url: "https://tool.example.test/reading", title: TOKEN, hostClass: "unknown", treatment: "link", foundInResourceId: syllabus.id }, t(9));
+      assert.deepEqual(store.putResourceRefs(syllabus.id, syllabus.contentHash, [{ toResourceId: null, externalRefId: ref, target: "https://tool.example.test/reading", kind: "external", strength: "direct", reason: "linked in the body" }]), { ok: true });
       store.addLedgerEntry({ id: "le", pack: "p", packVersion: "1", tier: "fast", model: "m", tokensIn: 1, tokensCached: 0, tokensOut: 1, latencyMs: 1, checkFailures: 0, escalated: false, course: null, createdAt: t(9) });
       store.addCompileRun({ id: "cr", course: { accountScope: "student-1", courseId: "course-1" }, packVersion: "1", model: "m", tier: "fast", inputHash: "h", tokens: 1, latencyMs: 1, checkFailures: 0, escalated: false, createdAt: t(9) });
       store.addUiEvent({ kind: "open", subject: TOKEN, createdAt: t(9) });
