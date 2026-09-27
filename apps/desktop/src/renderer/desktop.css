@@ -5,8 +5,8 @@
 .desktop-shell.is-collapsed { --sidebar-width: 64px; }
 .desktop-chrome { grid-column: 1/-1; color: var(--magic-ink-on-shell); display: flex; align-items: center; padding: 0 9px 0 82px; position: relative; -webkit-app-region: drag; }
 .desktop-history { display: flex; gap: 2px; }
-.desktop-chrome button { -webkit-app-region: no-drag; width: 32px; height: 32px; border: 0; border-radius: 5px; background: transparent; display: grid; place-items: center; color: inherit; }
-.desktop-chrome button:hover:not(:disabled) { background: var(--magic-fill-shell-hover); }
+.desktop-chrome button:where(:not(.notif-panel *)) { -webkit-app-region: no-drag; width: 32px; height: 32px; border: 0; border-radius: 5px; background: transparent; display: grid; place-items: center; color: inherit; }
+.desktop-chrome button:where(:not(.notif-panel *)):hover:not(:disabled) { background: var(--magic-fill-shell-hover); }
 .desktop-page-title { position: absolute; left: 50%; transform: translateX(-50%); max-width: 40%; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; font: 500 var(--magic-type-page-title)/1.2 var(--magic-font-editorial); pointer-events: none; }
 .desktop-state { margin-left: auto; font-size: 11px; opacity: .9; }
 .desktop-sidebar { min-height: 0; display: flex; flex-direction: column; color: var(--magic-ink-on-shell); padding: 12px 12px 4px; }
