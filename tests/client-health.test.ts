@@ -21,6 +21,7 @@ import {
 } from "../packages/runner/src/index.ts";
 import {
   CLAUDE_REQUIRED_FLAGS,
+  CODEX_OPTIONAL_FLAGS,
   CODEX_REQUIRED_FLAGS,
   HEALTH_EVIDENCE,
   chatArgs,
@@ -65,7 +66,7 @@ async function setup() {
   return { userData, home, env };
 }
 const claudeHelp = `Usage: claude [options]\n${CLAUDE_REQUIRED_FLAGS.join("\n")}\n`;
-const codexHelp = `Run Codex non-interactively\n${CODEX_REQUIRED_FLAGS.join("\n")}\n`;
+const codexHelp = `Run Codex non-interactively\n${[...CODEX_REQUIRED_FLAGS, ...CODEX_OPTIONAL_FLAGS].join("\n")}\n`;
 const featureList = [
   "shell_tool                               stable             true",
   "apps                                     stable             true",
@@ -82,6 +83,7 @@ const kindFor: Record<string, string> = {
   plan_insufficient: "plan_insufficient",
   model_unavailable: "model_unavailable",
   offline: "offline",
+  keychain_locked: "keychain_locked", // owner: client-detection
 };
 
 test("every observed and binary-sourced run message maps to its health state", () => {
@@ -197,9 +199,9 @@ test("instant mode is offered only when this version was checked and keeps the s
   const noSafe = await instantSupport("claude", "2.1.283", { ...deps, help: async () => claudeHelp.replace("--safe-mode", "") });
   assert.equal(noSafe.support.available, false);
   assert.match(noSafe.support.reason!, /--safe-mode/);
+  // client-detection: capability, not version. An older version that lists every flag is offered.
   const old = await instantSupport("claude", "2.0.1", { ...deps, help: async () => claudeHelp });
-  assert.equal(old.support.available, false);
-  assert.match(old.support.reason!, /2\.1\.283/);
+  assert.deepEqual(old.support, { available: true, testedWith: "2.1.283" });
   // Codex always sends a global AGENTS.md; instant is still the default (operator), with a note.
   const agents = await instantSupport("codex", "0.157.0", { ...deps, help: async () => codexHelp, exists: async (p) => p.endsWith("AGENTS.md") });
   assert.equal(agents.support.available, true);
@@ -309,7 +311,7 @@ test("Gemini refuses without the student's key and never exposes it", async () =
 test("setMode saves a mode only when the client can use it here", async () => {
   const { userData, env } = await setup();
   const runtime = createClientHealth({ userData, env: { ...env, USERPROFILE: userData }, vault: memoryVault(), resolve: resolveFake, help: async () => "", online: async () => true });
-  await assert.rejects(runtime.setMode("claude", "instant"), /doesn't offer/);
+  await assert.rejects(runtime.setMode("claude", "instant"), /didn't answer --help/);
   const h = await runtime.setMode("claude", "isolated");
   assert.equal(h.mode, "isolated");
   assert.deepEqual(JSON.parse(await readFile(join(userData, "client-modes.json"), "utf8")), { modes: { claude: "isolated" } });

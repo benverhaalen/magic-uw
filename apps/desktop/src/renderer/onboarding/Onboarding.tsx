@@ -18,6 +18,7 @@ import {
   orderedClients,
   readProgress,
   recommendedClient,
+  autoPick,
   selectable,
   steps,
   summarize,
@@ -451,6 +452,7 @@ const stateWords: Record<ClientHealth["state"], string> = {
   usage_limited: "Usage limit reached",
   model_unavailable: "Model unavailable",
   offline: "Can't connect",
+  keychain_locked: "Keychain blocked", // owner: client-detection
 };
 
 /** A tile's real status: what the client on this computer says, in its saved mode. Signs nothing in. */
@@ -484,6 +486,7 @@ function ClientStep(props: {
   const [selected, setSelected] = useState<ClientId | null>(props.chosen);
   const [mode, setMode] = useState<ClientMode | null>(null);
   const [connecting, setConnecting] = useState<ClientId | null>(props.chosen);
+  const autoPicked = useRef(false); // owner: client-detection
   const check = useCallback(async () => {
     setFailed(false);
     setHealth(null);
@@ -502,6 +505,14 @@ function ClientStep(props: {
       const map = Object.fromEntries(entries) as Record<ClientId, ClientHealth>;
       setHealth(map);
       setSelected((current) => (current && selectable(current, map[current]) ? current : recommendedClient(map)));
+      // owner: client-detection. One client installed: use it without asking (once; Back returns here).
+      const only = autoPick(map);
+      if (only && !props.chosen && !autoPicked.current) {
+        autoPicked.current = true;
+        setSelected(only);
+        props.onChosen(only);
+        setConnecting(only);
+      }
     } catch {
       setFailed(true);
     }
@@ -596,6 +607,7 @@ function ClientStep(props: {
               openExternal={props.openExternal}
               onCheckAgain={() => void check()}
               onSwitch={() => setSelected(clientOrder.find((id) => id !== current.id && selectable(id, health?.[id])) ?? "gemini")}
+              onUseProfile={current.modes.includes("isolated") ? () => setMode("isolated") : undefined}
             />
           ) : null}
           {mode === "instant" && current.instant.note ? <p className="onb-note">{current.instant.note}</p> : null}

@@ -28,6 +28,8 @@ export type ClientHealthState =
   | "usage_limited"
   | "model_unavailable"
   | "offline"
+  // owner: client-detection. macOS refused the client's saved sign-in in the Keychain.
+  | "keychain_locked"
   | "ok";
 
 /** Whether instant mode can be offered for this client on this device, and why not. */
@@ -37,6 +39,18 @@ export interface InstantSupport {
   reason?: string;
   /** Plain words about what instant mode can't keep out, shown when it is offered anyway. */
   note?: string;
+  /** owner: client-detection. The flags this version's `--help` lacks (why instant isn't offered). */
+  missingFlags?: string[];
+  /** The version the flag set was measured on. Information only, never a gate. */
+  testedWith?: string;
+}
+
+/** owner: client-detection. What detection saw, for "Why wasn't my client found?". No file contents. */
+export interface ClientDiagnostics {
+  /** Every folder searched, in order, with the home folder shown as `~`. */
+  searched: string[];
+  /** Where the client was found (`~`-relative), when it was. */
+  found?: string;
 }
 
 export interface ClientHealth {
@@ -54,6 +68,7 @@ export interface ClientHealth {
   /** The modes this client can use here, best first. */
   modes: ClientMode[];
   checkedAt: string;
+  diagnostics?: ClientDiagnostics;
 }
 
 /** Presence only: a key's value never crosses the bridge. */

@@ -27,19 +27,37 @@ import { allowedEnv, clientIdSchema, resolveClient, type ClientsDeps } from "./p
  *   `sqlite_home`/`log_dir` keep Codex's databases and logs in the app's folder.
  */
 
-/** The newest versions the flag set was measured against. Older versions aren't offered instant mode. */
-export const INSTANT_VERIFIED: Record<"claude" | "codex", string> = { claude: "2.1.283", codex: "0.156.1" };
+/**
+ * owner: client-detection. The versions the flag set and its side effects were measured on.
+ * Information only (shown in the notice's details): instant mode is offered by what the
+ * installed version's `--help` lists, not by its number.
+ */
+export const INSTANT_TESTED: Record<"claude" | "codex", string> = { claude: "2.1.283", codex: "0.156.1" };
 
-/** Must all appear in `claude --help` (`--system-prompt` also matches the hidden `-file` form's docs). */
+/**
+ * Must all appear in `claude --help`. `--safe-mode` is the one that keeps the student's own
+ * CLAUDE.md, plugins, hooks and MCP servers out (measured on 2.1.283: `--setting-sources` alone
+ * doesn't). No other verified means exists for a version without it, so such a version isn't
+ * offered instant mode; the separate sign-in stays available.
+ */
 export const CLAUDE_REQUIRED_FLAGS = [
   "--print", "--output-format", "--json-schema", "--tools", "--strict-mcp-config",
   "--setting-sources", "--no-session-persistence", "--safe-mode", "--system-prompt", "--model",
 ] as const;
-/** Must all appear in `codex exec --help`. */
+/** Must all appear in `codex exec --help` (`--ignore-user-config` keeps config.toml and its MCP servers out). */
 export const CODEX_REQUIRED_FLAGS = [
-  "--ephemeral", "--ignore-user-config", "--ignore-rules", "--skip-git-repo-check",
-  "--output-schema", "--sandbox", "--disable", "--config",
+  "--ephemeral", "--ignore-user-config", "--skip-git-repo-check", "--output-schema", "--sandbox", "--config",
 ] as const;
+/**
+ * Used when listed, dropped when not: `--ignore-rules` (execpolicy rules only matter to commands,
+ * which are off) and `--disable` (the tool features; the sandbox stays read-only without it).
+ */
+export const CODEX_OPTIONAL_FLAGS = ["--ignore-rules", "--disable"] as const;
+
+/** A flag as its own word in a help text (`--system-prompt` isn't satisfied by `--append-system-prompt`). */
+export function helpHasFlag(help: string, flag: string): boolean {
+  return new RegExp(`(^|[\\s,\\[(])${flag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w-])`, "m").test(help);
+}
 /**
  * Codex features that give the model tools or pull in user customisations. Only the ones the
  * installed version lists are passed: an unknown name is a hard error ("Unknown feature flag").
@@ -65,10 +83,10 @@ const codexStateDir = (userData: string) => join(instantDir(userData, "codex"), 
 const tomlString = (value: string) => JSON.stringify(value);
 
 /** The arguments Codex instant mode appends to the runner's spec argv (`codexArgs`). */
-export function codexInstantArgs(o: { instructionsPath: string; stateDir: string; features: readonly string[] }): string[] {
+export function codexInstantArgs(o: { instructionsPath: string; stateDir: string; features: readonly string[]; ignoreRules?: boolean }): string[] {
   // `--skip-git-repo-check` is in the runner's spec argv (codexArgs) for both modes.
   return [
-    "--ignore-rules",
+    ...(o.ignoreRules === false ? [] : ["--ignore-rules"]),
     "-c", `model_instructions_file=${tomlString(o.instructionsPath)}`,
     "-c", `sqlite_home=${tomlString(o.stateDir)}`,
     "-c", `log_dir=${tomlString(o.stateDir)}`,
@@ -131,6 +149,8 @@ export interface InstantPlan {
   support: InstantSupport;
   /** Codex only: the tool features this version lists, to be disabled. */
   features: string[];
+  /** Codex only: false when this version's `exec --help` doesn't list `--ignore-rules`. */
+  ignoreRules?: boolean;
 }
 
 async function fileExists(path: string): Promise<boolean> {
@@ -164,36 +184,52 @@ async function runText(id: "claude" | "codex", args: string[], deps: InstantDeps
 const cache = new Map<string, InstantPlan>();
 
 /**
- * Whether instant mode can be offered for a client at this version. Runs only `--help` (and, for
- * Codex, `features list`): no auth, no network, no model call. Cached per client and version.
+ * owner: client-detection. Whether instant mode can be offered for the installed client, by
+ * capability: its `--help` must list every required flag. Runs only `--help` (and, for Codex,
+ * `features list`): no auth, no network, no model call. Cached per client and version. The tested
+ * version is reported as information; an older or newer version with the flags is offered.
  */
 export async function instantSupport(id: ClientId, version: string | undefined, deps: InstantDeps): Promise<InstantPlan> {
-  const no = (reason: string): InstantPlan => ({ support: { available: false, reason }, features: [] });
+  const no = (reason: string, missingFlags?: string[]): InstantPlan => ({
+    support: { available: false, reason, ...(missingFlags?.length ? { missingFlags } : {}) },
+    features: [],
+  });
   if (id === "gemini") return no("Gemini runs only with your own API key.");
-  if (!version) return no("The installed version couldn't be read, so instant mode wasn't checked.");
-  if (compareVersions(version, INSTANT_VERIFIED[id]) < 0)
-    return no(`Instant mode is checked from version ${INSTANT_VERIFIED[id]}; update ${id === "claude" ? "Claude Code" : "Codex"} to use it.`);
-  const key = `${id}@${version}@${deps.userData}`;
+  const name = id === "claude" ? "Claude Code" : "Codex";
+  const testedWith = INSTANT_TESTED[id];
+  const key = `${id}@${version ?? "?"}@${deps.userData}`;
   const cached = cache.get(key);
   if (cached && !deps.help) return cached;
   const help = await (deps.help ?? ((c) => runText(c, c === "claude" ? ["--help"] : ["exec", "--help"], deps)))(id);
   const required = id === "claude" ? CLAUDE_REQUIRED_FLAGS : CODEX_REQUIRED_FLAGS;
-  const missing = required.filter((flag) => !help.includes(flag));
+  const missing = required.filter((flag) => !helpHasFlag(help, flag));
   let plan: InstantPlan;
-  if (missing.length) plan = no(`This version doesn't offer ${missing.join(", ")}, so the app can't keep your own settings out of its runs.`);
-  else if (id === "claude") plan = { support: { available: true }, features: [] };
+  if (!help.trim()) plan = no(`${name} didn't answer --help, so its options couldn't be checked.`);
+  else if (missing.length)
+    plan = no(
+      missing.includes("--safe-mode")
+        ? `This ${name}${version ? ` (${version})` : ""} has no --safe-mode, which instant mode needs to keep your own CLAUDE.md, plugins and hooks out of My Magic UW's requests.`
+        : `This ${name}${version ? ` (${version})` : ""} doesn't offer ${missing.join(", ")}, which instant mode needs to keep your own settings out of My Magic UW's requests.`,
+      [...missing],
+    );
+  else if (id === "claude") plan = { support: { available: true, testedWith }, features: [] };
   else {
     const home = studentCodexHome(deps.env ?? process.env);
     const has = deps.exists ?? fileExists;
     const personal = (await has(join(home, "AGENTS.md"))) || (await has(join(home, "AGENTS.override.md")));
-    const listed = listedFeatures(await (deps.features ?? (() => runText("codex", ["features", "list"], deps)))());
+    const canDisable = helpHasFlag(help, "--disable");
+    const listed = canDisable ? listedFeatures(await (deps.features ?? (() => runText("codex", ["features", "list"], deps)))()) : new Set<string>();
     plan = {
-      support: personal
-        ? { available: true, note: "Codex adds your personal AGENTS.md to each request. My Magic UW still checks every answer." }
-        : { available: true },
+      support: {
+        available: true,
+        testedWith,
+        ...(personal ? { note: "Codex adds your personal AGENTS.md to each request. My Magic UW still checks every answer." } : {}),
+      },
       features: CODEX_TOOL_FEATURES.filter((f) => listed.has(f)),
+      ignoreRules: helpHasFlag(help, "--ignore-rules"),
     };
   }
+  if (!plan.support.available) plan.support.testedWith = testedWith;
   cache.set(key, plan);
   return plan;
 }
@@ -216,7 +252,7 @@ export async function instantRunOptions(
   await mkdir(stateDir, { recursive: true, mode: 0o700 });
   const path = instructionsPath(deps.userData);
   await writeFile(path, CODEX_INSTRUCTIONS, { encoding: "utf8", mode: 0o600 });
-  return { command, workDir, env, extraArgs: codexInstantArgs({ instructionsPath: path, stateDir, features: plan.features }) };
+  return { command, workDir, env, extraArgs: codexInstantArgs({ instructionsPath: path, stateDir, features: plan.features, ignoreRules: plan.ignoreRules }) };
 }
 
 /**

@@ -121,7 +121,8 @@ export type RunnerErrorKind =
   // owner: client-health (D50). Distinct causes a student can act on, each with its own notice.
   | "plan_insufficient"
   | "model_unavailable"
-  | "offline";
+  | "offline"
+  | "keychain_locked"; // owner: client-detection
 
 const studentMessages: Record<RunnerErrorKind, string> = {
   not_installed: "Your AI client isn't installed. Open Settings to choose one.",
@@ -145,6 +146,8 @@ const studentMessages: Record<RunnerErrorKind, string> = {
     "Your AI plan can't run this client. Upgrade the plan, add an API key, or switch to another AI.",
   model_unavailable: "The model this task asked for isn't available on your AI plan.",
   offline: "Your AI service couldn't be reached. Check your internet connection.",
+  keychain_locked:
+    "macOS blocked access to your AI client's saved sign-in. Run it once in Terminal and allow Keychain access.",
 };
 
 /** Messages never include stderr, prompts or keys: those can hold course text or secrets. */

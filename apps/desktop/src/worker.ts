@@ -97,6 +97,14 @@ async function generationRunner(): Promise<ModelRunner | null> {
   return generationRuntime.runner;
 }
 // end owner: client-health
+// owner: client-detection. main's extended PATH (the login shell's folders and the known install
+// folders), sent once after launch; runners built afterwards find the client and its node.
+port.on("message", ({ data }: { data: any }) => {
+  if (data?.kind !== "client-path" || typeof data.path !== "string" || data.path.length > 32_768) return;
+  process.env.PATH = data.path;
+  generationRuntime = null;
+});
+// end owner: client-detection
 const generation = createPackHandler({ store, runner: generationRunner });
 // end owner: generation
 // owner: intent. The command bar's router. Claude answers through a warm session pool (lane

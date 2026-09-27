@@ -1,6 +1,13 @@
 export * from "./types";
 export {
   resolveCli,
+  knownCliDirs,
+  cliSearchDirs,
+  loginShellDirs,
+  readLoginShellPath,
+  parseShellPath,
+  extendPathForClients,
+  type ShellRunner,
   resolveNpmShim,
   runProcess,
   cliEnvironment,

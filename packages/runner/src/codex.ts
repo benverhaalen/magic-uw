@@ -135,7 +135,7 @@ export function createCodexBackend(options: CodexOptions): ModelBackend {
         return parseCodexEvents(run.stdout, tier.model ?? "");
       } catch (error) {
         if (run.code !== 0 && error instanceof RunnerError && error.kind === "invalid_output")
-          throw failure(run.stderr, `codex exited ${run.code}`);
+          throw failure(`${run.stderr}\nexit ${run.code}`, `codex exited ${run.code}`);
         throw error;
       }
     },

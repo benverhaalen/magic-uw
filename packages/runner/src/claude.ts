@@ -149,7 +149,7 @@ export function createClaudeBackend(options: ClaudeOptions): ModelBackend {
       });
       const result = parseClaudeJson(run.stdout);
       if (!result) {
-        if (run.code !== 0) throw failure(run.stderr, `claude exited ${run.code}`);
+        if (run.code !== 0) throw failure(`${run.stderr}\nexit ${run.code}`, `claude exited ${run.code}`);
         throw new RunnerError("invalid_output", "claude output was not a result");
       }
       return claudeOutcome(result, model);
