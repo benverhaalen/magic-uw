@@ -113,6 +113,7 @@ export async function runPack<I, O>(
       input: prompt.input,
       schema: pack.schema,
       tier: pack.tier,
+      ...(pack.escalate === false ? { escalate: false } : {}),
       budget: pack.budget,
       signal: options.signal,
       lane: options.lane,
@@ -133,7 +134,7 @@ export async function runPack<I, O>(
     if (error.kind === "check_failed")
       return {
         status: "needs_student",
-        question: `The ${pack.id} result didn't pass the app's checks, even with a stronger model. Try again, narrow the scope, or skip it?`,
+        question: `The ${pack.id} result didn't pass the app's checks, ${pack.escalate === false ? "even after a retry" : "even with a stronger model"}. Try again, narrow the scope, or skip it?`,
         options: ["retry", "narrow_scope", "skip"],
         checkErrors: error.checkErrors,
       };
