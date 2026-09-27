@@ -252,11 +252,142 @@ export const calendarMetadataSchema = z
     assignmentExternalId: id.optional(),
     recurrenceId: z.string().max(200).optional(),
     location: z.string().max(500).optional(),
-    onlineMeeting: z.enum(["teams"]).optional(),
+    onlineMeeting: z.enum(["teams", "zoom", "webex", "meet"]).optional(),
+    // owner: T30. Graph calendar and meeting-invite fields (never a body or attendee list).
+    /** `meeting`: an invite or an online meeting; absent for an ordinary calendar entry. */
+    entryKind: z.enum(["meeting"]).optional(),
+    iCalUId: z.string().max(1000).optional(),
+    organizer: z.string().max(300).optional(),
+    /** Join link: origin plus path only (a Zoom meeting ID path is kept; no query, no passcode). */
+    joinUrl: evidenceUrlSchema.optional(),
+    /** The Graph message id of the invite this entry came from, when it came from mail. */
+    sourceMailId: z.string().max(1000).optional(),
+    responseStatus: z.string().max(40).optional(),
+    // end owner: T30
   })
   .strict();
 /** Course id used for events from the student's published Outlook calendar (not a course). */
 export const OUTLOOK_CALENDAR_COURSE_ID = "outlook-calendar";
+// owner: T30. Outlook mail through Microsoft Graph (the student's own app registration).
+/** Course id every stored Outlook message sits under; its course match is `mail.courseId`. */
+export const OUTLOOK_MAIL_COURSE_ID = "outlook-mail";
+/**
+ * The setup checkbox's disclosure line for Microsoft Graph (the frontend's ConsentSetup shows
+ * it in the consent block's list). Changing it changes CONSENT_DISCLOSURE_VERSION.
+ */
+export const OUTLOOK_GRAPH_DISCLOSURE =
+  "Also connects your UW Outlook calendar and mail (subject, sender, date, a short preview; never full messages)";
+export const mailCategorySchema = z.enum([
+  "course",
+  "advisor",
+  "org",
+  "admin",
+  "meeting",
+  "general",
+]);
+export type MailCategory = z.infer<typeof mailCategorySchema>;
+/**
+ * The compact, agent-ready form of one message. No body is ever stored: `preview` is Graph's
+ * own `bodyPreview` (≤255 characters), `gist` a ≤280-character summary only when the
+ * student's AI client wrote one. Every category carries the code's reason.
+ */
+export const mailMetadataSchema = z
+  .object({
+    messageId: z.string().min(1).max(1000),
+    conversationId: z.string().max(1000).optional(),
+    folder: z.string().max(100),
+    fromName: z.string().max(300).optional(),
+    fromAddress: z.string().max(320).optional(),
+    receivedAt: instant,
+    preview: z.string().max(255),
+    gist: z.string().max(280).optional(),
+    importance: z.enum(["low", "normal", "high"]).optional(),
+    hasAttachments: z.boolean().optional(),
+    categories: z.array(z.string().max(200)).max(50).optional(),
+    flagged: z.boolean().optional(),
+    isRead: z.boolean().optional(),
+    category: mailCategorySchema,
+    categoryReason: z.string().max(500),
+    /** A Canvas course this message was matched to by code. */
+    courseId: z.string().max(256).optional(),
+    courseAccountScope: z.string().max(256).optional(),
+    org: z.string().max(300).optional(),
+    listId: z.string().max(500).optional(),
+    /** Graph `meetingMessageType` for an invite, update or cancellation. */
+    meetingMessageType: z.string().max(60).optional(),
+  })
+  .strict();
+export type MailMetadata = z.infer<typeof mailMetadataSchema>;
+/** Notes and files read through Graph wait here until the course mapper assigns a course. */
+export const UNMAPPED_COURSE_ID = "unmapped";
+export const notesMetadataSchema = z
+  .object({
+    sourceSubtype: z.enum(["onenote", "onedrive"]),
+    /** Graph's id of the OneNote page or drive item. */
+    itemId: z.string().min(1).max(1000),
+    notebook: z.string().max(300).optional(),
+    section: z.string().max(300).optional(),
+    path: z.string().max(2000).optional(),
+    mimeType: z.string().max(200).optional(),
+    sizeBytes: z.number().int().nonnegative().optional(),
+    lastModified: optionalInstant,
+    /** The drive item's content tag: a change means the file content changed. */
+    cTag: z.string().max(500).optional(),
+    /** Listed but its content not read yet (a per-sync budget); read on a later sync. */
+    pending: z.boolean().optional(),
+  })
+  .strict();
+export type NotesMetadata = z.infer<typeof notesMetadataSchema>;
+export type OutlookConnectionState =
+  | "not_set_up"
+  | "not_connected"
+  | "connected"
+  | "needs_uw_approval"
+  | "expired"
+  | "error";
+/** `magic:outlook-status`: never a token, never an address. */
+export interface OutlookStatus {
+  /** The Graph connection (the frontend's "Outlook" toggle). */
+  outlook: OutlookConnectionState;
+  scopes: string[];
+  /** Calendars.ReadWrite granted (the optional write scope). */
+  canWriteCalendar: boolean;
+  /** Needs UW approval: whether Microsoft's admin-approval request is known to be sent. */
+  approvalRequest: "sent" | "not_sent" | "unknown" | null;
+  /** The Microsoft error code behind the state, when there is one (for example AADSTS65001). */
+  reason: string | null;
+  lastSyncAt: string | null;
+  counts: { messages: number; events: number };
+  /** The published-ICS fallback link is saved. */
+  icsConnected: boolean;
+}
+export interface MailSearchItem {
+  id: string;
+  subject: string;
+  webLink: string;
+  receivedAt: string;
+  fromName?: string;
+  category: MailCategory;
+  categoryReason: string;
+  courseId?: string;
+  org?: string;
+  preview: string;
+  gist?: string;
+  importance?: "low" | "normal" | "high";
+  hasAttachments?: boolean;
+}
+/** A calendar write the student confirms by clicking; `proposalId` is main's, never a model's. */
+export interface CalendarProposal {
+  proposalId: string;
+  subject: string;
+  start: string;
+  end: string;
+  timeZone: string;
+  location?: string;
+  joinUrl?: string;
+  expiresAt: string;
+}
+// end owner: T30
 export const crawlMetadataSchema = z
   .object({
     discoveredFrom: evidenceUrlSchema.optional(),
@@ -371,6 +502,8 @@ export const resourceInputSchema = z
       .optional(),
     file: fileMetadataSchema.optional(),
     calendar: calendarMetadataSchema.optional(),
+    mail: mailMetadataSchema.optional(), // owner: T30
+    notes: notesMetadataSchema.optional(), // owner: T30
     crawl: crawlMetadataSchema.optional(),
     gitlab: gitlabMetadataSchema.optional(),
     provenance: crawlMetadataSchema
@@ -426,6 +559,7 @@ export const captureBatchSchema = z
           "kaltura",
           "mail",
           "feed",
+          "notes", // owner: T30: OneNote and OneDrive through Graph
         ]),
         accountScope: id,
         courseId: id,
@@ -1339,6 +1473,19 @@ export const queryRequestSchema = z.discriminatedUnion("view", [
     })
     .strict(),
   z.object({ view: z.literal("resource"), id }).strict(),
+  // owner: T30. The agent layer's mail search over stored fields (never a body).
+  z
+    .object({
+      view: z.literal("mail.search"),
+      text: z.string().max(500).optional(),
+      category: mailCategorySchema.optional(),
+      org: z.string().max(300).optional(),
+      courseId: id.optional(),
+      from: z.string().max(320).optional(),
+      since: instant.optional(),
+      limit: z.number().int().min(1).max(100).default(20),
+    })
+    .strict(),
   z
     .object({
       view: z.literal("changes"),
@@ -1403,6 +1550,7 @@ export type QueryResult =
       nextCursor?: string;
     }
   | { view: "resource"; resource: ResourceView; links: Link[]; changes: ResourceChange[] }
+  | { view: "mail.search"; items: MailSearchItem[] } // owner: T30
   | {
       view: "changes";
       /** Oldest first. */
@@ -1498,6 +1646,8 @@ export const commandSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("fixture") }).strict(),
   // Removes only the Outlook calendar and its meetings from this device. Used by disconnect and sign-out.
   z.object({ type: z.literal("outlook-disconnect") }).strict(),
+  // owner: T30. Removes the Graph mail and calendar records (tokens and delta links are main's).
+  z.object({ type: z.literal("outlook-disconnect-graph") }).strict(),
   z
     .object({ type: z.literal("complete"), id, completed: z.boolean() })
     .strict(),
@@ -1625,6 +1775,26 @@ export interface AppBridge {
   setOutlookCalendar?(url: string | null): Promise<{ connected: boolean }>;
   /** Whether a link is saved. The link itself is never returned to the renderer. */
   outlookCalendarStatus?(): Promise<{ connected: boolean }>;
+  // owner: T30. Outlook through the app's own Microsoft sign-in (Graph). No token crosses.
+  /** Starts (or retries) the connection: silent first, Microsoft's window only if needed. */
+  outlookConnect?(): Promise<OutlookStatus>;
+  outlookStatus?(): Promise<OutlookStatus>;
+  /** Deletes the tokens, the delta links and every stored Outlook message and Graph event. */
+  outlookDisconnectGraph?(): Promise<OutlookStatus>;
+  /** One message's body, fetched now and never stored. */
+  outlookMailBody?(id: string): Promise<{ contentType: "text"; body: string }>;
+  /** Builds a proposal the student reviews; nothing is written. */
+  calendarProposeEvent?(input: {
+    subject: string;
+    start: string;
+    end: string;
+    timeZone?: string;
+    location?: string;
+    joinUrl?: string;
+  }): Promise<CalendarProposal>;
+  /** Writes the event only for a proposal main issued and the student clicked to confirm. */
+  calendarCreateEvent?(proposalId: string): Promise<{ created: boolean; webLink?: string }>;
+  // end owner: T30
   localStatus?(): Promise<LocalStatus>;
   localAsk?(request: LocalQuestion): Promise<LocalAnswer>;
   cancelLocal?(): Promise<void>;

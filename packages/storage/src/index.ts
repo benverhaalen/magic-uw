@@ -856,7 +856,10 @@ export function createStore(
               .length / count
           : 0;
         const drift: string[] = [];
-        if (complete && baseline && Number(baseline.record_count) >= 5) {
+        // owner: T30: a Graph source's set is built from Microsoft's own delta, whose removals are
+        // authoritative (a student archiving mail), so a drop there is real, not a failed read.
+        const deltaAuthoritative = source.scope.startsWith("graph_");
+        if (complete && baseline && !deltaAuthoritative && Number(baseline.record_count) >= 5) {
           if (count < Number(baseline.record_count) * 0.3)
             drift.push("record_count_drop");
           if (
