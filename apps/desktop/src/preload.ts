@@ -102,5 +102,14 @@ const bridge: AppBridge = {
   calendarProposeEvent: (input) => ipcRenderer.invoke("magic:calendar-propose-event", input),
   calendarCreateEvent: (proposalId) => ipcRenderer.invoke("magic:calendar-create-event", proposalId),
   // end owner: T30
+  // owner: accounts. Sign-in code and purchase status; tokens stay in main.
+  account: {
+    status: () => ipcRenderer.invoke("magic:account-status"),
+    sendCode: (email) => ipcRenderer.invoke("magic:account-send-code", email),
+    verifyCode: (email, code) => ipcRenderer.invoke("magic:account-verify", email, code),
+    signOut: () => ipcRenderer.invoke("magic:account-sign-out"),
+    buy: () => ipcRenderer.invoke("magic:account-buy"),
+  },
+  // end owner: accounts
 };
 contextBridge.exposeInMainWorld("magic", bridge);

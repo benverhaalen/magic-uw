@@ -44,6 +44,7 @@ We are entering Applied AI & Automation, DoIT's Badgers Building for Badgers, an
 | [Course intelligence](course-intelligence.md)          | Versioned course claims, source-bound policy interpretation, optional local extraction, and evidence limits |
 | [Planning integration](planning-upgrade.md)           | My UW adapters, source reconciliation, privacy, live evidence, and remaining work                         |
 | [Implementation status](implementation-status.md)     | Actual capability boundaries, evidence, and the remaining product scope                                  |
+| [Accounts and payments](accounts-and-payments.md)     | Email sign-in, Lemon Squeezy purchase status in Supabase, setup steps and data stored                     |
 | [Development](development.md)                         | Run the workspace and checks; configure the shared gateway safely                                        |
 | [Decisions and open points](decisions.md)             | What is established and what still needs input                                                           |
 | [BuildFest context](buildfest.md)                     | Event facts, judging audiences, opening-slide notes                                                      |

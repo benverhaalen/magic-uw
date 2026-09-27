@@ -150,6 +150,86 @@ button {
   border-bottom: 2px solid var(--blue);
 }
 
+/* Header account button: an outlined person when signed out (links to sign in), filled when
+   signed in (opens a small menu). */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.account-menu {
+  position: relative;
+}
+.account-button {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--rule);
+  background: #fff;
+  color: var(--blue);
+  cursor: pointer;
+  padding: 0;
+}
+.account-button[aria-current="page"] {
+  border-color: var(--blue);
+}
+.account-button[data-signed-in] {
+  background: var(--blue-fill);
+  border-color: transparent;
+  color: #fff;
+}
+.account-button[hidden],
+.account-popover[hidden] {
+  display: none;
+}
+.account-button:focus-visible,
+.account-popover :focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.account-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 20;
+  min-width: 220px;
+  max-width: min(300px, calc(100vw - 32px));
+  background: #fff;
+  border-radius: 18px;
+  padding: 6px;
+  box-shadow: 0 20px 40px -16px rgba(41, 35, 31, 0.3);
+  display: flex;
+  flex-direction: column;
+}
+.account-popover-email {
+  margin: 0 0 4px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--rule);
+  font-size: 14px;
+  color: var(--magic-ink-muted);
+  overflow-wrap: anywhere;
+}
+.account-popover a,
+.account-popover button {
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.account-popover a:hover,
+.account-popover button:hover {
+  background: var(--blush);
+}
+
 /* Buttons */
 .btn {
   display: inline-flex;
@@ -1424,6 +1504,86 @@ button {
     position: static;
   }
 }
+/* Account page */
+.account-card {
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.account-card .display {
+  font-size: clamp(40px, 5vw, 64px);
+}
+.account-card [hidden] {
+  display: none !important; /* the view rules below set display, so hidden must win */
+}
+.account-form,
+.account-card [data-view="sent"],
+.account-card [data-view="confirm"],
+.account-card [data-view="signed-in"] {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: flex-start;
+}
+.code-form {
+  align-self: stretch;
+}
+.account-form label {
+  font-weight: 600;
+  font-size: 15px;
+}
+.field-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+}
+.field-row input {
+  flex: 1 1 240px;
+  min-height: 56px;
+  padding: 0 22px;
+  border: 1.5px solid var(--rule);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 17px;
+}
+.field-row input:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.status-card {
+  align-self: stretch;
+  background: #fff;
+  border-radius: 24px;
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+.status-line {
+  margin: 0;
+  font-family: var(--serif);
+  font-weight: var(--serif-weight);
+  font-size: 28px;
+  line-height: 1.15;
+  color: var(--navy);
+}
+.status-card .note {
+  margin: 0;
+  max-width: 34em;
+}
+.account-message:empty {
+  display: none;
+}
+.account-message {
+  margin: 0;
+  font-weight: 500;
+}
+
 @media (max-width: 640px) {
   .page,
   .rooms {
@@ -1434,6 +1594,23 @@ button {
   }
   .site-header {
     padding: 8px 4px;
+    gap: 12px;
+  }
+  /* Brand, Download and the account button share the first row on a phone. */
+  .brand span {
+    font-size: 21px;
+  }
+  .header-actions {
+    gap: 8px;
+    margin-left: auto;
+  }
+  .header-actions .btn-sm {
+    font-size: 15px;
+    padding: 10px 16px;
+  }
+  .account-button {
+    width: 40px;
+    height: 40px;
   }
   .site-nav {
     order: 3;

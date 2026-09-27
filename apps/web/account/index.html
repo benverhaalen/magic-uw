@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Account · My Magic UW</title>
+    <meta name="description" content="Sign in to My Magic UW with your email, see whether you've bought the app, and buy it." />
+    <meta name="robots" content="noindex" />
+    <!--#head-->
+  </head>
+  <body>
+    <div class="page">
+      <!--#header account-->
+      <main class="rooms">
+        <section class="room bg-sky account" aria-labelledby="account-title">
+          <div class="account-card">
+            <div class="eyebrow">Account</div>
+            <h1 class="display" id="account-title">Your account</h1>
+
+            <p class="lede" data-view="loading">Checking whether you're signed in…</p>
+
+            <div data-view="off" hidden>
+              <p class="lede">Accounts aren't switched on yet. Check back soon.</p>
+            </div>
+
+            <form class="account-form" data-view="signed-out" hidden novalidate>
+              <p class="lede">Sign in with your email. There's no password: we'll send you a link and a code.</p>
+              <label for="account-email">Email</label>
+              <div class="field-row">
+                <input id="account-email" name="email" type="email" autocomplete="email" inputmode="email" required placeholder="you@wisc.edu" />
+                <button class="btn btn-blue" type="submit">Email me a link</button>
+              </div>
+            </form>
+
+            <div data-view="sent" hidden>
+              <p class="lede">Check your email. We sent a sign-in email to <b data-bind="sent-to"></b>.</p>
+              <p class="note">Open the link in the email, or type the code from it below. It can take a minute to arrive; check spam if it doesn't.</p>
+              <form class="account-form code-form" data-form="code" novalidate>
+                <label for="account-code">Code from the email</label>
+                <div class="field-row">
+                  <input id="account-code" name="code" inputmode="numeric" autocomplete="one-time-code" spellcheck="false" maxlength="12" placeholder="123456" />
+                  <button class="btn btn-blue" type="submit">Sign in</button>
+                </div>
+              </form>
+              <button class="btn btn-white" type="button" data-action="restart">Use a different email</button>
+            </div>
+
+            <div data-view="confirm" hidden>
+              <p class="lede">You're one click from signed in.</p>
+              <p class="note">This step stops email security scanners from using up your link before you open it.</p>
+              <button class="btn btn-blue" type="button" data-action="confirm">Finish signing in</button>
+            </div>
+
+            <div data-view="signed-in" hidden>
+              <p class="lede">Signed in as <b data-bind="email"></b>.</p>
+              <div class="status-card">
+                <div class="eyebrow">App purchase</div>
+                <p class="status-line" data-bind="status">Checking…</p>
+                <p class="note" data-bind="status-note"></p>
+                <button class="btn btn-blue" type="button" data-action="buy" hidden>Buy for $10</button>
+              </div>
+              <button class="btn btn-white" type="button" data-action="sign-out">Sign out</button>
+            </div>
+
+            <p class="account-message" role="status" aria-live="polite" data-bind="message"></p>
+          </div>
+        </section>
+      </main>
+      <!--#footer-->
+    </div>
+    <script type="module" src="/assets/account.js"></script>
+  </body>
+</html>
