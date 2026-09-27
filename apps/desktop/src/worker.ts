@@ -110,6 +110,14 @@ async function generationRunner(): Promise<ModelRunner | null> {
   return generationRuntime.runner;
 }
 // end owner: client-health
+// owner: client-detection. main's extended PATH (the login shell's folders and the known install
+// folders), sent once after launch; runners built afterwards find the client and its node.
+port.on("message", ({ data }: { data: any }) => {
+  if (data?.kind !== "client-path" || typeof data.path !== "string" || data.path.length > 32_768) return;
+  process.env.PATH = data.path;
+  generationRuntime = null;
+});
+// end owner: client-detection
 // owner: course-facts. The course brief, `<userData>/courses/<course>/syllabus.md`: the first,
 // byte-identical block of every pack and guide prompt about the course.
 import { createCourseBriefs } from "../../../packages/core/src/course-facts/brief";

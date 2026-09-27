@@ -330,6 +330,17 @@ app
     }
     void sendPrivacyKey();
     // end owner: privacy
+    // owner: client-detection. Off the launch path: the login shell's PATH (macOS, Linux; 2 s at
+    // most, once) plus every known install folder that exists, for main and then the worker, so
+    // a client installed through nvm, Volta or pnpm is found and a script-based one finds its node.
+    // Known folders are searched on every lookup anyway, so a timeout only loses shell-only folders.
+    void import("@magic/runner")
+      .then(({ extendPathForClients }) => extendPathForClients(process.env))
+      .then((added) => {
+        if (added.length) worker.postMessage({ kind: "client-path", path: process.env.PATH });
+      })
+      .catch(() => undefined);
+    // end owner: client-detection
     const calls = new Map<
       string,
       {

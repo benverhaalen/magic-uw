@@ -3,7 +3,7 @@ import { mkdir } from "node:fs/promises"; // owner: client-health
 import type { ClientId, TerminalPurpose } from "@magic/contracts";
 import type { CliCommand } from "@magic/runner";
 import { CLIENTS, clientIdSchema, isIsolated, profileEnv, prepareProfile, resolveClient, workDir, type ClientsDeps } from "./profiles";
-import { chatArgs, instantEnv, instantWorkDir, modeOf } from "./instant"; // owner: client-health
+import { chatArgs, codexChatArgs, instantEnv, instantWorkDir, modeOf } from "./instant"; // owner: client-health
 
 /**
  * T80 terminal host: runs the unmodified client in a pseudo-terminal so the student signs in
@@ -96,8 +96,8 @@ interface Session {
 }
 
 /** The fixed command line for a client and purpose. The only place argv is built. */
-export function commandLine(command: CliCommand, id: ClientId, purpose: TerminalPurpose): { file: string; args: string[] } {
-  const args = purpose === "chat" ? chatArgs(id) : CLIENTS[id].args[purpose];
+export function commandLine(command: CliCommand, id: ClientId, purpose: TerminalPurpose, codexChat: readonly string[] | null = null): { file: string; args: string[] } {
+  const args = purpose === "chat" ? chatArgs(id, codexChat) : CLIENTS[id].args[purpose];
   return { file: command.file, args: [...command.prefixArgs, ...args] };
 }
 
@@ -133,10 +133,15 @@ export function createTerminalHost(deps: TerminalHostDeps) {
       const instant = purpose === "chat" && (await modeOf(id, deps.userData)) === "instant";
       if (instant) await mkdir(instantWorkDir(deps.userData, id), { recursive: true, mode: 0o700 });
       else await prepareProfile(id, deps);
+      // owner: client-detection (security review): Codex chat turns every non-safe feature off, or
+      // doesn't open.
+      const codexChat = purpose === "chat" && id === "codex" ? await codexChatArgs(deps) : null;
+      if (purpose === "chat" && id === "codex" && !codexChat)
+        throw new Error("Quick chat isn't available for this Codex: its tools can't be turned off.");
       const spawn = await pty().catch(() => {
         throw new Error("The built-in terminal could not start on this device.");
       });
-      const { file, args: argv } = commandLine(command, id, purpose);
+      const { file, args: argv } = commandLine(command, id, purpose, codexChat);
       // Consent can be withdrawn and the window closed while the awaits above ran. This is the
       // last await: nothing but synchronous checks sits between it and the spawn.
       const stillConsented = await deps.consented(id);

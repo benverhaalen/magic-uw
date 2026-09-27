@@ -26,6 +26,55 @@ export interface ClientHealthNoticeProps {
   compact?: boolean;
 }
 
+/**
+ * owner: client-detection. What detection saw, so a student can tell us: the folders searched,
+ * where the client was found, its version and the version the app was tested with, and any
+ * missing option. Names only.
+ */
+function Diagnostics({ health }: { health: ClientHealth }) {
+  const d = health.diagnostics;
+  const missing = health.instant.missingFlags;
+  if (!d && !missing?.length) return null;
+  return (
+    <details className="chn-details">
+      <summary>{health.state === "not_installed" ? "Why wasn't my client found?" : "What My Magic UW found"}</summary>
+      <dl className="chn-details-list">
+        <div>
+          <dt>Found</dt>
+          <dd>{d?.found ?? "Not in any folder below"}</dd>
+        </div>
+        {health.version ? (
+          <div>
+            <dt>Version</dt>
+            <dd>
+              {health.version}
+              {health.instant.testedWith ? ` (tested with ${health.instant.testedWith})` : ""}
+            </dd>
+          </div>
+        ) : null}
+        {missing?.length ? (
+          <div>
+            <dt>Missing options</dt>
+            <dd>{missing.join(", ")}</dd>
+          </div>
+        ) : null}
+        {d?.searched.length ? (
+          <div>
+            <dt>Folders searched</dt>
+            <dd>
+              <ul className="chn-details-dirs">
+                {d.searched.map((dir) => (
+                  <li key={dir}>{dir}</li>
+                ))}
+              </ul>
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+    </details>
+  );
+}
+
 /** The next step with its command, if any, shown as code (a real command, not decoration). */
 function nextStep(text: string, command?: string): ReactNode {
   if (!command || !text.includes("{command}")) return text;
@@ -102,7 +151,7 @@ export function ClientHealthNotice(props: ClientHealthNoticeProps) {
       case "use_profile":
         return props.onUseProfile ? (
           <button key="profile" className={cls} onClick={props.onUseProfile}>
-            Sign in here
+            {action.label ?? "Sign in here"}
           </button>
         ) : null;
       case "add_key":
@@ -143,6 +192,7 @@ export function ClientHealthNotice(props: ClientHealthNoticeProps) {
       {copy.tone !== "ok" ? <p className="chn-next">{nextStep(copy.next, copy.command)}</p> : null}
       {actions.length ? <div className="chn-actions">{actions}</div> : null}
       {chatProblem ? <p className="chn-error-text">{chatProblem}</p> : null}
+      {copy.tone !== "ok" ? <Diagnostics health={health} /> : null}
       {chat ? (
         <div className="chn-chat">
           <div className="chn-chat-bar">

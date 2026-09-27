@@ -189,6 +189,44 @@
   color: var(--magic-ink-muted);
 }
 
+/* owner: client-detection. "Why wasn't my client found?" */
+.chn-details {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--magic-ink-muted);
+}
+.chn-details summary {
+  width: fit-content;
+  padding: 2px 0;
+  cursor: pointer;
+}
+.chn-details summary:focus-visible {
+  outline: 2px solid var(--magic-focus);
+  outline-offset: 2px;
+}
+.chn-details-list {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+.chn-details-list > div {
+  display: grid;
+  grid-template-columns: 128px 1fr;
+  gap: 12px;
+}
+.chn-details-list dt {
+  color: var(--magic-ink);
+}
+.chn-details-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.chn-details-dirs {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 /* The advanced opt-in: a separate sign-in for the app */
 .chn-advanced {
   margin-top: 16px;
