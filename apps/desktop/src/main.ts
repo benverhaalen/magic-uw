@@ -36,6 +36,10 @@ import { MaterialReadError } from "../../../packages/connectors/src/network";
 // end owner: acquisition
 import { clearSignOutSecrets, createSecretVault } from "./secrets";
 import { purgeHostData } from "./purge-host"; // owner: platform-fix
+// owner: doc-window. A synced note's Word online or Google Doc in a signed-in window on persist:uw.
+import { createDocWindows } from "./doc-window";
+import { handleOpenDocument } from "./doc-window-policy";
+// end owner: doc-window
 import { createGoogleNotesAuth } from "./notes-google"; // owner: notes
 // owner: T30. Outlook through the app's own Microsoft sign-in (Graph); the token stays in main.
 import { createOutlook, readOutlookConfig } from "./outlook";
@@ -240,7 +244,16 @@ app
       callback(false),
     );
     studentSession.setPermissionCheckHandler(() => false);
-    studentSession.on("will-download", (event) => event.preventDefault());
+    // owner: doc-window. Only a document window may download (the save prompt, Downloads only).
+    const docWindows = createDocWindows({
+      openExternal: (url) => shell.openExternal(url),
+      trialLog,
+    });
+    studentSession.on("will-download", (event, item, contents) => {
+      if (docWindows.owns(contents)) return docWindows.download(item, contents);
+      event.preventDefault();
+    });
+    // end owner: doc-window
     const worker = utilityProcess.fork(join(root, "worker.cjs"), [], {
       env: {
         ...process.env,
@@ -1189,6 +1202,17 @@ app
       await shell.openExternal(safeLinkCard(url));
     });
     // end owner: T05b
+    // owner: doc-window. A document link opens the signed-in document window; any other ordinary
+    // web link falls back to the default browser.
+    ipcMain.handle("magic:open-document", (event, url) => {
+      validateSender(event);
+      return handleOpenDocument(url, {
+        headless,
+        openWindow: (target) => docWindows.open(target),
+        openExternal: (target) => shell.openExternal(target),
+      });
+    });
+    // end owner: doc-window
     ipcMain.handle("magic:import", async (event) => {
       validateSender(event);
       if (headless)
