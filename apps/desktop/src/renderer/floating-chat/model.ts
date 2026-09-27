@@ -193,6 +193,6 @@ export function readSize(storage: KeyValue | null): Size {
 export const writeSize = (storage: KeyValue | null, size: Size) => write(storage, STORAGE_KEYS.size, JSON.stringify({ width: Math.round(size.width), height: Math.round(size.height) }));
 export const readIntroSeen = (storage: KeyValue | null) => read(storage, STORAGE_KEYS.intro) === "1";
 export const writeIntroSeen = (storage: KeyValue | null) => write(storage, STORAGE_KEYS.intro, "1");
-/** The "Floating chat: on/off" setting. Default on; only an explicit "off" turns it off. */
-export const readEnabled = (storage: KeyValue | null) => read(storage, STORAGE_KEYS.enabled) !== "off";
+/** The "Floating chat: on/off" setting. Default off (the shell's chat launcher design is Ben's); only an explicit "on" turns it on. */
+export const readEnabled = (storage: KeyValue | null) => read(storage, STORAGE_KEYS.enabled) === "on";
 export const writeEnabled = (storage: KeyValue | null, on: boolean) => write(storage, STORAGE_KEYS.enabled, on ? "on" : "off");

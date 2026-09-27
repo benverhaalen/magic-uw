@@ -1,4 +1,4 @@
-// owner: floating-chat. "Floating chat: on/off", default on. A display preference on this device, kept in
+// owner: floating-chat. "Floating chat: on/off", default off. A display preference on this device, kept in
 // localStorage beside the corner and size; no coursework and nothing sent anywhere.
 import { useSyncExternalStore } from "react";
 import { readEnabled, safeStorage, STORAGE_KEYS, writeEnabled } from "./model";
@@ -15,7 +15,7 @@ export function setFloatingChatEnabled(on: boolean) {
   for (const listener of listeners) listener();
 }
 export function useFloatingChatEnabled(): boolean {
-  return useSyncExternalStore(subscribe, () => readEnabled(safeStorage()), () => true);
+  return useSyncExternalStore(subscribe, () => readEnabled(safeStorage()), () => false);
 }
 
 /** The settings row. Uses the settings page's existing toggle markup and classes. */
