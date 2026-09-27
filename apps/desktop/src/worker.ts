@@ -56,6 +56,7 @@ const core = createCore(store, {
   fixture: captureBatchSchema.parse(fixture),
   courseExtractor: createLocalCourseExtractor(),
   planningPublicClient: publicClients.core, // owner: T06
+  madgrades: { read: (request, signal) => hostRead("madgrades-read", { request }, signal) },
   planningHttp: { read: (request, signal) => hostRead("planning-public-read", { request }, signal) },
   seams: { learning: createLearningRouter({
     store: store.learning,

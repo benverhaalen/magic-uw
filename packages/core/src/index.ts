@@ -33,6 +33,8 @@ import {
   createPublicClient,
   type PublicClient,
 } from "../../connectors/src/network";
+import { planningIdentityTable, summarizePlanningGrades } from "./planning-grades";
+import { pullMadgradesGrades, type MadgradesTransport } from "../../connectors/src/madgrades";
 import { comparePlanning } from "./planning";
 import { applyConsent, egressFor } from "./egress"; // owner: T06
 import { reconcileAcademicRecords } from "./academic-reconciliation";
@@ -99,6 +101,7 @@ export interface CoreOptions {
   timeZone?: string;
   planningPublicClient?: PublicClient;
   planningHttp?: Pick<UwPlanningHttp, "read">;
+  madgrades?: MadgradesTransport;
   // owner: T05b
   jobs?: JobRegistry;
   seams?: CoreSeams;
@@ -756,6 +759,31 @@ export function createCore(store: Store, options: CoreOptions) {
             now(),
           ),
         };
+      case "planning-grades": {
+        let refresh: { status: string; message: string } | null = null;
+        if (command.refresh) {
+          if (!options.madgrades) throw new Error("Madgrades refresh is available through the desktop app.");
+          const table = planningIdentityTable(store);
+          if (!table) refresh = { status: "unverified_crosslist", message: "Saved cross-list mappings disagree. Refresh subject and cross-list evidence before loading grades." };
+          else {
+            const controller = new AbortController(), version = generation;
+            planningReads.add(controller);
+            try {
+              const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(25_000)]);
+              const result = await pullMadgradesGrades(options.madgrades, { courseKey: command.courseKey, table, observedAt: now() }, signal)
+                .catch(() => signal.aborted
+                  ? { status: "cancelled" as const, message: "Madgrades read cancelled or timed out; no data was saved.", capture: null }
+                  : { status: "error" as const, message: "Madgrades could not be reached. Saved evidence was kept.", capture: null });
+              if (closed || version !== generation) throw new Error("Madgrades read cancelled; no data was saved.");
+              if (result.capture) store.ingestPlanning(result.capture);
+              refresh = { status: result.status, message: result.message };
+            } finally { planningReads.delete(controller); }
+          }
+        }
+        return { snapshot: snapshot(), planningGrades: summarizePlanningGrades(store, command.courseKey, now(), refresh), ...(refresh ? { message: refresh.message } : {}) };
+      }
+      case "madgrades-token":
+        throw new Error("Madgrades tokens are stored by the desktop app, not the local workspace.");
       case "planning-import": {
         store.ingestPlanning(command.batch);
         message = "Planning capture saved on this device.";
