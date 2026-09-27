@@ -201,7 +201,7 @@ async function renderStatus(supabase, retriesLeft, run) {
     bind(
       "status-note",
       config.checkoutUrl
-        ? "A one-time $10 purchase. The app isn't ready to download yet; your purchase is saved to this account and the download will appear here when it is."
+        ? "$5 a month. The app isn't ready to download yet; your subscription is saved to this account and the download will appear here when it is."
         : "Buying isn't open yet.",
     );
     buy.hidden = !config.checkoutUrl;
