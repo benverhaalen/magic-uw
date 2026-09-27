@@ -19,7 +19,7 @@ Follow-up:
 | [FDB-003](#fdb-003-generation-pack-scope-cannot-select-the-requesting-account) | Generation pack scope cannot select the requesting account | Code-inspected; generation not run |
 | [FDB-004](#fdb-004-student-record-freshness-uses-a-term-length-horizon) | Student-record freshness uses a term-length horizon | Code-inspected; live hold changes not reproduced |
 
-Existing syllabus discovery, extraction, and capture gaps remain in [backend packet 12](../.agents/team/packets/backend/12-syllabus-discovery.md); that investigation belongs to Nathaniel and is not duplicated here.
+Existing syllabus discovery, extraction, and capture gaps remain in backend packet 12 (removed from the tree at release; see git history); that investigation belongs to Nathaniel and is not duplicated here.
 
 ## Entry format
 
@@ -48,7 +48,7 @@ Private coursework, account identifiers, captures, logs, credentials, and sessio
 
 **Frontend handling:** do not use the estimate to rank personal impact or display it as a known share. Prefer source-grounded due dates, points, and the group weight explicitly labeled as listed in Canvas. This avoids an unsupported claim but does not repair the backend calculation. Adoption in each consumer still needs verification.
 
-**Proposed backend owner:** Nate/Nathaniel, pending acceptance. **Next action:** determine the required account/source and completeness contract, plus behavior for partial, duplicate, dropped-score, and unweighted cases. See existing [syllabus investigation](../.agents/team/packets/backend/12-syllabus-discovery.md) for separately owned course-evidence gaps.
+**Proposed backend owner:** Nate/Nathaniel, pending acceptance. **Next action:** determine the required account/source and completeness contract, plus behavior for partial, duplicate, dropped-score, and unweighted cases. See existing syllabus investigation (backend packet 12, in git history) for separately owned course-evidence gaps.
 
 **Resolution proof:** tests must demonstrate account isolation and conservative partial-capture behavior, followed by a frontend check showing the resulting evidence-qualified wording. No fix is claimed here.
 
