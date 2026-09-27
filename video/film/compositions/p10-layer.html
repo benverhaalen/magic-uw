@@ -1,0 +1,48 @@
+<!doctype html>
+<html><head><meta charset="UTF-8" /></head><body>
+  <template>
+    <style>
+      @font-face { font-family: Geist; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+      #p10-root { position: absolute; inset: 0; font-family: Geist, system-ui, sans-serif; color: #fff4ed; overflow: hidden; }
+      /* Overlays sit on the right 45% of frame (x >= 1056); the presenters own the left. */
+      #p10-scrim { position: absolute; left: 1000px; top: 0; width: 920px; height: 1080px; background: linear-gradient(90deg, rgba(26, 13, 11, 0), rgba(26, 13, 11, 0.82) 22%, rgba(26, 13, 11, 0.92)); }
+      #p10-ring { position: absolute; left: 1228px; top: 230px; width: 520px; height: 520px; overflow: visible; }
+      #p10-center { position: absolute; left: 1228px; top: 230px; width: 520px; height: 520px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+      #p10-center .t { font-size: 44px; font-weight: 700; letter-spacing: -0.02em; }
+      #p10-center .d { font-size: 22px; color: #ffe9dd; margin-top: 6px; }
+      .p10-chip { position: absolute; padding: 16px 26px; border-radius: 14px; background: #faf8f4; color: #29231f; font-size: 28px; font-weight: 700; white-space: nowrap; box-shadow: 0 16px 40px rgba(10, 4, 3, 0.55); }
+      #p10-c1 { left: 1378px; top: 196px; }
+      #p10-c2 { left: 1590px; top: 640px; }
+      #p10-c3 { left: 1110px; top: 640px; }
+      #p10-note { position: absolute; left: 1110px; top: 820px; width: 740px; font-size: 22px; color: #ffe9dd; text-align: center; }
+    </style>
+    <div id="p10-root" data-composition-id="p10-layer" data-width="1920" data-height="1080">
+      <div id="p10-scrim"></div>
+      <svg id="p10-ring" viewBox="0 0 520 520">
+        <defs><filter id="p10-glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="8" /></filter></defs>
+        <circle cx="260" cy="260" r="220" fill="none" stroke="#f7c440" stroke-width="10" opacity="0.5" filter="url(#p10-glow)" id="p10-glowring" />
+        <circle cx="260" cy="260" r="220" fill="none" stroke="#f7c440" stroke-width="4" stroke-dasharray="1383" stroke-dashoffset="1383" id="p10-arc" />
+      </svg>
+      <div id="p10-center"><div class="t">My Magic UW layer</div><div class="d">Open source, around your agent</div></div>
+      <div class="p10-chip" id="p10-c1">Claude Code</div>
+      <div class="p10-chip" id="p10-c2">Codex</div>
+      <div class="p10-chip" id="p10-c3">Any MCP client</div>
+      <div id="p10-note">MCP: an optional, read-only course bank with per-course grants</div>
+    </div>
+    <script>
+      (() => {
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo("#p10-scrim", { opacity: 0 }, { opacity: 1, duration: 0.6 }, 0);
+        tl.to("#p10-arc", { strokeDashoffset: 0, duration: 1.4, ease: "power2.inOut" }, 1.0);
+        tl.fromTo("#p10-glowring", { opacity: 0 }, { opacity: 0.5, duration: 0.8 }, 1.8);
+        tl.fromTo("#p10-center", { scale: 0.85, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.6, ease: "expo.out" }, 2.2);
+        // Chips snap onto the ring as each agent is named.
+        [["#p10-c1", 6.5, 0, -160], ["#p10-c2", 7.9, 160, 120], ["#p10-c3", 9.3, -160, 120]].forEach(([id, t, dx, dy]) => {
+          tl.fromTo(id, { x: dx, y: dy, opacity: 0, scale: 0.7 }, { x: 0, y: 0, opacity: 1, scale: 1, duration: 0.5, ease: "back.out(3)" }, t);
+        });
+        tl.fromTo("#p10-note", { opacity: 0 }, { opacity: 0.9, duration: 0.5 }, 10.0);
+        window.__timelines["p10-layer"] = tl;
+      })();
+    </script>
+  </template>
+</body></html>

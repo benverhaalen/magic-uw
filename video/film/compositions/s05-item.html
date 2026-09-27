@@ -1,0 +1,46 @@
+<!doctype html>
+<html><head><meta charset="UTF-8" /></head><body>
+  <template>
+    <style>
+      @font-face { font-family: Geist; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+      #s05-root { position: absolute; inset: 0; font-family: Geist, system-ui, sans-serif; color: #fff4ed; overflow: hidden; }
+      /* Real item space, region x 250-1070 y 110-640 of the 1x frame, shown at 1.1x */
+      #s05-item { position: absolute; left: 70px; top: 150px; width: 902px; height: 583px; border-radius: 16px; overflow: hidden; background: #faf8f4; box-shadow: 0 30px 80px rgba(10, 4, 3, 0.6); }
+      #s05-item img { position: absolute; width: 2112px; left: -275px; top: -121px; }
+      #s05-lines { position: absolute; inset: 0; width: 1920px; height: 1080px; overflow: visible; }
+      .s05-card { position: absolute; left: 1180px; width: 660px; padding: 22px 28px; border-radius: 14px; background: #faf8f4; color: #29231f; box-shadow: 0 20px 50px rgba(10, 4, 3, 0.5); }
+      .s05-card .k { font-size: 17px; font-weight: 500; letter-spacing: 0.04em; color: #ae412e; }
+      .s05-card .t { font-size: 30px; font-weight: 700; margin-top: 6px; }
+      .s05-card .d { font-size: 20px; color: #746d66; margin-top: 6px; }
+      #s05-c1 { top: 170px; }
+      #s05-c2 { top: 400px; }
+      #s05-c3 { top: 630px; }
+      .s05-dot { position: absolute; width: 16px; height: 16px; border-radius: 50%; background: #f7c440; }
+    </style>
+    <div id="s05-root" data-composition-id="s05-item" data-width="1920" data-height="1080">
+      <div id="s05-item"><img src="assets/ui/item-space.png" alt="" data-layout-allow-overflow /></div>
+      <svg id="s05-lines" viewBox="0 0 1920 1080">
+        <path id="s05-l1" d="M 972 260 C 1080 260, 1080 230, 1180 230" fill="none" stroke="#f7c440" stroke-width="3" stroke-dasharray="320" stroke-dashoffset="320" />
+        <path id="s05-l2" d="M 972 330 C 1080 330, 1080 460, 1180 460" fill="none" stroke="#f7c440" stroke-width="3" stroke-dasharray="320" stroke-dashoffset="320" />
+        <path id="s05-l3" d="M 972 400 C 1080 400, 1080 690, 1180 690" fill="none" stroke="#f7c440" stroke-width="3" stroke-dasharray="420" stroke-dashoffset="420" />
+      </svg>
+      <div class="s05-card" id="s05-c1"><div class="k">LINKED LECTURE</div><div class="t">Lecture 12 · The Master theorem</div><div class="d">Named in the instructions; found in the course files</div></div>
+      <div class="s05-card" id="s05-c2"><div class="k">SYLLABUS RULE</div><div class="t">“Late work loses 10% per day”</div><div class="d">Syllabus · Late work, quoted as written</div></div>
+      <div class="s05-card" id="s05-c3"><div class="k">REAL DUE DATE</div><div class="t">Due Tuesday · 11:00 PM</div><div class="d">Resolved by code from Canvas's due date</div></div>
+    </div>
+    <script>
+      (() => {
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo("#s05-item", { scale: 0.9, opacity: 0, x: -40 }, { scale: 1, opacity: 1, x: 0, duration: 0.55, ease: "expo.out" }, 0);
+        const lines = ["#s05-l1", "#s05-l2", "#s05-l3"], cards = ["#s05-c1", "#s05-c2", "#s05-c3"];
+        lines.forEach((l, i) => {
+          const t = 1.5 + i * 0.8;
+          tl.to(l, { strokeDashoffset: 0, duration: 0.55, ease: "power2.inOut" }, t);
+          tl.fromTo(cards[i], { x: 50, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5, ease: "expo.out" }, t + 0.35);
+        });
+        tl.to("#s05-item", { opacity: 0.55, filter: "blur(2px)", duration: 0.6 }, 4.4);
+        window.__timelines["s05-item"] = tl;
+      })();
+    </script>
+  </template>
+</body></html>

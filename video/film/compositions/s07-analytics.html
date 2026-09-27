@@ -1,0 +1,87 @@
+<!doctype html>
+<html><head><meta charset="UTF-8" /></head><body>
+  <template>
+    <style>
+      @font-face { font-family: Geist; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+      #s07-root { position: absolute; inset: 0; font-family: Geist, system-ui, sans-serif; color: #fff4ed; overflow: hidden; }
+      /* STAND-IN: Course Analytics UI is not on a branch yet (feat/course-analytics). Built from the app's tokens; re-capture when it lands. */
+      #s07-panel { position: absolute; left: 110px; top: 80px; width: 1700px; height: 800px; border-radius: 16px; background: #faf8f4; color: #29231f; box-shadow: 0 30px 80px rgba(10, 4, 3, 0.6); padding: 44px 52px; }
+      #s07-panel h1 { font-size: 34px; font-weight: 700; }
+      #s07-panel .sub { font-size: 18px; color: #746d66; margin-top: 4px; }
+      .s07-box { position: absolute; border: 1px solid #dfd7ce; border-radius: 12px; padding: 22px 26px; background: #fffdf9; }
+      .s07-box .h { font-size: 20px; font-weight: 700; }
+      .s07-box .n { font-size: 15px; color: #746d66; margin-top: 2px; }
+      #s07-trend { left: 52px; top: 140px; width: 780px; height: 300px; }
+      #s07-trend svg { position: absolute; left: 26px; top: 90px; width: 728px; height: 180px; overflow: visible; }
+      #s07-hw { left: 868px; top: 140px; width: 780px; height: 300px; }
+      .s07-bars { position: absolute; left: 26px; right: 26px; bottom: 26px; height: 170px; display: flex; align-items: flex-end; gap: 22px; }
+      .s07-bar { flex: 1; background: linear-gradient(0deg, #ae412e, #d3643d); border-radius: 6px 6px 2px 2px; transform-origin: 50% 100%; }
+      .s07-bar.miss { background: #dfd7ce; }
+      #s07-topics { left: 52px; top: 470px; width: 780px; height: 270px; }
+      .s07-topic { display: flex; align-items: center; gap: 16px; margin-top: 16px; font-size: 19px; }
+      .s07-topic .l { width: 230px; }
+      .s07-topic .track { flex: 1; height: 14px; border-radius: 7px; background: #ece3d9; overflow: hidden; }
+      .s07-topic .fill { height: 100%; border-radius: 7px; background: #3c70ac; transform-origin: 0 50%; }
+      .s07-topic .s { width: 130px; font-size: 16px; color: #746d66; }
+      #s07-next { left: 868px; top: 470px; width: 780px; height: 270px; }
+      .s07-card { margin-top: 14px; padding: 16px 20px; border-radius: 10px; background: linear-gradient(115deg, #f1cc78, #f5e0aa); color: #574424; }
+      .s07-card .t { font-size: 21px; font-weight: 700; }
+      .s07-card .d { font-size: 16px; margin-top: 2px; }
+      #s07-tag { position: absolute; left: 110px; top: 900px; font-size: 18px; color: #ffe9dd; }
+      /* Real flashcard component (synthetic card): region x 640-1312 y 420-700 of the 1x frame, shown at 1.8x */
+      .s07-flip { position: absolute; left: 355px; top: 240px; width: 1210px; height: 504px; border-radius: 16px; overflow: hidden; background: #faf8f4; box-shadow: 0 30px 80px rgba(10, 4, 3, 0.6); backface-visibility: hidden; }
+      .s07-flip img { position: absolute; width: 3456px; left: -1152px; top: -756px; }
+      #s07-flipper { position: absolute; inset: 0; perspective: 1800px; }
+    </style>
+    <div id="s07-root" data-composition-id="s07-analytics" data-width="1920" data-height="1080">
+      <div id="s07-panel">
+        <h1>Algorithms 301 · Sample</h1>
+        <div class="sub">Course analytics · where you stand</div>
+        <div class="s07-box" id="s07-trend">
+          <div class="h">Scores so far</div><div class="n">Graded work, in order</div>
+          <svg viewBox="0 0 728 180"><path id="s07-line" d="M 0 120 L 120 95 L 240 108 L 360 70 L 480 78 L 600 48 L 728 40" fill="none" stroke="#ae412e" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="820" stroke-dashoffset="820" /></svg>
+        </div>
+        <div class="s07-box" id="s07-hw">
+          <div class="h">Homework completion</div><div class="n">Problem sets 1-6</div>
+          <div class="s07-bars"><div class="s07-bar" style="height: 100%"></div><div class="s07-bar" style="height: 100%"></div><div class="s07-bar" style="height: 90%"></div><div class="s07-bar" style="height: 100%"></div><div class="s07-bar miss" style="height: 30%"></div><div class="s07-bar miss" style="height: 12%"></div></div>
+        </div>
+        <div class="s07-box" id="s07-topics">
+          <div class="h">Readiness for Exam 2, by topic</div><div class="n">From your practice; never a grade prediction</div>
+          <div class="s07-topic"><span class="l">Divide and conquer</span><span class="track"><span class="fill" style="display: block; width: 86%"></span></span><span class="s">Solid</span></div>
+          <div class="s07-topic"><span class="l">Recurrences</span><span class="track"><span class="fill" style="display: block; width: 58%"></span></span><span class="s">Getting there</span></div>
+          <div class="s07-topic"><span class="l">Master theorem</span><span class="track"><span class="fill" style="display: block; width: 30%"></span></span><span class="s">Iffy</span></div>
+        </div>
+        <div class="s07-box" id="s07-next">
+          <div class="h">What to do next</div>
+          <div class="s07-card" id="s07-n1"><div class="t">Practise the Master theorem</div><div class="d">10 questions from Lecture 12 · before Exam 2</div></div>
+          <div class="s07-card" id="s07-n2"><div class="t">Review 3 flashcards due today</div><div class="d">Recurrences · about 2 minutes</div></div>
+        </div>
+      </div>
+      <div id="s07-tag">Stand-in with synthetic figures: Course Analytics is in progress; this panel is re-captured when it lands</div>
+      <div id="s07-flipper">
+        <div class="s07-flip" id="s07-front"><img src="assets/ui/cards-front.png" alt="" data-layout-allow-overflow /></div>
+        <div class="s07-flip" id="s07-back"><img src="assets/ui/cards-back.png" alt="" data-layout-allow-overflow /></div>
+      </div>
+    </div>
+    <script>
+      (() => {
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo("#s07-panel", { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "expo.out" }, 0);
+        tl.fromTo("#s07-tag", { opacity: 0 }, { opacity: 0.85, duration: 0.4 }, 0.3);
+        tl.to("#s07-line", { strokeDashoffset: 0, duration: 1.1, ease: "power2.inOut" }, 0.4);
+        tl.fromTo("#s07-root .s07-bar", { scaleY: 0 }, { scaleY: 1, duration: 0.6, ease: "expo.out", stagger: 0.08 }, 1.5);
+        tl.fromTo("#s07-root .s07-topic .fill", { scaleX: 0 }, { scaleX: 1, duration: 0.8, ease: "expo.out", stagger: 0.15 }, 2.2);
+        tl.fromTo("#s07-n1", { x: 40, opacity: 0 }, { x: 0, opacity: 1, duration: 0.45, ease: "expo.out" }, 3.2);
+        tl.fromTo("#s07-n2", { x: 40, opacity: 0 }, { x: 0, opacity: 1, duration: 0.45, ease: "expo.out" }, 3.5);
+        // "Review 3 flashcards" opens the real flashcard; it flips.
+        tl.to("#s07-n2", { scale: 1.04, duration: 0.15, yoyo: true, repeat: 1 }, 4.6);
+        tl.to(["#s07-panel", "#s07-tag"], { opacity: 0, filter: "blur(6px)", duration: 0.35 }, 4.9);
+        tl.fromTo("#s07-front", { scale: 0.85, opacity: 0, rotationY: 0 }, { scale: 1, opacity: 1, duration: 0.45, ease: "expo.out" }, 5.0);
+        tl.set("#s07-back", { rotationY: -180, opacity: 1 }, 0);
+        tl.to("#s07-front", { rotationY: 180, duration: 0.6, ease: "power2.inOut" }, 5.8);
+        tl.to("#s07-back", { rotationY: 0, duration: 0.6, ease: "power2.inOut" }, 5.8);
+        window.__timelines["s07-analytics"] = tl;
+      })();
+    </script>
+  </template>
+</body></html>

@@ -1,0 +1,77 @@
+<!doctype html>
+<html><head><meta charset="UTF-8" /></head><body>
+  <template>
+    <style>
+      @font-face { font-family: Geist; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+      #s06-root { position: absolute; inset: 0; font-family: Geist, system-ui, sans-serif; color: #fff4ed; overflow: hidden; }
+      .s06-win { position: absolute; left: 80px; top: 60px; width: 1760px; height: 990px; border-radius: 16px; overflow: hidden; box-shadow: 0 30px 80px rgba(10, 4, 3, 0.6); }
+      .s06-win img { width: 100%; height: 100%; display: block; }
+      #s06-blur { background: url("assets/ui/course-page.png") center / 100% 100% no-repeat; }
+      #s06-ring { position: absolute; left: 312px; top: 507px; width: 729px; height: 56px; border: 4px solid #f7c440; border-radius: 12px; }
+      /* Real study space: the dialog, region x 336-1584 y 268-812 of the 1x frame, shown at 1.4x */
+      #s06-modal { position: absolute; left: 86px; top: 140px; width: 1747px; height: 762px; border-radius: 16px; overflow: hidden; box-shadow: 0 40px 100px rgba(10, 4, 3, 0.7); }
+      #s06-modal img { position: absolute; width: 2688px; left: -470px; top: -375px; }
+      #s06-pulse { position: absolute; left: 1500px; top: 368px; width: 300px; height: 60px; border: 4px solid #f7c440; border-radius: 12px; }
+      #s06-making { position: absolute; left: 610px; top: 440px; width: 700px; padding: 30px 36px; border-radius: 16px; background: #29231f; box-shadow: 0 30px 80px rgba(10, 4, 3, 0.6); }
+      #s06-making .t { font-size: 32px; font-weight: 700; }
+      #s06-making .bar { margin-top: 18px; height: 10px; border-radius: 5px; background: rgba(255, 244, 237, 0.15); overflow: hidden; }
+      #s06-making .fill { width: 100%; height: 100%; background: #f7c440; transform-origin: 0 50%; }
+      #s06-making .ff { margin-top: 14px; font-size: 18px; color: #ffe9dd; }
+      /* Real quiz component (synthetic questions): the .sp-quiz panel at 2x, shown 1:1 */
+      .s06-q { position: absolute; left: 300px; top: 190px; width: 1320px; border-radius: 16px; overflow: hidden; background: #faf8f4; box-shadow: 0 30px 80px rgba(10, 4, 3, 0.6); }
+      .s06-q img { display: block; width: 1320px; }
+      #s06-cursor { position: absolute; left: 0; top: 0; width: 44px; height: 44px; }
+      #s06-toast { position: absolute; left: 1330px; top: 780px; display: flex; align-items: center; gap: 16px; padding: 20px 28px; border-radius: 14px; background: #1f6b3a; font-size: 30px; font-weight: 700; box-shadow: 0 20px 50px rgba(10, 4, 3, 0.5); }
+      #s06-toast svg { width: 34px; height: 34px; }
+      #s06-hook { position: absolute; left: 300px; top: 90px; font-size: 64px; font-weight: 700; letter-spacing: -0.03em; }
+      #s06-results { position: absolute; left: 260px; top: 380px; width: 1400px; border-radius: 16px; overflow: hidden; background: #faf8f4; box-shadow: 0 30px 80px rgba(10, 4, 3, 0.6); }
+      #s06-results img { display: block; width: 1400px; }
+    </style>
+    <div id="s06-root" data-composition-id="s06-quiz" data-width="1920" data-height="1080">
+      <div class="s06-win" id="s06-course"><img src="assets/ui/course-page.png" alt="" /></div>
+      <div id="s06-ring"></div>
+      <div class="s06-win" id="s06-blur"></div>
+      <div id="s06-modal"><img src="assets/ui/study-space.png" alt="" data-layout-allow-overflow /></div>
+      <div id="s06-pulse"></div>
+      <div id="s06-making"><div class="t">Making 10 questions from your materials</div><div class="bar"><div class="fill" id="s06-fill"></div></div><div class="ff">Sped up for the film</div></div>
+      <div id="s06-hook">Question 6 of 10</div>
+      <div class="s06-q" id="s06-q6"><img src="assets/ui/panel-quiz-q6.png" alt="" /></div>
+      <div class="s06-q" id="s06-q6r"><img src="assets/ui/panel-quiz-right.png" alt="" /></div>
+      <svg id="s06-cursor" viewBox="0 0 24 24"><path d="M4 2 L4 20 L9 15.5 L12.5 22 L15.5 20.6 L12 14 L19 14 Z" fill="#fff4ed" stroke="#29231f" stroke-width="1.4" stroke-linejoin="round" /></svg>
+      <div id="s06-toast"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#fff4ed" /><path d="M6.5 12.5 L10.5 16.5 L17.5 8" fill="none" stroke="#1f6b3a" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" /></svg>Correct · source: Lecture 12</div>
+      <div id="s06-results"><img src="assets/ui/panel-quiz-results.png" alt="" /></div>
+    </div>
+    <script>
+      (() => {
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo("#s06-course", { scale: 0.94, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.45, ease: "expo.out" }, 0);
+        tl.fromTo("#s06-ring", { opacity: 0, scale: 1.08 }, { opacity: 1, scale: 1, duration: 0.35, ease: "expo.out" }, 0.45);
+        // The dialog opens: background blurs, dialog punches in.
+        tl.set("#s06-blur", { opacity: 0, filter: "blur(0px)" }, 0);
+        tl.to("#s06-blur", { opacity: 1, filter: "blur(10px) brightness(0.7)", duration: 0.35 }, 1.2);
+        tl.to(["#s06-course", "#s06-ring"], { opacity: 0, duration: 0.2 }, 1.3);
+        tl.fromTo("#s06-modal", { scale: 0.8, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.45, ease: "expo.out" }, 1.25);
+        tl.fromTo("#s06-pulse", { opacity: 0, scale: 1.2 }, { opacity: 1, scale: 1, duration: 0.3, ease: "expo.out" }, 1.8);
+        tl.to("#s06-pulse", { opacity: 0, duration: 0.2 }, 2.4);
+        // Accelerated generate.
+        tl.fromTo("#s06-making", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.3, ease: "expo.out" }, 2.4);
+        tl.fromTo("#s06-fill", { scaleX: 0 }, { scaleX: 1, duration: 0.9, ease: "power3.inOut" }, 2.55);
+        tl.to(["#s06-making", "#s06-modal", "#s06-blur"], { opacity: 0, duration: 0.15 }, 3.5);
+        // Jump-cut to question 6.
+        tl.fromTo("#s06-q6", { scale: 1.12, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.4, ease: "expo.out" }, 3.6);
+        tl.fromTo("#s06-hook", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "expo.out" }, 3.65);
+        tl.fromTo("#s06-cursor", { x: 1500, y: 900, opacity: 0 }, { x: 410, y: 432, opacity: 1, duration: 0.8, ease: "power3.inOut" }, 4.2);
+        tl.to("#s06-cursor", { scale: 0.8, duration: 0.08, yoyo: true, repeat: 1 }, 5.05);
+        tl.set("#s06-q6r", { opacity: 0 }, 0);
+        tl.set("#s06-q6r", { opacity: 1 }, 5.25);
+        tl.set("#s06-q6", { opacity: 0 }, 5.25);
+        tl.to("#s06-cursor", { opacity: 0, duration: 0.2 }, 5.4);
+        tl.fromTo("#s06-toast", { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.45, ease: "back.out(2)" }, 5.5);
+        // Results.
+        tl.to(["#s06-q6r", "#s06-toast", "#s06-hook"], { opacity: 0, duration: 0.2 }, 7.3);
+        tl.fromTo("#s06-results", { scale: 0.9, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.45, ease: "expo.out" }, 7.4);
+        window.__timelines["s06-quiz"] = tl;
+      })();
+    </script>
+  </template>
+</body></html>

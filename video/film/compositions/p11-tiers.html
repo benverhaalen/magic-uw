@@ -1,0 +1,63 @@
+<!doctype html>
+<html><head><meta charset="UTF-8" /></head><body>
+  <template>
+    <style>
+      @font-face { font-family: Geist; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+      #p11-root { position: absolute; inset: 0; font-family: Geist, system-ui, sans-serif; color: #fff4ed; overflow: hidden; }
+      #p11-scrim { position: absolute; left: 1000px; top: 0; width: 920px; height: 1080px; background: linear-gradient(90deg, rgba(26, 13, 11, 0), rgba(26, 13, 11, 0.82) 22%, rgba(26, 13, 11, 0.92)); }
+      #p11-tiers { position: absolute; left: 1120px; top: 110px; width: 720px; display: flex; flex-direction: column; align-items: stretch; gap: 14px; }
+      .p11-tier { padding: 20px 28px; border-radius: 14px; background: rgba(255, 244, 237, 0.08); border: 1px solid rgba(255, 244, 237, 0.24); }
+      .p11-tier .t { font-size: 36px; font-weight: 700; letter-spacing: -0.02em; }
+      .p11-tier .d { font-size: 21px; color: #ffe9dd; margin-top: 4px; }
+      #p11-t1 { border-color: #f7c440; }
+      .p11-arrow { align-self: center; width: 24px; height: 20px; }
+      #p11-hub { position: absolute; left: 1120px; top: 600px; width: 720px; height: 240px; }
+      #p11-hub svg { position: absolute; inset: 0; width: 720px; height: 240px; overflow: visible; }
+      .p11-src { position: absolute; padding: 10px 16px; border-radius: 10px; background: #faf8f4; color: #29231f; font-size: 21px; font-weight: 700; white-space: nowrap; }
+      .p11-src span { font-weight: 400; color: #746d66; font-size: 16px; margin-left: 8px; }
+      #p11-lock { position: absolute; left: 1120px; top: 870px; width: 720px; display: flex; align-items: center; gap: 22px; }
+      #p11-lock svg { width: 80px; height: 62px; flex: none; }
+      #p11-lock .t { font-size: 38px; font-weight: 700; }
+      #p11-lock .d { font-size: 22px; color: #ffe9dd; }
+    </style>
+    <div id="p11-root" data-composition-id="p11-tiers" data-width="1920" data-height="1080">
+      <div id="p11-scrim"></div>
+      <div id="p11-tiers">
+        <div class="p11-tier" id="p11-t1"><div class="t">Code first</div><div class="d">Dates, IDs, links and grades: exact work, no model</div></div>
+        <svg class="p11-arrow" id="p11-a1" viewBox="0 0 24 20"><path d="M12 0 V16 M5 10 L12 17 L19 10" fill="none" stroke="#f7c440" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        <div class="p11-tier" id="p11-t2"><div class="t">Jev</div><div class="d">Typed judgments only, never an action</div></div>
+        <svg class="p11-arrow" id="p11-a2" viewBox="0 0 24 20"><path d="M12 0 V16 M5 10 L12 17 L19 10" fill="none" stroke="#f7c440" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        <div class="p11-tier" id="p11-t3"><div class="t">Your AI, one checked call</div><div class="d">Only where language must be read</div></div>
+      </div>
+      <div id="p11-hub">
+        <svg viewBox="0 0 720 240">
+          <path class="p11-line" d="M 360 230 L 90 40" fill="none" stroke="#f7c440" stroke-width="3" stroke-dasharray="340" stroke-dashoffset="340" />
+          <path class="p11-line" d="M 360 230 L 280 40" fill="none" stroke="#f7c440" stroke-width="3" stroke-dasharray="340" stroke-dashoffset="340" />
+          <path class="p11-line" d="M 360 230 L 460 40" fill="none" stroke="#f7c440" stroke-width="3" stroke-dasharray="340" stroke-dashoffset="340" />
+          <path class="p11-line" d="M 360 230 L 640 40" fill="none" stroke="#f7c440" stroke-width="3" stroke-dasharray="340" stroke-dashoffset="340" />
+        </svg>
+        <div class="p11-src" style="left: 0px; top: 0px">Canvas<span>read-only</span></div>
+        <div class="p11-src" style="left: 170px; top: 60px">Enrollment<span>read-only</span></div>
+        <div class="p11-src" style="left: 390px; top: 0px">Outlook<span>read-only</span></div>
+        <div class="p11-src" style="left: 520px; top: 60px">Notes<span>Word · OneDrive</span></div>
+      </div>
+      <div id="p11-lock">
+        <svg viewBox="0 0 90 70" fill="none" stroke="#fff4ed" stroke-width="3" stroke-linejoin="round"><rect x="12" y="8" width="66" height="42" rx="4" /><path d="M4 58 H86 L80 50 H10 Z" /><rect x="35" y="24" width="20" height="16" rx="3" fill="#f7c440" stroke="#f7c440" /><path id="p11-shackle" d="M39 24 V19 a6 6 0 0 1 12 0 V24" stroke="#f7c440" /></svg>
+        <div><div class="t">Stays local</div><div class="d">What it sees is what you allow.</div></div>
+      </div>
+    </div>
+    <script>
+      (() => {
+        const tl = gsap.timeline({ paused: true });
+        tl.set("#p11-scrim", { opacity: 1 }, 0);
+        const seq = ["#p11-t1", "#p11-a1", "#p11-t2", "#p11-a2", "#p11-t3"];
+        seq.forEach((id, i) => tl.fromTo(id, { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "expo.out" }, 0.3 + i * 0.35));
+        tl.fromTo("#p11-root .p11-src", { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.45, ease: "expo.out", stagger: 0.18 }, 4.3);
+        tl.to("#p11-root .p11-line", { strokeDashoffset: 0, duration: 0.6, ease: "power2.out", stagger: 0.18 }, 4.5);
+        tl.fromTo("#p11-lock", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "expo.out" }, 6.9);
+        tl.fromTo("#p11-shackle", { y: -8 }, { y: 0, duration: 0.3, ease: "back.out(3)" }, 7.2);
+        window.__timelines["p11-tiers"] = tl;
+      })();
+    </script>
+  </template>
+</body></html>

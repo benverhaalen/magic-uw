@@ -1,0 +1,37 @@
+<!doctype html>
+<html><head><meta charset="UTF-8" /></head><body>
+  <template>
+    <style>
+      @font-face { font-family: Geist; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+      #s09-root { position: absolute; inset: 0; font-family: Geist, system-ui, sans-serif; color: #fff4ed; overflow: hidden; perspective: 2200px; }
+      /* Every number traces to video/film/SOURCES.md. */
+      .s09-card { position: absolute; left: 360px; top: 170px; width: 1200px; height: 620px; border-radius: 24px; padding: 70px 80px; background: radial-gradient(ellipse 95% 78% at 8% 10%, #d3643d 0%, transparent 57%), linear-gradient(155deg, #ae412e 0%, #913128 45%, #6e2824 100%); box-shadow: 0 40px 100px rgba(10, 4, 3, 0.7); backface-visibility: hidden; display: flex; flex-direction: column; justify-content: center; }
+      .s09-card .n { font-size: 230px; font-weight: 700; letter-spacing: -0.05em; line-height: 0.95; }
+      .s09-card .w { font-size: 60px; font-weight: 700; letter-spacing: -0.02em; margin-top: 18px; }
+      .s09-card .f { font-size: 30px; font-weight: 400; color: #fff4ed; margin-top: 26px; }
+      .s09-card .src { font-size: 22px; color: #ffe9dd; margin-top: 10px; }
+    </style>
+    <div id="s09-root" data-composition-id="s09-proof" data-width="1920" data-height="1080">
+      <div class="s09-card" id="s09-c1" data-layout-allow-overlap><div class="n">24×</div><div class="w">faster to reopen</div><div class="f">70 s → 2.9 s on the second launch</div><div class="src">Measured on a synthetic account</div></div>
+      <div class="s09-card" id="s09-c2" data-layout-allow-overlap><div class="n">35×</div><div class="w">fewer requests to reopen</div><div class="f">283 → 8 requests</div><div class="src">Measured on a synthetic account</div></div>
+      <div class="s09-card" id="s09-c3" data-layout-allow-overlap><div class="n">55%</div><div class="w">of everyday actions need no AI call</div><div class="f">vs 1% for a typical AI study tool</div><div class="src">Modelled over a synthetic semester</div></div>
+      <div class="s09-card" id="s09-c4" data-layout-allow-overlap><div class="n">~3×</div><div class="w">lower AI cost on a large course</div><div class="f">about $2 a semester vs $6.98 or more for a typical tool</div><div class="src">Modelled at 100k tokens of course material</div></div>
+    </div>
+    <script>
+      (() => {
+        const tl = gsap.timeline({ paused: true });
+        const cards = ["#s09-c1", "#s09-c2", "#s09-c3", "#s09-c4"];
+        cards.forEach((c, i) => tl.set(c, { rotationY: i === 0 ? -90 : -180, opacity: i === 0 ? 1 : 0 }, 0));
+        tl.to("#s09-c1", { rotationY: 0, duration: 0.55, ease: "expo.out" }, 0.3);
+        const flips = [3.0, 5.6, 8.3];
+        flips.forEach((t, i) => {
+          tl.to(cards[i], { rotationY: 180, duration: 0.6, ease: "power2.inOut" }, t);
+          tl.set(cards[i + 1], { opacity: 1 }, t);
+          tl.to(cards[i + 1], { rotationY: 0, duration: 0.6, ease: "power2.inOut" }, t);
+          tl.set(cards[i], { opacity: 0 }, t + 0.6);
+        });
+        window.__timelines["s09-proof"] = tl;
+      })();
+    </script>
+  </template>
+</body></html>
