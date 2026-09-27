@@ -1,3 +1,4 @@
+import { currentEnrollment, type EnrolledClass } from "../../../../../packages/domain/src/enrollment-match";
 import type {
   ApiKeyStatus,
   ClientHealth,
@@ -319,8 +320,26 @@ export interface CourseChoice {
   term: string | null;
   group: "this-term" | "other";
   checked: boolean;
+  /** Which source placed it: the student's UW enrollment, or Canvas's term dates (the fallback). */
+  decidedBy: "enrollment" | "canvas";
 }
 const THIS_TERM = ["This term", "Matches your UW enrollment this term"];
+const ENROLLMENT = ["Matches your UW enrollment this term", "Not in your UW enrollment this term"];
+/**
+ * The student's enrolled classes this term (Course Search & Enroll) that no stored Canvas course
+ * matches: shown as "No Canvas course found". Empty when planning has no current enrollment.
+ */
+export function enrolledWithoutCanvas(snapshot: Snapshot, now: Date): EnrolledClass[] {
+  const enrollment = currentEnrollment(snapshot.planning?.records ?? [], now);
+  if (!enrollment) return [];
+  const matched = new Set<string>();
+  for (const r of snapshot.resources)
+    if (r.kind === "course" && !r.deleted && r.course) {
+      const found = enrollment.match({ course_code: r.course.courseCode ?? null, name: r.courseName });
+      if (found) matched.add(found.courseKey);
+    }
+  return enrollment.classes.filter((c) => !matched.has(c.courseKey));
+}
 const PAST = [
   "Past course: its term ended",
   "Course concluded",
@@ -355,6 +374,7 @@ export function courseChoices(snapshot: Snapshot): CourseChoice[] {
       term: r.course.termName ?? null,
       group,
       checked: override ?? r.course.selection?.included === true,
+      decidedBy: reasons.some((reason) => ENROLLMENT.includes(reason)) ? "enrollment" : "canvas",
     });
   }
   return out.sort((a, b) => (a.group === b.group ? a.name.localeCompare(b.name) : a.group === "this-term" ? -1 : 1));

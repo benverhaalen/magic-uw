@@ -14,6 +14,7 @@ import {
   clientOrder,
   courseChoices,
   createPreviewClients,
+  enrolledWithoutCanvas,
   firstIncompleteStep,
   healthFromStatus,
   orderedClients,
@@ -381,7 +382,7 @@ function UwStep({
     try {
       // FDB-002: Canvas is read only after a confirmed sign-in; a closed window starts nothing.
       // fix/current-courses-only: only the course lists now; the student chooses before the sync.
-      const result = await signInAndSync(window.magic ?? {}, undefined, { discover: true });
+      const result = await signInAndSync(window.magic ?? {}, undefined, { discover: true, enrollmentFirst: true });
       setOutcome(result.outcome);
       onOutcome(result.outcome.status);
       if (result.synced) void run({ type: "snapshot" });
@@ -470,7 +471,9 @@ function CourseRow({ course, busy, onToggle }: { course: CourseChoice; busy: boo
         <input type="checkbox" checked={course.checked} disabled={busy} onChange={(e) => onToggle(e.target.checked)} />
         <span className="chn-row-text">
           <span className="chn-row-name">{course.name}</span>
-          <span className="chn-row-detail">{course.term ?? "No term"}</span>
+          <span className="chn-row-detail">
+            {course.term ?? "No term"} · {course.decidedBy === "enrollment" ? "from your UW enrollment" : "from Canvas term dates"}
+          </span>
         </span>
       </label>
     </li>
@@ -494,6 +497,7 @@ function CoursesStep({
   const choices = courseChoices(snapshot);
   const thisTerm = choices.filter((c) => c.group === "this-term");
   const other = choices.filter((c) => c.group === "other");
+  const missing = enrolledWithoutCanvas(snapshot, new Date());
   const toggle = (course: CourseChoice, included: boolean) =>
     void run({ type: "course-override", value: { accountScope: course.accountScope, courseId: course.courseId, included } });
   const start = () => {
@@ -505,8 +509,8 @@ function CoursesStep({
     <>
       {heading("Your courses")}
       <p className="onb-lede">
-        These are the courses Canvas lists for you this term. Only the checked ones are read. You can change this later in
-        Settings.
+        Your classes this term, from your UW enrollment when it could be read, otherwise from Canvas's term dates. Only
+        the checked ones are read. You can change this later in Settings.
       </p>
       {thisTerm.length ? (
         <ul className="chn-rows" aria-label="This term">
@@ -517,6 +521,18 @@ function CoursesStep({
       ) : (
         <p className="onb-note">Canvas didn't list a course for this term.</p>
       )}
+      {missing.length ? (
+        <ul className="chn-rows" aria-label="Enrolled classes without a Canvas course">
+          {missing.map((c) => (
+            <li key={c.courseKey} className="chn-row">
+              <span className="chn-row-text">
+                <span className="chn-row-name">{c.title}</span>
+                <span className="chn-row-detail">No Canvas course found · from your UW enrollment</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {other.length ? (
         <details className="onb-other-courses">
           <summary>Other Canvas sites ({other.length})</summary>

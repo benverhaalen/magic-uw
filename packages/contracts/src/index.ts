@@ -1919,7 +1919,8 @@ export interface AppBridge {
   importFile(): Promise<CommandResult | null>;
   /** owner: client-health (FDB-002). Resolves with how the window ended; `confirmed` is the only success. */
   signInUW?(service?: SignInService): Promise<SignInOutcome>;
-  syncPlanning?(): Promise<CommandResult>;
+  /** `phase: "enrollment"` (fix/current-courses-only): this term's enrollment only, before course discovery. */
+  syncPlanning?(options?: { phase?: "enrollment" }): Promise<CommandResult>;
   /** `discover` (fix/current-courses-only): read only the course lists, so the student chooses first. */
   syncCanvas?(options?: { discover?: boolean; confirm?: boolean }): Promise<CommandResult>;
   signOutUW?(): Promise<void>;

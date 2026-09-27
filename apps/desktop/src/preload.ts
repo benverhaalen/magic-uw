@@ -88,7 +88,8 @@ const bridge: AppBridge = {
       "magic:sync",
       options?.confirm === true ? { confirm: true } : options?.discover === true ? { discover: true } : undefined,
     ),
-  syncPlanning: () => ipcRenderer.invoke("magic:planning-sync"),
+  syncPlanning: (options?: { phase?: "enrollment" }) =>
+    ipcRenderer.invoke("magic:planning-sync", options?.phase === "enrollment" ? { phase: "enrollment" } : undefined),
   signOutUW: () => ipcRenderer.invoke("magic:signout"),
   localStatus: () => ipcRenderer.invoke("magic:local-status"),
   localAsk: (request) => ipcRenderer.invoke("magic:local-ask", request),
