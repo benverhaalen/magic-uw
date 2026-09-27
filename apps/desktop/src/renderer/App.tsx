@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
+  AppNotification,
   Command,
   CommandResult,
   ContextManifest,
@@ -32,7 +33,7 @@ import { PersonalReport } from "./PersonalReport";
 import { Action, Disclosure } from "../../../../packages/ui/src";
 import { useDesktopNavigation, type DesktopView } from "./navigation";
 import { CourseSpaceDetails } from "./CourseSpaceDetails";
-import { NotificationsMenu } from "./NotificationsMenu";
+import { NotificationsMenu, notificationDestination, type NotificationDestination } from "./notifications";
 
 type View = DesktopView;
 // owner: T05b. Route slots, each rendering nothing until its task fills it: the notebook (T43),
@@ -365,6 +366,20 @@ export function App() {
   const typeHueOf = createAssignmentTypeHues(snapshot?.resources ?? [], snapshot?.sources ?? []);
   const courseCards = buildCourseCards(courseInput);
   const coursePage = navigation.courseKey ? buildCoursePage(courseInput, navigation.courseKey) : null;
+  // Notification rows route by stable IDs: the saved item, its course page, Outlook or Sources.
+  const notificationTarget = (item: AppNotification) => notificationDestination(item, {
+    resource: id => resources.find(resource => resource.id === id),
+    courseKey: (sourceId, courseId) => {
+      const key = courseKey(accountBySource.get(sourceId) ?? sourceId, courseId);
+      return courseCards.some(card => card.key === key) ? key : null;
+    },
+  });
+  const openNotification = (target: NotificationDestination) => {
+    if (target.kind === "resource") navigation.navigate("resource", target.id);
+    else if (target.kind === "course") navigation.navigate("courses", null, target.key);
+    else if (target.kind === "sources") setView("sources");
+    else open(target.url);
+  };
   const selected =
     resources.find((resource) => resource.id === selectedId) ?? null;
   const unavailableSources =
@@ -410,6 +425,7 @@ export function App() {
           <div><span>{error ? workspaceFailureMessage(error) : notice}</span>{error && <details><summary>Error details</summary><p>{error}</p></details>}</div><button aria-label={error ? "Dismiss error" : "Dismiss notice"} onClick={() => { setError(""); setNotice(""); }}>×</button>
         </div>}
       </>}
+      trailing={<NotificationsMenu feed={snapshot?.notifications} busy={busy} run={run} destinationOf={notificationTarget} onOpen={openNotification} onOpenSources={() => setView("sources")} onOpenPrivacy={() => navigation.navigate("privacy", null, null, undefined, snapshot?.privacy.mode === "local_only" ? undefined /* the mode choice at the top unlocks Jev */ : { focus: "privacy-jev", anchor: "privacy-models" })}/>}
       onCompose={() => {
         if (selected) { document.querySelector<HTMLElement>(".local-ai-panel")?.scrollIntoView({ behavior: "smooth" }); }
         setNotice(selected ? "Ask about this item in its Local AI section. Your model and sharing settings still apply." : "Page-wide chat is not connected yet. Open a course item to ask about its saved context with Local AI.");
@@ -1352,11 +1368,12 @@ function Privacy({
           Agreements
         </button>
       </section>
-      <section className="settings-section">
+      <section className="settings-section" data-place-anchor="privacy-models">
         <h2>Models & services</h2>
         <SettingToggle
+          focusKey="privacy-jev"
           label="Jev judgments"
-          description="Classifies course material through our gateway. Permitted context is visible to the gateway operator and TypeSafe; the shared API key remains on the server. We pay for usage."
+          description="Classifies course material through our gateway, and can raise new announcements and email in Notifications when Course communications is also on. Permitted context is visible to the gateway operator and TypeSafe; the shared API key remains on the server. We pay for usage."
           checked={value.jevEnabled}
           disabled={busy || value.mode === "local_only"}
           onChange={(checked) => void update({ jevEnabled: checked })}
@@ -1426,7 +1443,7 @@ function Privacy({
         />
         <SettingToggle
           label="Course communications"
-          description="Selected announcements and messages. These may contain personal information."
+          description="Selected announcements and messages, and the subject and Outlook preview of email. With Jev on, these help sort Notifications; the sender is described only by role, such as advisor. These may contain personal information."
           checked={!!value.shareCommunications}
           disabled={busy || value.mode === "local_only"}
           onChange={(checked) => void update({ shareCommunications: checked })}
@@ -1575,12 +1592,14 @@ function KeepSignedInToggle({ busy }: { busy: boolean }) {
 // end owner: T05c
 
 function SettingToggle({
+  focusKey,
   label,
   description,
   checked,
   disabled,
   onChange,
 }: {
+  focusKey?: string;
   label: string;
   description: string;
   checked: boolean;
@@ -1596,6 +1615,7 @@ function SettingToggle({
       <input
         type="checkbox"
         role="switch"
+        data-focus-key={focusKey}
         checked={checked}
         disabled={disabled}
         onChange={(event) => onChange(event.target.checked)}

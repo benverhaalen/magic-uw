@@ -25,9 +25,10 @@ export function useDesktopNavigation() {
     const disclosures = Object.fromEntries(Array.from(pane?.querySelectorAll<HTMLDetailsElement>('details[data-place-disclosure]') ?? []).map(node => [node.dataset.placeDisclosure!, node.open]));
     return { ...current, disclosures, scroll: pane?.scrollTop ?? 0, focus, anchor: anchor?.dataset.placeAnchor ?? null, offset: anchor ? anchor.getBoundingClientRect().top - top : 0 };
   }
-  function navigate(view: DesktopView, resourceId: string | null = null, courseKey: string | null = view === 'resource' ? current.courseKey : null, origin?: Partial<Place>) {
+  /** `arrive` lets an entry point name the destination's focus key and scroll anchor (e.g. a setting). */
+  function navigate(view: DesktopView, resourceId: string | null = null, courseKey: string | null = view === 'resource' ? current.courseKey : null, origin?: Partial<Place>, arrive?: Pick<Place, 'focus' | 'anchor'>) {
     if (current.view === view && current.resourceId === resourceId && current.courseKey === courseKey) return;
-    const next = { ...initial, view, resourceId, courseKey };
+    const next = { ...initial, ...arrive, view, resourceId, courseKey };
     const saved = stack.slice(0, index + 1); saved[index] = { ...capture(), ...origin };
     direction.current = pageDirection(depth(current), depth(next), 'push');
     pending.current = next; setStack([...saved, next]); setIndex(saved.length);
