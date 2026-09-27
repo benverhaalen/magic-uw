@@ -232,6 +232,10 @@
   border-top-color: var(--magic-ink-muted);
   animation: onb-spin 900ms linear infinite;
 }
+.onb-spinner.idle {
+  animation: none;
+  border-color: var(--magic-line-quiet);
+}
 @keyframes onb-spin {
   to {
     transform: rotate(360deg);
