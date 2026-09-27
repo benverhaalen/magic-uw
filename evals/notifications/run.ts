@@ -282,7 +282,8 @@ async function realData(dir: string) {
       upcoming: upcoming.map((a, k) => ({ key: `a${k}`, title: (clean(a.title) || "Assignment").slice(0, 300), due: fmtDue(Date.parse(a.deadline.planningAt!)) })),
     };
     const row: Record<string, unknown> = {
-      bench_id: hashId(v.id), course: courseAlias.get(v.courseId), age_days: Math.round((T - Date.parse(v.createdAt ?? iso(T))) / DAY),
+      // Stable across runs: the source and Canvas id, not the store's generated resource id.
+      bench_id: hashId(`${v.sourceId}:${v.externalId}`), course: courseAlias.get(v.courseId), age_days: Math.round((T - Date.parse(v.createdAt ?? iso(T))) / DAY),
       code_level: codeLevel, keyword_family: familyOf(code?.evidence?.quote), has_quote: !!code?.evidence?.quote,
       raw_chars: rawChars, state_chars: JSON.stringify(state).length, upcoming_offered: state.upcoming.length,
     };
