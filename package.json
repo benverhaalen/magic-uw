@@ -14,7 +14,9 @@
     "gateway": "node --env-file-if-exists=apps/gateway/.env --import tsx apps/gateway/src/index.ts",
     "fixture": "tsx scripts/inspect-fixture.ts",
     "preview": "tsx scripts/preview.ts",
-    "test:desktop": "pnpm build && tsx scripts/desktop-smoke.ts"
+    "test:desktop": "pnpm build && tsx scripts/desktop-smoke.ts",
+    "magic:acceptance": "tsx scripts/acceptance.ts",
+    "magic:perf": "tsx evals/perf/run.ts"
   },
   "devDependencies": {
     "@types/node": "24.10.1",
@@ -27,11 +29,16 @@
     "vite": "8.3.1"
   },
   "dependencies": {
+    "@azure/msal-node": "7.0.0",
     "@modelcontextprotocol/client": "2.1.0",
     "@modelcontextprotocol/server": "2.1.0",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0",
+    "node-pty": "1.1.0",
     "pdfjs-dist": "6.3.289",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "ts-fsrs": "5.4.2",
     "zod": "4.6.5"
   }
 }

@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { createStore } from "@magic/storage";
+import { createStore, SCHEMA_VERSION } from "@magic/storage";
 import {
   defaultPrivacy,
   type CaptureBatch,
@@ -186,7 +186,7 @@ test("observations refresh without duplicate content versions or jobs; changed c
       );
       assert.equal(
         inspect.prepare("PRAGMA user_version").get()?.user_version,
-        5,
+        SCHEMA_VERSION,
       );
     } finally {
       inspect.close();
@@ -490,7 +490,8 @@ test("purge deletes private history and defaults privacy; old asynchronous write
         "observations",
         "source_observations",
         "completions",
-        "resource_search",
+        "passages",
+        "passage_fts", // D3 (schema v6): passage FTS replaced resource_search
       ]) {
         assert.equal(
           inspect.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get()

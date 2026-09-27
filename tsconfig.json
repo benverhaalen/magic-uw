@@ -18,7 +18,12 @@
       "@magic/core": ["packages/core/src/index.ts"],
       "@magic/storage": ["packages/storage/src/index.ts"],
       "@magic/connectors": ["packages/connectors/src/index.ts"],
-      "@magic/ai": ["packages/ai/src/index.ts"]
+      "@magic/ai": ["packages/ai/src/index.ts"],
+      "@magic/learning": ["packages/learning/src/index.ts"],
+      "@magic/runner": ["packages/runner/src/index.ts"],
+      "@magic/packs": ["packages/packs/core/src/index.ts"],
+      "@magic/retrieval": ["packages/retrieval/src/index.ts"],
+      "@magic/agent-api": ["packages/agent-api/src/index.ts"]
     },
     "allowImportingTsExtensions": true
   },
@@ -27,7 +32,8 @@
     "apps/**/*.ts",
     "apps/**/*.tsx",
     "scripts/**/*.ts",
-    "tests/**/*.ts"
+    "tests/**/*.ts",
+    "evals/**/*.ts"
   ],
   "exclude": ["node_modules", "**/dist/**"]
 }

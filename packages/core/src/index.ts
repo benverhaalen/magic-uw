@@ -32,6 +32,7 @@ import {
   type PublicClient,
 } from "../../connectors/src/network";
 import { comparePlanning } from "./planning";
+import { applyConsent, egressFor } from "./egress"; // owner: T06
 import { reconcileAcademicRecords } from "./academic-reconciliation";
 import type { UwPlanningHttp } from "../../connectors/src/uw-planning-http";
 import {
@@ -40,6 +41,41 @@ import {
   buildUwPublicEnrollmentPackagesRequest,
   normalizeUwPublicEnrollmentPackages,
 } from "../../connectors/src/uw-planning-catalog";
+// owner: T05b. The seams: the job registry, the stub drain and the injected handlers.
+import { enqueueOnSave, type JobRegistry } from "./jobs/registry";
+import { defaultJobRegistry, runRegistered } from "./jobs/default-registry";
+import { resourceViews, runQuery } from "./queries"; // owner: T15
+import type { QueryRequest } from "@magic/contracts";
+import type {
+  Correction,
+  LearningRequest,
+  LearningResult,
+  PackScope,
+  UiEvent,
+  WorkspaceCommand,
+  WorkspaceResult,
+} from "@magic/contracts";
+/**
+ * Each seam is filled by its owning lane; an absent seam answers honestly ("not built")
+ * instead of pretending. None of them receives the network: a handler that sends goes
+ * through egress like every other send.
+ */
+export interface CoreSeams {
+  /** N25's learning router (packages/learning/src/router.ts). */
+  learning?: {
+    handle(request: LearningRequest, signal: AbortSignal): Promise<LearningResult>;
+  };
+  /** The course map reader (schema v5, the data builder). */
+  map?(courseId: string, accountScope: string | undefined): unknown;
+  /** D33 corrections; the data builder stores them, and a correction wins. */
+  correct?(value: Correction, at: string): string;
+  /** The runtime builder's pack runner (packages/runner, packages/packs). */
+  pack?(pack: string, scope: PackScope, signal: AbortSignal): Promise<unknown>;
+  /** ui_events (schema v5). */
+  uiEvent?(value: UiEvent, at: string): void;
+}
+export type { JobRegistry } from "./jobs/registry";
+// end owner: T05b
 export interface CoreOptions {
   fixture: CaptureBatch;
   courseExtractor?: {
@@ -61,9 +97,18 @@ export interface CoreOptions {
   timeZone?: string;
   planningPublicClient?: PublicClient;
   planningHttp?: Pick<UwPlanningHttp, "read">;
+  // owner: T05b
+  jobs?: JobRegistry;
+  seams?: CoreSeams;
+  // end owner: T05b
 }
 export function createCore(store: Store, options: CoreOptions) {
   const planningReads = new Set<AbortController>();
+  // owner: T05b. Seam calls (learning, packs) are cancelled by purge and privacy like planning reads.
+  const seamCalls = new Set<AbortController>();
+  const jobs = options.jobs ?? defaultJobRegistry();
+  const seams = options.seams ?? {};
+  // end owner: T05b
   const publicClient = options.planningPublicClient ?? createPublicClient();
   const semanticAttempts = new Map<
     string,
@@ -91,39 +136,8 @@ export function createCore(store: Store, options: CoreOptions) {
       : undefined;
   }
   function snapshot(search?: string): Snapshot {
-    const evidence = evidenceFor(store);
-    const judgments = store.judgments();
-    const resources = store
-      .resources(search)
-      .map((r) => {
-        const judgment = judgments.find(
-          (j) =>
-            j.resourceId === r.id &&
-            j.inputHash === r.contentHash &&
-            j.questionVersion === "assignment.kind.v1",
-        );
-        const parsed = judgmentResultSchema.safeParse(judgment?.result);
-        // Provisional display threshold; never presented as calibrated correctness.
-        const label =
-          parsed.success &&
-          parsed.data.kind !== "other" &&
-          (parsed.data.probabilities[parsed.data.kind] ?? 0) >= 0.9
-            ? parsed.data.kind.replaceAll("_", " ")
-            : null;
-        return {
-          ...r,
-          deadline: resolveDeadline(evidence.deadlines(r)),
-          kindLabel: label,
-        };
-      })
-      .sort(
-        (a, b) =>
-          Number(a.completed) - Number(b.completed) ||
-          (a.deadline.planningAt ?? "9999").localeCompare(
-            b.deadline.planningAt ?? "9999",
-          ) ||
-          a.title.localeCompare(b.title),
-      );
+    // owner: T15. The full snapshot stays for debugging; views use scoped queries (queries.ts).
+    const resources = resourceViews(store, store.resources(search));
     const sources = store.sources();
     return {
       courseIntelligence: store.courseIntelligence().map((p) => ({
@@ -160,6 +174,8 @@ export function createCore(store: Store, options: CoreOptions) {
       mcpGrants: store
         .mcpGrants()
         .map(({ tokenHash: _secretHash, ...grant }) => grant),
+      // owner: T06: the renderer routes on these and main's consent gate mirrors them.
+      consents: store.consents?.() ?? [],
       dayPlan: store.dayPlan(),
     };
   }
@@ -393,7 +409,15 @@ export function createCore(store: Store, options: CoreOptions) {
     let job: Job | undefined;
     while (!closed && (job = store.lease(now(), 60000))) {
       if (job.kind !== "enrich.resource") {
-        store.finish(job, "Unsupported job kind", now());
+        // owner: T05b. Registered kinds run through their handler; unknown kinds fail as before.
+        const version = generation;
+        active = new AbortController();
+        try {
+          if (!(await runRegistered(job, jobs, store, now, active.signal))) break;
+        } finally {
+          active = undefined;
+        }
+        if (generation !== version) break;
         continue;
       }
       const r = store.resource(job.resourceId);
@@ -408,6 +432,7 @@ export function createCore(store: Store, options: CoreOptions) {
       }
       const manifest = context(r.id, "jev");
       if (!manifest.allowed) {
+        receipt(manifest, "blocked"); // owner: T06: a refused Jev send writes a receipt too.
         store.finish(job, "Data sharing is disabled", now());
         break;
       }
@@ -472,16 +497,124 @@ export function createCore(store: Store, options: CoreOptions) {
     generation++;
     active?.abort();
     for (const read of planningReads) read.abort();
+    for (const call of seamCalls) call.abort(); // owner: T05b
   }
+  // owner: T05b. The save → enqueue hook: every save path calls this after store.ingest.
+  function saved(sourceId: string) {
+    if (closed) return 0;
+    const calls = enqueueOnSave(store, jobs, sourceId, now());
+    if (calls) wake();
+    return calls;
+  }
+  /** Runs one seam call; its result is discarded if purge or a privacy change landed meanwhile. */
+  async function seamCall<T>(run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    const controller = new AbortController(),
+      version = generation;
+    seamCalls.add(controller);
+    try {
+      const result = await run(controller.signal);
+      if (closed || version !== generation || controller.signal.aborted)
+        throw new Error("Cancelled after data or privacy changed; nothing was kept.");
+      return result;
+    } finally {
+      seamCalls.delete(controller);
+    }
+  }
+  /** D40: code resolves the command bar first; only language goes on to a pack or the router. */
+  async function workspace(value: WorkspaceCommand): Promise<WorkspaceResult> {
+    const { verb } = value;
+    if (verb === "open") {
+      const r = value.resourceId ? store.resource(value.resourceId) : undefined;
+      if (!r || r.deleted)
+        return { verb, status: "unresolved", message: "Choose a source to open." };
+      let url: URL | undefined;
+      try {
+        url = new URL(r.url);
+      } catch {}
+      if (!url || url.protocol !== "https:" || url.username || url.password)
+        return { verb, status: "unresolved", message: "This source has no web link to open." };
+      return { verb, status: "ok", url: url.href };
+    }
+    if (verb === "due") {
+      const days = value.days ?? 7,
+        start = Date.parse(now()),
+        end = start + days * 86_400_000,
+        evidence = evidenceFor(store);
+      const items = store
+        .resources()
+        .filter(
+          (r) =>
+            r.kind === "assignment" &&
+            !r.deleted &&
+            !r.completed &&
+            (!value.courseId || r.courseId === value.courseId) &&
+            courseIncluded(store, r),
+        )
+        .flatMap((r) => {
+          const at = resolveDeadline(evidence.deadlines(r)).dueAt;
+          const ms = at ? Date.parse(at) : NaN;
+          return at && Number.isFinite(ms) && ms >= start && ms <= end
+            ? [{ id: r.id, title: r.title, courseName: r.courseName, dueAt: at, url: r.url }]
+            : [];
+        })
+        .sort((a, b) => a.dueAt.localeCompare(b.dueAt) || a.title.localeCompare(b.title));
+      return { verb, status: "ok", items };
+    }
+    const courseId = value.courseId;
+    if (!courseId) return { verb, status: "unresolved", message: "Choose a course first." };
+    if (verb === "quiz") {
+      const learning = seams.learning;
+      if (!learning) return { verb, status: "not_built", message: "Quizzes aren't built yet." };
+      const result = await seamCall((signal) =>
+        learning.handle(
+          {
+            op: "practice.target",
+            courseId,
+            ...(value.topicIds?.length ? { topicIds: value.topicIds } : {}),
+            ...(value.text?.trim() ? { description: value.text.trim() } : {}),
+            mode: "test",
+            count: 10,
+          },
+          signal,
+        ),
+      );
+      return {
+        verb,
+        status:
+          result.status === "ok" ? "ok" : result.status === "not_built" ? "not_built" : "unresolved",
+        ...(result.message ? { message: result.message } : {}),
+      };
+    }
+    // cards and explain are packs for a scope (the runtime builder's runner).
+    const pack = seams.pack;
+    if (!pack) return { verb, status: "not_built", message: "This command isn't built yet." };
+    await seamCall((signal) =>
+      pack(
+        verb,
+        {
+          courseId,
+          ...(value.resourceId ? { resourceIds: [value.resourceId] } : {}),
+          ...(value.topicIds?.length ? { topicIds: value.topicIds } : {}),
+        },
+        signal,
+      ),
+    );
+    return { verb, status: "ok" };
+  }
+  // end owner: T05b
   async function execute(raw: unknown): Promise<CommandResult> {
     if (closed) throw new Error("Workspace is closed.");
     const command = commandSchema.parse(raw);
     let message: string | undefined, manifest: ContextManifest | undefined;
+    // owner: T05b
+    let seamResult: Partial<Pick<CommandResult, "learning" | "map" | "pack" | "workspace">> = {};
+    // end owner: T05b
     switch (command.type) {
       case "snapshot":
         return { snapshot: snapshot(command.search) };
       case "import": {
         store.ingest(command.batch);
+        saved(command.batch.source.id); // owner: T05b
         wake();
         message = "Capture imported locally.";
         break;
@@ -626,6 +759,7 @@ export function createCore(store: Store, options: CoreOptions) {
           options.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
         );
         store.ingest({ ...moved, observedAt: now() });
+        saved(options.fixture.source.id); // owner: T05b
         wake();
         message = "Loaded a synthetic sample course.";
         break;
@@ -658,6 +792,17 @@ export function createCore(store: Store, options: CoreOptions) {
         message =
           "Data settings saved. Revoking access stops future requests; it cannot retract data already sent.";
         break;
+      // owner: T06. The only writer of consent records, and the answer to a payload preview.
+      case "consent":
+        if (command.value.action === "revoke") interrupt();
+        message = applyConsent(store, command.value, now());
+        wake();
+        break;
+      case "preview.ack":
+        message = egressFor(store).acknowledge(command.value, now());
+        wake();
+        break;
+      // end owner: T06
       case "context":
         manifest = context(command.id, command.recipient);
         break;
@@ -709,11 +854,58 @@ export function createCore(store: Store, options: CoreOptions) {
         message =
           "Local workspace data deleted. Browser sign-in sessions are separate; remove them in Sources.";
         break;
+      // owner: T05b. The seams. Each case routes to its lane's handler; absent means "not built".
+      case "map":
+        if (!seams.map) message = "The course map isn't built yet.";
+        else seamResult = { map: seams.map(command.courseId, command.accountScope) };
+        break;
+      case "correct":
+        message = seams.correct
+          ? seams.correct(command.value, now())
+          : "Corrections aren't built yet; nothing was changed.";
+        break;
+      case "pack": {
+        const pack = seams.pack;
+        if (!pack) message = "This pack isn't built yet.";
+        else
+          seamResult = {
+            pack: await seamCall((signal) => pack(command.pack, command.scope, signal)),
+          };
+        break;
+      }
+      case "ui_event":
+        seams.uiEvent?.(command.value, now());
+        break;
+      case "workspace":
+        seamResult = { workspace: await workspace(command.value) };
+        break;
+      case "learning": {
+        const learning = seams.learning;
+        seamResult = {
+          learning: learning
+            ? await seamCall((signal) => learning.handle(command.request, signal))
+            : {
+                op: command.request.op,
+                status: "not_built",
+                message: "This study feature isn't built yet.",
+              },
+        };
+        break;
+      }
+      default: {
+        // An unknown Command is a type error here (T05b).
+        const unhandled: never = command;
+        throw new Error(
+          `Unsupported command: ${String((unhandled as { type?: unknown }).type)}`,
+        );
+      }
+      // end owner: T05b
     }
     return {
       snapshot: snapshot(),
       ...(manifest ? { manifest } : {}),
       ...(message ? { message } : {}),
+      ...seamResult, // owner: T05b
     };
   }
   return {
@@ -721,6 +913,16 @@ export function createCore(store: Store, options: CoreOptions) {
     snapshot,
     context,
     wake,
+    saved, // owner: T05b
+    jobs, // owner: T05b
+    // owner: T15. A scoped query: reads only, never a command, never the whole workspace.
+    query(request: QueryRequest) {
+      if (closed) throw new Error("Workspace is closed.");
+      return runQuery(store, request, {
+        now,
+        gatewayConfigured: !!options.gateway,
+      });
+    },
     async settled() {
       while (working) await working;
     },

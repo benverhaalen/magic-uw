@@ -16,6 +16,14 @@ Read the [shared context](docs/README.md). It separates the product direction, p
 
 **Current state:** an Electron desktop workspace with versioned local SQLite storage, expanded Canvas reads, background refresh, independent calendar feeds, linked course-site/document/GitLab evidence, and local MCP tools with explicit sharing grants. My UW adds local enrollment, saved DARS audits, course search/sections, and conservative academic-source comparison. An owner-funded Jev gateway and an installed-local-model adapter provide bounded AI features. Embedded hosted account connections, managed model downloads, and the broader learning loop are still ahead. See [implementation status](docs/implementation-status.md) for the exact boundary and [development setup](docs/development.md) to run it.
 
+## The course backend and the open academic data platform
+
+Under the app is a local-first academic database. After one UW sign-in, code inventories and reads every course the student can already see, stores it in one SQLite file on their computer as passages with exact offsets, and checks every quote, ID and date. The student's own AI client writes only what code can't, and studying costs no model tokens. The same packages are MIT and open to Badger developers who want to build their own study tools.
+
+- [Academic data platform](docs/academic-data-platform.md): what it is, what's built, a developer quickstart, the decisions with their evidence, and a sourced scorecard against NotebookLM, Quizlet, Anki and seven other tools.
+- [Course backend architecture](docs/course-backend-architecture.md): the system map and where the build stands.
+- [Build record](docs/course-backend-build-record.md): tests, measurements and the live trial.
+
 ## Run the workspace
 
 Use Node 24 and pnpm 10.29.2:

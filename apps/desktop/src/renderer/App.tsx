@@ -12,9 +12,42 @@ import { MyUw, PlanningAlerts } from "./MyUw";
 import { LocalAiPanel } from "./LocalAiPanel";
 import { ProviderGuidance } from "./ProviderGuidance";
 import { IngestionControls, McpConnections } from "./IngestionControls";
+// owner: T06
+import { ConsentSetup, hasUwConsent, missingConsents } from "./consent/ConsentSetup";
+// owner: T81
+import { Onboarding, needsFirstRunSetup } from "./onboarding";
 import { TodayRail } from "./TodayRail";
 
-type View = "today" | "courses" | "myuw" | "sources" | "privacy";
+type View =
+  | "today"
+  | "courses"
+  | "myuw"
+  | "sources"
+  | "privacy"
+  | "consent"
+  // owner: T05b. Route slots; each owning task fills its slot and adds its navigation.
+  | "notebook"
+  | "practice"
+  | "insights"
+  | "settings";
+// owner: T05b. Route slots, each rendering nothing until its task fills it: the notebook (T43),
+// practice and insights (P17), settings (T40) and the workspace command bar (D40).
+function NotebookSlot(_: { snapshot: Snapshot | null }) {
+  return null; // owner: T43
+}
+function PracticeSlot(_: { snapshot: Snapshot | null }) {
+  return null; // owner: P17
+}
+function InsightsSlot(_: { snapshot: Snapshot | null }) {
+  return null; // owner: P17
+}
+function SettingsSlot(_: { snapshot: Snapshot | null }) {
+  return null; // owner: T40
+}
+function WorkspaceCommandBarSlot(_: { snapshot: Snapshot | null }) {
+  return null; // owner: the D40 command bar
+}
+// end owner: T05b
 type Recipient = ContextManifest["recipient"];
 type Run = (
   command: Command,
@@ -24,8 +57,10 @@ const recipientLabels: Record<Recipient, string> = {
   local: "Local model",
   jev: "Jev · TypeSafe",
   chatgpt: "ChatGPT",
+  codex: "Codex",
   claude: "Claude",
   gemini: "Gemini",
+  openrouter: "OpenRouter",
 };
 const statusLabels: Record<SourceHealth["status"], string> = {
   ok: "Checked",
@@ -204,7 +239,26 @@ export function App() {
     [perform],
   );
   const importFile = () => perform(() => window.magic.importFile());
+  // owner: T06. Consent wiring: no UW contact until the setup checkbox is agreed; a Data & AI
+  // change that would start sharing with a recipient without an agreement waits for one.
+  const [consentPending, setConsentPending] = useState<PrivacyPreferences | null>(null);
+  const uwConsented = hasUwConsent(snapshot);
+  const openConsent = (pending: PrivacyPreferences | null = null) => {
+    setConsentPending(pending);
+    setView("consent");
+  };
+  const runAll = (commands: Command[]) =>
+    perform(async () => {
+      let result: CommandResult | undefined;
+      for (const command of commands) result = await window.magic.execute(command);
+      return result;
+    });
   const signIn = async () => {
+    if (!uwConsented) return openConsent();
+    return startSignIn();
+  };
+  // end owner: T06
+  const startSignIn = async () => {
     if (!window.magic.signInUW) return;
     await perform(async () => {
       await window.magic.signInUW!();
@@ -292,6 +346,28 @@ export function App() {
     null,
   );
 
+  // owner: T81. First run, or setup still incomplete: the onboarding flow replaces the shell
+  // (and T06's in-Home consent entry) until the student opens the workspace.
+  if (snapshot && needsFirstRunSetup(snapshot))
+    return (
+      <Onboarding
+        snapshot={snapshot}
+        busy={busy}
+        error={error}
+        onDismissError={() => setError("")}
+        run={run}
+        runAll={runAll}
+        canSignIn={Boolean(window.magic.signInUW)}
+        signIn={startSignIn}
+        openExternal={open}
+        onLoadSample={() => run({ type: "fixture" })}
+        onFinish={() => {
+          setView("today");
+          void refresh();
+        }}
+      />
+    );
+  // end owner: T81
   return (
     <div className="app-shell">
       <aside className="sidebar" aria-label="Workspace">
@@ -342,6 +418,7 @@ export function App() {
         </div>
       </aside>
       <main className="workspace">
+        <WorkspaceCommandBarSlot snapshot={snapshot} /* owner: T05b */ />
         <header className="topbar">
           <span>
             {view === "today"
@@ -428,7 +505,25 @@ export function App() {
               </div>
             </div>
             <PlanningAlerts snapshot={snapshot} open={open} onPlanning={() => setView("myuw")} />
-            {unavailableSources.length > 0 ? (
+            {/* owner: T05c. Sign-in banner: an ended Canvas session is one click from a sign-in. */}
+            {unavailableSources.some(
+              (source) =>
+                source.kind === "canvas" && source.status === "needs_sign_in",
+            ) && window.magic.signInUW ? (
+              <div className="evidence-note" role="status">
+                <p>
+                  Your UW session ended. Saved coursework is still here and may
+                  have changed since it was last checked.
+                </p>
+                <button
+                  className="button primary"
+                  disabled={busy}
+                  onClick={() => void signIn()}
+                >
+                  Sign in again
+                </button>
+              </div>
+            ) : /* end owner: T05c */ unavailableSources.length > 0 ? (
               <div className="evidence-note" role="status">
                 <p>
                   {needsSignIn
@@ -445,7 +540,20 @@ export function App() {
                 </button>
               </div>
             ) : null}
-            {resources.length === 0 ? (
+            {resources.length === 0 && !uwConsented ? (
+              // owner: T06: the first-run screen replaces the empty workspace until agreed.
+              <ConsentSetup
+                snapshot={snapshot}
+                busy={busy}
+                pending={null}
+                canSignIn={Boolean(window.magic.signInUW)}
+                runAll={runAll}
+                onAgreedToSetup={() => void startSignIn()}
+                onSample={() => run({ type: "fixture" })}
+                onClose={null}
+                embedded
+              />
+            ) : resources.length === 0 ? (
               <EmptyWorkspace
                 busy={busy}
                 canSignIn={Boolean(window.magic.signInUW)}
@@ -519,13 +627,45 @@ export function App() {
         ) : view === "myuw" ? (
           <MyUw snapshot={snapshot} busy={busy} run={run} open={open}
             refresh={() => void perform(async () => window.magic.syncPlanning?.())}
-            signIn={(service) => void perform(async () => { await window.magic.signInUW?.(service); return window.magic.syncPlanning?.(); })} />
+            signIn={(service) => uwConsented /* owner: T06 */ ? void perform(async () => { await window.magic.signInUW?.(service); return window.magic.syncPlanning?.(); }) : openConsent()} />
         ) : view === "courses" ? (
           <><div className="page-heading"><h1>Courses</h1></div><div className="planning-content">
             {courses.map((course) => <article className="planning-row" key={course.id}><h2>{course.courseName}</h2><button className="button" onClick={() => { setQuery(course.courseName); setSelectedId(null); setView("today"); }}>View coursework</button></article>)}
             {!resources.length ? <p className="muted">Connect Canvas from Home to see your courses here.</p> : null}
           </div></>
-        ) : view === "sources" ? (
+        ) : view === "consent" ? (
+          // owner: T06. Consent route: setup, a new recipient's consent, or Agreements.
+          <ConsentSetup
+            snapshot={snapshot}
+            busy={busy}
+            pending={consentPending}
+            canSignIn={Boolean(window.magic.signInUW)}
+            runAll={runAll}
+            onAgreedToSetup={() => {
+              const next = consentPending;
+              setConsentPending(null);
+              setView(next ? "privacy" : "today");
+              if (!next) void startSignIn();
+            }}
+            onSample={() => {
+              setView("today");
+              void run({ type: "fixture" });
+            }}
+            onClose={() => {
+              const back = consentPending ? "privacy" : "today";
+              setConsentPending(null);
+              setView(back);
+            }}
+          />
+        ) : /* owner: T05b: route slots */ view === "notebook" ? (
+          <NotebookSlot snapshot={snapshot} />
+        ) : view === "practice" ? (
+          <PracticeSlot snapshot={snapshot} />
+        ) : view === "insights" ? (
+          <InsightsSlot snapshot={snapshot} />
+        ) : view === "settings" ? (
+          <SettingsSlot snapshot={snapshot} />
+        ) : /* end owner: T05b */ view === "sources" ? (
           <Sources
             snapshot={snapshot}
             run={run}
@@ -540,7 +680,13 @@ export function App() {
             onSample={() => run({ type: "fixture" })}
           />
         ) : (
-          <Privacy snapshot={snapshot} busy={busy} run={run} open={open} />
+          <Privacy
+            snapshot={snapshot}
+            busy={busy}
+            run={run}
+            open={open}
+            onConsent={openConsent /* owner: T06 */}
+          />
         )}
       </main>
     </div>
@@ -1171,6 +1317,9 @@ function Sources({
             </button>
           ) : null}
         </div>
+        {/* owner: T05c. Keep me signed in toggle. */}
+        <KeepSignedInToggle busy={busy} />
+        {/* end owner: T05c */}
         <p className="small muted">
           If UW requests Duo or a new sign-in, complete it in the browser.
           Previously captured records remain available when a session expires.
@@ -1275,20 +1424,26 @@ function Privacy({
   busy,
   run,
   open,
+  onConsent,
 }: {
   snapshot: Snapshot;
   busy: boolean;
   run: Run;
   open: (url: string) => void;
+  onConsent: (pending?: PrivacyPreferences | null) => void;
 }) {
   const [deleteText, setDeleteText] = useState("");
   const [showDelete, setShowDelete] = useState(false);
   const value = snapshot.privacy;
-  const update = (patch: Partial<PrivacyPreferences>) =>
-    run(
-      { type: "privacy", value: { ...value, ...patch } },
-      "Data settings saved.",
-    );
+  // owner: T06: a change that would start sharing with a recipient lacking an agreement
+  // opens that agreement first; it is saved only after the student agrees.
+  const update = (patch: Partial<PrivacyPreferences>) => {
+    const next = { ...value, ...patch };
+    if (missingConsents(next, snapshot.consents).length)
+      return onConsent(next);
+    return run({ type: "privacy", value: next }, "Data settings saved.");
+  };
+  // end owner: T06
   const erase = async () => {
     if (deleteText !== "DELETE LOCAL DATA") return;
     const result = await run(
@@ -1367,6 +1522,10 @@ function Privacy({
           Local data settings control AI sharing. Refreshing Canvas still
           contacts UW, and opening an original source contacts that website.
         </p>
+        {/* owner: T06 */}
+        <button className="subtle-button" disabled={busy} onClick={() => onConsent(null)}>
+          Agreements
+        </button>
       </section>
       <section className="settings-section">
         <h2>Models & services</h2>
@@ -1550,6 +1709,42 @@ function Privacy({
     </div>
   );
 }
+
+// owner: T05c. "Keep me signed in" (P1-D1, on by default). Main owns the setting; the
+// toggle hides where the bridge has no keepSignedIn (the browser preview).
+function KeepSignedInToggle({ busy }: { busy: boolean }) {
+  const bridge = window.magic;
+  const [value, setValue] = useState<boolean | null>(null);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    let live = true;
+    bridge.keepSignedIn?.()
+      .then((current) => {
+        if (live) setValue(current);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [bridge]);
+  if (!bridge.keepSignedIn || value === null) return null;
+  return (
+    <SettingToggle
+      label="Keep me signed in"
+      description="Closing the window keeps Magic Canvas running, and it starts with your computer, so your UW session stays open. Quit or Sign out ends the session."
+      checked={value}
+      disabled={busy || saving}
+      onChange={(next) => {
+        setSaving(true);
+        bridge.keepSignedIn!(next)
+          .then(setValue)
+          .catch(() => {})
+          .finally(() => setSaving(false));
+      }}
+    />
+  );
+}
+// end owner: T05c
 
 function SettingToggle({
   label,

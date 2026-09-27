@@ -36,11 +36,28 @@ import {
 } from "../../../packages/connectors/src/gitlab";
 import { courseInclusion } from "../../../packages/core/src/access";
 import { createRefreshCoordinator } from "../../../packages/core/src/refresh";
+// owner: T33. Per-course freshness probes (D37).
+import {
+  fetchCanvasContentProbe,
+  fetchCanvasHotProbe,
+} from "../../../packages/connectors/src/canvas-selection";
+// end owner: T33
 import {
   linkExactEvidence,
   evidenceFor,
 } from "../../../packages/core/src/evidence";
 import { canvasContent } from "../../../packages/connectors/src/canvas-content";
+// owner: T05b. D32 inventory and D41 access.
+import {
+  accessSummary,
+  checkSpaceAccess,
+  publicAccessTransport,
+  readCanvasInventory,
+  type AccessTransport,
+  type CourseSpace,
+  type SpaceAccess,
+} from "../../../packages/connectors/src/canvas-inventory";
+// end owner: T05b
 
 export interface IngestionHost {
   canvasFetch(url: string, init?: RequestInit): Promise<Response>;
@@ -54,6 +71,12 @@ export interface IngestionHost {
   client?: PublicClient;
   now?: () => Date;
   extractor?: DocumentExtractor;
+  /** owner: T05b. The save → enqueue hook; core enqueues the registered jobs for this source. */
+  onSaved?(sourceId: string): void;
+  /** owner: T05b. D41's session check: main's `source-fetch` service "space" (GET, no redirects). */
+  spaceFetch?(url: string, init?: RequestInit): Promise<Response>;
+  /** owner: T05b. A course's inventory with access states; the data builder stores it in course_spaces. */
+  onSpaces?(accountScope: string, courseId: string, spaces: CourseSpace[]): void;
 }
 export function inputResource(resource: Resource): ResourceInput {
   return resourceInputSchema.parse(
@@ -76,6 +99,7 @@ export function createIngestion(store: Store, host: IngestionHost) {
     firstValueMs: number | undefined,
     nextWeekInstructionsMs: number | undefined;
   let rateLimitRemaining: number | undefined, requestCost: number | undefined;
+  let probeRequests = 0; // owner: T33: requests made by the hot tick and the content probe
   const sourceIds = new Set<string>();
   function hasIncompleteRead() {
     const included = courseInclusion(store);
@@ -101,6 +125,7 @@ export function createIngestion(store: Store, host: IngestionHost) {
         ).toISOString(),
       };
     store.ingest(batch);
+    host.onSaved?.(batch.source.id); // owner: T05b
     sourceIds.add(batch.source.id);
     rateLimitRemaining = batch.stats?.rateLimitRemaining ?? rateLimitRemaining;
     requestCost = batch.stats?.requestCost ?? requestCost;
@@ -548,6 +573,94 @@ export function createIngestion(store: Store, host: IngestionHost) {
     )
       nextWeekInstructionsMs = Math.max(0, performance.now() - activeStart);
   }
+  // owner: T05b. D32 inventory and D41 access, per course. Held here until the data builder's
+  // course_spaces table stores them (host.onSpaces); rechecked on the content probe and sign-in.
+  const spaces = new Map<string, CourseSpace[]>();
+  const moduleHashes = new Map<string, string>();
+  let recheckAll = false;
+  const canvasScope: Partial<Record<CourseSpace["kind"], string>> = {
+    canvas_page: "pages",
+    canvas_file: "files",
+    canvas_assignment: "assignments",
+    canvas_quiz: "quizzes",
+    canvas_discussion: "discussions",
+    syllabus: "syllabus",
+  };
+  const sessionTransport: AccessTransport | undefined = host.spaceFetch
+    ? async (url, signal) => {
+        const response = await host.spaceFetch!(url, { method: "GET", signal: signal ?? null });
+        return {
+          status: response.status,
+          location: response.headers.get("location"),
+          body: await response.text().catch(() => ""),
+        };
+      }
+    : undefined;
+  function accessDeps(accountScope: string, courseId: string, signal: AbortSignal) {
+    const sources = store
+      .sources()
+      .filter((s) => s.kind === "canvas" && s.accountScope === accountScope && s.courseId === courseId);
+    return {
+      session: sessionTransport,
+      public: publicAccessTransport(client),
+      now,
+      signal,
+      canvas(space: CourseSpace): Pick<SpaceAccess, "state" | "reason"> {
+        if (space.readState === "read") return { state: "readable" };
+        const scope =
+          space.foundIn === "tab" && space.kind === "canvas_tab" ? "course" : canvasScope[space.kind];
+        const status = sources.find((s) => s.scope === scope)?.status;
+        if (status === "needs_sign_in") return { state: "needs-uw-signin", reason: "canvas_session" };
+        if (status === "inaccessible" || status === "not_published" || status === "error")
+          return { state: "blocked", reason: status };
+        return { state: "readable", ...(status ? {} : { reason: "not_read_yet" }) };
+      },
+    };
+  }
+  async function inventory(only: Set<string> | undefined, signal: AbortSignal) {
+    const s = store.ingestionSettings();
+    const http = new CanvasHttp({ fetch: host.canvasFetch, metadataConcurrency: s.metadataConcurrency });
+    const sources = new Map(store.sources().map((x) => [x.id, x]));
+    const all = store.resources();
+    for (const { resource: course, source } of courses()) {
+      if (only && !only.has(course.courseId)) continue;
+      if (http.needsSignIn) break;
+      signal.throwIfAborted();
+      const stored = all.filter(
+        (r) =>
+          r.courseId === course.courseId &&
+          sources.get(r.sourceId)?.accountScope === source.accountScope &&
+          sources.get(r.sourceId)?.kind === "canvas",
+      );
+      const read = await readCanvasInventory(http, { id: course.courseId }, stored, signal);
+      if (read.status === "needs_sign_in") break;
+      const key = `${source.accountScope}:${course.courseId}`;
+      if (read.moduleHash) moduleHashes.set(key, read.moduleHash);
+      // A failed list keeps what the last inventory found for it (spaces are missing, not deleted).
+      const previous = spaces.get(key) ?? [];
+      const merged = read.status === "ok"
+        ? read.spaces
+        : [...read.spaces, ...previous.filter((old) => !read.spaces.some((x) => x.url === old.url))];
+      const checked = await checkSpaceAccess(merged, accessDeps(source.accountScope, course.courseId, signal));
+      spaces.set(key, checked);
+      host.onSpaces?.(source.accountScope, course.courseId, checked);
+    }
+  }
+  /** D41: recheck on the content probe (what isn't readable) and after a sign-in (everything). */
+  async function recheckAccess(signal: AbortSignal) {
+    const all = recheckAll;
+    recheckAll = false;
+    for (const [key, list] of spaces) {
+      const [accountScope, courseId] = [key.slice(0, key.lastIndexOf(":")), key.slice(key.lastIndexOf(":") + 1)];
+      const checked = await checkSpaceAccess(list, {
+        ...accessDeps(accountScope, courseId, signal),
+        only: (space) => all || space.access.state !== "readable",
+      });
+      spaces.set(key, checked);
+      host.onSpaces?.(accountScope, courseId, checked);
+    }
+  }
+  // end owner: T05b
   const coordinator = createRefreshCoordinator({
     now,
     begin() {
@@ -582,35 +695,85 @@ export function createIngestion(store: Store, host: IngestionHost) {
       };
     },
     async full(signal) {
-      let needsSignIn = false;
+      return canvasRead(undefined, signal);
+    },
+    // owner: T33. The hot tick, the content probe and the warm read of only the moved courses.
+    async hot(signal) {
+      const http = new CanvasHttp({ fetch: host.canvasFetch });
+      const probe = await fetchCanvasHotProbe(http, signal);
+      probeRequests += probe.requests;
+      if (probe.status === "needs_sign_in") markExpired();
+      return {
+        needsSignIn: probe.status === "needs_sign_in",
+        courses: probe.courses,
+        complete: probe.status === "ok",
+      };
+    },
+    async content(signal) {
       const s = store.ingestionSettings();
-      for await (const batch of canvasConnector({
+      const http = new CanvasHttp({
         fetch: host.canvasFetch,
         metadataConcurrency: s.metadataConcurrency,
-        collectComments: s.collectComments,
-        selectedTerm: s.selectedTerm,
-        courseOverrides: store.courseOverrides(),
-        knownResources: store.resources(),
-        now,
-        onCalendarFeed: (feed) =>
-          host
-            .secrets(
-              "set",
-              `calendar:${feed.accountScope}:${feed.courseId}`,
-              feed.url,
-            )
-            .then(() => {}),
-      }).pull(signal)) {
-        save(batch);
-        needsSignIn ||= batch.status === "needs_sign_in";
-      }
-      if (needsSignIn) markExpired();
-      else await documents(signal);
-      await feeds(signal);
-      return { needsSignIn, complete: !hasIncompleteRead() };
+      });
+      const ids = [...new Set(courses().map(({ resource }) => resource.courseId))];
+      const probe = await fetchCanvasContentProbe(http, ids, signal, s.metadataConcurrency);
+      probeRequests += probe.requests;
+      if (probe.status === "needs_sign_in") markExpired();
+      else await recheckAccess(signal); // owner: T05b: D41 recheck on the content probe
+      return {
+        needsSignIn: probe.status === "needs_sign_in",
+        courses: probe.courses,
+        complete: probe.status === "ok",
+      };
     },
+    async warm(courseIds, signal) {
+      // A moved course that is not included (for example a to-do from an excluded site) is not read.
+      const included = new Set(courses().map(({ resource }) => resource.courseId));
+      const read = courseIds.filter((id) => included.has(id));
+      if (!read.length) return { needsSignIn: false, complete: true };
+      return canvasRead(new Set(read), signal);
+    },
+    // end owner: T33
     external,
     record(run) {
+      recordRun(run);
+    },
+  });
+  // owner: T33. One Canvas read: every included course (full), or only the given ones (warm).
+  async function canvasRead(only: Set<string> | undefined, signal: AbortSignal) {
+    let needsSignIn = false;
+    const s = store.ingestionSettings();
+    for await (const batch of canvasConnector({
+      fetch: host.canvasFetch,
+      metadataConcurrency: s.metadataConcurrency,
+      collectComments: s.collectComments,
+      selectedTerm: s.selectedTerm,
+      courseOverrides: store.courseOverrides(),
+      knownResources: store.resources(),
+      now,
+      ...(only ? { onlyCourses: [...only] } : {}), // owner: T33
+      onCalendarFeed: (feed) =>
+        host
+          .secrets(
+            "set",
+            `calendar:${feed.accountScope}:${feed.courseId}`,
+            feed.url,
+          )
+          .then(() => {}),
+    }).pull(signal)) {
+      save(batch);
+      needsSignIn ||= batch.status === "needs_sign_in";
+    }
+    if (needsSignIn) markExpired();
+    else {
+      await documents(signal);
+      await inventory(only, signal); // owner: T05b (D32, D41)
+    }
+    await feeds(signal);
+    return { needsSignIn, complete: !hasIncompleteRead() };
+  }
+  // end owner: T33
+  function recordRun(run: Parameters<Parameters<typeof createRefreshCoordinator>[0]["record"]>[0]) {
       store.addSyncRun({
         id: randomUUID(),
         startedAt: run.startedAt,
@@ -635,8 +798,7 @@ export function createIngestion(store: Store, host: IngestionHost) {
         },
         diagnostics: [],
       });
-    },
-  });
+  }
   function markExpired() {
     for (const s of store.sources().filter((s) => s.kind === "canvas")) {
       const { id, label, kind, accountScope, courseId, scope } = s;
@@ -649,5 +811,19 @@ export function createIngestion(store: Store, host: IngestionHost) {
       });
     }
   }
-  return { ...coordinator, markExpired };
+  return {
+    ...coordinator,
+    markExpired,
+    // owner: T05b
+    reconnected() {
+      recheckAll = true;
+      coordinator.reconnected();
+    },
+    spaces: () => [...spaces.values()].flat(),
+    accessSummary: () => accessSummary([...spaces.values()].flat()),
+    recheckAccess,
+    moduleHashes: () => new Map(moduleHashes),
+    probeRequests: () => probeRequests, // owner: T33
+    // end owner: T05b
+  };
 }

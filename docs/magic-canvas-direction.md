@@ -1,6 +1,6 @@
 # Magic Canvas: product direction
 
-**Status:** direction as of 2026-09-26 late. It describes what we're building and where it's going, and labels what exists. **Nothing is demonstrated on a real student account yet.**
+**Status:** direction as of 2026-09-26 late. It describes what we're building and where it's going, and labels what exists. **One live trial has run on a real student account** (sign-in and the first Canvas read; [build record §6](course-backend-build-record.md#6-live-trial-results)); nothing else is demonstrated yet.
 **Companion:** [course backend architecture](course-backend-architecture.md) holds the technical facts: processes, storage, channels, measurements, and [where the build stands](course-backend-architecture.md#2-where-we-are). The full specification is the [course-backend spec](plans/2026-09-26-course-backend/spec.md). The visual design follows the team's [DESIGN.md](../DESIGN.md); every surface below adopts it, and none of this document is a visual design.
 
 **Status labels:** *integrated* (merged and running in the app on the feature branch), *tested in isolation* (merged with tests, not yet called by the app), *built* (code on a lane branch, not merged), *in progress* (being built now), *proposed* (specified, no code), *researched* (evidence only). Definitions: [architecture §1](course-backend-architecture.md#1-summary).
@@ -13,8 +13,8 @@ Magic Canvas is a desktop study app for UW–Madison students. The student signs
 
 | Step | What happens | Status |
 |---|---|---|
-| **1. Your AI** | The app detects the installed AI clients with local version checks only, with no network request: Claude Code and Codex today, Gemini CLI planned. The student picks one and sees that provider's consent: who receives what, and how to revoke it. | detection tested in isolation; the flow in progress (T81) |
-| **2. Connect** | The app creates its own isolated profile for that client, separate from the student's own settings, and opens a built-in terminal. The student signs in there through the provider's own login. The app confirms with the client's own status command and never reads a credential. | in progress (T80; plan D45) |
+| **1. Your AI** | The app detects the installed AI clients with local version checks only, with no network request: Claude Code and Codex today, Gemini CLI planned. The student picks one and sees that provider's consent: who receives what, and how to revoke it. | detection and the flow integrated (T40, T81) |
+| **2. Connect** | The app creates its own isolated profile for that client, separate from the student's own settings, and opens a built-in terminal. The student signs in there through the provider's own login. The app confirms with the client's own status command and never reads a credential. | integrated (T80; plan D45); isolation verified on Claude Code and Codex |
 | **3. UW** | One checkbox (Jev, the UW session note, and the disclosure that reading Canvas can register page views), then the student's own NetID and Duo in the app's window. | consent and sign-in integrated; not demonstrated |
 | **4. Populating** | Canvas connects automatically. Code inventories every place each course keeps content, reads what it can, and shows what needs a sign-in. | inventory built; sync on `main` |
 | **The course map** | Sessions, topics and assessments. Each assessment shows its stated scope with the quote, and its materials in capped tiers (Core ≤8, Also useful ≤6, Practice ≤5). The system settles each scope; the student can correct it in one click (open decision H4). | proposed (T21, T22) |
@@ -34,7 +34,7 @@ Every surface follows [DESIGN.md](../DESIGN.md) and the near-approved Home. A ne
 
 | Surface | What it does | Backend it uses | Status | Design note |
 |---|---|---|---|---|
-| **Onboarding** (T81) | Welcome → Your AI → Connect → UW → Populating | client detection (T40), isolated profile and terminal (T80), consent (T06), sign-in (T05c) | in progress; the consent setup screen is integrated | reuse the Home's type and spacing; no new visual family |
+| **Onboarding** (T81) | Welcome → Your AI → Connect → UW → Populating | client detection (T40), isolated profile and terminal (T80), consent (T06), sign-in (T05c) | integrated (T81 merged); not demonstrated | reuse the Home's type and spacing; no new visual family |
 | **Workspace, command bar and live activity line** (plan D40) | Ctrl/⌘+K for chat and commands; code resolves a command first; a line shows the client working | the `workspace` command (seam built); the runner and session pool | proposed | open H7 against the near-approved Home |
 | **Course map and assessment dossier** | the settled scope with its quote; capped tiers with a reason per item; "All in scope (n)" collapsed | course pass and mapping (T21, T22); `map` and `correct` | proposed | caps live in configuration |
 | **Access chips and "Connect this course"** (plan D41) | "2 sources need a sign-in"; UW single-sign-on hosts in one click; other platforms open in the browser | inventory and access check (built on a lane) | built (backend); UI proposed | never blocks study; never asks twice |
@@ -51,7 +51,7 @@ Every surface follows [DESIGN.md](../DESIGN.md) and the near-approved Home. A ne
 
 ## 4. NotebookLM, Quizlet and Anki: parity, and where we aim to outperform
 
-The full capability map, 25 rows with each reference product's own help page, is [spec §1c](plans/2026-09-26-course-backend/spec.md). **Nothing in the "aim" column is claimed publicly until its measurement has run** (plan D22), and rows we lose are published too.
+The sourced scorecard against ten study tools (price, Canvas access, citations, quotas, study-time cost, benchmarks) is [academic data platform §5](academic-data-platform.md#5-scorecard); this table keeps only the per-capability measurement plan. The full capability map, 25 rows with each reference product's own help page, is [spec §1c](plans/2026-09-26-course-backend/spec.md). **Nothing in the "aim" column is claimed publicly until its measurement has run** (plan D22), and rows we lose are published too.
 
 | Capability | The reference product | Ours | Status | How we aim to do better, and the measurement |
 |---|---|---|---|---|
@@ -63,39 +63,17 @@ The full capability map, 25 rows with each reference product's own help page, is
 | Spaced repetition | Anki's FSRS ([deck options](https://docs.ankiweb.net/deck-options.html)) | `ts-fsrs`, with a pre-exam review against the course's real exam dates | FSRS adapter built | decay and scheduling validation (P20, P21) |
 | Statistics | Anki's statistics ([stats](https://docs.ankiweb.net/stats.html)) | the same figures per topic and per assessment, forecast against real exam dates | proposed | every figure equals a recomputation from raw reviews |
 | Progress | Quizlet tracks answers for Plus subscribers ([help](https://help.quizlet.com/hc/en-us/articles/360048803491)) | per-topic levels from real answers, local, 0 tokens | engine built | P18–P21 offline validation |
-| LMS connection | Quizlet documents a Google Classroom add-on, no direct Canvas integration ([help](https://help.quizlet.com/hc/en-us/articles/45955621176589)) | the student's own Canvas session; no school deployment needed | sync on `main` | MT7a |
 | Not planned | video overviews, slide decks, infographics, Match, streaks, cross-device sync | | | no named study job needs them, or a study tool doesn't want them (D20) |
 
 ## 5. How we optimise: measured versus target
 
-The measurements are ours, on synthetic data on one Windows laptop, unless stated otherwise. The full tables and protocol are in [architecture §8](course-backend-architecture.md#8-measurements).
-
-| Technique | What it does | Evidence so far | Target | Status |
-|---|---|---|---|---|
-| **Zero tokens during study** | quizzes, reviews, grading, levels and analytics run on code | by design; the ledger will show it | 0 model tokens per study session, unless a labelled top-up ran | engines built |
-| **Code first, then Jev, then one checked model call** | code answers what has one right answer; Jev picks from small candidate sets; the model gets one call with tools off | the runner's argument lists are checked by tests | code classifies most items; one Jev request per item | runner tested in isolation |
-| **Cache by content hash** | a result is reused until its inputs' text changes | pack cache keys built (T13) | never re-ask an unchanged question | tested in isolation |
-| **Per-course change detection** (D37) | only courses that moved are re-read | today a re-sync with nothing changed still makes 69 of a full sync's 79 requests (MT1) | new dated item ≤5 min; undated material ≤15 min | built on a lane |
-| **Warm CLI sessions** (D38) | one warm session per open course instead of a new process per call | a new `claude -p` took 5.8–7.4 s; a warm follow-up 1.7–2.2 s; our system prompt cut fixed tokens from 11.3k to 2.8k (measured on this laptop, plan D38) | spikes decide whether it's the default | tested in isolation |
-| **Store vs link, compressed summaries** (D40, D44) | text is stored as passages; tools and platforms are links; mail is a gist and a link | by design | mail about 0.5 KB per message (estimated) | proposed |
-| **Passage search** | OR + BM25 over passages, with a "not found" gate | found 10/10 planted answers where today's prefix-AND found 0/10 (spike, synthetic) | recall@5 ≥0.90; correct "not found" ≥0.80 | built on a lane |
-| **Contentless full-text index** | stores the text once, not twice | the duplicate copy was 31% of the database (spike, synthetic) | ≤11 MB per 1,000 resources (−30%) | built on a lane |
-| **The ingest bottleneck** | found: each re-index scanned the whole search table, about 88% of ingest time | 78 resources/s at 5,000 today (MT1) | ≥750 resources/s at 5,000 (≥10×) | fix built on a lane |
-| **Presence-gated background reads** | signed-in reads only while the student is at the computer; no request keeps a session alive | tested (T05d) | 0 signed-in requests while away | integrated |
-| **Batch pricing on the key route** | background work sent through a provider's batch API when the student uses a key | providers price batch jobs below interactive calls ([Anthropic](https://docs.anthropic.com/en/docs/build-with-claude/batch-processing), [OpenAI](https://platform.openai.com/docs/guides/batch)) | adopted only if M7 measures a real saving | proposed (measure first) |
+The techniques, each with what we did, why it wins and its evidence, are in [academic data platform §4](academic-data-platform.md#4-the-decisions-with-evidence). The measured before-and-after numbers (MT1, synthetic, one Windows laptop) and the AI cost structure are in [build record §5 and §7](course-backend-build-record.md#5-scores-and-measurements). Batch pricing on the key route stays proposed, adopted only if M7 measures a real saving.
 
 ## 6. The two-part launch
 
 ### 6.1 The open academic data platform (plan D42), for Badger developers
 
-The operator's framing: "an academic autonmous database layer for agentic operation that we open source as a platform for badger developers to build their own study tools" (Nathaniel, 2026-09-26). What developers get ([spec F3](plans/2026-09-26-course-backend/spec.md)):
-- **A versioned read contract:** named SQL views over the one local database, with a schema handshake, and a typed SDK.
-- **A read-only MCP course bank** that a student's own AI client can use. It never drives the app.
-- **Scoped, revocable tokens,** one per tool, rechecked on every call, with a receipt per call.
-- **A narrow write path for student-owned artifacts only** (decks, cards, notes, study records), each write checked by code and undoable. Never a school action, never coursework or evidence, and planning data is never exposed.
-- **MIT licence.** The framework packages build with zero imports from the desktop app, the gateway or licence code.
-
-Status: proposed. What exists on `main` is the MCP server with per-client grants and receipts.
+The operator's framing: "an academic autonmous database layer for agentic operation that we open source as a platform for badger developers to build their own study tools" (2026-09-26). What developers can use today, the planned versioned read contract, scoped tokens and write path (proposed), a quickstart and the rules every tool keeps are in [academic data platform](academic-data-platform.md).
 
 ### 6.2 Our product on top
 
@@ -120,8 +98,4 @@ The detailed state and build order are in [architecture §2](course-backend-arch
 
 ## 8. What's true today
 
-- **Integrated on the feature branch:** the one-checkbox consent and egress gate, sign-in and session handling with "Keep me signed in", and presence-gated background reads. The whole suite passes 359/359.
-- **Tested in isolation:** the model runner, the warm session pool, the pack core and client detection.
-- **Built on lane branches, not merged:** the new storage schema and passage search, per-course inventory and freshness, and the learning engines.
-- **Proposed:** the course map, generation, every study surface, the schedule, notes, dictation, Outlook, the data platform and the licence.
-- **Demonstrated:** nothing yet. The live trial has started; no NetID sign-in has been completed in it.
+The canonical status per piece is [architecture §2](course-backend-architecture.md#2-where-we-are), and the status per platform part is [academic data platform §2](academic-data-platform.md#2-why-build-on-it). In one line, at `33b1827` with 540/540 tests: storage, sync, sign-in, consent and onboarding are integrated; retrieval, the drain, the runner, packs and the learning engines are tested in isolation; the course map, generation, every study surface and the data platform are proposed; one live trial has run on a real account.

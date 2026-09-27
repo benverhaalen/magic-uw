@@ -10,7 +10,7 @@ import {
   powerMonitor,
   type IpcMainInvokeEvent,
 } from "electron";
-import { readFile, writeFile, mkdir, stat, rm } from "node:fs/promises";
+import { readFile, writeFile, mkdir, stat, rm, appendFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
@@ -24,14 +24,35 @@ import {
   isOutlookPublishedCalendar,
   readBounded,
 } from "../../../packages/connectors/src/network";
+import { checkedSpaceProbeUrl } from "../../../packages/connectors/src/space-hosts"; // owner: T05b
 import { clearSignOutSecrets, createSecretVault } from "./secrets";
 import sampleFixture from "../../../fixtures/course.json";
+// owner: T05c
+import { Tray, Menu, nativeImage } from "electron";
+import {
+  closeAction,
+  launchSession,
+  loginItemSettings,
+  planningProbe,
+  planningSessionConfirmed,
+  readSessionSettings,
+  singleFlight,
+  trayBitmap,
+  trayMenu,
+  trayWanted,
+  writeSessionSettings,
+  type TrayAction,
+} from "./keep-signed-in";
+// end owner: T05c
+import { consentGateAllows } from "../../../packages/core/src/egress"; // owner: T06
+import { consentRecordSchema, type ConsentRecord } from "@magic/contracts"; // owner: T06
 import {
   commandSchema,
   captureBatchSchema,
   captureEnvelopeSchema,
   planningCaptureSchema,
   localQuestionSchema,
+  queryRequestSchema, // owner: T15
   type CommandResult,
 } from "@magic/contracts";
 const headless = process.env.MAGIC_HEADLESS === "1";
@@ -69,6 +90,35 @@ function safeExternal(input: unknown) {
     throw new Error("Only ordinary web links can be opened.");
   return url.toString();
 }
+// owner: T05b. A link card opens in the default browser, https only (D40). The app never
+// launches an LTI tool itself (D32); opening a link is the student's own click.
+function safeLinkCard(input: unknown) {
+  const url = new URL(safeExternal(input));
+  if (url.protocol !== "https:") throw new Error("Only https links open from a link card.");
+  return url.toString();
+}
+// end owner: T05b
+// Dev-only live-trial log (MAGIC_TRIAL_LOG=<file>): hosts, masked paths, statuses and timings only;
+// never bodies, queries, cookies or identity. Off unless the variable is set.
+function trialPath(input: string): string {
+  try {
+    const u = new URL(input);
+    return (
+      u.hostname +
+      u.pathname
+        .replace(/\/\d+(?=\/|$)/g, "/:id")
+        // Page slugs and file names are course titles; keep only the shape.
+        .replace(/\/(pages|files|wiki)\/[^/]+/g, "/$1/:slug")
+    ).slice(0, 120);
+  } catch {
+    return "invalid-url";
+  }
+}
+function trialLog(event: Record<string, unknown>) {
+  const file = process.env.MAGIC_TRIAL_LOG;
+  if (!file) return;
+  void appendFile(file, JSON.stringify({ at: new Date().toISOString(), ...event }) + "\n").catch(() => {});
+}
 function allowedLogin(input: string) {
   try {
     const u = new URL(input);
@@ -78,6 +128,8 @@ function allowedLogin(input: string) {
       !u.password &&
       (u.hostname === "wisc.edu" ||
         u.hostname.endsWith(".wisc.edu") ||
+        // Instructure's SSO relay: UW's IdP returns the SAML response through it (live trial 2026-09-26).
+        u.hostname === "sso.canvaslms.com" ||
         u.hostname === "duosecurity.com" ||
         u.hostname.endsWith(".duosecurity.com"))
     );
@@ -251,6 +303,10 @@ app
         return;
       }
       if (message.kind === "planning-public-read") {
+        if (!(await consentGate("planning-public-read"))) {
+          worker.postMessage({ kind: "source-response", id: message.id, error: true });
+          return;
+        }
         const controller = new AbortController();
         sourceReads.set(message.id, controller);
         planningReads.add(message.id);
@@ -266,6 +322,10 @@ app
         return;
       }
       if (message.kind === "planning-refresh") {
+        if (!(await consentGate("planning-refresh"))) {
+          worker.postMessage({ kind: "source-response", id: message.id, error: true });
+          return;
+        }
         const controller = new AbortController();
         sourceReads.set(message.id, controller);
         planningReads.add(message.id);
@@ -287,6 +347,10 @@ app
         return;
       }
       if (message.kind === "source-fetch") {
+        if (!(await consentGate("source-fetch"))) {
+          worker.postMessage({ kind: "source-response", id: message.id, error: true });
+          return;
+        }
         const controller = new AbortController();
         sourceReads.set(message.id, controller);
         try {
@@ -325,21 +389,54 @@ app
               )
                 throw new Error();
             target = u.href;
+          } else if (service === "kaltura") {
+            // owner: T05b. Kaltura on its own host (D32), GET only, in the app's UW session.
+            const u = new URL(url);
+            if (
+              u.protocol !== "https:" ||
+              u.hostname !== "mediaspace.wisc.edu" ||
+              u.port ||
+              u.username ||
+              u.password ||
+              u.hash
+            )
+              throw new Error();
+            target = u.href;
+          } else if (service === "space") {
+            // owner: T05b. D41's access check: one plain GET to a UW single-sign-on host the host
+            // table allows (Kaltura, UW GitLab); never a launch, redirects not followed.
+            target = checkedSpaceProbeUrl(url);
+          } else if (service === "graph") {
+            // owner: T30. Graph proxy stub: refused until E1 passes and T30 builds the proxy.
+            throw new Error();
+            // end owner: T30
           } else throw new Error();
           const signal = AbortSignal.any([
             controller.signal,
             AbortSignal.timeout(30_000),
           ]);
           const response = await (
-            service === "canvas" ? studentSession : gitlabSession
+            service === "gitlab" ||
+            (service === "space" && new URL(target).hostname === "git.doit.wisc.edu")
+              ? gitlabSession
+              : studentSession
           ).fetch(target, {
             method: "GET",
             credentials: "include",
             redirect: "manual",
-            headers: { Accept: "application/json" },
+            headers: {
+              Accept:
+                service === "kaltura" || service === "space"
+                  ? "text/html"
+                  : "application/json",
+            },
             signal,
           });
-          const body = await readBounded(response, 8 * 1024 * 1024, signal);
+          // owner: T05b: a space check needs only the status and a bounded start of the page.
+          const body =
+            service === "space"
+              ? await readBounded(response, 256 * 1024, signal).catch(() => "")
+              : await readBounded(response, 8 * 1024 * 1024, signal);
           const headers = Object.fromEntries(
             [
               "content-type",
@@ -354,6 +451,16 @@ app
                 : [],
             ),
           );
+          // owner: T05c (lead integration). The Canvas reader needs a redirect's target to tell a sign-in
+          // redirect from other redirects; only its origin and path cross, never the query.
+          const moved = response.headers.get("location");
+          if (moved) {
+            try {
+              const to = new URL(moved, target);
+              headers.location = to.origin + to.pathname;
+            } catch {}
+          }
+          trialLog({ event: "fetch", service, to: trialPath(target), status: response.status, contentType: (response.headers.get("content-type") ?? "").split(";")[0], bytes: body.length, redirect: headers.location ? trialPath(headers.location) : undefined });
           worker.postMessage({
             kind: "source-response",
             id: message.id,
@@ -407,6 +514,10 @@ app
         return;
       }
       if (message.kind === "evaluate") {
+        if (!(await consentGate("evaluate"))) {
+          worker.postMessage({ kind: "evaluation", id: message.id, error: true });
+          return;
+        }
         const controller = new AbortController();
         evaluations.set(message.id, controller);
         try {
@@ -457,6 +568,174 @@ app
         worker.postMessage({ kind: "command", id, command: parsed });
       });
     }
+    // owner: T06. Consent gate: every channel that can reach the network asks here first.
+    // UW reads need the setup record; `evaluate` (Jev) needs Jev's record. The decision is
+    // `consentGateAllows` (packages/core/src/egress.ts, unit-tested). A false return refuses.
+    // Main's copy of the records comes from the worker's own replies: every command response
+    // carries `snapshot.consents`. Worker messages arrive in order and this listener runs in
+    // the same dispatch as the reply's resolver, so a grant is visible before the renderer
+    // hears of it and a read posted after a revoke is refused. Until the first reply, the
+    // gate asks the worker once. Sends nothing.
+    type ConsentGatedChannel = Parameters<typeof consentGateAllows>[0];
+    let consentRecords: ConsentRecord[] | undefined;
+    worker.on("message", (message: any) => {
+      if (message?.kind !== "response") return;
+      const records = message.result?.snapshot?.consents;
+      if (!Array.isArray(records)) return;
+      const hadUw = consentGateAllows("source-fetch", consentRecords),
+        hadJev = consentGateAllows("evaluate", consentRecords);
+      consentRecords = records.flatMap((record: unknown) => {
+        const parsed = consentRecordSchema.safeParse(record);
+        return parsed.success ? [parsed.data] : [];
+      });
+      // A withdrawn agreement also stops reads already in flight.
+      if (hadUw && !consentGateAllows("source-fetch", consentRecords)) {
+        sync?.abort();
+        cancelPlanning();
+        signIn?.close();
+        for (const c of sourceReads.values()) c.abort();
+      }
+      if (hadJev && !consentGateAllows("evaluate", consentRecords))
+        for (const c of evaluations.values()) c.abort();
+    });
+    async function consentGate(channel: ConsentGatedChannel): Promise<boolean> {
+      if (!consentRecords)
+        try {
+          await execute({ type: "snapshot" });
+        } catch {
+          return false;
+        }
+      return consentGateAllows(channel, consentRecords);
+    }
+    const consentRefused =
+      "Finish the setup step before Magic Canvas connects to UW.";
+    // end owner: T06
+    // owner: T40. Onboarding detection (apps/desktop/src/onboarding.ts): the installed CLIs,
+    // their own auth status, and the engine choice (Claude Code → Codex → a stored key → Ollama).
+    // Runs only when asked; reads no credential file, sends no course data, never prompts.
+    // Stored-key presence and the settings (local only, prefer Ollama, a picked engine) are not
+    // wired yet: no key naming exists in the vault, and no settings record holds them.
+    let onboardingRuntime: Awaited<ReturnType<typeof loadOnboarding>> | undefined;
+    async function loadOnboarding() {
+      const { createOnboarding } = await import("./onboarding");
+      return createOnboarding({ workDir: join(data, "ai-runtime") });
+    }
+    async function onboarding() {
+      onboardingRuntime ??= await loadOnboarding();
+      const { detection, decision, checkedAt } = await onboardingRuntime.refresh();
+      // Executable paths stay in main; the view gets the facts and the choice.
+      return {
+        checkedAt,
+        clients: detection.clients.map(({ command: _command, ...c }) => c),
+        storedKeys: detection.storedKeys,
+        local: detection.local,
+        choice:
+          decision.choice.engine === "claude" || decision.choice.engine === "codex"
+            ? { engine: decision.choice.engine, route: decision.choice.route }
+            : decision.choice,
+        reason: decision.reason,
+        actions: decision.actions,
+        disclosures: decision.disclosures,
+      };
+    }
+    ipcMain.handle("magic:onboarding", async (event) => {
+      validateSender(event);
+      return onboarding();
+    });
+    // end owner: T40
+    // owner: T50b. The reader stub: the in-app reader's window and its GET-only navigation.
+    // Does nothing and sends nothing yet.
+    async function reader(): Promise<void> {}
+    // end owner: T50b
+    // owner: T62. The licence stub: the $5 lifetime hosted-Jev licence check. Does nothing yet;
+    // payment waits on the operator's say and accounts.
+    async function licence(): Promise<void> {}
+    // end owner: T62
+    // owner: T80. AI clients in app-owned profiles (apps/desktop/src/clients/): detection runs
+    // `--version` only and needs no consent; a terminal needs that provider's consent record.
+    // The renderer names a client and a purpose; main resolves the binary and fixed arguments.
+    // Sessions end when their window closes, when the provider's consent is withdrawn, and at quit.
+    let clientsRuntime: import("./clients").Clients | undefined;
+    const terminalHooked = new WeakSet<object>();
+    async function clients() {
+      if (clientsRuntime) return clientsRuntime;
+      const { createClients, providerConsented } = await import("./clients");
+      clientsRuntime = createClients({
+        userData: data,
+        alive: (owner) => !(owner as Electron.WebContents).isDestroyed(),
+        async consented(id) {
+          if (!consentRecords)
+            try {
+              await execute({ type: "snapshot" });
+            } catch {
+              return false;
+            }
+          return providerConsented(consentRecords, id);
+        },
+        events: {
+          data: (owner, sessionId, chunk) => {
+            const wc = owner as Electron.WebContents;
+            if (!wc.isDestroyed()) wc.send("magic:terminal-data", sessionId, chunk);
+          },
+          exit: (owner, sessionId, code) => {
+            const wc = owner as Electron.WebContents;
+            if (!wc.isDestroyed()) wc.send("magic:terminal-exit", sessionId, code);
+          },
+        },
+      });
+      return clientsRuntime;
+    }
+    worker.on("message", async (message: any) => {
+      if (message?.kind !== "response" || !clientsRuntime) return;
+      const { providerConsented } = await import("./clients");
+      for (const s of clientsRuntime.terminal.sessions())
+        if (!providerConsented(consentRecords, s.client)) clientsRuntime.terminal.closeAll({ client: s.client });
+    });
+    app.on("before-quit", () => clientsRuntime?.terminal.closeAll());
+    ipcMain.handle("magic:clients-detect", async (event) => {
+      validateSender(event);
+      return (await clients()).detect();
+    });
+    ipcMain.handle("magic:clients-prepare", async (event, id: unknown) => {
+      validateSender(event);
+      return (await clients()).prepare(id);
+    });
+    ipcMain.handle("magic:clients-auth", async (event, id: unknown) => {
+      validateSender(event);
+      return (await clients()).authStatus(id);
+    });
+    ipcMain.handle("magic:clients-choose", async (event, id: unknown) => {
+      validateSender(event);
+      await (await clients()).choose(id);
+    });
+    ipcMain.handle("magic:terminal-open", async (event, ...args: unknown[]) => {
+      validateSender(event);
+      const runtime = await clients();
+      const owner = event.sender;
+      const w = BrowserWindow.fromWebContents(owner);
+      if (w && !terminalHooked.has(w)) {
+        terminalHooked.add(w);
+        w.on("close", () => runtime.terminal.closeAll({ owner }));
+      }
+      if (!terminalHooked.has(owner)) {
+        terminalHooked.add(owner);
+        owner.once("destroyed", () => runtime.terminal.closeAll({ owner }));
+      }
+      return runtime.terminal.open(owner, ...args);
+    });
+    ipcMain.handle("magic:terminal-write", async (event, sessionId: unknown, input: unknown) => {
+      validateSender(event);
+      (await clients()).terminal.write(event.sender, sessionId, input);
+    });
+    ipcMain.handle("magic:terminal-resize", async (event, sessionId: unknown, cols: unknown, rows: unknown) => {
+      validateSender(event);
+      (await clients()).terminal.resize(event.sender, sessionId, cols, rows);
+    });
+    ipcMain.handle("magic:terminal-close", async (event, sessionId: unknown) => {
+      validateSender(event);
+      await (await clients()).terminal.close(event.sender, sessionId);
+    });
+    // end owner: T80
     ipcMain.handle("magic:execute", async (event, command) => {
       validateSender(event);
       const purging = command?.type === "purge";
@@ -466,7 +745,9 @@ app
         if (purging) {
           for (const c of sourceReads.values()) c.abort();
           await vault.clear();
+          clientsRuntime?.terminal.closeAll(); // owner: T80
           await Promise.all([
+            rm(join(data, "clients"), { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }), // owner: T80
             rm(join(data, "documents"), { recursive: true, force: true }),
             rm(join(data, "mcp"), { recursive: true, force: true }),
             studentSession.clearStorageData(),
@@ -561,6 +842,30 @@ app
         throw new Error("External windows are disabled in headless mode.");
       await shell.openExternal(safeExternal(url));
     });
+    // owner: T15. Scoped queries (O1): reads only; the worker answers on the response channel.
+    ipcMain.handle("magic:query", async (event, request) => {
+      validateSender(event);
+      const parsed = queryRequestSchema.parse(request);
+      await ready;
+      const id = randomUUID();
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          calls.delete(id);
+          reject(new Error("Local workspace request timed out."));
+        }, 30000);
+        calls.set(id, { resolve, reject, timer });
+        worker.postMessage({ kind: "query", id, query: parsed });
+      });
+    });
+    // end owner: T15
+    // owner: T05b. Link cards (D40): the default browser, https only.
+    ipcMain.handle("magic:open-link", async (event, url) => {
+      validateSender(event);
+      if (headless)
+        throw new Error("External windows are disabled in headless mode.");
+      await shell.openExternal(safeLinkCard(url));
+    });
+    // end owner: T05b
     ipcMain.handle("magic:import", async (event) => {
       validateSender(event);
       if (headless)
@@ -585,123 +890,287 @@ app
       if (course.success) return execute({ type: "import", batch: course.data });
       throw new Error("File is not a valid coursework or normalized planning capture.");
     });
+    // owner: T05c. magic:signin: one app-owned, visible sign-in window at a time (spec A1).
+    // A second call while it is open waits for that window. Canvas and GitLab confirm with
+    // their profile read; My UW and Enroll confirm with the existing session.json or
+    // student-info read and then close themselves. No script is injected, no field is read
+    // or filled, and no cookie is written.
+    type SignInService = "canvas" | "gitlab" | "enroll" | "myuw";
+    const isSignInService = (value: unknown): value is SignInService =>
+      value === "canvas" || value === "gitlab" || value === "enroll" || value === "myuw";
+    const sessionSettingsPath = join(data, "session-settings.json");
+    let sessionSettings = await readSessionSettings(sessionSettingsPath);
+    async function rememberSignIn() {
+      if (sessionSettings.signedInBefore) return;
+      sessionSettings = { ...sessionSettings, signedInBefore: true };
+      await writeSessionSettings(sessionSettingsPath, sessionSettings).catch(() => {});
+    }
+    const signInFlight = singleFlight<boolean>();
+    /** Resolves when the window closes: true when a sign-in was confirmed. */
+    function openSignIn(requestedService?: SignInService): Promise<boolean> {
+      if (headless)
+        return Promise.reject(
+          new Error(
+            "Sign-in requires your interaction; headless mode will not open a window.",
+          ),
+        );
+      if (signInFlight.pending) signIn?.focus();
+      return signInFlight.run(() => signInWindow(requestedService));
+    }
+    async function signInWindow(requestedService?: SignInService): Promise<boolean> {
+      const gitlab = requestedService === "gitlab",
+        planning = requestedService === "enroll" || requestedService === "myuw"
+          ? requestedService : undefined,
+        loginSession = gitlab ? gitlabSession : studentSession,
+        loginOrigin = gitlab
+          ? "https://git.doit.wisc.edu"
+          : requestedService === "enroll" ? "https://enroll.wisc.edu"
+            : requestedService === "myuw" ? "https://my.wisc.edu"
+              : "https://canvas.wisc.edu";
+      // The sign-in window is never opened behind a hidden workspace.
+      if (window && !window.isVisible()) window.show();
+      signIn = new BrowserWindow({
+        width: 760,
+        height: 720,
+        parent: window!,
+        title: `UW sign in · ${new URL(loginOrigin).hostname}`,
+        autoHideMenuBar: true,
+        webPreferences: {
+          partition: gitlab ? "persist:gitlab" : "persist:uw",
+          nodeIntegration: false,
+          contextIsolation: true,
+          sandbox: true,
+          webSecurity: true,
+        },
+      });
+      const login = signIn;
+      login.webContents.on("page-title-updated", (event) =>
+        event.preventDefault(),
+      );
+      const guard = (event: Electron.Event, url: string) => {
+        if (!allowedLogin(url)) {
+          trialLog({ event: "signin.blocked", to: trialPath(url) });
+          event.preventDefault();
+        }
+      };
+      login.webContents.on("will-navigate", guard);
+      login.webContents.on("will-redirect", guard);
+      login.webContents.on("did-navigate", (_event, url) => {
+        trialLog({ event: "signin.navigate", to: trialPath(url), allowed: allowedLogin(url) });
+        if (allowedLogin(url))
+          login.setTitle(`UW sign in · ${new URL(url).hostname}`);
+      });
+      login.webContents.on("did-fail-load", (_event, code, description, url, mainFrame) =>
+        trialLog({ event: "signin.load-failed", code, description, to: trialPath(url), mainFrame }),
+      );
+      login.webContents.setWindowOpenHandler(({ url }) => {
+        trialLog({ event: "signin.window-open", to: trialPath(url), allowed: allowedLogin(url) });
+        if (allowedLogin(url)) void login.loadURL(url);
+        return { action: "deny" };
+      });
+      let confirmed = false;
+      const closed = new Promise<void>((resolve) => {
+        login.once("closed", () => {
+          trialLog({ event: "signin.closed", confirmed });
+          if (signIn === login) signIn = null;
+          resolve();
+        });
+      });
+      let checking = false;
+      // Verify only after a user-driven navigation returns to the service; never keep a session alive.
+      login.webContents.on("did-finish-load", async () => {
+        if (checking || login.isDestroyed()) return;
+        if (new URL(login.webContents.getURL()).origin !== loginOrigin)
+          return;
+        checking = true;
+        try {
+          if (planning) {
+            // The fixed planning probe; only the boolean is kept, never the identity.
+            const result = await planningHttp.read(
+              planningProbe(planning),
+              AbortSignal.timeout(10000),
+            );
+            if (planningSessionConfirmed(planning, result) && !login.isDestroyed()) {
+              confirmed = true;
+              login.close();
+            }
+            return;
+          }
+          const response = await loginSession.fetch(
+            `${loginOrigin}${gitlab ? "/api/v4/user" : "/api/v1/users/self/profile"}`,
+            {
+              method: "GET",
+              credentials: "include",
+              redirect: "manual",
+              headers: { Accept: "application/json" },
+              signal: AbortSignal.timeout(10000),
+            },
+          );
+          const contentType = response.headers.get("content-type") ?? "";
+          const text = response.ok ? await response.text() : "";
+          // Canvas may prefix session-authenticated JSON with `while(1);` (JSON-hijacking guard).
+          const body = text.replace(/^\s*while\s*\(1\);/, "");
+          trialLog({
+            event: "signin.profile",
+            status: response.status,
+            contentType: contentType.split(";")[0],
+            bodyShape: /^\s*while\s*\(1\);/.test(text) ? "while1-json" : /^\s*[{[]/.test(text) ? "json" : /^\s*</.test(text) ? "html" : text ? "other" : "empty",
+          });
+          // A successful JSON profile response establishes sign-in; the connector validates its fields on sync.
+          if (response.ok && contentType.includes("application/json") && !login.isDestroyed()) {
+            let profile: { id?: unknown } = {};
+            try {
+              profile = JSON.parse(body) as { id?: unknown };
+            } catch {
+              trialLog({ event: "signin.profile-unparsed" });
+            }
+            if (
+              typeof profile.id === "number" ||
+              (typeof profile.id === "string" && /^\d+$/.test(profile.id))
+            ) {
+              confirmed = true;
+              if (!gitlab) {
+                worker.postMessage({ kind: "reconnected" });
+                await rememberSignIn();
+              }
+              trialLog({ event: "signin.confirmed", service: requestedService ?? "canvas" });
+              if (!login.isDestroyed()) login.close();
+            }
+          }
+        } catch (error) {
+          /* Keep the sign-in window available for the student. */
+          trialLog({ event: "signin.check-failed", error: error instanceof Error ? error.name : "unknown" });
+        } finally {
+          checking = false;
+        }
+      });
+      try {
+        await login.loadURL(`${loginOrigin}/`);
+      } catch {
+        if (!login.isDestroyed()) login.close();
+      }
+      await closed;
+      return confirmed;
+    }
     ipcMain.handle(
       "magic:signin",
       async (event, requestedService?: unknown) => {
         validateSender(event);
-        if (
-          requestedService !== undefined &&
-          requestedService !== "canvas" &&
-          requestedService !== "gitlab" &&
-          requestedService !== "enroll" &&
-          requestedService !== "myuw"
-        )
+        if (requestedService !== undefined && !isSignInService(requestedService))
           throw new Error("Unsupported sign-in source.");
-        const gitlab = requestedService === "gitlab",
-          planning = requestedService === "enroll" || requestedService === "myuw",
-          loginSession = gitlab ? gitlabSession : studentSession,
-          loginOrigin = gitlab
-            ? "https://git.doit.wisc.edu"
-            : requestedService === "enroll" ? "https://enroll.wisc.edu"
-              : requestedService === "myuw" ? "https://my.wisc.edu"
-                : "https://canvas.wisc.edu";
-        if (headless)
-          throw new Error(
-            "Sign-in requires your interaction; headless mode will not open a window.",
-          );
-        if (signIn) {
-          signIn.focus();
-          return;
-        }
-        signIn = new BrowserWindow({
-          width: 760,
-          height: 720,
-          parent: window!,
-          title: `UW sign in · ${new URL(loginOrigin).hostname}`,
-          autoHideMenuBar: true,
-          webPreferences: {
-            partition: gitlab ? "persist:gitlab" : "persist:uw",
-            nodeIntegration: false,
-            contextIsolation: true,
-            sandbox: true,
-            webSecurity: true,
-          },
-        });
-        const login = signIn;
-        login.webContents.on("page-title-updated", (event) =>
-          event.preventDefault(),
-        );
-        const guard = (event: Electron.Event, url: string) => {
-          if (!allowedLogin(url)) event.preventDefault();
-        };
-        login.webContents.on("will-navigate", guard);
-        login.webContents.on("will-redirect", guard);
-        login.webContents.on("did-navigate", (_event, url) => {
-          if (allowedLogin(url))
-            login.setTitle(`UW sign in · ${new URL(url).hostname}`);
-        });
-        login.webContents.setWindowOpenHandler(({ url }) => {
-          if (allowedLogin(url)) void login.loadURL(url);
-          return { action: "deny" };
-        });
-        const closed = new Promise<void>((resolve) => {
-          login.once("closed", () => {
-            signIn = null;
-            resolve();
-          });
-        });
-        let checking = false;
-        // Verify only after a user-driven navigation returns to Canvas; never keep a session alive.
-        login.webContents.on("did-finish-load", async () => {
-          // Unknown MyUW/enroll JSON cannot establish identity. The student closes this window when done.
-          if (planning) return;
-          if (checking || login.isDestroyed()) return;
-          if (new URL(login.webContents.getURL()).origin !== loginOrigin)
-            return;
-          checking = true;
-          try {
-            const response = await loginSession.fetch(
-              `${loginOrigin}${gitlab ? "/api/v4/user" : "/api/v1/users/self/profile"}`,
-              {
-                method: "GET",
-                credentials: "include",
-                redirect: "manual",
-                headers: { Accept: "application/json" },
-                signal: AbortSignal.timeout(10000),
-              },
-            );
-            // A successful JSON profile response establishes sign-in; the connector validates its fields on sync.
-            if (
-              response.ok &&
-              response.headers
-                .get("content-type")
-                ?.includes("application/json") &&
-              !login.isDestroyed()
-            ) {
-              const profile = (await response.json()) as { id?: unknown };
-              if (
-                typeof profile.id === "number" ||
-                (typeof profile.id === "string" && /^\d+$/.test(profile.id))
-              ) {
-                worker.postMessage({ kind: "reconnected" });
-                login.close();
-              }
-            }
-            await response.body?.cancel();
-          } catch {
-            /* Keep the sign-in window available for the student. */
-          } finally {
-            checking = false;
-          }
-        });
-        try {
-          await login.loadURL(`${loginOrigin}/`);
-        } catch {
-          if (!login.isDestroyed()) login.close();
-        }
-        await closed;
+        if (!(await consentGate("magic:signin"))) throw new Error(consentRefused);
+        await openSignIn(requestedService);
       },
     );
+    // end owner: T05c
+    // owner: T05c. Keep me signed in (P1-D1): the tray, the login item and the setting.
+    // Quit ends the session (session cookies do not survive a quit); Sign out reuses the
+    // existing magic:signout path through the workspace's own bridge.
+    let tray: Tray | null = null;
+    let sessionEnding = false;
+    function showWorkspace() {
+      if (!window) return;
+      if (window.isMinimized()) window.restore();
+      window.show();
+      window.focus();
+    }
+    async function trayAction(action: TrayAction) {
+      if (action === "open") showWorkspace();
+      else if (action === "quit") app.quit();
+      else if (window)
+        await window.webContents
+          .executeJavaScript("window.magic.signOutUW?.()")
+          .catch(() => {});
+    }
+    function applyKeepSignedIn() {
+      // Never registers the dev Electron binary at login: only a packaged build.
+      const login = loginItemSettings({
+        isPackaged: app.isPackaged,
+        keepSignedIn: sessionSettings.keepSignedIn,
+      });
+      if (login) app.setLoginItemSettings(login);
+      if (!trayWanted({ keepSignedIn: sessionSettings.keepSignedIn, headless })) {
+        tray?.destroy();
+        tray = null;
+        return;
+      }
+      if (tray) return;
+      tray = new Tray(
+        nativeImage.createFromBitmap(trayBitmap(32), {
+          width: 32,
+          height: 32,
+          scaleFactor: 2,
+        }),
+      );
+      tray.setToolTip("Magic Canvas");
+      tray.setContextMenu(
+        Menu.buildFromTemplate(
+          trayMenu.map(({ action, label }) => ({
+            label,
+            click: () => void trayAction(action),
+          })),
+        ),
+      );
+      tray.on("click", showWorkspace);
+    }
+    ipcMain.handle("magic:keep-signed-in", async (event, value?: unknown) => {
+      validateSender(event);
+      if (value !== undefined) {
+        if (typeof value !== "boolean") throw new Error("Invalid setting.");
+        sessionSettings = { ...sessionSettings, keepSignedIn: value };
+        await writeSessionSettings(sessionSettingsPath, sessionSettings);
+        applyKeepSignedIn();
+      }
+      return sessionSettings.keepSignedIn;
+    });
+    /** Reads the local cookie store only: 0 network requests. */
+    async function checkSessionAtLaunch() {
+      try {
+        const cookies = await studentSession.cookies.get({ name: "canvas_session" });
+        const { snapshot } = await execute({ type: "snapshot" });
+        const canvas = snapshot.sources
+          .filter((source) => source.kind === "canvas")
+          .sort((a, b) => Number(b.scope === "connection") - Number(a.scope === "connection"));
+        const decision = launchSession({
+          cookies: cookies.map(({ name, domain }) => ({ name, domain })),
+          signedInBefore: sessionSettings.signedInBefore && canvas.length > 0,
+          keepSignedIn: sessionSettings.keepSignedIn,
+          headless,
+        });
+        if (decision.state !== "sign_in_again") return;
+        // "Sign in again" comes from the stored status, the same record the sign-out path
+        // writes; resources: [] with complete: false keeps every stored record.
+        for (const source of canvas) {
+          if (source.status === "needs_sign_in") continue;
+          const { id, label, kind, accountScope, courseId, scope } = source;
+          await execute({
+            type: "import",
+            batch: {
+              source: { id, label, kind, accountScope, courseId, scope },
+              observedAt: new Date(
+                Math.max(Date.now(), Date.parse(source.lastAttemptAt) + 1),
+              ).toISOString(),
+              complete: false,
+              status: "needs_sign_in",
+              resources: [],
+            },
+          });
+        }
+        // D33: after a previous sign-in, the UW window opens by itself.
+        if (!decision.openSignIn || !(await consentGate("magic:signin"))) return;
+        if (!(await openSignIn("canvas"))) return;
+        const id = randomUUID();
+        const timer = setTimeout(() => {
+          calls.delete(id);
+          worker.postMessage({ kind: "refresh-cancel" });
+        }, 600_000);
+        calls.set(id, { resolve: () => {}, reject: () => {}, timer });
+        worker.postMessage({ kind: "refresh", id });
+      } catch {
+        /* The next Canvas read still reports the session through the banner. */
+      }
+    }
+    // end owner: T05c
     ipcMain.handle("magic:outlook-calendar", async (event, value: unknown) => {
       validateSender(event);
       if (value !== null && (typeof value !== "string" || !isOutlookPublishedCalendar(value.trim())))
@@ -719,6 +1188,7 @@ app
     });
     ipcMain.handle("magic:sync", async (event) => {
       validateSender(event);
+      if (!(await consentGate("magic:sync"))) throw new Error(consentRefused);
       await ready;
       const id = randomUUID();
       return new Promise((resolve, reject) => {
@@ -737,6 +1207,7 @@ app
     });
     ipcMain.handle("magic:planning-sync", async (event) => {
       validateSender(event);
+      if (!(await consentGate("magic:planning-sync"))) throw new Error(consentRefused);
       await ready;
       if (planningClears > 0) throw new Error("Planning is unavailable while local data or sessions are being cleared.");
       if (planningCall) return planningCall.promise;
@@ -844,11 +1315,64 @@ app
     await window.loadURL(rendererURL);
     await ready;
     powerMonitor.on("suspend", () => worker.postMessage({ kind: "suspend" }));
-    powerMonitor.on("resume", () => worker.postMessage({ kind: "resume" }));
+    powerMonitor.on("resume", () => {
+      worker.postMessage({ kind: "resume" });
+      postPresence();
+    });
+    // Presence gates signed-in background reads (refresh.ts cadence table): OS input within
+    // the last 30 minutes and the screen unlocked. Reads no network; posts only on change.
+    let screenLocked = powerMonitor.getSystemIdleState(1) === "locked",
+      lastPresence: boolean | undefined;
+    function postPresence() {
+      const present =
+        !screenLocked && powerMonitor.getSystemIdleTime() < 30 * 60;
+      if (present === lastPresence) return;
+      lastPresence = present;
+      worker.postMessage({ kind: "presence", present });
+    }
+    powerMonitor.on("lock-screen", () => {
+      screenLocked = true;
+      postPresence();
+    });
+    powerMonitor.on("unlock-screen", () => {
+      screenLocked = false;
+      postPresence();
+    });
+    const presenceTimer = setInterval(postPresence, 60_000);
+    // owner: T33. App focus: the per-course content probe runs soon (at most once a minute).
+    window.on("focus", () => worker.postMessage({ kind: "focus" }));
+    // end owner: T33
+    postPresence();
+    void onboarding();
+    void reader(); // owner: T50b
+    void licence(); // owner: T62
+    // owner: T05c. Launch: the window-close decision, macOS dock reopen, the tray and login
+    // item, and the 0-request session check ("Sign in again" within 2 s).
+    window.on("close", (event) => {
+      const action = closeAction({
+        keepSignedIn: sessionSettings.keepSignedIn,
+        quitting: quitting || sessionEnding,
+      });
+      if (action === "hide") {
+        event.preventDefault();
+        window?.hide();
+      }
+    });
+    window.on("query-session-end", () => {
+      sessionEnding = true;
+    });
+    powerMonitor.on("shutdown", () => {
+      sessionEnding = true;
+    });
+    app.on("activate", showWorkspace);
+    applyKeepSignedIn();
+    void checkSessionAtLaunch();
+    // end owner: T05c
     app.on("before-quit", (event) => {
       if (quitting) return;
       event.preventDefault();
       quitting = true;
+      clearInterval(presenceTimer);
       sync?.abort();
       cancelPlanning();
       for (const c of sourceReads.values()) c.abort();
@@ -913,6 +1437,13 @@ app
         );
         if (!body.includes("Magic Canvas"))
           throw new Error("Renderer did not load");
+        // owner: T80. An app-owned client profile exists before the purge (prepare writes
+        // only app files; a missing client still gets its folder).
+        await window.webContents.executeJavaScript("window.magic.clients.prepare('claude')");
+        const clientsDir = join(data, "clients");
+        if (!(await stat(clientsDir).catch(() => null)))
+          throw new Error("Client profile was not created");
+        // end owner: T80
         const cleared = await window.webContents.executeJavaScript(
           "window.magic.execute({type:'purge',confirmation:'DELETE LOCAL DATA'})",
         );
@@ -921,7 +1452,8 @@ app
           cleared.snapshot.mcpGrants.length ||
           cleared.snapshot.planning?.records.length ||
           cleared.snapshot.planning?.sources.length ||
-          (await stat(accessFile).catch(() => null))
+          (await stat(accessFile).catch(() => null)) ||
+          (await stat(clientsDir).catch(() => null)) // owner: T80
         )
           throw new Error("Local purge left data or access credentials");
         console.log(

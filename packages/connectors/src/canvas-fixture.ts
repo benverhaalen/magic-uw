@@ -137,7 +137,7 @@ export function createSyntheticCanvasUniversity(
     maxActive = Math.max(active, maxActive);
     try {
       await Promise.resolve();
-      if (expired) return json({ errors: [{ message: "unauthorized" }] }, 401);
+      if (expired) return json({ status: "unauthenticated", errors: [{ message: "user authorization required" }] }, 401);
       const path = url.pathname;
       if (path === "/api/v1/users/self/profile")
         return json({
@@ -217,7 +217,7 @@ export function createSyntheticCanvasUniversity(
           pageCount = courseId === 105 ? (options.pageCount ?? 3) : 1;
         if (options.expireDuringPagination && courseId === 105 && page === 2) {
           expired = true;
-          return json({}, 401);
+          return json({ status: "unauthenticated", errors: [{ message: "user authorization required" }] }, 401);
         }
         const id = courseId === 105 ? 5000 + page : 1000 + courseId - 100;
         const rows: unknown[] =
