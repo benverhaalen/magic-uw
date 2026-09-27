@@ -63,10 +63,17 @@ export function TodayRail({
     () => buildTodayRail(resources, now, timeZone, plan),
     [resources, now, timeZone, plan],
   );
+  // Normal content is commitments and accepted blocks; suggestions appear on request.
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const visible = rail.suggestions.filter(
+    (s) => s.state !== "suggested" || showSuggestions,
+  );
+  const pendingCount = rail.suggestions.filter((s) => s.state === "suggested").length;
   const [focusId, setFocusId] = useState<string | null>(null);
   const focused =
-    rail.suggestions.find((s) => s.id === focusId) ??
-    rail.suggestions.find((s) => s.state !== "done");
+    visible.find((s) => s.id === focusId) ??
+    visible.find((s) => s.state === "planned") ??
+    visible.find((s) => s.state === "suggested");
 
   // Day-plan actions. Each one saves through core; the rail re-derives from the saved plan.
   const saved = (s: RailSuggestion) =>
@@ -166,11 +173,29 @@ export function TodayRail({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rail.date]);
 
-  const lastCheck = sources
-    .map((s) => s.lastSuccessAt)
-    .filter((v): v is string => !!v)
-    .sort()
-    .at(-1);
+  // Freshness and coverage are per source; one timestamp cannot vouch for all of them.
+  const time = (iso: string | null | undefined) =>
+    iso
+      ? new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(iso))
+      : null;
+  const newest = (list: SourceHealth[]) =>
+    list.map((s) => s.lastSuccessAt).filter((v): v is string => !!v).sort().at(-1) ?? null;
+  const courseSources = sources.filter((s) => s.kind === "canvas" || s.kind === "fixture");
+  const calendarSources = sources.filter((s) => s.kind === "calendar");
+  const incomplete = (list: SourceHealth[]) => list.some((s) => s.status !== "ok" || !s.complete);
+  const dueEmpty = !courseSources.length
+    ? "No course source checked yet."
+    : incomplete(courseSources)
+      ? "Nothing due today in the sources that could be checked. Some are incomplete."
+      : "Nothing due today in checked sources.";
+  const freshness = [
+    courseSources.length
+      ? `Courses ${incomplete(courseSources) ? "partly checked" : "checked"}${time(newest(courseSources)) ? ` ${time(newest(courseSources))}` : ""}`
+      : "Courses not checked",
+    calendarSources.length
+      ? `calendar ${incomplete(calendarSources) ? "partly checked" : "checked"}${time(newest(calendarSources)) ? ` ${time(newest(calendarSources))}` : ""}`
+      : "no calendar feed",
+  ].join(" · ");
   const heading = new Intl.DateTimeFormat(undefined, {
     weekday: "short",
     month: "short",
@@ -204,7 +229,7 @@ export function TodayRail({
             </li>
           ))
         ) : (
-          <li className="rail-empty-line">Nothing due today.</li>
+          <li className="rail-empty-line">{dueEmpty}</li>
         )}
       </ul>
 
@@ -272,8 +297,8 @@ export function TodayRail({
       ) : focused ? (
         <>
           <div className="rail-heading">
-            <span>Next up</span>
-            <span>{duration(rail.plannedMin)} planned</span>
+            <span>{focused.state === "suggested" ? "Suggested" : "Next up"}</span>
+            <span>{rail.plannedMin ? `${duration(rail.plannedMin)} planned` : ""}</span>
           </div>
           <div className={`rail-next ${focused.type}`}>
             <button
@@ -296,6 +321,21 @@ export function TodayRail({
             </span>
           </div>
         </>
+      ) : null}
+
+      {pendingCount ? (
+        <div className="rail-suggest-bar">
+          <span>
+            {pendingCount} suggestion{pendingCount === 1 ? "" : "s"} for free time
+            {showSuggestions ? ` · ${duration(rail.suggestedMin)}` : ""}
+          </span>
+          <button
+            aria-pressed={showSuggestions}
+            onClick={() => setShowSuggestions((v) => !v)}
+          >
+            {showSuggestions ? "Hide" : "Show"}
+          </button>
+        </div>
       ) : null}
 
       <div className="rail-heading">
@@ -327,10 +367,12 @@ export function TodayRail({
           {rail.events.map((e) => {
             const end = e.endMin ?? e.startMin + 30;
             return (
-              <div
+              <button
                 key={e.id}
                 className={`rail-block event ${e.startOnly ? "start-only" : ""}`}
                 title={`${e.title} · ${e.endMin != null ? `${clock(e.startMin)}–${clock(e.endMin)}` : `${clock(e.startMin)}, start only`}`}
+                aria-label={`${e.title}, ${e.endMin != null ? `${clock(e.startMin)} to ${clock(e.endMin)}` : `${clock(e.startMin)}, start only`}. Open details`}
+                onClick={() => onSelect(e.id)}
                 style={{ top: top(e.startMin) + 1, height: height(e.startMin, end) }}
               >
                 <b>{e.title}</b>
@@ -341,10 +383,10 @@ export function TodayRail({
                       : `${clock(e.startMin)} · start only`}
                   </span>
                 ) : null}
-              </div>
+              </button>
             );
           })}
-          {rail.suggestions.map((s) => {
+          {visible.map((s) => {
             const label =
               s.state === "done"
                 ? s.doneBy === "canvas"
@@ -383,7 +425,7 @@ export function TodayRail({
             />
           ) : (
             <p className="rail-grid-empty">
-              No calendar events captured.
+              No calendar connected, so classes and meetings may be missing.
               <br />
               Connect a calendar feed in Sources.
             </p>
@@ -403,12 +445,7 @@ export function TodayRail({
           </button>
         </div>
       ) : null}
-      <p className="rail-foot">
-        Suggestions are estimates
-        {lastCheck
-          ? ` · checked ${new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(lastCheck))}`
-          : ""}
-      </p>
+      <p className="rail-foot">{freshness}</p>
     </aside>
   );
 }
