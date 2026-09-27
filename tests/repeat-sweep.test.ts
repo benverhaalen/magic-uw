@@ -15,7 +15,7 @@ import { courseIncluded, courseInclusion } from "../packages/core/src/access";
 import { codeAssignmentKind, resourceViews, runQuery } from "../packages/core/src/queries";
 import { agenda, compileCourse, courseGraph, courseIndex, graphCall, references } from "../packages/core/src/graph/index";
 import { readOnce } from "../packages/core/src/graph/read-once";
-import { selectGuideInputs } from "../packages/packs/guide/src/inputs";
+import { selectGuideInputs, selectGuideScope } from "../packages/packs/guide/src/inputs";
 import { coverage } from "../packages/retrieval/src/search";
 import { syntheticCorpus } from "../evals/perf/synthetic";
 import { batches, course, NOW, seededStore, TODAY, TZ } from "./pipeline-fixture";
@@ -261,5 +261,38 @@ test("course pass: no full resource read per resource unless the course changed 
     for (const id of removed) assert.deepEqual(busy.resourceRefs(id), []);
   } finally {
     busy.close();
+  }
+});
+
+test("guide view scope: the same status, course and resources as the full selection, without generation's reads", async () => {
+  const { store, file, close } = fileStore();
+  try {
+    for (const b of batches()) store.ingest(b);
+    await compileCourse(store, course, NOW);
+    const same = (scope: Parameters<typeof selectGuideScope>[1]) => {
+      const full = counted(() => selectGuideInputs(store, "guide", scope));
+      const view = counted(() => selectGuideScope(store, scope));
+      const f = full.value,
+        v = view.value;
+      assert.equal(v.ok, f.ok, JSON.stringify(scope));
+      if (f.ok && v.ok) {
+        assert.equal(v.courseRef, f.selection.courseRef);
+        assert.deepEqual(v.resources.map((r) => r.id), f.selection.resources.map((r) => r.id));
+        assert.ok(view.sql.length < full.sql.length, `${view.sql.length} < ${full.sql.length}`);
+      } else if (!f.ok && !v.ok) assert.deepEqual(v, f);
+      return f.ok ? "ok" : f.status;
+    };
+    const modules = [...new Set(store.resources().flatMap((r) => (r.module?.id ? [r.module.id] : [])))];
+    assert.equal(same({ courseId: course.courseId }), "ok");
+    for (const moduleId of [...modules, "no-such-module"]) same({ courseId: course.courseId, moduleId });
+    assert.equal(same({ courseId: course.courseId, assessmentId: "no-such-assessment" }), "empty");
+    assert.equal(same({ courseId: "no-such-course" }), "empty");
+    // Material that was never split into passages: both say so.
+    const raw = new DatabaseSync(file);
+    raw.exec("DELETE FROM passages");
+    raw.close();
+    assert.equal(same({ courseId: course.courseId }), "empty");
+  } finally {
+    close();
   }
 });
