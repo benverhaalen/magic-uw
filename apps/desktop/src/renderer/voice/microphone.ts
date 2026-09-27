@@ -83,7 +83,7 @@ export class VoiceMicrophone {
       if (this.frameId !== null) this.env.cancelFrame(this.frameId); this.frameId = null;
       const durationMs = this.env.now() - started;
       if (!heardSpeech || voicedMs < 240) { this.captureTurn(generation, analyser); return; }
-      this.publish({ phase: 'processing', token, levels: [] });
+      this.publish({ phase: 'transcribing', token, levels: [] });
       void new Blob(chunks, { type: 'audio/webm' }).arrayBuffer().then(bytes => {
         if (generation !== this.generation) return null;
         return this.bridge.transcribe({ token, turn, bytes, mimeType: 'audio/webm', durationMs, voicedMs });

@@ -1,7 +1,7 @@
 import type { IntentCommand, IntentCommandResult } from "@magic/contracts";
 
 /** Local voice contracts. No audio, transcript, or provider credential is persisted. */
-export type VoicePhase = 'idle' | 'starting' | 'listening' | 'processing' | 'unavailable';
+export type VoicePhase = 'idle' | 'starting' | 'listening' | 'transcribing' | 'working' | 'unavailable';
 export type VoiceReason = 'stopped' | 'permission-denied' | 'device-unavailable' | 'transport-unavailable' | 'disconnected' | 'context-changed' | 'too-long';
 export interface VoiceToken { sessionId: string; epoch: number }
 export interface VoiceContext { account: string; revision: string; allowed: boolean }

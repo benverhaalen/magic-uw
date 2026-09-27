@@ -272,6 +272,7 @@ export function createCore(store: Store, options: CoreOptions) {
       // owner: T06: the renderer routes on these and main's consent gate mirrors them.
       consents: store.consents?.() ?? [],
       dayPlan: store.dayPlan(),
+      personalCalendarEvents: store.personalCalendarEvents(),
       personalReports: store.personalReports(),
       personalWorkReports: workSnapshot.reports,
       // Unsearched snapshots already hold every live view; the feed reuses them.
@@ -935,6 +936,12 @@ export function createCore(store: Store, options: CoreOptions) {
       }
       case "day-plan-remove":
         store.removeDayPlanEntry(command.key, command.date);
+        break;
+      case 'personal-calendar-save':
+        store.setPersonalCalendarEvent(command.event);
+        break;
+      case 'personal-calendar-remove':
+        store.removePersonalCalendarEvent(command.id);
         break;
       case "notifications-read":
         notifications.read(command.ids);

@@ -36,7 +36,7 @@ test("the empty state shows only when the student asked for a video", () => {
   assert.match(renderToStaticMarkup(createElement(CourseVideos, { result: none, showEmpty: true, open })), /doesn&#x27;t search YouTube/);
 });
 
-test("launcher mic: error state stays pressable, unavailable explanation stays actionable, live region present", () => {
+test("launcher mic: error and unavailable states remain pressable so the reason can be explained", () => {
   const props = { here: { key: "home", label: "Home" }, captureOrigin: () => ({ label: "Home" }), onSubmit: () => ({ accepted: true }) };
   const error = renderToStaticMarkup(createElement(ConversationLauncher, { ...props, voice: { state: "error", reason: "Microphone access is off." } }));
   assert.match(error, /aria-label="Start voice"/);

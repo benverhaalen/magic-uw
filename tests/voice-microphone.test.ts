@@ -71,7 +71,7 @@ test('quiet input never dispatches and active analyser samples drive real level 
  const f=fixture();await f.mic.start();f.step(100,.05);assert.ok(Math.abs(f.last().levels.at(-1)!-.4)<.00001);await f.mic.stop();await f.mic.start();f.step(10_100,0);await tick();assert.equal(f.transcriptions.length,0);assert.equal(f.recorders.length,3);await f.mic.stop();
 });
 test('stale token events cannot replace active session or deliver old transcript',async()=>{
- const f=fixture();await f.mic.start();const old=f.starts[0]!;await f.mic.stop();await f.mic.start();f.emit({type:'state',state:{phase:'processing',token:old}});f.emit({type:'transcript',token:old,operationId:'old',text:'open calendar',matched:true} as VoiceEvent);assert.equal(f.last().phase,'listening');assert.equal(f.delivered.length,0);await f.mic.stop();
+ const f=fixture();await f.mic.start();const old=f.starts[0]!;await f.mic.stop();await f.mic.start();f.emit({type:'state',state:{phase:'transcribing',token:old}});f.emit({type:'transcript',token:old,operationId:'old',text:'open calendar',matched:true} as VoiceEvent);assert.equal(f.last().phase,'listening');assert.equal(f.delivered.length,0);await f.mic.stop();
 });
 test('device ended closes capture and reports recovery even if bridge Stop rejects',async()=>{
  const f=fixture();await f.mic.start();f.setFailStop();f.tracks[0]!.dispatchEvent(new Event('ended'));await tick();assert.equal(f.last().reason,'device-unavailable');assert.equal(f.tracks[0]!.stops,1);assert.equal(f.contexts[0]!.closed,1);assert.equal(f.frames.size,0);
