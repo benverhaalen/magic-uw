@@ -227,12 +227,12 @@ export function ConversationLauncher<O extends { label: string }>({
       </div>
       {/* While typing, the colored Stop control carries the active voice state. */}
       {!open && <VoiceStatus voice={voice}/>}
-      <button ref={mic} type="button" className="cl-icon cl-mic"
+      {voice !== NO_VOICE && <button ref={mic} type="button" className="cl-icon cl-mic"
         aria-busy={voice.state === "starting" || voice.state === "transcribing" || voice.state === "working" || undefined}
         aria-label={voice.state === "unavailable" ? "Voice unavailable" : voiceActive ? "Stop voice" : "Start voice"}
         title={voice.state === "unavailable" ? "Voice unavailable" : undefined} onClick={pressVoice}>
         <Glyph name={voiceActive ? "stop" : "mic"}/>
-      </button>
+      </button>}
     </div>
   </div>;
 }

@@ -170,6 +170,9 @@ function Icon({ name }: { name: "today" | "courses" | "myuw" | "sources" | "priv
   return <MagicGlyph name={semantic[name]} size={18} />;
 }
 
+/** Operator decision 2026-09-27: the Claude Code /voice mic stays hidden for the demo; the terminal launch path is kept. */
+const SHOW_CLAUDE_MIC = false;
+
 export function App() {
   const navigation = useDesktopNavigation();
   const { view, selectedId } = navigation;
@@ -593,7 +596,7 @@ export function App() {
         <ShellFeedback error={error} notice={notice} view={view} onDismiss={() => { setError(""); setNotice(""); }}/>
       </>}
       trailing={<NotificationsMenu feed={snapshot?.notifications} busy={busy} run={run} destinationOf={notificationTarget} onOpen={openNotification} onOpenSources={() => setView("sources")} onOpenPrivacy={() => navigation.navigate("privacy", null, null, undefined, snapshot?.privacy.mode === "local_only" ? undefined /* the mode choice at the top unlocks Jev */ : { focus: "privacy-jev", anchor: "privacy-models" })}/>}
-      launcher={snapshot ? <ConversationLauncher<ChatOrigin> key={chatAccountKey} voice={window.magic.launchAgent ? agentVoice /* owner: claude-chat: Talk to Claude (Claude Code /voice; audio goes to Anthropic, needs a Claude.ai sign-in) */ : desktopVoice.voice} feedback={(window.magic.launchAgent ? agentNote : desktopVoice.feedback) || undefined} here={{key:`${view}:${selectedId ?? ''}:${navigation.courseKey ?? ''}`,label:pageTitle}} captureOrigin={captureChatOrigin} mode={view === 'chat' && selectedId ? 'follow-up' : 'new-chat'} chatId={view === 'chat' ? selectedId ?? undefined : undefined} onSubmit={entry => {
+      launcher={snapshot ? <ConversationLauncher<ChatOrigin> key={chatAccountKey} voice={window.magic.launchAgent ? (SHOW_CLAUDE_MIC ? agentVoice : undefined) /* owner: claude-chat: Talk to Claude (Claude Code /voice; audio goes to Anthropic, needs a Claude.ai sign-in) */ : desktopVoice.voice} feedback={(window.magic.launchAgent ? agentNote : desktopVoice.feedback) || undefined} here={{key:`${view}:${selectedId ?? ''}:${navigation.courseKey ?? ''}`,label:pageTitle}} captureOrigin={captureChatOrigin} mode={view === 'chat' && selectedId ? 'follow-up' : 'new-chat'} chatId={view === 'chat' ? selectedId ?? undefined : undefined} onSubmit={entry => {
         const invalid = chatPromptError(entry.prompt); if (invalid) return {accepted:false,message:invalid};
         if (entry.destination.kind === 'follow-up') {
           if (!continueChat(entry.destination.chatId, entry.prompt, entry.idempotencyKey)) return {accepted:false,message:'This chat is no longer open. Start a new chat.'};
