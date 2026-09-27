@@ -16,16 +16,16 @@ export function createInteractiveDispatch(execute: (command: unknown, signal?: A
 }
 
 /** Early local trial: no provider request or external action is reachable from speech. */
-export function createVoiceTrialDispatch(execute: (command: unknown, signal?: AbortSignal) => Promise<CommandResult>): VoiceDispatch {
+export function createVoiceTrialDispatch(): VoiceDispatch {
   return async (text, context, operation) => {
     operation.signal.throwIfAborted();
     if (!operation.current()) throw new Error('Request context changed.');
-    if (!pageDestination(text)) return { status: 'unavailable', reason: 'This voice trial opens Home, Courses, Calendar, or My UW. Say “Open Calendar”. Connected-agent computer actions are still being connected.', path: 'none', latencyMs: 0, tokens: {in:0,cached:0,out:0} };
-    const value = intentCommandSchema.parse({text, context, mode:'run', allowedActions:['page.open']});
-    const result = await execute({type:'command',value},operation.signal);
+    const destination = pageDestination(text);
+    if (!destination) return { status: 'unavailable', reason: 'This voice trial opens Home, Courses, Calendar, or My UW. Say “Open Calendar”. Connected-agent computer actions are still being connected.', path: 'none', latencyMs: 0, tokens: {in:0,cached:0,out:0} };
+    // These exact local destinations need no worker snapshot or provider. In particular, a
+    // queued workspace request must not turn a simple spoken page change into a timeout.
     operation.signal.throwIfAborted();
     if (!operation.current()) throw new Error('Request context changed.');
-    if (!result.command) throw new Error('No navigation result was returned.');
-    return result.command;
+    return { status: 'ran', action: 'page.open', args: { text, ...context }, result: { navigate: { view: destination } }, path: 'code', latencyMs: 0, tokens: {in:0,cached:0,out:0} };
   };
 }

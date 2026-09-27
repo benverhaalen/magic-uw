@@ -1,5 +1,13 @@
 # My Magic UW desktop handoff
 
+## 2026-09-27 10:55 UTC — local navigation repair and Home enrollment footer
+
+Exact local voice page commands now return a navigation result in the main process without queueing a workspace snapshot. Unsupported speech remains fenced before any model request, and cancellation/context checks remain required. This removes the observed worker-timeout dependency for these commands; live human microphone capture is still a separate trial.
+
+Home now has one compact Enrollment & holds section below Study & Learn, using the same saved My UW projection. The previous top-of-Home alert mount is removed; detailed holds and enrollment windows remain in My UW. A closed copied-data Electron run showed five enrolled courses, the saved hold summary, View enrollment → My UW with term-heading focus → Back, and Review holds → My UW, with no renderer errors. Three focused checks and the integrated TypeScript/desktop/website build passed. Private evidence: `work/desktop-build/recovery-20260927/footer-native/receipt.json` and `footer.png`.
+
+The user window remains the earlier local trial until a controlled update preserves its current route and draft. Latest fetched main is `aa1ff45` (Nate's backend integration, PR #51); reconciliation follows this bounded checkpoint. Fetching is not integration or runtime adoption.
+
 Published application checkpoint: `e7746ca`. The actual visible trial uses that application code (Electron 54767, monitor 54552), built immediately before its commit. Main `48bc3bf` has now been merged; it adds only `docs/status-2026-09-27.md`, so the visible application code remains current. The separate Nate integration wave is fetched but still requires conflict reconciliation.
 
 ## 2026-09-27 10:43 UTC — usable local voice trial opened

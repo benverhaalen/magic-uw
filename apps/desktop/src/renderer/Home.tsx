@@ -19,6 +19,7 @@ import { resourceHref } from './navigation';
 import { canonicalHomeResources, homeCourseLabel, selectHomeEvidence, type UpcomingGroup } from './home/projection';
 import './home/Home.css';
 import { HomeMotion } from './home/HomeMotion';
+import { homeEnrollmentHolds } from './home/enrollment-holds';
 export function ObjectLink({ resource, children }: { resource: ResourceView; children?: ReactNode }) {
   return <EvidenceLink source={{ resourceId: resource.id, version: resource.contentHash, href: resourceHref(resource.id), sourceLabel: resource.courseName, capturedAt: resource.observedAt }}>{children ?? resource.title}</EvidenceLink>;
 }
@@ -27,13 +28,14 @@ export function dueLabel(value: string | null) {
 }
 /** Rows shown before Upcoming's disclosure; later work stays one click away. */
 const UPCOMING_BATCH = 3;
-export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPlan, onJoin, onOpenSource, upcomingCount = UPCOMING_BATCH, onUpcomingCountChange, todayCount = 3, onTodayCountChange, report, reviewDates, onSetup, onNotice }: {
+export function Home({ snapshot, resources, onSelect, onCourses, onSources, onMyUw, onPlan, onJoin, onOpenSource, upcomingCount = UPCOMING_BATCH, onUpcomingCountChange, todayCount = 3, onTodayCountChange, report, reviewDates, onSetup, onNotice }: {
   onOpenSource?: (url:string)=>void;
   reviewDates?: (resource: ResourceView) => ReactNode;
   onSetup?: () => void; onNotice?: (text: string) => void;
   todayCount?: number; onTodayCountChange?: (count: number) => void;
   upcomingCount?: number; onUpcomingCountChange?: (count: number) => void;
   snapshot: Snapshot; resources: ResourceView[]; onSelect: (id: string) => void; onCourses: () => void; onSources: () => void;
+  onMyUw: (target: 'attention' | 'term') => void;
   onPlan: (command: Command) => Promise<unknown>; onJoin?: (url: string) => void; report?: (resource: ResourceView, summary?: ReactNode) => ReactNode;
 }) {
   const [now,setNow]=useState(()=>new Date().toISOString());
@@ -41,6 +43,7 @@ export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPl
   const timeZone=Intl.DateTimeFormat().resolvedOptions().timeZone;
   const canonical=useMemo(()=>canonicalHomeResources(resources,snapshot.sources,snapshot.links,snapshot.courseWorkAdmission?.aliases),[resources,snapshot.sources,snapshot.links,snapshot.courseWorkAdmission?.aliases]);
   const {work,passages,study,prerequisites}=useMemo(()=>selectHomeEvidence(canonical,snapshot,now,timeZone),[canonical,snapshot,now,timeZone]);
+  const enrollmentHolds=useMemo(()=>homeEnrollmentHolds(snapshot,Date.parse(now)),[snapshot,now]);
   const refreshKey = preparedWorkRevision(snapshot);
   const prepared = { refreshKey, info: EvidenceInfo, onSetup, onNotice, onFailure: reportWorkspaceFailure };
   const typeHueOf=useMemo(()=>createAssignmentTypeHues(snapshot.resources,snapshot.sources),[snapshot.resources,snapshot.sources]);
@@ -134,6 +137,11 @@ export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPl
     </section>
     <section className="home-study" aria-labelledby="study-title" data-place-anchor="study"><h2 id="study-title">Study &amp; Learn</h2><div className="home-study-grid">{study.map(({material,context})=><a className="home-study-action" href={resourceHref(material.id)} data-focus-key={`study-${material.id}`} key={material.id}><span title={label(material).raw}>{course(material)}</span><h3>Review {material.title}</h3><p>Referenced in {context.title}</p><div><span>Open saved material</span><Glyph name="forward"/></div></a>)}</div>
       {!study.length && <p className="home-empty">No specific review material is supported by the current saved instructions.</p>}
+    </section>
+    <section className="home-enrollment-holds" aria-labelledby="home-enrollment-holds-title" data-place-anchor="enrollment-holds">
+      <h2 id="home-enrollment-holds-title">Enrollment &amp; holds</h2>
+      <div className="home-enrollment-holds-row"><p>{enrollmentHolds.enrollment}</p><button type="button" className="magic-fb-pill" onClick={()=>onMyUw('term')}>View enrollment <Glyph name="forward"/></button></div>
+      <div className="home-enrollment-holds-row"><p>{enrollmentHolds.holds}{enrollmentHolds.holdTitle ? <> <span className="home-enrollment-holds-detail">{enrollmentHolds.holdTitle}{enrollmentHolds.holdCount > 1 ? ' and others' : ''}.</span></> : null}</p><button type="button" className="magic-fb-pill" onClick={()=>onMyUw('attention')}>Review holds <Glyph name="forward"/></button></div>
     </section>
   </HomeMotion><div className="home-today"><div className="home-today-heading"><h2>Today</h2><span>{day(now)}</span></div><TodayRail homeDueCount={todayCount} onHomeDueCountChange={onTodayCountChange} now={now} homeDueItems={work.today} courseLabel={course} compactEmpty onInspectSources={onSources} resources={canonical} sources={snapshot.sources} plan={snapshot.dayPlan} changes={snapshot.changes} onSelect={onSelect} onPlan={onPlan} onJoin={onJoin}/></div></div>;
 }

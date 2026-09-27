@@ -1791,7 +1791,7 @@ app
     });
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", (event) => event.preventDefault());
-    desktopVoice = await installDesktopVoice({ window, rendererURL, headless, context: () => voiceAuthority, dispatch: createVoiceTrialDispatch(execute) });
+    desktopVoice = await installDesktopVoice({ window, rendererURL, headless, context: () => voiceAuthority, dispatch: createVoiceTrialDispatch() });
     window.webContents.session.setPermissionRequestHandler(
       (sender, permission, callback, details) => callback(desktopVoice?.allowsPermission(sender, permission, details) ?? false),
     );

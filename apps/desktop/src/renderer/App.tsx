@@ -23,7 +23,7 @@ import type {
 } from "@magic/contracts";
 import { createAssignmentTypeHues } from "../../../../packages/ui/src/deadline-emphasis";
 import { SourcesPage } from "./sources";
-import { MyUw, PlanningAlerts } from "./MyUw";
+import { MyUw } from "./MyUw";
 import { CoursePageView } from "./courses/CoursePage";
 import { CoursesIndex } from "./courses/CoursesIndex";
 import { compactCourseTerm } from "./courses/course-index-view";
@@ -520,7 +520,6 @@ export function App() {
           </section>
         ) : view === "today" ? (
           <>
-            <PlanningAlerts snapshot={snapshot} open={open} onPlanning={() => setView("myuw")} />
             {resources.length === 0 && !uwConsented ? (
               // owner: T06: the first-run screen replaces the empty workspace until agreed.
               <ConsentSetup
@@ -543,7 +542,7 @@ export function App() {
                 onSample={() => run({ type: "fixture" })}
               />
             ) : (
-              <Home onOpenSource={open} todayCount={navigation.homeTodayCount} onTodayCountChange={navigation.updateHomeTodayCount} upcomingCount={navigation.homeUpcomingCount} onUpcomingCountChange={navigation.updateHomeUpcomingCount} snapshot={snapshot} resources={resources} onSelect={setSelectedId} onCourses={() => { setQuery(""); setView("courses"); }} onSources={() => setView("sources")} onPlan={command => requirePlanSave(run, command)} onJoin={window.magic.openLink ? url => { void perform(() => window.magic.openLink!(url)); } : undefined} reviewDates={resource => <DeadlineReview resource={resource} run={run} onInspect={()=>setSelectedId(resource.id)}/>} report={(resource, summary) => <PersonalReport resource={resource} snapshot={snapshot} run={run} compactWhenHandled summary={summary}/>} onSetup={() => openConsent()} onNotice={setNotice} />
+              <Home onOpenSource={open} todayCount={navigation.homeTodayCount} onTodayCountChange={navigation.updateHomeTodayCount} upcomingCount={navigation.homeUpcomingCount} onUpcomingCountChange={navigation.updateHomeUpcomingCount} snapshot={snapshot} resources={resources} onSelect={setSelectedId} onCourses={() => { setQuery(""); setView("courses"); }} onSources={() => setView("sources")} onMyUw={target => { setView("myuw"); requestAnimationFrame(() => requestAnimationFrame(() => { const section = document.getElementById(`myuw-${target}`); const heading = section?.querySelector<HTMLElement>('h2') ?? document.getElementById('myuw-title'); const pane = heading?.closest<HTMLElement>('.desktop-workspace'); if (heading && pane) pane.scrollTop += heading.getBoundingClientRect().top - pane.getBoundingClientRect().top - 24; heading?.focus({ preventScroll: true }); })); }} onPlan={command => requirePlanSave(run, command)} onJoin={window.magic.openLink ? url => { void perform(() => window.magic.openLink!(url)); } : undefined} reviewDates={resource => <DeadlineReview resource={resource} run={run} onInspect={()=>setSelectedId(resource.id)}/>} report={(resource, summary) => <PersonalReport resource={resource} snapshot={snapshot} run={run} compactWhenHandled summary={summary}/>} onSetup={() => openConsent()} onNotice={setNotice} />
             )}
           </>
         ) : view === "chat" ? (
