@@ -176,9 +176,22 @@ export function guideSubjectSlug(html: string, subject: PlanningSubject): string
   }
   return matches.size === 1 ? [...matches][0] : null;
 }
-export async function pullGuideForSubject(client: PublicClient, subject: PlanningSubject, subjects: PlanningSubject[], observedAt: string, signal?: AbortSignal): Promise<PlanningCapture> {
+// owner: planning-perf. The Guide's subject index (up to 2 MB) changes per term, not per lookup.
+const GUIDE_INDEX_TTL_MS = 120 * 24 * 60 * 60 * 1000;
+const guideIndexes = new WeakMap<PublicClient, { text: string; at: number }>();
+async function guideIndex(client: PublicClient, signal?: AbortSignal, now = Date.now()): Promise<string> {
+  const cached = guideIndexes.get(client);
+  if (cached && now - cached.at >= 0 && now - cached.at < GUIDE_INDEX_TTL_MS) return cached.text;
   const index = await client.text("https://guide.wisc.edu/courses/", { signal, maxBytes: 2_000_000, onRedirect: (url) => new URL(url).origin === "https://guide.wisc.edu" });
+  guideIndexes.set(client, { text: index.text, at: now });
+  return index.text;
+}
+export async function pullGuideForSubject(client: PublicClient, subject: PlanningSubject, subjects: PlanningSubject[], observedAt: string, signal?: AbortSignal): Promise<PlanningCapture> {
+  const index = { text: await guideIndex(client, signal) };
   const slug = guideSubjectSlug(index.text, subject);
-  if (!slug) throw new Error("This subject could not be matched to the current UW Guide index.");
+  if (!slug) {
+    guideIndexes.delete(client); // a miss may mean a newer index: read it again next time
+    throw new Error("This subject could not be matched to the current UW Guide index.");
+  }
   return pullGuideSubject(client, slug, subjects, observedAt, signal);
 }

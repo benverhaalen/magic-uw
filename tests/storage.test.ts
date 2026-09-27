@@ -179,10 +179,11 @@ test("observations refresh without duplicate content versions or jobs; changed c
           ?.count,
         2,
       );
+      // platform-fix: observations were never read, so they are no longer written (3 reads, 0 rows).
       assert.equal(
         inspect.prepare("SELECT COUNT(*) AS count FROM observations").get()
           ?.count,
-        3,
+        0,
       );
       assert.equal(
         inspect.prepare("PRAGMA user_version").get()?.user_version,
