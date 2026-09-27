@@ -546,6 +546,8 @@ export interface CourseCoreStore {
   /** Replaces the resource's facts for that analyzer version; offsets checked against the text. */
   putMaterialFacts(value: MaterialFactsInput): WriteResult;
   materialFacts(resourceId: string): MaterialFact[];
+  /** The course's live resources the material pipeline classified with the role `syllabus` (current text only). */
+  syllabusRoleIds(course: CourseRef): string[];
 
   addLedgerEntry(value: LedgerEntry): void;
   ledger(limit?: number): LedgerEntry[];

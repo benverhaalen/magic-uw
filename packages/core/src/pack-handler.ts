@@ -15,7 +15,7 @@ import { GUIDE_PACKS } from "../../packs/guide/src/index";
 // end owner: ai-paths
 import { courseFactsPack } from "./course-facts/extractor"; // owner: course-facts
 import { createCourseBriefs, type CourseBriefSource } from "./course-facts/brief"; // owner: course-facts
-import { coursePrefixes } from "./course-facts/prefix"; // owner: course-facts
+import { BRIEF_POLICY_POINTER, briefHoldsPolicy, coursePrefixes } from "./course-facts/prefix"; // owner: course-facts
 import { buildPrompt, packCacheKey, type ArtifactStore, type CourseFrame, type LedgerStore, type PackSpec, type Passage } from "../../packs/core/src/index";
 import { learningArtifactStore, sqlLedgerStore } from "../../packs/core/src/learning-stores";
 import { quizDrafts, quizPack, type Draft, type GenerationInput } from "../../packs/items/src/index";
@@ -101,6 +101,8 @@ interface Scoped {
   restricted: boolean;
   /** The effective course policy (profile claims first; a restriction wins), as tutoring reads it. */
   policy: { mode: string; evidence: string } | undefined;
+  /** owner: course-facts. The resources the course brief in the prompt draws on (receipts and grants). */
+  briefResourceIds?: string[];
 }
 
 /** The course (and optional module or resources) the scope names, with only eligible, included study sources. */
@@ -339,17 +341,17 @@ export function createPackHandler(deps: PackHandlerDeps) {
       topics: concepts.filter((c) => c.kind === "concept").map((c) => c.studentLabel ?? c.label).slice(0, 60),
       focus,
     };
-    // owner: course-facts. The course prefix (brief + pack catalogue); the policy line then points at
-    // the brief's AI section instead of repeating every quote.
+    // owner: course-facts. The course prefix (brief + pack catalogue); the policy line points at the
+    // brief's AI section only when the brief holds every quote behind the policy.
     const prefix = coursePrefix(s.courseRef);
     const base = frameFor(s, units);
     const frame: CourseFrame = prefix
-      ? { ...base, brief: prefix.text, policy: s.policy ? `${s.policy.mode}: the quotes are in the course brief's AI and collaboration policy section.` : "" }
+      ? { ...base, brief: prefix.text, ...(s.policy && briefHoldsPolicy(s.policy.evidence, prefix.text) ? { policy: `${s.policy.mode}: ${BRIEF_POLICY_POINTER}` } : {}) }
       : base;
     // end owner: course-facts
     return name === "quiz"
-      ? execute(quizPack, quizDrafts, name, scope, s, passages, resourceOf, input, frame, signal, options)
-      : execute(cardsPack, cardDrafts, name, scope, s, passages, resourceOf, input, frame, signal, options);
+      ? execute(quizPack, quizDrafts, name, scope, { ...s, briefResourceIds: prefix?.resourceIds ?? [] }, passages, resourceOf, input, frame, signal, options)
+      : execute(cardsPack, cardDrafts, name, scope, { ...s, briefResourceIds: prefix?.resourceIds ?? [] }, passages, resourceOf, input, frame, signal, options);
   }
 
   async function execute<O>(
@@ -432,7 +434,9 @@ export function createPackHandler(deps: PackHandlerDeps) {
 
     const authorize = (recipient: string, categories: string[], payload?: unknown) => {
       validate();
-      categories = [...new Set([...categories, ...s.resources.flatMap(contentCategories)])];
+      // owner: course-facts: the brief's sources are sent too, so their categories are checked and receipted.
+      const briefResources = (s.briefResourceIds ?? []).flatMap((id) => store.resource(id) ?? []);
+      categories = [...new Set([...categories, ...s.resources.flatMap(contentCategories), ...briefResources.flatMap(contentCategories)])];
       const parsed = aiRecipientSchema.safeParse(recipient);
       if (!parsed.success) return { allowed: false, reason: "This recipient is not supported." };
       const permission = maySend(store.privacy(), recipient, categories);
@@ -442,7 +446,7 @@ export function createPackHandler(deps: PackHandlerDeps) {
         recipient: parsed.data,
         purpose: `Generate ${name === "quiz" ? "quiz questions" : "flashcards"} from course materials`,
         categories,
-        resourceIds: s.resources.map((r) => r.id),
+        resourceIds: [...new Set([...s.resources.map((r) => r.id), ...(s.briefResourceIds ?? [])])],
         characters: JSON.stringify(payload ?? {}).length,
         allowed: permission.allowed,
         reason: permission.reason,

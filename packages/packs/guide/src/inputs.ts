@@ -12,6 +12,7 @@ import { eligibleStudySource } from "../../../learning/src/router";
 import { findQuote } from "../../../retrieval/src/quotes";
 import { courseInclusion } from "../../../core/src/access";
 import type { CoursePrefixSource } from "../../../core/src/course-facts/prefix"; // owner: course-facts
+import { BRIEF_POLICY_POINTER, briefHoldsPolicy } from "../../../core/src/course-facts/brief"; // owner: course-facts
 import type { Resolve } from "./review";
 import type { GuideInput, GuideKind } from "./schema";
 
@@ -31,6 +32,8 @@ export interface GuideSelection {
   courseRef: string;
   label: string;
   resources: Resource[];
+  /** owner: course-facts. The resources the course brief in the prompt draws on (receipts and grants). */
+  briefResourceIds: string[];
   frame: CourseFrame;
   input: GuideInput;
   passages: Passage[];
@@ -201,7 +204,11 @@ export function selectGuideInputs(
     policy: aiPolicy ? `${aiPolicy.policyMode ?? "unknown"}: ${clip(collapse(String(aiPolicy.value ?? aiPolicy.label)), 600)}` : policy ? `${policy.mode}: ${policy.evidence}` : "",
     // owner: course-facts: the prefix, and a policy line pointing at the brief's quotes
     ...(prefix
-      ? { brief: prefix.text, policy: `${aiPolicy?.policyMode ?? policy?.mode ?? "unknown"}: the quotes are in the course brief's AI and collaboration policy section.` }
+      ? {
+          brief: prefix.text,
+          // Point at the brief only when it holds every quote behind the policy; otherwise keep the line above.
+          ...(briefHoldsPolicy(policy?.evidence, prefix.text) ? { policy: `${aiPolicy?.policyMode ?? policy?.mode ?? "unknown"}: ${BRIEF_POLICY_POINTER}` } : {}),
+        }
       : {}),
   };
 
@@ -226,6 +233,7 @@ export function selectGuideInputs(
       courseRef,
       label,
       resources,
+      briefResourceIds: prefix?.resourceIds ?? [],
       frame,
       input: {
         kind,

@@ -35,3 +35,5 @@ export function coursePrefixes(briefs: CourseBriefSource | null): CoursePrefixSo
     return brief ? { text: `${briefPrompt(brief)}\n\n${coursePackCatalogue()}`, resourceIds: brief.resourceIds } : undefined;
   };
 }
+
+export { BRIEF_POLICY_POINTER, briefHoldsPolicy } from "./brief";

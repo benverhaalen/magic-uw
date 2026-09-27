@@ -197,7 +197,9 @@ export async function generateGuide(
   const lane = options.lane ?? "interactive";
   const authorize = (recipient: string, categories: string[], payload?: unknown) => {
     validate();
-    categories = [...new Set([...categories, ...sel.resources.flatMap(contentCategories)])];
+    // owner: course-facts: the brief's sources are sent too, so their categories are checked and receipted.
+    const briefResources = sel.briefResourceIds.flatMap((id) => store.resource(id) ?? []);
+    categories = [...new Set([...categories, ...sel.resources.flatMap(contentCategories), ...briefResources.flatMap(contentCategories)])];
     const parsed = aiRecipientSchema.safeParse(recipient);
     if (!parsed.success) return { allowed: false, reason: "This recipient is not supported." };
     const permission = maySend(store.privacy(), recipient, categories);
@@ -207,7 +209,7 @@ export async function generateGuide(
       recipient: parsed.data,
       purpose: `Generate a ${NOUN[kind]} from course materials`,
       categories,
-      resourceIds: sel.resources.map((r) => r.id),
+      resourceIds: [...new Set([...sel.resources.map((r) => r.id), ...sel.briefResourceIds])],
       characters: JSON.stringify(payload ?? {}).length,
       allowed: permission.allowed,
       reason: permission.reason,

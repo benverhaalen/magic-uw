@@ -114,6 +114,26 @@ function inputKey(store: Store, course: CourseKey, profile: CourseIntelligence |
   );
 }
 
+/**
+ * The memo key, cheap enough for every course call: the latest profile's version and input hash (it is
+ * rebuilt with every course capture, and its hash covers each course resource's content) and the
+ * roster inputs, without reading the course's text. Without a profile, the full input key.
+ */
+function memoKey(store: Store, course: CourseKey) {
+  const profile = latestProfile(store, course);
+  if (!profile) return inputKey(store, course, undefined, courseMaterial(store, course).resources);
+  return sha(
+    JSON.stringify([
+      BRIEF_VERSION,
+      COURSE_COMPILER_VERSION,
+      profile.version,
+      profile.inputHash,
+      store.identityRoster(),
+      store.autoIdentities().accounts[course.accountScope] ?? null,
+    ]),
+  );
+}
+
 /** Render the brief from the store (pure apart from reads). Null when the course has no material. */
 export function renderCourseBrief(store: Store, course: CourseKey): CourseBrief | null {
   const { resources } = courseMaterial(store, course);
@@ -227,8 +247,7 @@ export function createCourseBriefs(options: { store: Store; directory?: string }
   function courseBrief(courseKey: string): CourseBrief | null {
     const course = parseKey(courseKey);
     if (!course) return null;
-    const { resources } = courseMaterial(options.store, course);
-    const key = inputKey(options.store, course, latestProfile(options.store, course), resources);
+    const key = memoKey(options.store, course);
     const held = memo.get(courseKey);
     if (held?.key === key) return held.brief;
     const brief = renderCourseBrief(options.store, course);
@@ -269,3 +288,17 @@ export function briefPrompt(brief: Pick<CourseBrief, "text">) {
 }
 /** What packs and guides take: the course brief for a course key, or null (none, or turned off). */
 export type CourseBriefSource = (courseKey: string) => CourseBrief | null;
+
+/** The policy line when the brief is in the prompt and holds every policy quote. */
+export const BRIEF_POLICY_POINTER = "the quotes are in the course brief's AI and collaboration policy section.";
+/**
+ * True when every quote behind a policy's evidence appears whole in the brief (whitespace-insensitive),
+ * so the policy line may point at the brief instead of repeating them. An assignment-scoped claim, a
+ * resource's own policy text or a quote the brief shortened is not in it: the evidence then stays.
+ */
+export function briefHoldsPolicy(evidence: string | undefined, briefText: string): boolean {
+  const collapse = (t: string) => t.replace(/\s+/g, " ").trim();
+  const quotes = (evidence ?? "").split("\n").map(collapse).filter(Boolean);
+  const brief = collapse(briefText);
+  return quotes.length > 0 && quotes.every((q) => brief.includes(q));
+}

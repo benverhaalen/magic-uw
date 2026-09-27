@@ -14,7 +14,7 @@ import { createReadApi } from "@magic/agent-api";
 import { createModelRunner, type BackendCall } from "../packages/runner/src/index";
 import { createPackHandler } from "../packages/core/src/pack-handler";
 import { buildPrompt, memoryArtifactStore, packCatalogue } from "../packages/packs/core/src/index";
-import { BRIEF_PREAMBLE, briefPath, createCourseBriefs, renderCourseBrief } from "../packages/core/src/course-facts/brief";
+import { BRIEF_POLICY_POINTER, BRIEF_PREAMBLE, briefHoldsPolicy, briefPath, createCourseBriefs, renderCourseBrief } from "../packages/core/src/course-facts/brief";
 
 const at = "2026-09-26T12:00:00.000Z";
 const course = { accountScope: "a", courseId: "c" };
@@ -170,4 +170,64 @@ test("buildPrompt: a listed pack is named, an unlisted one brings its own instru
   assert.match(b.input, /^## Task\nOther instructions\./);
   const { brief: _drop, ...plain } = frame;
   assert.ok(buildPrompt(pack(other), plain, {}, []).systemPrompt.startsWith("Other instructions."));
+});
+
+test("a module-scoped quiz receipts and grant-checks the brief's syllabus source; the policy line keeps evidence the brief lacks", async () => {
+  const x = setup();
+  x.store.ingest(
+    captureBatchSchema.parse({
+      source: { id: "mod", label: "Modules", kind: "canvas", scope: "modules", ...course },
+      observedAt: new Date(Date.parse(at) + tick++ * 1000).toISOString(),
+      status: "ok",
+      complete: true,
+      resources: [
+        {
+          externalId: "page-1",
+          kind: "material",
+          courseId: "c",
+          courseName: "PHIL 101: Philosophy",
+          title: "Week 2 reading notes",
+          url: "https://canvas.example.edu/courses/c/pages/week-2",
+          module: { id: "m1" },
+          text: Array.from({ length: 8 }, (_, i) => `Plato's cave allegory, part ${i + 1}: prisoners mistake shadows for reality and the philosopher returns.`).join("\n"),
+        },
+      ],
+    }),
+  );
+  const calls: BackendCall[] = [];
+  const runner = createModelRunner({
+    backend: { client: "claude", async call(call) { calls.push(call); return { value: { items: [] }, usage: { in: 1, cached: 0, out: 1 }, model: "synthetic" }; } },
+  });
+  const briefs = createCourseBriefs({ store: x.store });
+  const handler = createPackHandler({ store: x.store as never, artifacts: memoryArtifactStore(), runner: () => runner, brief: briefs.courseBrief });
+  await handler.run("quiz", { courseId: "c", moduleId: "m1" });
+  assert.ok(calls.length >= 1, "the quiz reached the model");
+  const syllabusId = x.store.resources().find((r) => r.title === "Syllabus")!.id;
+  const moduleId = x.store.resources().find((r) => r.title === "Week 2 reading notes")!.id;
+  assert.ok(briefs.courseBrief("a:c")!.resourceIds.includes(syllabusId));
+  const sent = x.store.receipts().filter((r) => r.purpose.startsWith("Generate quiz"));
+  assert.ok(sent.length >= 1, "a receipt for the quiz call");
+  for (const r of sent) {
+    assert.ok(r.resourceIds.includes(syllabusId), "the brief's syllabus source is on the receipt");
+    assert.ok(r.resourceIds.includes(moduleId), "the module's own source stays on the receipt");
+  }
+  // The policy evidence here is not a quote in the brief, so the input keeps it rather than pointing at the brief.
+  const policy = /## Course AI policy\n(.*)/.exec(calls[0]!.input)?.[1] ?? "";
+  assert.ok(policy.length > 0, calls[0]!.input);
+  assert.ok(!policy.includes(BRIEF_POLICY_POINTER), policy);
+  x.done();
+});
+
+test("briefHoldsPolicy: only when every quote behind the policy is whole in the brief", () => {
+  const brief = '## AI and collaboration policy\n- "Generative AI tools may be used for brainstorming only." (Syllabus)\n- "Collaboration on essays is not permitted; students must write\n alone." (Syllabus)';
+  assert.equal(briefHoldsPolicy("Generative AI tools may be used for brainstorming only.", brief), true);
+  assert.equal(briefHoldsPolicy("Generative AI tools may be used for brainstorming only.\n\nCollaboration on essays is not permitted; students must write alone.", brief), true, "whitespace-insensitive");
+  // An assignment-scoped claim the brief skips: the evidence must stay in the policy line.
+  assert.equal(briefHoldsPolicy("Generative AI tools may be used for brainstorming only.\n\nAI may check grammar only, never produce solutions.", brief), false);
+  // A quote the brief shortened: its exception after the cut is not in the brief.
+  const long = `${"AI may be used to explain lecture concepts and to quiz yourself on readings. ".repeat(3)}Except on take-home exams, where any AI use is forbidden.`;
+  const shortened = `- "${long.slice(0, 200)}…" (Syllabus)`;
+  assert.equal(briefHoldsPolicy(long, shortened), false);
+  assert.equal(briefHoldsPolicy("", brief), false, "no evidence: nothing to point at");
+  assert.equal(briefHoldsPolicy(undefined, brief), false);
 });

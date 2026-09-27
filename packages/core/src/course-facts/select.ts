@@ -23,13 +23,17 @@ export function courseMaterial(store: Store, course: CourseKey): { sources: Sour
   return { sources, resources };
 }
 
-/** Resource ids the material pipeline classified with the role `syllabus`. */
-export function syllabusRoles(store: Store, resources: Resource[]): Set<string> {
+/** Resource ids the material pipeline classified with the role `syllabus`: one query where the store has it. */
+export function syllabusRoles(store: Store, resources: Resource[], course?: CourseKey): Set<string> {
+  const s = store as Partial<Pick<CourseCoreStore, "materialFacts" | "syllabusRoleIds">>;
+  if (course && typeof s.syllabusRoleIds === "function") {
+    const live = new Set(resources.map((r) => r.id));
+    return new Set(s.syllabusRoleIds.call(store, course).filter((id) => live.has(id)));
+  }
   const roles = new Set<string>();
-  const facts = (store as Partial<Pick<CourseCoreStore, "materialFacts">>).materialFacts;
-  if (typeof facts !== "function") return roles;
+  if (typeof s.materialFacts !== "function") return roles;
   for (const r of resources)
-    if (facts.call(store, r.id).some((f) => f.kind === "role" && f.value === "syllabus")) roles.add(r.id);
+    if (s.materialFacts.call(store, r.id).some((f) => f.kind === "role" && f.value === "syllabus")) roles.add(r.id);
   return roles;
 }
 
@@ -39,5 +43,5 @@ export function selectSyllabus(
   at: string = new Date().toISOString(),
 ): SyllabusSelectionResult & { resources: Resource[] } {
   const { sources, resources } = courseMaterial(store, course);
-  return { ...selectFrom(resources, sources, { at, roles: syllabusRoles(store, resources) }), resources };
+  return { ...selectFrom(resources, sources, { at, roles: syllabusRoles(store, resources, course) }), resources };
 }

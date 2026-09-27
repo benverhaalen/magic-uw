@@ -14,6 +14,7 @@ import { contentCategories } from "../access";
 import { runPack } from "../jobs/pack";
 import { authorizer } from "./consent";
 import type { CoursePrefixSource } from "../course-facts/prefix"; // owner: course-facts
+import { BRIEF_POLICY_POINTER, briefHoldsPolicy } from "../course-facts/brief"; // owner: course-facts
 import type { AskResult, IntentStore, ResolvedCourse } from "./types";
 
 export const ASK_TOKEN_BUDGET = 3000;
@@ -63,7 +64,11 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
     const r = store.resource(id);
     return r ? [r] : [];
   });
-  const categories = [...new Set(resources.flatMap((r) => contentCategories(r)))].sort();
+  // owner: course-facts. One course: the shared course prefix opens the prompt, as for packs and guides;
+  // the brief's sources are sent too, so their categories are checked and receipted.
+  const prefix = courses.length === 1 ? deps.coursePrefix?.(courses[0]!.ref) : undefined;
+  const briefResources = (prefix?.resourceIds ?? []).flatMap((id) => store.resource(id) ?? []);
+  const categories = [...new Set([...resources, ...briefResources].flatMap((r) => contentCategories(r)))].sort();
   const pack = { ...askPack, categories };
   const label = courses.length === 1 ? (courses[0]!.code ?? courses[0]!.name) : "Your courses";
   const policy = resources.find((r) => r.policy.mode !== "unknown")?.policy;
@@ -73,11 +78,10 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
     skeleton: courses.map((c) => `Course: ${c.code ? `${c.code}: ` : ""}${c.name}`).join("\n"),
     policy: policy ? `${policy.mode}: ${policy.evidence}` : "",
   };
-  // owner: course-facts. One course: the shared course prefix opens the prompt, as for packs and guides.
-  const prefix = courses.length === 1 ? deps.coursePrefix?.(courses[0]!.ref) : undefined;
+  // owner: course-facts
   if (prefix) {
     frame.brief = prefix.text;
-    frame.policy = policy ? `${policy.mode}: the quotes are in the course brief's AI and collaboration policy section.` : "";
+    if (policy && briefHoldsPolicy(policy.evidence, prefix.text)) frame.policy = `${policy.mode}: ${BRIEF_POLICY_POINTER}`;
   }
   // end owner: course-facts
   const input = { question: question.trim().slice(0, 2000) };
