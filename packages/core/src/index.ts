@@ -252,7 +252,8 @@ export function createCore(store: Store, options: CoreOptions) {
       dayPlan: store.dayPlan(),
       gitlabLinks: store.gitlabLinks(),
       personalReports: store.personalReports(),
-      notifications: notifications.feed(),
+      // Unsearched snapshots already hold every live view; the feed reuses them.
+      notifications: notifications.feed(search ? undefined : resources),
     };
   }
   function context(
