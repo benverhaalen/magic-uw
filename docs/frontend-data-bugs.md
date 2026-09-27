@@ -15,7 +15,7 @@ Follow-up:
 | ID | Finding | Status |
 | --- | --- | --- |
 | [FDB-001](#fdb-001-assignment-grade-share-lacks-account-and-capture-coverage-boundaries) | Assignment grade share lacks account and capture-coverage boundaries | Backend fix `0f7ac36`, tested in isolation; frontend adoption pending |
-| [FDB-002](#fdb-002-sign-in-bridge-discards-the-cancelled-outcome) | Sign-in bridge discards the cancelled outcome | Code-inspected; live authentication not reproduced |
+| [FDB-002](#fdb-002-sign-in-bridge-discards-the-cancelled-outcome) | Sign-in bridge discards the cancelled outcome | Backend outcome built and tested in isolation (`feat/client-health`); App.tsx consumer open |
 | [FDB-003](#fdb-003-generation-pack-scope-cannot-select-the-requesting-account) | Generation pack scope cannot select the requesting account | Code-inspected; generation not run |
 | [FDB-004](#fdb-004-student-record-freshness-uses-a-term-length-horizon) | Student-record freshness uses a term-length horizon | Code-inspected; live hold changes not reproduced |
 
@@ -78,6 +78,8 @@ Private coursework, account identifiers, captures, logs, credentials, and sessio
 **Proposed backend owner:** Nate/Nathaniel, pending acceptance. **Next action:** agree an additive typed sign-in outcome and update its IPC/bridge contract; preserve consent and existing sign-in gating.
 
 **Resolution proof:** cover confirmed, cancelled, and failed outcomes through the IPC contract and frontend consumer, including a cancellation that triggers no success claim or automatic follow-up sync. Verify the shell still offers recovery when access remains unresolved.
+
+**Resolution (backend, built and tested in isolation; not merged):** commit `68624af` on `feat/client-health`. `magic:signin` now resolves with `SignInOutcome` (`packages/contracts/src/sign-in.ts`): `{ status: "confirmed" | "cancelled" | "failed", service, reason? }`, and `AppBridge.signInUW` returns `Promise<SignInOutcome>`. The call shape is unchanged, and an unknown service or a refused consent still rejects as before. Only `confirmed` means the service answered with the student's profile; `failed` carries a plain reason (the headless message, or a generic one; other error text never crosses). For consumers, `signInAndSync` in `apps/desktop/src/renderer/sign-in.ts` reads Canvas only after `confirmed` and returns `{ outcome, synced }`. `signInMessage` gives the words for each outcome. Tests: `tests/sign-in-outcome.test.ts` (confirmed, cancelled and failed through `handleSignInRequest`, the function `magic:signin` calls; a cancellation claims no success and starts no sync). The onboarding's UW step uses it. **Still open for the frontend owner:** `startSignIn` in `apps/desktop/src/renderer/App.tsx` still syncs unconditionally; switching it to `signInAndSync` closes the consumer side.
 
 ## FDB-003: Generation pack scope cannot select the requesting account
 
