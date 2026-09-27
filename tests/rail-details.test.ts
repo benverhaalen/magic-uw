@@ -54,4 +54,8 @@ test("the hover bar does not stay open after a mouse click", () => {
   const css = readFileSync(new URL("../apps/desktop/src/renderer/styles.css", import.meta.url), "utf8");
   assert.doesNotMatch(css, /\.rail-slot:focus-within/);
   assert.match(css, /\.rail-slot:has\(:focus-visible\) \.rail-tools/);
+  // After a click the pointer still hovers the block; its bar stays hidden while details are open.
+  assert.match(css, /\.rail-slot\.is-open \.rail-tools,\s*\.rail-slot\.bar-off \.rail-tools \{\s*display: none !important;/);
+  // The details float beside the rail instead of resizing the fixed-height timeline.
+  assert.match(css, /\.rail-pop \{\s*position: fixed;/);
 });

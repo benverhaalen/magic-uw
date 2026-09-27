@@ -1,6 +1,6 @@
 # Implementation status
 
-One row per feature: its status, where it is, and the evidence behind it. **Checked against `main` at `ccd21f8` on September 27, 2026**, plus the pushed state of the branches named. How the parts fit together is in [the architecture](architecture.md); measurement methods are in [benchmarks](benchmarks.md). The dated verification log this table replaces, with its full test narratives, is [archived](archive/implementation-log-2026-09-27.md). The desktop frontend's runtime receipts and boundaries are kept in [the desktop handoff](design-handoff.md).
+One row per feature: its status, where it is, and the evidence behind it. **Checked against `main` at `8526ccf` on September 27, 2026**, plus the pushed state of the branches named. How the parts fit together is in [the architecture](architecture.md); measurement methods are in [benchmarks](benchmarks.md). The dated verification log this table replaces, with its full test narratives, is [archived](archive/implementation-log-2026-09-27.md). The desktop frontend's runtime receipts and boundaries are kept in [the desktop handoff](design-handoff.md).
 
 **Status** uses the ladder in [AGENTS.md](../AGENTS.md):
 
@@ -47,6 +47,7 @@ One row per feature: its status, where it is, and the evidence behind it. **Chec
 | Grounded ask with checked quotes; "not in your materials" | integrated (through the chat pane's read-only intent) | `main` (`packages/core/src/intent/ask.ts`, `renderer/chat`) | tests; answer sentences are not yet bound to their cited quotes (open) |
 | Course facts and the course brief as a stable prefix | tested in isolation | `main` (#45) | tests; no screen after the design integration |
 | Scoped queries and change cursor (summary, pages, changes) | tested in isolation | `main` (`core.query`) | 30.6 MB snapshot → 17.5 KB summary (MT1, synthetic); the renderer still polls the full snapshot |
+| Retrieval upgrade: local semantic candidates, timed captions, citation repair | proposed (private baseline and candidates, not integrated) | [desktop handoff](design-handoff.md#2026-09-27-1131-utc--retrieval-baseline-and-shared-ownership) | no before/after quality result yet; lexical baseline first ([course intelligence](course-intelligence.md)) |
 
 ## AI
 

@@ -1,5 +1,23 @@
 # My Magic UW desktop handoff
 
+## 2026-09-27 11:31 UTC — retrieval baseline and shared ownership
+
+Ben authorized the retrieval upgrade on September 27. Five private lanes are collecting a baseline and candidates; **no retrieval upgrade is integrated or demonstrated yet**. The first comparison must measure known-answer paraphrases, abbreviations and typos alongside genuinely unsupported questions, recording retrieval rank and gate abstention. Real course passages, questions and per-item results stay outside Git; committed regressions use synthetic or public equivalents.
+
+| Private lane | Deliverable before adoption |
+| --- | --- |
+| Baseline evaluation | Current lexical rank/gate results and reproducible non-private controls; baseline precedes changes. |
+| Model/runtime | Compare local embedding models, weight/code licenses, runtime, latency/memory and vector storage; preserve lexical fallback. |
+| Captions | Authorized Canvas/Kaltura/file feasibility and timed WebVTT/SRT parser; no new transcription service. |
+| Citations/diversity | One bounded failed-quote repair and source-mix comparison; retain the exact validator and unsupported controls. |
+| MCQ risk | Evaluate an alternate-model check only where an actual generated StudyPrep MCQ path exists; otherwise report that boundary. |
+
+Nate retains ingestion/core ownership and snapshot/per-page performance work. The integration driver is the sole canonical writer: reconcile candidate interfaces with the shared retrieval/storage and Study producers, then publish small tested slices to main. A private handoff does not authorize a parallel retrieval stack or replacement of Nate's producer. Baseline findings and owner review precede retrieval code adoption.
+
+Current source inspection finds lexical FTS/BM25 with a 0.5 content-word coverage gate. Canonical `groundedAsk` retrieves its top 12 hits before filtering an explicitly selected resource; the private Nate Study candidate has a similar top-k scope issue. Evaluate exact known-resource scoping before ranking. Hybrid reciprocal-rank fusion is a ranking proposal, **not** a confidence or permission score. Preserve passage/version offsets, account/course/category access, deletion/redaction, token bounds, no-support/no-model behavior and validated citations. Local vectors must be keyed by passage hash and model version; model downloads do not authorize uploading course text. See [course intelligence](course-intelligence.md) and [privacy boundaries](ai-and-privacy.md).
+
+Source is reconciled through Sean's main `ccd21f8` Today-rail details change; its four focused tests pass. The actual visible app remains application `7b9bdf9` (receipt below); source synchronization and these documentation edits do not restart or update that window. Study remains a private assembly until its exact-account and effective policy/source-version producing gates pass.
+
 ## 2026-09-27 11:24 UTC — main 7b9bdf9 is open in the actual app
 
 Published `7b9bdf96bce820a9efed686a32cb1f2dd3e2570e` is now running in the visible Electron window (PID 18668, persistent launcher 18520). The older window quit gracefully; the populated profile and a closed database/Local Storage backup were preserved. Home, expanded sidebar, window size and scroll position were restored, with no draft or selection present and no renderer errors. The new Calendar and Home enrollment footer are now available in the real app.

@@ -2,6 +2,10 @@
 
 Backend implementation, September 26, 2026. The optional local extraction adapter has isolated checks and the compiler is connected to ingestion and existing policy consumers. This document does not establish a demonstrated live-model capability. Follow [reference-driven design](reference-driven-design.md) and [the implementation status](implementation-status.md) for delivery evidence.
 
+## September 27 retrieval upgrade — planned, not integrated
+
+The authorized comparison will measure lexical retrieval before adding local semantic candidates, authorized timed captions, bounded citation repair or source diversity. These may improve evidence discovery; none may grant course/assignment AI permission or replace source/version validation. Nate owns ingestion/core integration; private candidates require baseline and owner review before canonical adoption. No before/after quality result is available yet. See the [shared retrieval handoff](design-handoff.md#2026-09-27-1131-utc--retrieval-baseline-and-shared-ownership).
+
 ## Student journey and scope
 
 A normal course refresh captures the syllabus, assignments, and materials. A local compiler assembles a reusable course profile: cited AI policies, grading rules, topics, and assessment expectations. Existing context and tutoring consumers can use that profile without a new screen or a student repeatedly uploading the same syllabus. A source change must invalidate dependent conclusions. Missing, inaccessible, contradictory, and uninterpreted information must remain distinguishable.
