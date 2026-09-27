@@ -1063,6 +1063,8 @@ export interface Store {
   ingestionSettings(): IngestionSettings;
   setIngestionSettings(value: IngestionSettings): void;
   courseOverrides(): CourseOverride[];
+  /** Course inclusion's inputs (the overrides and the ingestion settings) in one read; optional. */
+  inclusionInputs?(): { overrides: CourseOverride[]; ingestion: IngestionSettings };
   setCourseOverride(value: CourseOverride): void;
   changes(filter?: ChangeFilter): ResourceChange[];
   scopeBaselines(): ScopeBaseline[];

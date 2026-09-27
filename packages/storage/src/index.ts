@@ -1631,6 +1631,23 @@ export function createStore(
         "INSERT INTO preferences VALUES ('ingestion',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
       ).run(JSON.stringify(parsed));
     },
+    inclusionInputs() {
+      // One statement for both of course inclusion's inputs (the hot views build inclusion per call).
+      const rows = prepare(
+        "SELECT account_scope, course_id, included, NULL AS value FROM course_overrides UNION ALL SELECT NULL, NULL, NULL, value FROM preferences WHERE key='ingestion'",
+      ).all() as Row[];
+      const overrides = rows
+        .filter((r) => r.account_scope !== null)
+        .map((r) => ({ accountScope: String(r.account_scope), courseId: String(r.course_id), included: Boolean(r.included) }))
+        .sort((a, b) => (a.accountScope < b.accountScope ? -1 : a.accountScope > b.accountScope ? 1 : a.courseId < b.courseId ? -1 : a.courseId > b.courseId ? 1 : 0));
+      const setting = rows.find((r) => r.account_scope === null);
+      return {
+        overrides,
+        ingestion: setting
+          ? ingestionSettingsSchema.parse(JSON.parse(String(setting.value)))
+          : ingestionSettingsSchema.parse(defaultIngestionSettings),
+      };
+    },
     courseOverrides() {
       return (
         prepare(

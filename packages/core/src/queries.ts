@@ -13,6 +13,7 @@ import type {
   QueryRequest,
   QueryResult,
   Resource,
+  SourceHealth,
   ResourceChange,
   ResourceSummary,
   ResourceView,
@@ -42,12 +43,19 @@ export function codeAssignmentKind(r: Pick<Resource, "kind" | "submissionTypes">
  * the caller's own unsearched `store.resources()` from this call, when it has one, so the
  * evidence does not read every resource a second time.
  */
-export function resourceViews(store: Store, list: Resource[], all?: Resource[]): ResourceView[] {
+export function resourceViews(
+  store: Store,
+  list: Resource[],
+  all?: Resource[],
+  /** What the caller already read in this call: its sources, and its course inclusion over `all`. */
+  shared: { sources?: SourceHealth[]; inclusion?: (resource: Resource) => boolean } = {},
+): ResourceView[] {
   // Inclusion and the evidence share one full resource list (the caller's, or one read here) and
-  // one sources read.
-  const sourceList = store.sources();
+  // one sources read (the caller's, or one here).
+  const inclusion = shared.inclusion;
+  const sourceList = shared.sources ?? store.sources();
   const view = Object.create(readOnce(store, all ?? store.resources()), { sources: { value: () => sourceList } }) as Store;
-  const included = courseInclusion(view);
+  const included = inclusion ?? courseInclusion(view);
   const sources = new Map(sourceList.map(source => [source.id, source]));
   const permitted = (resource: Resource) => !resource.deleted && included(resource) && sources.get(resource.sourceId)?.status !== "inaccessible";
   const evidence = evidenceFor(view, permitted);
@@ -164,9 +172,10 @@ export function runQuery(store: Store, request: QueryRequest, context: QueryCont
     case "summary": {
       const sources = store.sources();
       const all = store.resources();
-      const views = resourceViews(store, all.filter((r) => r.kind === "assignment"), all);
-      // Inclusion is the same for every resource of one course: built once from this call's list.
+      // Inclusion is the same for every resource of one course: built once from this call's list,
+      // and shared with the views.
       const included = courseInclusion(readOnce(store, all));
+      const views = resourceViews(store, all.filter((r) => r.kind === "assignment"), all, { sources, inclusion: included });
       const courses = new Map<string, { accountScope: string; courseId: string; courseName: string; resources: number; open: number; nextDue: string | null; included: boolean }>();
       const scopeOf = new Map(sources.map((s) => [s.id, s.accountScope]));
       for (const r of all) {
@@ -225,7 +234,8 @@ export function runQuery(store: Store, request: QueryRequest, context: QueryCont
     }
     case "resources": {
       const offset = decode(request.cursor, isOffset)?.o ?? 0;
-      const scopes = new Map(store.sources().map((s) => [s.id, s.accountScope]));
+      const sources = store.sources();
+      const scopes = new Map(sources.map((s) => [s.id, s.accountScope]));
       const kinds = request.kinds ? new Set<string>(request.kinds) : undefined;
       const listed = store.resources(request.search);
       const rows = listed
@@ -236,7 +246,7 @@ export function runQuery(store: Store, request: QueryRequest, context: QueryCont
             (!kinds || kinds.has(r.kind)),
         );
       // Unsearched, the list read above is every resource: the evidence reuses it.
-      const views = resourceViews(store, rows, request.search?.trim() ? undefined : listed);
+      const views = resourceViews(store, rows, request.search?.trim() ? undefined : listed, { sources });
       const limit = request.limit ?? 50;
       const page = views.slice(offset, offset + limit).map(summarize);
       return {
@@ -249,11 +259,13 @@ export function runQuery(store: Store, request: QueryRequest, context: QueryCont
     case "resource": {
       const r = store.resource(request.id);
       if (!r || r.deleted) throw new Error("This item is no longer available.");
-      const [view] = resourceViews(store, [r]);
+      // One links read, shared by the evidence and this item's own links.
+      const links = store.links();
+      const [view] = resourceViews(Object.create(store, { links: { value: () => links } }) as Store, [r]);
       return {
         view: "resource",
         resource: view!,
-        links: store.links().filter((l) => l.fromId === r.id || l.toId === r.id),
+        links: links.filter((l) => l.fromId === r.id || l.toId === r.id),
         changes: store.changes({ resourceId: r.id, limit: 50 }),
       };
     }

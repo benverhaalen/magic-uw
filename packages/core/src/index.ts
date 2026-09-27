@@ -211,18 +211,21 @@ export function createCore(store: Store, options: CoreOptions) {
     // of every command's payload (78 MB of 110 MB), which stalled first paint. Bodies stay in the
     // store for MCP, context and scoped queries (queries.ts), which remain the long-term path.
     const listed = store.resources(search);
-    const resources = resourceViews(store, listed, search?.trim() ? undefined : listed).map((view) => {
+    // One sources, links and jobs read each, shared by the views, the evidence and the fields below.
+    const sources = store.sources();
+    const links = store.links();
+    const jobs = store.jobs();
+    const withLinks = Object.create(store, { links: { value: () => links } }) as Store;
+    const resources = resourceViews(withLinks, listed, search?.trim() ? undefined : listed, { sources }).map((view) => {
       const { rawHtml: _html, parts: _parts, ...rest } = view as typeof view & {
         rawHtml?: unknown;
         parts?: unknown;
       };
       return rest as typeof view;
     });
-    const sources = store.sources();
     // owner: course-facts. A course waiting on a queued or running `course.facts` job is pending.
     const factsQueued = new Set(
-      store
-        .jobs()
+      jobs
         .filter((j) => j.kind === "course.facts" && (j.status === "pending" || j.status === "running"))
         .map((j) => (j as { subjectId?: string }).subjectId ?? ""),
     );
@@ -250,8 +253,8 @@ export function createCore(store: Store, options: CoreOptions) {
       resources,
       sources,
       privacy: store.privacy(),
-      links: store.links(),
-      jobs: store.jobs(),
+      links,
+      jobs,
       receipts: store.receipts(),
       attempts: store.attempts(),
       fixtureMode: sources.some((s) => s.kind === "fixture"),
