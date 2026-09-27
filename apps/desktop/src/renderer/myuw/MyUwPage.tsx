@@ -4,6 +4,7 @@ import { decodeUwTerm } from "../../../../../packages/domain/src/planning";
 import { planningPolicies } from "../../../../../packages/domain/src/planning-policy";
 import { Action, Disclosure } from "../../../../../packages/ui/src";
 import { Icon, type IconName } from "./Icon";
+import { GpaSection } from "./Gpa"; // owner: gpa
 import { myUwMemory, type PlanStyle } from "./memory";
 import {
   attentionDomId, courseDomId, offeringsLoaded, offeringsToLoad, projectMyUw, recordNeedsVerification, refreshOutcome, requirementDomId, requirementToneLabel,
@@ -202,6 +203,7 @@ export function MyUwPage({ snapshot, busy, run, open, signIn, refresh }: MyUwPro
           setTerm={setTerm} setStyle={setStyle} compare={compare} loadOfferings={loadOfferings} comparison={comparison} current={current} open={open} />}
       </section> : null}
 
+      {!firstConnection ? <GpaSection model={model} /> : null /* owner: gpa */}
       <section className="myuw-section myuw-more" aria-label="Records and sources">
         {model.history.length ? <Disclosure label={`Course history · ${model.history.length} source records`}>
           <p className="myuw-note">Completed, in-progress, planned and dropped records stay separate. Overlapping sources may describe the same attempt; this list isn’t a transcript or a credit total.</p>

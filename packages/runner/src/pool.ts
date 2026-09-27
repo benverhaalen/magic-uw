@@ -417,6 +417,9 @@ export function createSessionPool(options: PoolOptions): SessionPool {
       const session = sessionFor(lane, prefixPath, prefixHash, model, prefix.length);
       const started = now();
       emit({ type: "ask_start", lane: lane.key, session: session.id, pack: call.pack.id, at: started });
+      // One ask per session: start the next ask's spare now, while this one answers, so a
+      // back-to-back ask never waits on a CLI start (starting it only after the answer did).
+      if (fresh && lane.key.startsWith("interactive:")) prewarm(lane);
       let result: ClaudeResult;
       try {
         result = await session.ask(text, call.timeoutMs, call.signal);

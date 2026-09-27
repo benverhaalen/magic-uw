@@ -86,7 +86,7 @@ test("conversation turns: a warm interactive lane answers follow-ups in one proc
   }
 });
 
-test("fresh turns (the default): each follow-up goes to a spare started after the last ask, with the byte-identical prefix and no earlier turns", async () => {
+test("fresh turns (the default): each follow-up goes to a spare started while the last ask answered, with the byte-identical prefix and no earlier turns", async () => {
   const h = await harness([ok("chat", { text: "one" }), ok("chat", { text: "two" }), ok("chat", { text: "three" })]);
   try {
     const ask = { pack: chat, systemPrompt: SYSTEM, schema: answer, tier: "pass" as const, lane: "interactive" as const, courseId: "c1" };
@@ -104,6 +104,11 @@ test("fresh turns (the default): each follow-up goes to a spare started after th
     // Each ask after the first finds its session already started (the spare), so it waits on no start-up.
     const order = h.events.filter((e) => e.type === "session_start" || e.type === "ask_start").map((e) => e.type);
     assert.deepEqual(order.slice(0, 6), ["session_start", "ask_start", "session_start", "ask_start", "session_start", "ask_start"]);
+    // Regression guard (2026-09-27): the spare starts while the current ask answers, not after it
+    // returns; started after, back-to-back asks each waited on a CLI start (intent-latency 35 s → 240 s).
+    const seq = h.events.filter((e) => e.type === "session_start" || e.type === "ask_start" || e.type === "ask_end").map((e) => e.type);
+    const firstEnd = seq.indexOf("ask_end");
+    assert.ok(seq.slice(seq.indexOf("ask_start"), firstEnd).includes("session_start"), `the spare starts before the first ask ends: ${seq.join(",")}`);
     assert.equal(h.events.filter((e) => e.type === "rotate" && e.reason === "turn").length, 3);
     const start = h.events.find((e) => e.type === "session_start");
     assert.ok(start && start.type === "session_start" && start.prefixTokens > 0 && start.cacheable === false, "a short synthetic prefix is reported as not cacheable");
@@ -214,7 +219,9 @@ test("a usage limit inside a warm session surfaces as usage_limit and keeps the 
     const ask = { pack: chat, systemPrompt: SYSTEM, schema: answer, tier: "pass" as const, lane: "interactive" as const, courseId: "c1", input: "q" };
     await assert.rejects(h.runner.run(ask), (e: unknown) => e instanceof RunnerError && e.kind === "usage_limit");
     await h.runner.run(ask);
-    assert.equal((await h.log()).filter((l) => l.event === "spawn").length, 1);
+    // The limit kills nothing: the only other process is the spare pre-started for the next ask.
+    assert.equal((await h.log()).filter((l) => l.event === "spawn").length, 2);
+    assert.equal(h.events.filter((e) => e.type === "fallback").length, 0);
   } finally {
     await h.pool.close();
   }
