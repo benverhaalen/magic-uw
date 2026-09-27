@@ -419,7 +419,7 @@ a {
 .today-layout {
   display: grid;
   grid-template-columns: minmax(300px, 1fr) minmax(320px, 0.9fr);
-  min-height: calc(100vh - 184px);
+  min-height: calc(100vh - 204px); /* 20px: the accent frame insets .app-shell by 10px each side */
   border-top: 1px solid var(--border);
 }
 .resource-panel {
@@ -1282,7 +1282,7 @@ select {
     position: sticky;
     top: 0;
     align-self: start;
-    height: calc(100vh - 188px);
+    height: calc(100vh - 208px);
   }
 }
 @media (min-width: 1450px) {
