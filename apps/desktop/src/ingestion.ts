@@ -99,6 +99,88 @@ import {
   type SpaceAccess,
 } from "../../../packages/connectors/src/canvas-inventory";
 // end owner: T05b
+// owner: acquisition. Course-file acquisition (RC1-RC4): session downloads, real causes, the
+// extraction pool, cheap skips, text-first order and the first-sync budget.
+import {
+  canvasFileDownloadPath,
+  throwIfCause,
+} from "../../../packages/connectors/src/canvas-file-download";
+import {
+  causeDiagnostic,
+  causeFromError,
+  causeFromExtraction,
+  documentTrialEvent,
+  extractionKind,
+  trialLogDocument,
+  type DocumentHostClass,
+} from "../../../packages/connectors/src/document-causes";
+import { createExtractPool, type ExtractPool } from "../../../packages/connectors/src/extract-pool";
+import { createOcrBackfill, detectOsOcrEngine } from "../../../packages/connectors/src/ocr-os";
+import type { LocalOcrAdapter } from "../../../packages/connectors/src/documents";
+import { rm } from "node:fs/promises";
+import { MaterialReadError } from "../../../packages/connectors/src/network";
+import { existsSync } from "node:fs";
+/**
+ * How course files are acquired. `ACQUISITION_APP` is what the desktop host (worker.ts) uses:
+ * main's session file route and the extraction threads exist only there. A host without them
+ * (tests, tools) gets `ACQUISITION_DEFAULTS`. `ACQUISITION_BEFORE` is the earlier behaviour, kept
+ * for the perf comparison (evals/perf, suite "documents").
+ */
+export interface AcquisitionOptions {
+  /** "session": main follows the redirect chain in the Canvas session; "signed": the public client. */
+  download: "session" | "signed";
+  /** Extraction in a worker_threads pool, off the utility loop. */
+  pool: boolean;
+  /** Within each urgency tier, small and text files before large PDFs. */
+  textFirst: boolean;
+  /** Skip a list row whose updated_at and size match the stored document, before any request. */
+  skipUnchanged: boolean;
+  /** The first sync of an account (no stored course document yet) gets a larger budget. */
+  firstSync?: { files: number; ms: number };
+  /** Steady-state caps: files attempted and wall time per sync. */
+  steady: { files: number; ms: number };
+  /** Document loops in flight; downloads are also capped by the shared scheduler (6 per host). */
+  loops?: number;
+  /** "ocr-pending": raw bytes are deleted once text is extracted (kept only while OCR is due). */
+  retainBytes?: "all" | "ocr-pending";
+  /** Background OCR of `needs_ocr` documents with the OS engine; pages per run. 0 turns it off. */
+  ocrPagesPerRun?: number;
+}
+export const ACQUISITION_DEFAULTS: AcquisitionOptions = {
+  download: "signed",
+  pool: false,
+  textFirst: true,
+  skipUnchanged: true,
+  steady: { files: 100, ms: 120_000 },
+};
+export const ACQUISITION_APP: AcquisitionOptions = {
+  download: "session",
+  pool: true,
+  textFirst: true,
+  skipUnchanged: true,
+  firstSync: { files: 400, ms: 300_000 },
+  steady: { files: 100, ms: 120_000 },
+  loops: 9,
+  retainBytes: "ocr-pending",
+  ocrPagesPerRun: 30,
+};
+export const ACQUISITION_BEFORE: AcquisitionOptions = {
+  download: "signed",
+  pool: false,
+  textFirst: false,
+  skipUnchanged: false,
+  steady: { files: 100, ms: 120_000 },
+};
+/** Text and Office first, then unknown, then PDF, then images; by size within each. */
+function documentWeight(file: Resource | undefined): number {
+  const name = file?.file?.displayName ?? file?.title ?? "",
+    type = file?.file?.contentType ?? "",
+    kind = extractionKind(name, type),
+    size = file?.file?.size ?? 5 * 1024 * 1024;
+  const tier = !file ? 1 : kind === "pdf" ? 2 : kind === "image" ? 3 : 0;
+  return tier * 1e9 + Math.min(size, 1e9 - 1);
+}
+// end owner: acquisition
 
 export interface IngestionHost {
   canvasFetch(url: string, init?: RequestInit): Promise<Response>;
@@ -118,6 +200,12 @@ export interface IngestionHost {
   spaceFetch?(url: string, init?: RequestInit): Promise<Response>;
   /** owner: T05b. A course's inventory with access states; the data builder stores it in course_spaces. */
   onSpaces?(accountScope: string, courseId: string, spaces: CourseSpace[]): void;
+  /** owner: acquisition. Overrides of ACQUISITION_DEFAULTS (tests and the perf comparison). */
+  acquisition?: Partial<AcquisitionOptions>;
+  /** owner: acquisition. The built extract-worker.cjs; without it extraction stays in-process. */
+  extractWorkerScript?: string;
+  /** owner: acquisition. The configured Tesseract adapter, the OCR fallback. */
+  ocr?: LocalOcrAdapter;
   /**
    * owner: T30. Microsoft Graph through main: `transport` is main's proxy (the token never
    * reaches the worker), `state` the vault's delta links, `scopes` what the student granted.
@@ -379,15 +467,101 @@ export function createIngestion(
   // end owner: T30
   // Resumable from persisted resource links and per-file source attempts, without a second job system.
   const attemptedFiles = new Set<string>();
-  let fileBudgetMs = 120000;
-  async function documents(signal: AbortSignal, only?: Set<string>) {
+  // owner: acquisition
+  const acquisition: AcquisitionOptions = { ...ACQUISITION_DEFAULTS, ...host.acquisition };
+  let fileBudgetMs = acquisition.steady.ms,
+    fileBudgetFiles = acquisition.steady.files,
+    budgetChosen = false;
+  let lastDocumentRun = { skipped: 0, attempted: 0, deferred: 0 };
+  let extractPool: ExtractPool | undefined;
+  function documentExtractor(): DocumentExtractor | undefined {
+    if (!acquisition.pool) return host.extractor;
+    const script =
+      host.extractWorkerScript ??
+      (typeof __dirname === "string" ? join(__dirname, "extract-worker.cjs") : undefined);
+    return (extractPool ??= createExtractPool({
+      ...(script && existsSync(script) ? { workerScript: script } : {}),
+      ...(host.extractor ? { fallback: host.extractor } : {}),
+    }));
+  }
+  // Background OCR of text-less documents (ocr-os.ts): presence-gated by the engine probe,
+  // bounded per run, one run at a time, and a version check before its result is saved.
+  const ocr = createOcrBackfill({
+    engine: () => detectOsOcrEngine(),
+    ...(host.ocr ? { tesseract: host.ocr } : {}),
+    maxPagesPerRun: acquisition.ocrPagesPerRun ?? 0,
+    candidates: () =>
+      store
+        .resources()
+        .filter(
+          (r) =>
+            !r.deleted &&
+            r.document?.extractionStatus === "needs_ocr" &&
+            r.document.localPath &&
+            existsSync(r.document.localPath),
+        )
+        .map((r) => ({
+          key: `${r.id}|${r.contentHash}`,
+          localPath: r.document!.localPath!,
+          filename: r.file?.displayName ?? r.title,
+          ...(r.file?.contentType ? { contentType: r.file.contentType } : {}),
+          pages: r.document!.pages ?? [],
+        })),
+    save(candidate, result) {
+      const cut = candidate.key.lastIndexOf("|"),
+        id = candidate.key.slice(0, cut),
+        version = candidate.key.slice(cut + 1);
+      const current = store.resource(id);
+      const source = current && store.sources().find((s) => s.id === current.sourceId);
+      if (!current || !source || current.deleted || current.contentHash !== version) return;
+      const { id: sourceId, label, kind, accountScope, courseId, scope } = source;
+      if (result.status === "ok" && retainOcrBytes() === "ocr-pending")
+        void rm(candidate.localPath, { force: true }).catch(() => {});
+      save({
+        source: { id: sourceId, label, kind, accountScope, courseId, scope },
+        observedAt: now().toISOString(),
+        complete: true,
+        status: "ok",
+        resources: [
+          {
+            ...inputResource(current),
+            text: result.text,
+            parts: result.parts,
+            document: {
+              ...current.document!,
+              ...(result.status === "ok" && retainOcrBytes() === "ocr-pending" ? { localPath: undefined } : {}),
+              extractionStatus: result.status,
+              pages: result.pages,
+            },
+          },
+        ],
+        diagnostics: result.status === "ok" ? [] : [causeDiagnostic({ cause: "needs_ocr" })],
+      });
+      trialLogDocument({
+        event: "document",
+        hostClass: "cache",
+        status: result.status,
+        cause: result.status === "ok" ? `ocr.${result.engine ?? "none"}` : "needs_ocr",
+      });
+    },
+  });
+  const retainOcrBytes = () => acquisition.retainBytes ?? "all";
+  function startOcr() {
+    if (!acquisition.ocrPagesPerRun || ocr.running) return;
+    void ocr.run().catch(() => {});
+  }
+  // end owner: acquisition
+  async function documents(signal: AbortSignal, only?: Set<string>, skipCourses?: Set<string>) {
     const settings = store.ingestionSettings();
     const manager = createDocumentManager({
       directory: join(host.directory, "documents"),
       client,
-      downloadConcurrency: settings.downloadConcurrency,
+      // owner: acquisition: the manager's slots cover download and extraction; the scheduler and
+      // the pool bound each separately.
+      downloadConcurrency: acquisition.pool ? 8 : settings.downloadConcurrency,
       maxBytes: settings.maxFileBytes,
-      extractor: host.extractor,
+      extractor: documentExtractor(),
+      retainBytes: acquisition.retainBytes ?? "all",
     });
     const http = new CanvasHttp({
       fetch: host.canvasFetch,
@@ -404,11 +578,31 @@ export function createIngestion(
       source: CaptureBatch["source"];
       priorFile?: Resource;
       urgent: boolean;
+      syllabus?: boolean; // owner: acquisition
       last: string;
     };
     const jobs: Job[] = [];
+    // owner: acquisition: the earlier documents, indexed once per run (was a scan per file).
+    const priorDocuments = new Map<string, Resource>(),
+      listRows = new Map<string, Resource>();
+    for (const r of all) {
+      const account = sources.get(r.sourceId)?.accountScope;
+      if (r.document?.fileId) priorDocuments.set(`${account}:${r.courseId}:${r.document.fileId}`, r);
+      if (r.file?.id && !r.document) listRows.set(`${account}:${r.courseId}:${r.file.id}`, r);
+    }
+    let skipped = 0;
+    if (!budgetChosen) {
+      // The first sync of an account (no course document stored yet) gets the larger budget.
+      budgetChosen = true;
+      if (acquisition.firstSync && !all.some((r) => r.document?.fileId)) {
+        fileBudgetMs = acquisition.firstSync.ms;
+        fileBudgetFiles = acquisition.firstSync.files;
+      }
+    }
+    // end owner: acquisition
     for (const { resource: course, source } of courses()) {
       if (only && !only.has(course.courseId)) continue;
+      if (skipCourses?.has(course.courseId)) continue; // owner: acquisition (RC4)
       const rows = all.filter(
         (r) =>
           r.courseId === course.courseId &&
@@ -416,9 +610,38 @@ export function createIngestion(
       );
       const urgent = urgentFileIds(rows, origin, now().getTime());
       const ids = new Set(rows.flatMap((r) => referencedFileIds(r, origin)));
+      // owner: acquisition: syllabus files first (team packet backend/12): a file named or linked
+      // as the syllabus, or linked from the Canvas syllabus body, is urgent, ahead of due-soon.
+      const syllabusIds = new Set<string>();
+      for (const r of rows) {
+        if (/\/assignments\/syllabus$/.test(r.url) || /syllabus/i.test(r.title))
+          for (const id of referencedFileIds(r, origin)) syllabusIds.add(id);
+        for (const link of r.links ?? [])
+          if (typeof link !== "string" && /syllabus/i.test(`${link.text ?? ""} ${link.url}`)) {
+            const id = canvasFileId(link.url, origin, course.courseId);
+            if (id) syllabusIds.add(id);
+          }
+      }
       for (const id of ids) {
         const key = `${source.accountScope}:${course.courseId}:${id}`;
         if (attemptedFiles.has(key)) continue;
+        // owner: acquisition: an unchanged list row (same updated_at and size as the stored
+        // document, whose file is still on disk) needs no metadata request and no download.
+        const listed = listRows.get(key),
+          stored = priorDocuments.get(key)?.document;
+        if (
+          acquisition.skipUnchanged &&
+          listed?.file?.updatedAt &&
+          listed.file.size !== undefined &&
+          stored?.updatedAt === listed.file.updatedAt &&
+          stored.sizeBytes === listed.file.size &&
+          (stored.extractionStatus === "ok" ||
+            stored.extractionStatus === "unsupported" ||
+            (stored.extractionStatus !== "error" && !!stored.localPath && existsSync(stored.localPath)))
+        ) {
+          skipped++;
+          continue;
+        }
         const scope = `file:${id}`;
         const fileSource = {
           id: `canvas:${source.accountScope}:${course.courseId}:${scope}`,
@@ -433,8 +656,9 @@ export function createIngestion(
           course,
           account: source.accountScope,
           source: fileSource,
-          urgent: urgent.has(id),
-          priorFile: rows.find((r) => r.file?.id === id && !r.document),
+          urgent: urgent.has(id) || syllabusIds.has(id),
+          syllabus: syllabusIds.has(id) || /syllabus/i.test(listRows.get(key)?.file?.displayName ?? ""),
+          priorFile: listRows.get(key), // owner: acquisition: indexed once
           last: sources
             .get(fileSource.id)
             ?.diagnostics?.some((d) => d.code === "file_budget_deferred")
@@ -446,10 +670,16 @@ export function createIngestion(
     // Interleave urgency with oldest checks so undated material cannot starve.
     jobs.sort(
       (a, b) =>
-        a.last.localeCompare(b.last) || a.source.id.localeCompare(b.source.id),
+        a.last.localeCompare(b.last) ||
+        // owner: acquisition: small and text files before large PDFs within a tier.
+        (acquisition.textFirst ? documentWeight(a.priorFile) - documentWeight(b.priorFile) : 0) ||
+        a.source.id.localeCompare(b.source.id),
     );
-    const urgent = jobs.filter((j) => j.urgent),
-      rest = jobs.filter((j) => !j.urgent),
+    const urgent = [
+        ...jobs.filter((j) => j.syllabus), // owner: acquisition: syllabus ahead of due-soon
+        ...jobs.filter((j) => j.urgent && !j.syllabus),
+      ],
+      rest = jobs.filter((j) => !j.urgent && !j.syllabus),
       ordered: Job[] = [];
     while (urgent.length || rest.length) {
       ordered.push(...urgent.splice(0, 3), ...rest.splice(0, 1));
@@ -459,15 +689,22 @@ export function createIngestion(
     let index = 0;
     await Promise.all(
       Array.from(
-        { length: Math.min(settings.downloadConcurrency, ordered.length) },
+        {
+          length: Math.min(
+            acquisition.loops ?? settings.downloadConcurrency,
+            ordered.length,
+          ),
+        },
         async () => {
           while (
             index < ordered.length &&
-            attemptedFiles.size < 100 &&
+            attemptedFiles.size < fileBudgetFiles &&
             performance.now() - started < fileBudgetMs &&
             !http.needsSignIn
           ) {
             const job = ordered[index++]!;
+            const fileStarted = performance.now(); // owner: acquisition
+            let hostClass: DocumentHostClass = "unknown";
             const key = `${job.account}:${job.course.courseId}:${job.id}`;
             attemptedFiles.add(key);
             const documentSource = {
@@ -481,12 +718,7 @@ export function createIngestion(
               courseId: job.course.courseId,
               scope: `document:${job.id}`,
             };
-            const prior = all.find(
-              (r) =>
-                r.document?.fileId === job.id &&
-                r.courseId === job.course.courseId &&
-                sources.get(r.sourceId)?.accountScope === job.account,
-            );
+            const prior = priorDocuments.get(`${job.account}:${job.course.courseId}:${job.id}`); // owner: acquisition
             const stillIncluded = () =>
               store
                 .sources()
@@ -547,20 +779,48 @@ export function createIngestion(
               });
               if (file.file?.locked)
                 throw new CanvasFailure("inaccessible", "file_locked");
+              // owner: acquisition: reference-only (docs/pipeline-details.md, storage policy): video
+              // and audio, and files over the size cap, keep their metadata and link; no download.
+              const referenceOnly =
+                /^(?:video|audio)\//i.test(value["content-type"] ?? "")
+                  ? ("reference_only" as const)
+                  : (value.size ?? 0) > settings.maxFileBytes
+                    ? ("too_large" as const)
+                    : undefined;
+              if (referenceOnly) {
+                trialLogDocument(
+                  documentTrialEvent({ cause: referenceOnly }, { hostClass: "unknown", status: "skipped", ms: performance.now() - fileStarted }),
+                );
+                save({
+                  source: documentSource,
+                  observedAt: now().toISOString(),
+                  complete: true,
+                  status: "ok",
+                  resources: [file],
+                  diagnostics: [causeDiagnostic({ cause: referenceOnly })],
+                });
+                continue;
+              }
               if (typeof raw.url !== "string")
-                throw new Error("file_metadata_invalid");
+                throw new MaterialReadError("file_metadata_invalid");
+              // owner: acquisition. "session": main fetches /courses/:cid/files/:id/download in
+              // the Canvas session and follows the redirects itself (canvas-file-download.ts).
+              // "signed": the earlier public-client download of the API's URL.
               const download = new URL(raw.url);
+              const sessionUrl = canvasFileDownloadPath(origin, job.course.courseId, job.id);
               if (
-                download.protocol !== "https:" ||
-                download.username ||
-                download.password ||
-                !(
-                  download.origin === origin ||
-                  download.hostname.endsWith(".canvas-user-content.com") ||
-                  download.hostname === "instructure-uploads.s3.amazonaws.com"
-                )
+                acquisition.download === "signed" &&
+                (download.protocol !== "https:" ||
+                  download.username ||
+                  download.password ||
+                  !(
+                    download.origin === origin ||
+                    download.hostname.endsWith(".canvas-user-content.com") ||
+                    download.hostname === "instructure-uploads.s3.amazonaws.com"
+                  ))
               )
-                throw new Error("download_host_unverified");
+                throw new MaterialReadError("download_host_unverified", { host: download.hostname });
+              // end owner: acquisition
               const current = store
                 .resources()
                 .find(
@@ -571,12 +831,30 @@ export function createIngestion(
               const extracted = await manager.capture({
                 id: job.id,
                 sourceUrl: file.url,
-                downloadUrl: download.href,
-                allowedDownloadOrigins: [
-                  origin,
-                  download.origin,
-                  "https://instructure-uploads.s3.amazonaws.com",
-                ],
+                ...(acquisition.download === "session"
+                  ? {
+                      // owner: acquisition: through the shared scheduler, not the 2-per-host cap.
+                      download: async () => {
+                        const response = await scheduler().run(
+                          origin,
+                          () => host.canvasFetch(sessionUrl, { signal }),
+                          { priority: job.urgent ? 0 : 1, signal },
+                        );
+                        throwIfCause(response);
+                        hostClass =
+                          (response.headers.get("x-magic-host-class") as DocumentHostClass | null) ??
+                          "canvas";
+                        return { response, url: sessionUrl, redirects: [] };
+                      },
+                    }
+                  : {
+                      downloadUrl: download.href,
+                      allowedDownloadOrigins: [
+                        origin,
+                        download.origin,
+                        "https://instructure-uploads.s3.amazonaws.com",
+                      ],
+                    }),
                 filename: value.filename ?? value.display_name,
                 contentType: value["content-type"],
                 updatedAt: value.updated_at,
@@ -606,12 +884,27 @@ export function createIngestion(
                   )
               )
                 continue;
+              // owner: acquisition: the real cause; a text-less PDF is a complete read whose
+              // document is `needs_ocr` (its own status), not a source left partial forever.
+              const outcome = causeFromExtraction(
+                extracted,
+                extractionKind(value.filename ?? value.display_name, value["content-type"]),
+              );
+              const readComplete = extracted.status === "ok" || outcome.cause === "needs_ocr";
+              trialLogDocument(
+                documentTrialEvent(outcome, {
+                  hostClass: extracted.skipped ? "cache" : hostClass,
+                  status: extracted.status,
+                  bytes: extracted.document.sizeBytes,
+                  ms: performance.now() - fileStarted,
+                }),
+              );
               // Save the current extraction state even if empty: old text cannot masquerade as the new version.
               save({
                 source: documentSource,
                 observedAt: now().toISOString(),
-                complete: extracted.status === "ok",
-                status: extracted.status === "ok" ? "ok" : "partial",
+                complete: readComplete,
+                status: readComplete ? "ok" : "partial",
                 resources: [
                   {
                     ...file,
@@ -620,15 +913,25 @@ export function createIngestion(
                     document: extracted.document,
                   },
                 ],
-                diagnostics: extracted.diagnostics.map((code) => ({
-                  code,
-                  path: [],
-                  severity: "warning",
-                })),
+                diagnostics: [
+                  ...(outcome.cause === "ok" ? [] : [causeDiagnostic(outcome)]),
+                  ...extracted.diagnostics
+                    .filter((code) => /^[a-z0-9_.-]{1,100}$/i.test(code))
+                    .map((code) => ({ code, path: [], severity: "warning" as const })),
+                ],
               });
             } catch (error) {
               signal.throwIfAborted();
               if (!stillIncluded()) continue;
+              // owner: acquisition (RC3): the real cause, host only, in place of the catch-all.
+              const outcome = http.needsSignIn ? { cause: "needs_sign_in" as const } : causeFromError(error);
+              trialLogDocument(
+                documentTrialEvent(outcome, {
+                  hostClass,
+                  status: "failed",
+                  ms: performance.now() - fileStarted,
+                }),
+              );
               const status = http.needsSignIn
                 ? "needs_sign_in"
                 : error instanceof CanvasFailure &&
@@ -642,13 +945,7 @@ export function createIngestion(
                   complete: false,
                   status,
                   resources: [],
-                  diagnostics: [
-                    {
-                      code: "document_read_incomplete",
-                      path: [],
-                      severity: "warning",
-                    },
-                  ],
+                  diagnostics: [causeDiagnostic(outcome)], // owner: acquisition
                 });
             }
           }
@@ -656,6 +953,7 @@ export function createIngestion(
       ),
     );
     fileBudgetMs = Math.max(0, fileBudgetMs - (performance.now() - started));
+    lastDocumentRun = { skipped, attempted: index, deferred: Math.max(0, ordered.length - index) }; // owner: acquisition
     if (index < ordered.length) {
       for (const job of ordered.slice(index))
         save({
@@ -1283,7 +1581,9 @@ export function createIngestion(
       sourceIds.clear();
       attemptedFiles.clear();
       observedPages.clear();
-      fileBudgetMs = 120000;
+      fileBudgetMs = acquisition.steady.ms; // owner: acquisition
+      fileBudgetFiles = acquisition.steady.files;
+      budgetChosen = false;
       if (moduleRun) moduleRun.invalidated = true;
       moduleRun = undefined;
       rateLimitRemaining = undefined;
@@ -1393,6 +1693,8 @@ export function createIngestion(
     signal: AbortSignal,
   ) {
     let needsSignIn = false;
+    const signInCourses = new Set<string>(); // owner: acquisition (RC4)
+    let accountSignIn = false;
     const s = store.ingestionSettings();
     for await (const batch of canvasConnector({
       onIdentity: (identity) => {
@@ -1422,12 +1724,23 @@ export function createIngestion(
     }).pull(signal)) {
       save(batch);
       needsSignIn ||= batch.status === "needs_sign_in";
+      // owner: acquisition (RC4): a sign-in state on one course's source no longer skips the
+      // documents of every other course; only an account-level one (no course) does.
+      if (batch.status === "needs_sign_in") {
+        if (batch.source.courseId) signInCourses.add(batch.source.courseId);
+        else accountSignIn = true;
+      }
     }
-    if (needsSignIn) markExpired();
+    if (needsSignIn && accountSignIn) markExpired();
     else {
-      needsSignIn = await documents(signal, only);
-      if (!needsSignIn) await inventory(only, signal); // owner: T05b (D32, D41)
+      // documents() stops at its first sign-in answer (one request) if the session is gone.
+      const documentsSignIn = await documents(signal, only, signInCourses);
+      if (!documentsSignIn) startOcr(); // owner: acquisition: background, never awaited
+      if (!needsSignIn && !documentsSignIn) await inventory(only, signal); // owner: T05b (D32, D41)
+      if (needsSignIn && !documentsSignIn) markExpired();
+      needsSignIn ||= documentsSignIn;
     }
+    // end owner: acquisition
     await feeds(signal);
     return {
       needsSignIn,
@@ -1551,6 +1864,8 @@ export function createIngestion(
     recheckAccess,
     moduleHashes: () => new Map(moduleHashes),
     probeRequests: () => probeRequests, // owner: T33
+    documentRun: () => ({ ...lastDocumentRun, pool: extractPool?.stats(), threaded: extractPool?.threaded ?? false }), // owner: acquisition
+    closeExtraction: () => extractPool?.close(), // owner: acquisition
     // end owner: T05b
   };
 }

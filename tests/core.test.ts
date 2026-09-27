@@ -81,14 +81,18 @@ test("local default ingests immediately, blocks egress, and compiles exactly the
   await core.close();
 });
 test("revoking cloud access discards a late successful response", async () => {
-  let resolve!: (value: typeof result) => void;
+  let resolve!: (value: typeof result) => void, entered!: () => void;
+  const inFlight = new Promise<void>((r) => (entered = r));
   const store = createStore(":memory:");
   store.setPrivacy(enabled);
   store.setConsent!(jevConsent.value, "2026-09-26T12:00:00Z");
   const core = createCore(store, {
     fixture: batch,
+    // One drain: the Jev call starts in the drain's idle slice, so wait until it is in flight.
+    drain: { idleMs: 0 },
     gateway: {
       evaluate() {
+        entered();
         return new Promise((r) => {
           resolve = r;
         });
@@ -96,6 +100,7 @@ test("revoking cloud access discards a late successful response", async () => {
     },
   });
   await core.execute({ type: "fixture" });
+  await inFlight;
   await core.execute({ type: "privacy", value: defaultPrivacy });
   resolve(result);
   await core.settled();
@@ -103,14 +108,18 @@ test("revoking cloud access discards a late successful response", async () => {
   await core.close();
 });
 test("deleting local data prevents an in-flight result or receipt from recreating it", async () => {
-  let resolve!: (value: typeof result) => void;
+  let resolve!: (value: typeof result) => void, entered!: () => void;
+  const inFlight = new Promise<void>((r) => (entered = r));
   const store = createStore(":memory:");
   store.setPrivacy(enabled);
   store.setConsent!(jevConsent.value, "2026-09-26T12:00:00Z");
   const core = createCore(store, {
     fixture: batch,
+    // One drain: the Jev call starts in the drain's idle slice, so wait until it is in flight.
+    drain: { idleMs: 0 },
     gateway: {
       evaluate() {
+        entered();
         return new Promise((r) => {
           resolve = r;
         });
@@ -118,6 +127,7 @@ test("deleting local data prevents an in-flight result or receipt from recreatin
     },
   });
   await core.execute({ type: "fixture" });
+  await inFlight;
   await core.execute({ type: "purge", confirmation: "DELETE LOCAL DATA" });
   resolve(result);
   await core.settled();
@@ -127,16 +137,19 @@ test("deleting local data prevents an in-flight result or receipt from recreatin
   await core.close();
 });
 test("a source change while evaluation is running prevents old classification replacing new facts", async () => {
-  let resolve!: (value: typeof result) => void;
+  let resolve!: (value: typeof result) => void, entered!: () => void;
+  const inFlight = new Promise<void>((r) => (entered = r));
   let calls = 0;
   const store = createStore(":memory:");
   store.setPrivacy(enabled);
   store.setConsent!(jevConsent.value, "2026-09-26T12:00:00Z");
   const core = createCore(store, {
     fixture: batch,
+    drain: { idleMs: 0 },
     gateway: {
       evaluate() {
         calls++;
+        entered();
         return calls === 1
           ? new Promise((r) => {
               resolve = r;
@@ -146,6 +159,7 @@ test("a source change while evaluation is running prevents old classification re
     },
   });
   await core.execute({ type: "import", batch });
+  await inFlight;
   const newer = {
     ...batch,
     observedAt: "2026-09-27T12:00:00Z",
