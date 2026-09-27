@@ -4,7 +4,7 @@
  * and the top passages per topic for the scope. No new extractor runs here.
  */
 import type { CourseCoreStore, PackScope, Resource, Store } from "@magic/contracts";
-import { effectiveCoursePolicy } from "../../../domain/src/course-intelligence";
+import { courseFramePolicy, effectiveCoursePolicy } from "../../../domain/src/course-intelligence";
 import type { CourseFrame, Passage } from "../../core/src/index";
 import type { Concept, LearningStore } from "../../../learning/src/store";
 import { normaliseLabel } from "../../../learning/src/concepts";
@@ -238,7 +238,7 @@ export function selectGuideInputs(
     profileChars += line.length;
   }
   const aiPolicy = intelligence?.claims.find((c) => c.kind === "ai_policy");
-  const policy = policies.find((p) => p.mode !== "unknown") ?? policies[0];
+  const policy = courseFramePolicy(policies);
   const frame: CourseFrame = {
     courseId: courseRef,
     course: label,

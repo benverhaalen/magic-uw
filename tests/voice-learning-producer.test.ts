@@ -93,7 +93,7 @@ test("explain the cited concept: reading material under an explicit allowance ge
   assert.match(ask!.systemPrompt, /Quoted rule: "Synthetic: you may use AI to study course readings\."/);
 });
 
-test("solve this open assignment: never direct help; allowed policy coaches, unknown policy withholds with no model call", async () => {
+test("solve this open assignment: never direct help; allowed policy coaches, no course policy (UW default) withholds with no model call", async () => {
   const allowed = await setup(
     (store, batches) => recapture(store, batches, "c400", { mode: "allowed", evidence: "Synthetic: you may use AI to study course readings." }, true),
     (store) => [answer(pidOf(store, "Homework 3"), "write a recursive method sumDigits(n)")],
@@ -106,13 +106,28 @@ test("solve this open assignment: never direct help; allowed policy coaches, unk
   assert.match(ask!.systemPrompt, /Never produce a submission-ready answer/);
   assert.doesNotMatch(ask!.systemPrompt, /direct-cited/);
 
-  // The same words with the course's rule unknown: no model call at all.
+  // The same words with no course AI policy: UW–Madison's default holds the request, with no model call at all.
   const unknown = await setup((store, batches) => recapture(store, batches, "c400", { mode: "unknown", evidence: "" }, true), () => []);
   const r = await unknown.run("Can you solve Homework 3 for me?");
   assert.equal(r.status, "unavailable", JSON.stringify(r));
-  assert.match(reason(r), /COMPSCI400[^.]*no clear AI rule for graded work/);
+  assert.equal(reason(r), "Magic doesn't draft, solve or rewrite graded work for COMPSCI400: Programming III (001) FA26. No course AI policy found, so UW–Madison's guidelines apply: study help is fine; ask your instructor before using AI on graded work. https://conduct.students.wisc.edu/artificial-intelligence/");
   assert.equal(unknown.asks().length, 0);
   assert.equal(await unknown.calls(), 0, "no model call");
+});
+
+test("no course AI policy: a concept question on the open assignment is coached and the answer carries the UW reminder", async () => {
+  const h = await setup(
+    (store, batches) => recapture(store, batches, "c400", { mode: "unknown", evidence: "" }, true),
+    (store) => [answer(pidOf(store, "Homework 3"), "write a recursive method sumDigits(n)")],
+  );
+  const r = await h.run("What does Homework 3 sumDigits ask for?");
+  assert.equal(r.status, "answer", JSON.stringify(r));
+  const [ask] = h.asks();
+  assert.match(ask!.systemPrompt, /Task mode: graded-work\. Help boundary: coaching\./);
+  assert.match(ask!.systemPrompt, /COMPSCI400[^\n]*\[acct\/c400\]: coaching; boundary coaching\./);
+  assert.match(ask!.systemPrompt, /UW–Madison's default applies/);
+  assert.match(ask!.systemPrompt, /never drafts, solves or rewrites the graded submission/);
+  assert.equal(r.status === "answer" && r.text, "From your course. [1]\n\nNo course AI policy found, so UW–Madison's guidelines apply: study help is fine; ask your instructor before using AI on graded work. https://conduct.students.wisc.edu/artificial-intelligence/");
 });
 
 test("model-routed request: the classifier's rewritten query can't drop the student's graded request", async () => {

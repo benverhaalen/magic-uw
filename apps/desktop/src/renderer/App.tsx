@@ -96,6 +96,7 @@ function ShellFeedback({ error, notice, view, onDismiss }: { error: string; noti
 }
 import { ResourceDetailHeader, ResourceProvenance } from "./ResourceDetailHeader";
 import { effectiveCoursePolicy } from "../../../../packages/domain/src/course-policy";
+import { UW_DEFAULT_AI_POLICY } from "../../../../packages/domain/src/uw-ai-policy";
 import { ResourceAssignment } from "./ResourceAssignment";
 import { ResourceEvent } from "./ResourceEvent";
 import { clearTaskWorkspaces } from "./task-workspace/model";
@@ -905,12 +906,15 @@ function ResourceDetail({
     return Boolean(other && other.url === resource.url && other.title === resource.title);
   });
   const policyDetails = (
-<Disclosure label={`Course AI policy · ${effectivePolicy.mode}`} placeKey={`resource-policy:${resource.id}`}>
+<Disclosure label={`Course AI policy · ${effectivePolicy.source === "uw-default" ? "UW–Madison default" : effectivePolicy.mode}`} placeKey={`resource-policy:${resource.id}`}>
         {effectivePolicy.conflict && <p className="attention-text">Saved policy sources disagree. The more restrictive policy applies.</p>}
-        <p className="source-text">
-          {effectivePolicy.evidence ||
-            "No AI policy was found in the captured material. Coaching is the default."}
-        </p>
+        {effectivePolicy.source === "uw-default"
+          ? <p className="source-text">{UW_DEFAULT_AI_POLICY.notice}{" "}
+              <button className="link-button" onClick={() => open(UW_DEFAULT_AI_POLICY.source.url)}>UW–Madison AI guidelines</button></p>
+          : <p className="source-text">
+              {effectivePolicy.evidence ||
+                "No AI policy was found in the captured material. Coaching is the default."}
+            </p>}
         {courseProfile?.freshness !== undefined && courseProfile.freshness !== "current_capture" && <p className="small muted">Course policy sources are {courseProfile.freshness}. The effective saved policy applies here.</p>}
         {effectivePolicy.resourceIds.length > 0 && <ul className="evidence-list">{effectivePolicy.resourceIds.map(id => {
           const evidence = snapshot.resources.find(candidate => candidate.id === id);

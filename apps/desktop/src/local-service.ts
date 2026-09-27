@@ -7,6 +7,8 @@ import {
   type Store,
   type ContextManifest,
 } from "@magic/contracts";
+import { UW_DEFAULT_NOTICE_WITH_LINK } from "../../../packages/domain/src/uw-ai-policy";
+import { isOpenGraded } from "../../../packages/domain/src/learning-request";
 
 /** Runs only on explicit request, outside the renderer. No model download or installation. */
 export function createLocalService(
@@ -109,8 +111,14 @@ export function createLocalService(
         throw new Error(
           "The source or data settings changed. Ask again using the current evidence.",
         );
+      // Under UW–Madison's default, an answer on open graded work always carries the reminder (added by code).
+      const reminder =
+        manifest.effectivePolicy?.source === "uw-default" && isOpenGraded(resource)
+          ? `\n\n${UW_DEFAULT_NOTICE_WITH_LINK}`
+          : "";
       return {
         ...result,
+        text: `${result.text}${reminder}`,
         resourceId: resource.id,
         inputHash: request.inputHash,
         sourceTitle: resource.title,

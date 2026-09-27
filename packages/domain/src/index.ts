@@ -346,3 +346,4 @@ export function maySend(
 export * from "./calendar-coverage";
 
 export * from "./course-policy";
+export * from "./uw-ai-policy";

@@ -13,7 +13,7 @@ import type {
   PageTool,
   Resource,
 } from "@magic/contracts";
-import { effortBand, resolveDeadline, type RailResource } from "@magic/domain";
+import { effortBand, resolveDeadline, UW_DEFAULT_NOTICE_WITH_LINK, type RailResource } from "@magic/domain";
 import { effectiveCoursePolicy } from "../../../domain/src/course-intelligence";
 import { classifyHost } from "../../../connectors/src/space-hosts";
 import { canonicalAssessment, references, type Reference } from "../graph/references";
@@ -523,9 +523,11 @@ export function assignmentWorkspace(store: ViewStore, resourceId: string, now: s
       effort: effort ? { lowMin: effort.lowMin, highMin: effort.highMin, basis: effort.basis } : null,
       aiPolicy: {
         mode: policy.mode,
+        source: policy.source,
         conflict: policy.conflict,
         evidence: policyEvidence,
-        text: policyEvidence.length ? `AI use: ${policy.mode}${policy.conflict ? " (sources disagree; the restriction wins)" : ""}.` : "No AI-use policy found; the app coaches conservatively.",
+        text: policy.source === "uw-default" ? UW_DEFAULT_NOTICE_WITH_LINK
+          : policyEvidence.length ? `AI use: ${policy.mode}${policy.conflict ? " (sources disagree; the restriction wins)" : ""}.` : "No AI-use policy found; the app coaches conservatively.",
       },
     },
     instructions: { text: clip(text, TEXT_CAP), textLength: text.length, truncated: text.length > TEXT_CAP, rubric, canvas: { how: "browser", url: a.url, resourceId: a.id, note: "The assignment in Canvas." } },

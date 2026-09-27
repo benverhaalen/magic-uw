@@ -14,7 +14,7 @@
  */
 import type { Assessment, CourseCoreStore, ItemType, MaterialFact, Resource, Store, StudyPrepItemKind, StudyPrepQuote, StudyPrepScopeItem, StudyPrepSource, StudyPrepSourceRole } from "@magic/contracts";
 import { resolveDeadline } from "@magic/domain";
-import { effectiveCoursePolicy } from "../../../domain/src/course-intelligence";
+import { courseFramePolicy, effectiveCoursePolicy } from "../../../domain/src/course-intelligence";
 import type { LearningStore, Concept } from "../../../learning/src/store";
 import { eligibleStudySource } from "../../../learning/src/router";
 import { createExamEvidence, assessmentKey, type ExamAssessment, type ExamEvidence } from "../../../learning/src/exam/evidence";
@@ -391,7 +391,7 @@ export function loadPrep(store: PrepStore, courseId: string, itemId: string, now
     topics: topicList.map(({ id, label, moduleId }) => ({ id, label, moduleId })),
     facts,
     restricted,
-    policy: policies.find((p) => p.mode !== "unknown") ?? policies[0],
+    policy: courseFramePolicy(policies),
     anchorIds,
     where: whereOf([
       { r: resource ?? undefined, about: null },

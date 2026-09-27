@@ -7,7 +7,7 @@
  */
 import { aiRecipientSchema, type CourseCoreStore, type PackScope, type Resource, type Store } from "@magic/contracts";
 import { maySend } from "@magic/domain";
-import { effectiveCoursePolicy } from "../../domain/src/course-intelligence";
+import { courseFramePolicy, effectiveCoursePolicy } from "../../domain/src/course-intelligence";
 import type { BackendCall, ModelRunner } from "../../runner/src/index";
 // owner: ai-paths
 import { createClaudeBackend, createSessionPool, type CliCommand, type PoolOptions, type SessionPool } from "../../runner/src/index";
@@ -162,7 +162,7 @@ function resolveScope(store: WorkspaceStore, scope: PackScope): Scoped | null {
     label,
     resources,
     restricted,
-    policy: policies.find((p) => p.mode !== "unknown") ?? policies[0],
+    policy: courseFramePolicy(policies),
     family,
   };
 }

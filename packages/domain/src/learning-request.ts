@@ -1,5 +1,6 @@
 import type { CourseIntelligence, CourseIntelligenceView, Resource, SourceHealth } from "@magic/contracts";
-import { effectiveCoursePolicy } from "./course-policy";
+import { combinePolicyModes, effectiveCoursePolicy } from "./course-policy";
+import { UW_DEFAULT_AI_POLICY, UW_DEFAULT_NOTICE_WITH_LINK, uwDefaultRefusal } from "./uw-ai-policy";
 
 // owner: voice-learning-media lane (proposed shared contract; producer adoption with Nate). Pure request construction and gating for learning generation.
 // Nothing here sends data or calls a model. Task mode, exact scope, policy combination and gating stay in
@@ -58,7 +59,8 @@ export interface LearningSource {
   title: string;
   /** An assignment that is not completed or submitted. Its output is assessed work. */
   openGraded: boolean;
-  policy: { mode: PolicyMode; evidence: string[]; claimIds: string[]; inputHash: string; conflict: boolean; stale: boolean };
+  /** `source: "uw-default"`: the course states no AI policy; UW–Madison's default applies (no course quotes). */
+  policy: { mode: PolicyMode; source: "course" | "uw-default"; evidence: string[]; claimIds: string[]; inputHash: string; conflict: boolean; stale: boolean };
 }
 
 export interface CoursePolicyDecision {
@@ -67,6 +69,8 @@ export interface CoursePolicyDecision {
   courseLabel: string;
   /** Most restrictive across this course's selected sources. A conflict is never read as permission. */
   mode: PolicyMode;
+  /** No selected source in this course states an AI policy, so UW–Madison's default applies. */
+  uwDefault: boolean;
   conflict: boolean;
   stale: boolean;
   /** Every applicable rule quote, complete. */
@@ -137,13 +141,14 @@ export function learningSource(
     // Even an incomplete captured restriction or coaching rule narrows course permission.
     own.mode === "restricted" || own.mode === "coaching" ||
     // An unquoted default unknown on a reading is absence of a local rule. A quoted
-    // ambiguous rule is real evidence and must hold until it is resolved.
+    // ambiguous rule is real evidence: it caps a permission at coaching until it is resolved.
     !!own.evidence.trim() && resource.text.includes(own.evidence.trim())
   );
-  let mode = ownApplies ? stricter(effective.mode, own.mode) : effective.mode;
+  // A restriction still wins; a real captured rule wins over an unclassified quote (see combinePolicyModes),
+  // so an "unknown" course-intelligence passage no longer holds a captured coaching rule.
+  let mode = ownApplies ? combinePolicyModes([effective.mode, own.mode])! : effective.mode;
   if (stale && mode === "allowed") mode = "coaching";
   const modes = ownApplies ? [effective.mode, own.mode] : [effective.mode];
-  const submitted = !!resource.submission?.submittedAt || resource.submission?.workflowState === "submitted" || resource.submission?.workflowState === "graded";
   return {
     accountScope: owner.accountScope,
     courseId: resource.courseId,
@@ -151,16 +156,24 @@ export function learningSource(
     resourceId: resource.id,
     contentHash: resource.contentHash,
     title: resource.title,
-    openGraded: resource.kind === "assignment" && !resource.completed && !submitted,
+    openGraded: isOpenGraded(resource),
     policy: {
       mode,
-      evidence: [...new Set([...readableEvidence(effective.evidence), ...(ownApplies ? [own.evidence] : [])].map((e) => e.trim()).filter(Boolean))],
+      source: effective.source,
+      // The UW default is not a course rule: the system text states it from the record, never as a quoted rule.
+      evidence: effective.source === "uw-default" ? [] : [...new Set([...readableEvidence(effective.evidence), ...(ownApplies ? [own.evidence] : [])].map((e) => e.trim()).filter(Boolean))],
       claimIds: effective.claimIds,
       inputHash: effective.inputHash,
       conflict: effective.conflict || (modes.includes("restricted") && modes.includes("allowed")),
       stale,
     },
   };
+}
+
+/** An assignment that is not completed or submitted: its output is assessed work. */
+export function isOpenGraded(resource: Pick<Resource, "kind" | "completed" | "submission">): boolean {
+  const submitted = !!resource.submission?.submittedAt || resource.submission?.workflowState === "submitted" || resource.submission?.workflowState === "graded";
+  return resource.kind === "assignment" && !resource.completed && !submitted;
 }
 
 /** Structured policy claims quote the captured field as serialized JSON; use its evidence text instead. */
@@ -214,23 +227,31 @@ export function decideLearning(
     const modes = group.map((s) => s.policy.mode);
     const mode = modes.reduce(stricter);
     const conflict = group.some((s) => s.policy.conflict) || (modes.includes("restricted") && modes.includes("allowed"));
+    // Any source that states a course rule makes the course's own policy govern; the default needs all.
+    const uwDefault = group.every((s) => s.policy.source === "uw-default");
+    const boundaries = group.map((s) => helpBoundary(requested.mode, mode, conflict, s.openGraded));
+    // Under the UW default Magic never drafts, solves or rewrites graded work: a request for it is held in
+    // code, before any model call. Explaining concepts on an open graded item still coaches.
+    if (uwDefault && requested.mode === "graded-work") boundaries.push("withhold");
     return {
       accountScope: first.accountScope,
       courseId: first.courseId,
       courseLabel: first.courseLabel,
       mode,
+      uwDefault,
       conflict,
       stale: group.some((s) => s.policy.stale),
       evidence: [...new Set(group.flatMap((s) => s.policy.evidence))],
       claimIds: [...new Set(group.flatMap((s) => s.policy.claimIds))].sort(),
       inputHashes: [...new Set(group.map((s) => s.policy.inputHash))].sort(),
       resourceIds: group.map((s) => s.resourceId),
-      boundary: strictest(group.map((s) => helpBoundary(requested.mode, mode, conflict, s.openGraded))),
+      boundary: strictest(boundaries),
     };
   });
   const withheld = courses.filter((c) => c.boundary === "withhold");
   if (withheld.length) {
     const names = withheld.map((c) => c.courseLabel).join(", ");
+    if (withheld.every((c) => c.uwDefault)) return { status: "withheld", reason: uwDefaultRefusal(names), courses };
     const why = withheld.some((c) => c.mode === "restricted") ? "course policy restricts AI help on this work"
       : withheld.some((c) => c.conflict) ? "the course's AI rules conflict" : "the course has no clear AI rule for graded work";
     return { status: "withheld", reason: `Magic didn't write an answer for ${names} because ${why}. Review the quoted rule or ask your instructor.`, courses };
@@ -282,10 +303,26 @@ export function learningSystemPrompt(request: Omit<LearningGenerationRequest, "s
     const flags = [course.conflict ? "conflicting rules" : "", course.stale ? "policy capture may be outdated" : ""].filter(Boolean).join("; ");
     lines.push(`- ${course.courseLabel} [${course.accountScope}/${course.courseId}]: ${course.mode}${flags ? ` (${flags})` : ""}; boundary ${course.boundary}.`);
     lines.push(`  Policy revision: claims ${course.claimIds.length ? course.claimIds.join(", ") : "none"}; input ${course.inputHashes.join(", ")}.`);
+    if (course.uwDefault) {
+      const uw = UW_DEFAULT_AI_POLICY;
+      lines.push(`  No course AI policy was found, so UW–Madison's default applies (${uw.source.publisher}, ${uw.source.url}, fetched ${uw.source.fetchedAt}).`);
+      lines.push(`  UW guidance: ${JSON.stringify(uw.quotes.instructorExpectations)}`);
+      lines.push(`  Default rules: ${uw.rules.join(" ")}`);
+      continue;
+    }
     if (!course.evidence.length) lines.push("  No quoted AI rule was found. Unknown is not permission.");
     for (const quote of course.evidence) lines.push(`  Quoted rule: ${JSON.stringify(quote)}`);
   }
   return lines.join("\n");
+}
+
+/**
+ * The UW reminder a ready answer carries: shown whenever an open graded item of a course under the UW
+ * default is in scope. Code adds it to the answer; the model is never trusted to include it.
+ */
+export function uwDefaultReminder(request: Pick<LearningGenerationRequest, "courses" | "scope">): string | null {
+  const graded = request.courses.some((c) => c.uwDefault && request.scope.some((s) => s.openGraded && s.accountScope === c.accountScope && s.courseId === c.courseId));
+  return graded ? UW_DEFAULT_NOTICE_WITH_LINK : null;
 }
 
 /** Voice-dispatched actions that generate learning text; each goes through the grounded ask. Navigation and saved-fact reads are not generation. */

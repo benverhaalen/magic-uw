@@ -294,6 +294,7 @@ export interface AssignmentWorkspace {
     effort: { lowMin: number; highMin: number; basis: string } | null;
     aiPolicy: {
       mode: EffectiveCoursePolicy["mode"];
+      source: EffectiveCoursePolicy["source"];
       conflict: boolean;
       evidence: PageEvidence[];
       text: string;
