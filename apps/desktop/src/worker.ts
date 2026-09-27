@@ -7,11 +7,11 @@ import { queryRequestSchema } from "@magic/contracts"; // owner: T15
 import fixture from "../../../fixtures/course.json";
 import { randomUUID } from "node:crypto";
 import { createLocalService } from "./local-service";
-import { createIngestion } from "./ingestion";
+import { createIngestion, ACQUISITION_APP } from "./ingestion";
 import { createLearningRouter, type StudyContext } from "../../../packages/learning/src/router";
 import { createCurrentReferences } from "../../../packages/learning/src/analytics"; // owner: analytics
 import { createStudyContextResolver } from "./learning-context";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import {
   createLocalDocumentExtractor,
   createLocalOcrAdapter,
@@ -156,17 +156,35 @@ const {
   MAGIC_TESSERACT_PATH: tesseractPath,
   MAGIC_TESSDATA_DIRECTORY: tessdataDirectory,
 } = process.env;
-const extractor = createLocalDocumentExtractor(
+const tesseract =
   pdftoppmPath && tesseractPath && tessdataDirectory
-    ? {
-        ocr: createLocalOcrAdapter({
-          pdftoppmPath,
-          tesseractPath,
-          tessdataDirectory,
-        }),
-      }
-    : {},
-);
+    ? createLocalOcrAdapter({ pdftoppmPath, tesseractPath, tessdataDirectory })
+    : undefined; // owner: acquisition: also the background OCR's fallback
+const extractor = createLocalDocumentExtractor(tesseract ? { ocr: tesseract } : {});
+// owner: T30. Microsoft Graph through main's proxy: this process never sees a token. Main says
+// which scopes the student granted; the delta links live in main's encrypted vault.
+let graphScopes: string[] = [];
+const graphHost = {
+  transport: async (request: import("../../../packages/connectors/src/graph").GraphRequest) => {
+    const { signal, ...payload } = request;
+    const value = await hostRead("source-fetch", { service: "graph", ...payload }, signal);
+    return {
+      status: Number(value?.status) || 0,
+      headers: (value?.headers ?? {}) as Record<string, string>,
+      body: typeof value?.body === "string" ? value.body : "",
+    };
+  },
+  state: {
+    get: async (key: string) =>
+      ((await hostRead("graph-state", { operation: "get", key })) as string | undefined) || undefined,
+    set: async (key: string, value: string | null) => {
+      await hostRead("graph-state", { operation: "set", key, value });
+    },
+  },
+  scopes: () => graphScopes,
+  onSynced: (result: unknown) => port.postMessage({ kind: "graph-synced", payload: result }),
+};
+// end owner: T30
 const ingestion = createIngestion(store, {
   directory: dirname(process.env.MAGIC_DB_PATH!),
   extractor,
@@ -175,8 +193,13 @@ const ingestion = createIngestion(store, {
   gitlabFetch: sourceFetch("gitlab"),
   onSaved: (sourceId) => void core.saved(sourceId), // owner: T05b: save → enqueue
   spaceFetch: sourceFetch("space"), // owner: T05b: D41 access check
+  graph: graphHost, // owner: T30
   secrets: (operation, key, value) =>
     hostRead("source-secret", { operation, key, value }),
+  // owner: acquisition: main's session file route and the extraction threads exist here.
+  acquisition: ACQUISITION_APP,
+  ...(tesseract ? { ocr: tesseract } : {}),
+  extractWorkerScript: join(__dirname, "extract-worker.cjs"),
 });
 const planningPublicClient = publicClients.planning; // owner: T06
 let planningAccountScope = /^uw-session:[a-f0-9-]{36}$/.test(process.env.MAGIC_PLANNING_SCOPE ?? "")
@@ -292,6 +315,14 @@ port.on("message", async ({ data }: { data: any }) => {
     return;
   }
   // end owner: T33
+  // owner: T30. The granted Graph scopes (never a token); an empty list stops the Graph step.
+  if (data.kind === "graph-scopes") {
+    graphScopes = Array.isArray(data.scopes)
+      ? data.scopes.filter((s: unknown): s is string => typeof s === "string" && s.length < 100).slice(0, 20)
+      : [];
+    return;
+  }
+  // end owner: T30
   if (data.kind === "reconnected") {
     ingestion.reconnected();
     return;

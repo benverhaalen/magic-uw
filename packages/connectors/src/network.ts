@@ -78,8 +78,8 @@ export interface PublicClient {
       signal?: AbortSignal;
       maxBytes?: number;
       onRedirect?: (url: string) => boolean | Promise<boolean>;
-      /** owner: acquisition. A conditional GET: a 304 answer returns `notModified: true`. */
-      ifModifiedSince?: string;
+      /** owner: acquisition. A conditional GET (T30's validators): a 304 returns `notModified: true`. */
+      conditional?: FeedValidators;
     },
   ): Promise<PublicResponse>;
   text(
@@ -97,6 +97,15 @@ export interface PublicClient {
   ): Promise<string>;
   /** Reads only a published Outlook calendar link; see isOutlookPublishedCalendar. */
   outlookFeed?(secretUrl: string, signal?: AbortSignal): Promise<string>;
+  /**
+   * owner: T30. The same read, conditional: sends If-None-Match / If-Modified-Since from the
+   * previous answer; a 304 returns `notModified` with no body read.
+   */
+  outlookFeedIfChanged?(
+    secretUrl: string,
+    validators: FeedValidators,
+    signal?: AbortSignal,
+  ): Promise<{ notModified: true } | ({ notModified: false; text: string } & FeedValidators)>;
   signedDownload(
     url: string,
     allowedOrigins: string[],
@@ -105,6 +114,11 @@ export interface PublicClient {
   isCanvas(url: string): boolean;
 }
 export const DEFAULT_CANVAS_ORIGIN = "https://canvas.wisc.edu";
+/** HTTP validators a feed answered with; sent back on the next read (owner: T30). */
+export interface FeedValidators {
+  etag?: string;
+  lastModified?: string;
+}
 const OUTLOOK_ORIGINS = new Set(["https://outlook.office365.com", "https://outlook.office.com"]);
 /**
  * A published Outlook calendar link (Settings → Calendar → Shared calendars → Publish).
@@ -337,7 +351,8 @@ export function createPublicClient(
     settings: {
       signal?: AbortSignal;
       onRedirect?: (url: string) => boolean | Promise<boolean>;
-      ifModifiedSince?: string;
+      /** owner: T30: conditional request headers; a 304 is then returned, not thrown. */
+      conditional?: FeedValidators;
     } = {},
     mode: "public" | "feed" | "signed" = "public",
     allowedOrigins: string[] = [],
@@ -381,9 +396,9 @@ export function createPublicClient(
               "Mozilla/5.0 (compatible; MagicCanvas/1.0; course-material reader)",
             Accept: "*/*",
             "Accept-Encoding": "identity",
-            // owner: acquisition: only on the first hop, and only a valid HTTP date.
-            ...(step === 0 && settings.ifModifiedSince && !Number.isNaN(Date.parse(settings.ifModifiedSince))
-              ? { "If-Modified-Since": new Date(settings.ifModifiedSince).toUTCString() }
+            ...(settings.conditional?.etag ? { "If-None-Match": settings.conditional.etag } : {}),
+            ...(settings.conditional?.lastModified
+              ? { "If-Modified-Since": settings.conditional.lastModified }
               : {}),
           },
         });
@@ -400,7 +415,7 @@ export function createPublicClient(
         throw new MaterialReadError("transport_redirect");
       }
       const response = tracked(received, release, signal);
-      if (response.status === 304 && settings.ifModifiedSince) {
+      if (response.status === 304 && settings.conditional) {
         await response.body?.cancel();
         return { response, url: url.href, redirects, notModified: true }; // owner: acquisition
       }
@@ -477,6 +492,24 @@ export function createPublicClient(
       if (!/^\s*BEGIN:VCALENDAR\r?\n/i.test(text))
         throw new MaterialReadError("invalid_calendar");
       return text;
+    },
+    async outlookFeedIfChanged(secretUrl, validators, signal) {
+      if (!isOutlookPublishedCalendar(secretUrl))
+        throw new MaterialReadError("invalid_feed");
+      const origin = new URL(secretUrl).origin;
+      const result = await get(secretUrl, { signal, conditional: validators }, "feed", [origin]);
+      if (result.response.status === 304) return { notModified: true };
+      const text = await readBounded(result.response, 8 * 1024 * 1024, signal);
+      if (!/^\s*BEGIN:VCALENDAR\r?\n/i.test(text))
+        throw new MaterialReadError("invalid_calendar");
+      const etag = result.response.headers.get("etag")?.slice(0, 500);
+      const lastModified = result.response.headers.get("last-modified")?.slice(0, 100);
+      return {
+        notModified: false,
+        text,
+        ...(etag ? { etag } : {}),
+        ...(lastModified ? { lastModified } : {}),
+      };
     },
     signedDownload: (url, allowedOrigins, signal) =>
       get(url, { signal }, "signed", allowedOrigins),

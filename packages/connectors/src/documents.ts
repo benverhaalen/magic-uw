@@ -424,18 +424,64 @@ export interface DocumentCaptureInput extends ExtractionOptions {
   /** The complete local extraction paired with previous; avoids reparsing unchanged files. */
   cached?: Pick<ExtractedDocument, "text" | "parts" | "pages" | "status">;
   response?: PublicResponse;
+  /** owner: acquisition. Fetches the bytes only when the stored copy cannot be reused. */
+  download?: () => Promise<PublicResponse>;
 }
 export interface CapturedDocument extends ExtractedDocument {
   document: NonNullable<ResourceInput["document"]>;
   skipped: boolean;
   contentType: string;
 }
+// owner: acquisition. Windows refuses a rename onto a file another reader holds open (EPERM,
+// EBUSY, EACCES), which parallel downloads of one file hit. The target name is content-addressed
+// (`<id hash>-<sha256>`), so an existing target already holds these exact bytes: keep it.
+const RENAME_RETRY = new Set(["EPERM", "EBUSY", "EACCES"]);
+async function placeDownload(temporary: string, path: string) {
+  for (let attempt = 0; ; attempt++) {
+    const existing = await stat(path).catch(() => null);
+    if (existing?.isFile()) {
+      await rm(temporary, { force: true });
+      return;
+    }
+    try {
+      await rename(temporary, path);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? "";
+      if (!RENAME_RETRY.has(code) || attempt >= 5) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 20 * 2 ** attempt));
+    }
+  }
+}
+// One capture per file id at a time, across managers (a sync and a drain can overlap).
+const fileLocks = new Map<string, Promise<void>>();
+async function withFileLock<T>(key: string, task: () => Promise<T>): Promise<T> {
+  const before = fileLocks.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const mine = new Promise<void>((resolve) => (release = resolve));
+  const chained = before.then(() => mine);
+  fileLocks.set(key, chained);
+  await before;
+  try {
+    return await task();
+  } finally {
+    release();
+    if (fileLocks.get(key) === chained) fileLocks.delete(key);
+  }
+}
+// end owner: acquisition
 export function createDocumentManager(options: {
   directory: string;
   client: PublicClient;
   downloadConcurrency?: number;
   maxBytes?: number;
   extractor?: DocumentExtractor;
+  /**
+   * owner: acquisition. "all" keeps every downloaded file (the default). "ocr-pending" keeps the
+   * bytes only while the document waits for OCR; text, pages, hash and metadata are what is stored
+   * (docs/pipeline-details.md, storage policy).
+   */
+  retainBytes?: "all" | "ocr-pending";
 }) {
   const directory = resolve(options.directory);
   const extractor = options.extractor ?? createLocalDocumentExtractor();
@@ -449,7 +495,10 @@ export function createDocumentManager(options: {
     options.maxBytes ?? 100 * 1024 * 1024,
     100 * 1024 * 1024,
   );
-  async function capture(
+  function capture(input: DocumentCaptureInput): Promise<CapturedDocument> {
+    return withFileLock(`${directory}|${input.id}`, () => captureOnce(input)); // owner: acquisition
+  }
+  async function captureOnce(
     input: DocumentCaptureInput,
   ): Promise<CapturedDocument> {
     if (active >= concurrency)
@@ -462,6 +511,22 @@ export function createDocumentManager(options: {
       const rel = previous?.localPath
         ? relative(directory, resolve(previous.localPath))
         : "";
+      // owner: acquisition: unchanged and fully read before; the stored text is enough, with or
+      // without the bytes.
+      if (
+        input.updatedAt &&
+        previous?.updatedAt === input.updatedAt &&
+        previous.extractionStatus === "ok" &&
+        input.cached?.status === "ok" &&
+        (!previous.localPath || options.retainBytes === "ocr-pending")
+      )
+        return {
+          ...input.cached,
+          diagnostics: [],
+          document: { ...previous, extractionStatus: "ok", pages: input.cached.pages },
+          skipped: true,
+          contentType: input.contentType ?? "application/octet-stream",
+        };
       if (
         input.updatedAt &&
         previous?.updatedAt === input.updatedAt &&
@@ -493,7 +558,9 @@ export function createDocumentManager(options: {
       }
       const fetched =
         input.response ??
-        (input.downloadUrl
+        (input.download
+          ? await input.download()
+          : input.downloadUrl
           ? await options.client.signedDownload(
               input.downloadUrl,
               input.allowedDownloadOrigins ?? [],
@@ -550,7 +617,7 @@ export function createDocumentManager(options: {
           directory,
           `${contentHash(input.id).slice(0, 20)}-${sha256}`,
         );
-        await rename(temporary, path);
+        await placeDownload(temporary, path);
         const extracted = await extractor.extract(path, {
           ...input,
           filename: input.filename ?? new URL(input.sourceUrl).pathname,
@@ -563,11 +630,14 @@ export function createDocumentManager(options: {
           lastModified && !Number.isNaN(Date.parse(lastModified))
             ? new Date(lastModified).toISOString()
             : undefined;
+        // owner: acquisition: drop the bytes once read, unless OCR still needs them.
+        const keep = options.retainBytes !== "ocr-pending" || extracted.status === "needs_ocr";
+        if (!keep) await rm(path, { force: true }).catch(() => {});
         return {
           ...extracted,
           document: {
             fileId: input.id,
-            localPath: path,
+            ...(keep ? { localPath: path } : {}),
             sha256,
             sizeBytes,
             updatedAt: input.updatedAt ?? modifiedAt,

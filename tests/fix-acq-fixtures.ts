@@ -2,7 +2,13 @@
 // image-only (scanned) PDFs, DOCX files and PNG images, all generated here; no course data.
 import { createRequire } from "node:module";
 import { deflateSync } from "node:zlib";
-import { zipSync, strToU8 } from "fflate";
+
+// fflate and @napi-rs/canvas are dependencies of connectors and pdfjs-dist, not of the root.
+const requireConnectors = createRequire(new URL("../packages/connectors/package.json", import.meta.url));
+const { zipSync, strToU8 } = requireConnectors("fflate") as {
+  zipSync(files: Record<string, Uint8Array>): Uint8Array;
+  strToU8(text: string): Uint8Array;
+};
 
 function pdf(objects: string[] | (string | Uint8Array)[][]): Uint8Array {
   const chunks: Uint8Array[] = [];
@@ -45,7 +51,18 @@ export function textPdf(pages: string[]): Uint8Array {
   return pdf(objects);
 }
 const requireFromPdfjs = createRequire(createRequire(import.meta.url).resolve("pdfjs-dist/package.json"));
-type NapiCanvas = typeof import("@napi-rs/canvas");
+interface NapiCanvas {
+  createCanvas(width: number, height: number): {
+    getContext(kind: "2d"): {
+      fillStyle: string;
+      font: string;
+      fillRect(x: number, y: number, w: number, h: number): void;
+      fillText(text: string, x: number, y: number): void;
+      getImageData(x: number, y: number, w: number, h: number): { data: Uint8ClampedArray };
+    };
+    toBuffer(type: "image/png"): Buffer;
+  };
+}
 const napi = () => requireFromPdfjs("@napi-rs/canvas") as NapiCanvas;
 function drawText(text: string, width = 900, height = 160) {
   const canvas = napi().createCanvas(width, height),

@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { CanvasFailure, canvasNextPage, type CanvasHttp } from "./canvas-http";
 import { hashCanvas } from "./canvas-models";
-import { moduleItemsHash, moduleWithItemsSchema } from "./canvas-inventory";
+import { readCanvasModules, moduleItemsHash, type CanvasModuleRun } from "./canvas-modules";
 // end owner: T33
 export interface SelectableCanvasCourse {
   id: string | number;
@@ -182,6 +182,8 @@ export function courseSelection(
 /** courseId → signature; `account` holds items with no course. */
 export type CourseSignatures = Record<string, string>;
 export interface CourseProbeResult {
+  /** Successfully observed signals; absent components remain unknown. */
+  components?: Record<string, Record<string, string>>;
   status: "ok" | "partial" | "needs_sign_in";
   courses: CourseSignatures;
   requests: number;
@@ -291,6 +293,7 @@ export async function fetchCanvasContentProbe(
   courseIds: string[],
   signal?: AbortSignal,
   concurrency = 4,
+  moduleRun?: CanvasModuleRun,
 ): Promise<CourseProbeResult> {
   const count = { requests: 0 };
   let partial = false;
@@ -306,6 +309,7 @@ export async function fetchCanvasContentProbe(
   };
   try {
     let stream: CourseSignatures = {};
+    let streamKnown = true;
     try {
       const items = await listAll(
         http,
@@ -328,11 +332,10 @@ export async function fetchCanvasContentProbe(
         }),
       );
     } catch (error) {
-      // Without the stream no course can be compared this time.
-      if (marker(error) === TRANSIENT)
-        return { status: "partial", courses: {}, requests: count.requests };
+      streamKnown = marker(error) !== TRANSIENT;
     }
     const courses: CourseSignatures = {};
+    const components: Record<string, Record<string, string>> = {};
     let next = 0;
     const one = async (courseId: string) => {
       const prefix = `${http.origin}/api/v1/courses/${courseId}`;
@@ -350,35 +353,33 @@ export async function fetchCanvasContentProbe(
             `${prefix}/${kind}?sort=updated_at&order=desc&per_page=1`,
             signal,
           );
-          const first = Array.isArray(response.data)
-            ? looseItem.safeParse(response.data[0])
-            : undefined;
-          return first?.success
-            ? stable({
-                id: first.data.id ?? first.data.page_id ?? first.data.url,
-                updated_at: first.data.updated_at,
-              })
-            : "empty";
+          if (!Array.isArray(response.data)) throw new CanvasFailure("partial", "expected_array");
+          if (!response.data.length) return "empty";
+          const first = looseItem.safeParse(response.data[0]);
+          if (!first.success) throw new CanvasFailure("partial", "invalid_newest_row");
+          const id = first.data.id ?? first.data.page_id ?? first.data.url;
+          if ((typeof id !== "string" && typeof id !== "number") ||
+              typeof first.data.updated_at !== "string" || !Number.isFinite(Date.parse(first.data.updated_at)))
+            throw new CanvasFailure("partial", "invalid_newest_row");
+          return stable({ id, updated_at: first.data.updated_at });
         });
       const [modules, file, page] = await Promise.all([
         part(async () => {
-          const rows = await listAll(
-            http,
-            `${prefix}/modules?per_page=100&include[]=items&include[]=content_details`,
-            signal,
-            count,
+          const reused = moduleRun?.results.has(`${http.origin}\n${courseId}`) ?? false;
+          const acquisition = await readCanvasModules(http, courseId, signal, moduleRun);
+          if (!reused) count.requests += acquisition.requests;
+          if (!acquisition.complete) throw new CanvasFailure(
+            acquisition.status === "inaccessible" ? "inaccessible" : "partial",
+            acquisition.diagnostics[0] ?? "incomplete_modules",
           );
-          return moduleItemsHash(
-            rows.flatMap((raw) => {
-              const parsed = moduleWithItemsSchema.safeParse(raw);
-              return parsed.success ? [parsed.data] : [];
-            }),
-          );
+          return moduleItemsHash(acquisition.modules.map(entry => ({ ...entry.module, items: entry.items })));
         }),
         newest("files"),
         newest("pages"),
       ]);
-      if ([modules, file, page].includes(TRANSIENT)) return;
+      components[courseId] = Object.fromEntries(Object.entries({modules, file, page,
+        stream: streamKnown ? stream[courseId] ?? "none" : TRANSIENT}).filter(([,value]) => value !== TRANSIENT));
+      if (!streamKnown || [modules, file, page].includes(TRANSIENT)) return;
       courses[courseId] = hashCanvas(
         [modules, file, page, stream[courseId] ?? "none"].join("\n"),
       );
@@ -398,6 +399,7 @@ export async function fetchCanvasContentProbe(
     return {
       status: partial ? "partial" : "ok",
       courses,
+      components,
       requests: count.requests,
     };
   } catch {
