@@ -199,8 +199,10 @@ export type EgressDecision =
       prompt: boolean;
     };
 
+type EgressManifest = Omit<ContextManifest, "payload"> & { payload: unknown };
+
 interface Pending {
-  manifest: ContextManifest;
+  manifest: EgressManifest;
   payloadHash: string;
 }
 
@@ -211,13 +213,13 @@ export interface EgressPolicy {
    * record with `record(manifest, "sent")` just before the call.
    */
   check(
-    manifest: ContextManifest,
+    manifest: EgressManifest,
     options: { at: string; background?: boolean },
   ): EgressDecision;
   /** The `preview.ack` command. Binds the answer to the previewed payload's hash. */
   acknowledge(raw: unknown, at: string): string;
   record(
-    manifest: ContextManifest,
+    manifest: EgressManifest,
     status: "sent" | "failed",
     at: string,
   ): void;

@@ -283,7 +283,8 @@ test("save → enqueue: a saved capture enqueues each ready kind once per conten
   // A re-save of the same content adds nothing: the store keys a job by kind, resource and hash.
   core.saved(batch.source.id);
   assert.equal(queued().length, expected);
-  // The drain is gated like Jev today (T10's lease(kinds[]) lifts it); open the gate and it runs.
+  // Local handlers run without Jev consent. Finish that wake before changing consent.
+  await core.settled();
   await core.execute({
     type: "consent",
     value: { action: "grant", recipient: "jev", disclosureVersion: CONSENT_DISCLOSURE_VERSION },

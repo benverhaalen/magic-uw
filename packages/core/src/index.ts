@@ -1,3 +1,4 @@
+import type { CourseCoreStore } from "../../contracts/src/course-core";
 import {
   effectiveCoursePolicy,
   intelligenceView,
@@ -21,16 +22,20 @@ import {
   type Job,
 } from "@magic/contracts";
 import { maySend, resolveDeadline } from "@magic/domain";
-import { judgmentResultSchema, type JudgmentGateway } from "@magic/ai";
+import { JudgmentBudgetError, judgmentResultSchema, type JudgmentGateway } from "@magic/ai";
 import { contentCategories, courseIncluded } from "./access";
 import { evidenceFor } from "./evidence";
 import { rebaseFixture } from "./fixture-dates";
 export { rebaseFixture } from "./fixture-dates";
+import { clearOutgoingProjections, outgoingProjection, payloadScrubber, validateCitations } from "./identity";
+export { scrubText, rosterFor, toOriginalSpan, validateCitations } from "./identity";
 import { pullGuideForSubject } from "../../connectors/src/planning-public";
 import {
   createPublicClient,
   type PublicClient,
 } from "../../connectors/src/network";
+import { planningIdentityTable, summarizePlanningGrades } from "./planning-grades";
+import { pullMadgradesGrades, type MadgradesTransport } from "../../connectors/src/madgrades";
 import { comparePlanning } from "./planning";
 import { applyConsent, egressFor } from "./egress"; // owner: T06
 import { reconcileAcademicRecords } from "./academic-reconciliation";
@@ -97,6 +102,7 @@ export interface CoreOptions {
   timeZone?: string;
   planningPublicClient?: PublicClient;
   planningHttp?: Pick<UwPlanningHttp, "read">;
+  madgrades?: MadgradesTransport;
   // owner: T05b
   jobs?: JobRegistry;
   seams?: CoreSeams;
@@ -217,17 +223,26 @@ export function createCore(store: Store, options: CoreOptions) {
           (c) => maySend(store.privacy(), recipient, [c]).allowed,
         ),
     );
+    // Hosted recipients get identity-scrubbed free text; this payload is both
+    // the preview and the exact outgoing body. Each field is scrubbed on its own
+    // so citations can be re-validated per source field.
+    const scrub = payloadScrubber(store, recipient !== "local", store.sources().find((s) => s.id === r.sourceId)?.accountScope);
+    const rootText = scrub.field(r.text, r.courseId);
     const payload = {
-      course: r.courseName.slice(0, 200),
-      title: r.title.slice(0, 500),
-      text: [r.text, ...supporting.map((s) => `${s.title}\n${s.text}`)]
+      course: scrub.field(r.courseName, r.courseId).slice(0, 200),
+      title: scrub.field(r.title, r.courseId).slice(0, 500),
+      text: [
+        rootText,
+        ...supporting.map((s) => `${scrub.field(s.title, s.courseId)}\n${scrub.field(s.text, s.courseId)}`),
+      ]
         .join("\n\n")
         .slice(0, 12000),
-      policy: (policyAllowed
+      policy: scrub.field((policyAllowed
         ? effectivePolicy.evidence
         : "Policy evidence is withheld by data-sharing settings; use coaching only."
-      ).slice(0, 4000),
+      ), r.courseId).slice(0, 4000),
     };
+    const redaction = scrub.summary(r.courseId);
     const categories = [
       ...new Set(
         [r, ...supporting, ...(policyAllowed ? policyResources : [])].flatMap(
@@ -268,6 +283,8 @@ export function createCore(store: Store, options: CoreOptions) {
       characters: JSON.stringify(payload).length,
       ...permission,
       payload,
+      ...(recipient !== "local" ? { citationProjections: [{ resourceId: r.id, contentHash: r.contentHash, field: "text" as const, projectionId: outgoingProjection(store, r, "text", { start: 0, end: Math.min(payload.text.length, rootText.length) }).id }] } : {}),
+      ...(redaction ? { redaction } : {}),
     };
   }
   function receipt(
@@ -399,17 +416,31 @@ export function createCore(store: Store, options: CoreOptions) {
       if (generation !== version) break;
     }
   }
+  let budgetTimer: ReturnType<typeof setTimeout> | undefined;
+  function scheduleBudgetWake() {
+    clearTimeout(budgetTimer);
+    const until = store.jobCooldown("enrich.resource");
+    const delay = until ? Date.parse(until) - Date.parse(now()) : 0;
+    if (!closed && delay > 0) {
+      budgetTimer = setTimeout(wake, Math.min(delay, 2_147_483_647));
+      budgetTimer.unref?.();
+    }
+  }
   async function drain() {
-    if (
-      closed ||
-      !options.gateway ||
-      !maySend(store.privacy(), "jev", ["course_text"]).allowed
-    )
-      return;
+    if (closed) return;
+    scheduleBudgetWake();
     let job: Job | undefined;
-    while (!closed && (job = store.lease(now(), 60000))) {
+    while (!closed) {
+      // Each registered handler retains its own egress checks. Jev availability only
+      // controls assignment enrichment; storage excludes kinds with durable cooldowns.
+      const kinds = jobs.readyKinds().filter((kind) => kind !== "enrich.resource");
+      if (options.gateway && maySend(store.privacy(), "jev", ["course_text"]).allowed)
+        kinds.push("enrich.resource");
+      if (!kinds.length) break;
+      job = (store as Store & Pick<CourseCoreStore, "lease">).lease(now(), 60000, kinds);
+      if (!job) break;
       if (job.kind !== "enrich.resource") {
-        // owner: T05b. Registered kinds run through their handler; unknown kinds fail as before.
+        // Registered kinds retain their handler-specific refusal and consent checks.
         const version = generation;
         active = new AbortController();
         try {
@@ -443,7 +474,7 @@ export function createCore(store: Store, options: CoreOptions) {
         // Log the attempt before crossing the boundary. This does not claim delivery.
         receipt(manifest, "sent");
         const result = judgmentResultSchema.parse(
-          await options.gateway.evaluate(manifest.payload, active.signal),
+          await options.gateway!.evaluate(manifest.payload, active.signal),
         );
         if (
           !current(job, version) ||
@@ -463,9 +494,15 @@ export function createCore(store: Store, options: CoreOptions) {
           createdAt: now(),
         });
         store.finish(job, undefined, now());
-      } catch {
+      } catch (error) {
         if (!closed && generation === version) {
           receipt(manifest, "failed");
+          if (error instanceof JudgmentBudgetError && !active.signal.aborted) {
+            store.defer(job, new Date(Date.parse(now()) + error.retryAfterMs).toISOString(),
+              "Judgment budget reached; waiting to retry. Local data is still usable.", now());
+            scheduleBudgetWake();
+            continue;
+          }
           store.finish(
             job,
             "Judgment unavailable; local data is still usable",
@@ -743,6 +780,31 @@ export function createCore(store: Store, options: CoreOptions) {
             now(),
           ),
         };
+      case "planning-grades": {
+        let refresh: { status: string; message: string } | null = null;
+        if (command.refresh) {
+          if (!options.madgrades) throw new Error("Madgrades refresh is available through the desktop app.");
+          const table = planningIdentityTable(store);
+          if (!table) refresh = { status: "unverified_crosslist", message: "Saved cross-list mappings disagree. Refresh subject and cross-list evidence before loading grades." };
+          else {
+            const controller = new AbortController(), version = generation;
+            planningReads.add(controller);
+            try {
+              const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(25_000)]);
+              const result = await pullMadgradesGrades(options.madgrades, { courseKey: command.courseKey, table, observedAt: now() }, signal)
+                .catch(() => signal.aborted
+                  ? { status: "cancelled" as const, message: "Madgrades read cancelled or timed out; no data was saved.", capture: null }
+                  : { status: "error" as const, message: "Madgrades could not be reached. Saved evidence was kept.", capture: null });
+              if (closed || version !== generation) throw new Error("Madgrades read cancelled; no data was saved.");
+              if (result.capture) store.ingestPlanning(result.capture);
+              refresh = { status: result.status, message: result.message };
+            } finally { planningReads.delete(controller); }
+          }
+        }
+        return { snapshot: snapshot(), planningGrades: summarizePlanningGrades(store, command.courseKey, now(), refresh), ...(refresh ? { message: refresh.message } : {}) };
+      }
+      case "madgrades-token":
+        throw new Error("Madgrades tokens are stored by the desktop app, not the local workspace.");
       case "planning-import": {
         store.ingestPlanning(command.batch);
         message = "Planning capture saved on this device.";
@@ -824,6 +886,12 @@ export function createCore(store: Store, options: CoreOptions) {
         message = "Judgment queued.";
         break;
       }
+      case "identity-roster":
+        store.setIdentityRoster(command.value);
+        message = "Names to remove saved on this device. Future hosted requests use them; earlier requests are unchanged.";
+        break;
+      case "validate-citations":
+        return { snapshot: snapshot(), citations: validateCitations(store, command.claims) };
       case "link":
         store.decideLink(command.id, command.status);
         break;
@@ -861,6 +929,7 @@ export function createCore(store: Store, options: CoreOptions) {
         break;
       }
       case "purge":
+        clearOutgoingProjections(store);
         interrupt();
         store.purge();
         semanticAttempts.clear();
@@ -941,6 +1010,7 @@ export function createCore(store: Store, options: CoreOptions) {
     },
     async close() {
       closed = true;
+      clearTimeout(budgetTimer);
       interrupt();
       await working;
       store.close();

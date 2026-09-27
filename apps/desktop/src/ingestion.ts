@@ -890,6 +890,7 @@ export function createIngestion(store: Store, host: IngestionHost) {
     let needsSignIn = false;
     const s = store.ingestionSettings();
     for await (const batch of canvasConnector({
+      onIdentity: (identity) => store.recordAutoIdentity(identity),
       fetch: host.canvasFetch,
       metadataConcurrency: s.metadataConcurrency,
       scheduler: scheduler(), // owner: T17

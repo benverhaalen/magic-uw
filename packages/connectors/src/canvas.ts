@@ -7,6 +7,7 @@ import {
   type Connector,
   type Resource,
   type ResourceInput,
+  type AutoIdentityUpdate,
 } from "@magic/contracts";
 import {
   CanvasHttp,
@@ -48,6 +49,9 @@ import {
   groupResource,
   quizResource,
   discussionResource,
+  discussionAuthor,
+  profileSchema,
+  profileIdentity,
   activityResource,
   type CanvasCourse,
 } from "./canvas-models";
@@ -76,6 +80,11 @@ export interface CanvasConnectorOptions
     courseId: string;
     url: string;
   }) => void | Promise<void>;
+  /**
+   * Local scrubbing roster only: the student's own profile identity and
+   * non-teacher topic/announcement authors. Never put into capture batches.
+   */
+  onIdentity?: (update: AutoIdentityUpdate) => void | Promise<void>;
   /** Earliest announcement window; defaults to all available historical announcements. */
   announcementsStartDate?: string;
   /** owner: T33. A warm read: only these courses get per-course reads (D37); the account reads still run. */
@@ -642,15 +651,26 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
           );
         }
       }
+      async function reportIdentity(update: AutoIdentityUpdate) {
+        // Scrubbing-roster failures must not break coursework sync.
+        try {
+          await options.onIdentity?.(update);
+        } catch {}
+      }
+      function noteAuthor(course: CanvasCourse, item: z.infer<typeof discussionSchema>): undefined {
+        const author = discussionAuthor(item, course);
+        if (author && options.onIdentity)
+          void reportIdentity({ accountScope, courseId: course.id, authors: [author] });
+        return undefined;
+      }
       async function work() {
         const accountUrl = (path: string) =>
             `${origin}/api/v1/users/self/${path}?per_page=100${path.startsWith("activity_stream") ? "&only_active_courses=true" : ""}`,
           catalogUrl = `${origin}/api/v1/courses?enrollment_state=active&per_page=100&include[]=syllabus_body&include[]=term&include[]=teachers&include[]=total_scores&include[]=concluded`,
           historicalUrl = `${origin}/api/v1/courses?enrollment_state=completed&state[]=available&state[]=completed&per_page=100&include[]=term&include[]=total_scores&include[]=concluded`;
-        let profile: { id: string };
+        let profile: z.infer<typeof profileSchema>;
         try {
-          profile = z
-            .object({ id: canvasId })
+          profile = profileSchema
             .parse(
               (
                 await http.request(
@@ -673,6 +693,8 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
           return;
         }
         accountScope = hashCanvas(`${origin}\n${profile.id}`);
+        const self = profileIdentity(profile);
+        if (self) await reportIdentity({ accountScope, self });
         const account: CanvasCourse = { id: "account", name: "Canvas account" };
         const accountJobs = [
           { scope: "todo", schema: todoSchema, path: "todo" },
@@ -973,7 +995,7 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
               "announcements",
               `${origin}/api/v1/announcements?per_page=100&context_codes[]=course_${course.id}&start_date=${encodeURIComponent(start)}&end_date=${encodeURIComponent(end)}`,
               discussionSchema,
-              (item) => discussionResource(item, course, origin),
+              (item) => noteAuthor(course, item) ?? discussionResource(item, course, origin),
             ),
           ]);
           // References keep their earlier order: assignments, then each module's items in order.
@@ -1191,7 +1213,7 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
               "discussions",
               `${prefix}/discussion_topics?per_page=100`,
               discussionSchema,
-              (item) => discussionResource(item, course, origin),
+              (item) => noteAuthor(course, item) ?? discussionResource(item, course, origin),
             ),
           );
           return backgroundJobs;

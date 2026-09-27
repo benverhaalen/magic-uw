@@ -1,10 +1,12 @@
-# Magic Canvas
+# My Magic UW
+
+My Magic UW is an independent student project. It is not affiliated with, sponsored by or endorsed by the University of Wisconsin–Madison.
 
 **The future of learning, tailored to you.**
 
 Stop managing school. Start learning.
 
-Magic Canvas is an AI workspace being built to already know your classes: what matters now, which materials you need, and how to practice for your professor's expectations. It builds on the apps and study habits students already use.
+My Magic UW is an AI workspace being built to already know your classes: what matters now, which materials you need, and how to practice for your professor's expectations. It builds on the apps and study habits students already use.
 
 Built for UW–Madison's Badger BuildFest 2026 by a team of four. Entering **Applied AI & Automation**, **Badgers Building for Badgers (DoIT)**, and **The Art of the Break**.
 

@@ -1,3 +1,4 @@
+import { judgmentFailure } from "./judgment-errors";
 import {
   app,
   BrowserWindow,
@@ -32,6 +33,7 @@ import { electronAuthWindow } from "./outlook-window";
 import { checkedGraphUrl } from "../../../packages/connectors/src/graph";
 import { OUTLOOK_MAIL_COURSE_ID, OUTLOOK_CALENDAR_COURSE_ID, type OutlookStatus } from "@magic/contracts";
 // end owner: T30
+import { MadgradesHttp, madgradesRequestSchema } from "../../../packages/connectors/src/madgrades";
 import sampleFixture from "../../../fixtures/course.json";
 // owner: T05c
 import { Tray, Menu, nativeImage } from "electron";
@@ -68,6 +70,7 @@ if (headless) {
 }
 if (process.env.MAGIC_USER_DATA)
   app.setPath("userData", process.env.MAGIC_USER_DATA);
+// Internal data-folder name: kept stable across the display rename so existing local data stays in place.
 app.setName("Magic Canvas");
 let window: BrowserWindow | null = null,
   signIn: BrowserWindow | null = null;
@@ -176,6 +179,11 @@ app
       encrypt: (value) => safeStorage.encryptString(value),
       decrypt: (value) => safeStorage.decryptString(Buffer.from(value)),
     });
+    // The Madgrades token stays in the main-process vault; the workspace sends only fixed request shapes.
+    const madgradesHttp = new MadgradesHttp({
+      fetch: (url, init) => fetch(url, init),
+      token: () => vault.get("madgrades:token"),
+    });
     const sourceReads = new Map<string, AbortController>();
     // owner: T30. Outlook (Graph). No client ID configured: "not set up" and no network call.
     const outlookFiles = {
@@ -221,7 +229,7 @@ app
         MAGIC_PLANNING_SCOPE: planningAccountScope,
       },
       stdio: "pipe",
-      serviceName: "Magic Canvas local workspace",
+      serviceName: "My Magic UW local workspace",
     });
     const calls = new Map<
       string,
@@ -379,6 +387,25 @@ app
           const request = message.payload?.request;
           if (planningClears > 0 || !["public-search", "enrollment-packages"].includes(request?.kind)) throw new Error("Unsupported planning read");
           const result = await planningHttp.read(request, controller.signal);
+          controller.signal.throwIfAborted();
+          worker.postMessage({ kind: "source-response", id: message.id, result });
+        } catch {
+          worker.postMessage({ kind: "source-response", id: message.id, error: true });
+        } finally { planningReads.delete(message.id); sourceReads.delete(message.id); }
+        return;
+      }
+      if (message.kind === "madgrades-read") {
+        if (!(await consentGate("planning-public-read"))) {
+          worker.postMessage({ kind: "source-response", id: message.id, error: true });
+          return;
+        }
+        const controller = new AbortController();
+        sourceReads.set(message.id, controller);
+        planningReads.add(message.id);
+        try {
+          const request = madgradesRequestSchema.parse(message.payload?.request);
+          if (planningClears > 0) throw new Error("Madgrades read cancelled");
+          const result = await madgradesHttp.read(request, controller.signal);
           controller.signal.throwIfAborted();
           worker.postMessage({ kind: "source-response", id: message.id, result });
         } catch {
@@ -605,11 +632,11 @@ app
             controller.signal,
           );
           worker.postMessage({ kind: "evaluation", id: message.id, result });
-        } catch {
+        } catch (error) {
           worker.postMessage({
             kind: "evaluation",
             id: message.id,
-            error: true,
+            ...judgmentFailure(error),
           });
         } finally {
           evaluations.delete(message.id);
@@ -629,6 +656,13 @@ app
     async function execute(command: unknown): Promise<CommandResult> {
       const parsed = commandSchema.parse(command);
       await ready;
+      if (parsed.type === "madgrades-token") {
+        // Stored only in the OS-protected vault; the workspace, records, and logs never receive it.
+        if (parsed.token === null) await vault.deletePrefix("madgrades:");
+        else await vault.set("madgrades:token", parsed.token);
+        const result = await execute({ type: "snapshot" });
+        return { ...result, message: parsed.token === null ? "Madgrades token removed from this device." : "Madgrades token saved on this device." };
+      }
       if (parsed.type === "purge") {
         sync?.abort();
         cancelPlanning();
@@ -687,7 +721,7 @@ app
       return consentGateAllows(channel, consentRecords);
     }
     const consentRefused =
-      "Finish the setup step before Magic Canvas connects to UW.";
+      "Finish the setup step before My Magic UW connects to UW.";
     // end owner: T06
     // owner: T30. Outlook: the worker learns only the granted scopes; tokens never cross.
     async function postGraphScopes() {
@@ -1268,7 +1302,7 @@ app
           scaleFactor: 2,
         }),
       );
-      tray.setToolTip("Magic Canvas");
+      tray.setToolTip("My Magic UW");
       tray.setContextMenu(
         Menu.buildFromTemplate(
           trayMenu.map(({ action, label }) => ({
@@ -1462,7 +1496,7 @@ app
       minWidth: 880,
       minHeight: 620,
       show: !headless,
-      title: "Magic Canvas",
+      title: "My Magic UW",
       backgroundColor: "#fbfbfa",
       webPreferences: {
         preload: join(root, "preload.cjs"),
@@ -1624,7 +1658,7 @@ app
         const body = await window.webContents.executeJavaScript(
           "document.body.innerText",
         );
-        if (!body.includes("Magic Canvas"))
+        if (!body.includes("My Magic UW"))
           throw new Error("Renderer did not load");
         // owner: T80. An app-owned client profile exists before the purge (prepare writes
         // only app files; a missing client still gets its folder).
@@ -1661,7 +1695,7 @@ app
   })
   .catch(() => {
     console.error(
-      "Magic Canvas could not start. Check the local runtime and gateway configuration.",
+      "My Magic UW could not start. Check the local runtime and gateway configuration.",
     );
     app.exit(1);
   });

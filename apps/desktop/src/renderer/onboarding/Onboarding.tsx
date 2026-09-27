@@ -225,7 +225,7 @@ export function Onboarding(props: OnboardingProps) {
   return (
     <div className="onb">
       <header className="onb-bar">
-        <span className="onb-wordmark">Magic Canvas</span>
+        <span className="onb-wordmark">My Magic UW</span>
         <span className="onb-bar-end">
           {preview ? (
             <span className="onb-preview-flag">Preview: sample AI clients, not detected</span>
@@ -296,8 +296,11 @@ function Welcome({ heading, onStart }: { heading: Heading; onStart: () => void }
     <div className="onb-welcome">
       {heading("Your classes, in one place.")}
       <p className="onb-lede">
-        Magic Canvas reads your UW courses, keeps what matters on this computer, and helps you
+        My Magic UW reads your UW courses, keeps what matters on this computer, and helps you
         start the right work with sources you can check.
+      </p>
+      <p className="onb-affiliation">
+        My Magic UW is an independent student project. It is not affiliated with, sponsored by or endorsed by the University of Wisconsin–Madison.
       </p>
       <Actions onBack={null}>
         <button className="onb-primary" onClick={onStart} autoFocus>
@@ -353,7 +356,7 @@ function ChooseClient({
     <>
       {heading("Choose your AI")}
       <p className="onb-lede">
-        Magic Canvas uses a separate profile of your AI, just for this app. Your own settings stay
+        My Magic UW uses a separate profile of your AI, just for this app. Your own settings stay
         as they are.
       </p>
       {failed ? (
@@ -434,7 +437,7 @@ function ChooseClient({
         </button>
       </Actions>
       <p className="onb-note">
-        Until an AI is connected, Magic Canvas still reads and organizes your courses; writing
+        Until an AI is connected, My Magic UW still reads and organizes your courses; writing
         study material waits.
       </p>
     </>
@@ -570,7 +573,7 @@ function ConnectClient({
       {heading(`Sign in to ${info.name}`)}
       <p className="onb-lede">
         {signedIn
-          ? `${info.name} is ready for Magic Canvas.`
+          ? `${info.name} is ready for My Magic UW.`
           : `${info.name}'s own sign-in runs below, in a session separate from your usual one.`}
       </p>
       {!signedIn ? (
@@ -693,7 +696,7 @@ function ConnectUw({
       {agreed ? (
         <>
           <p className="onb-lede">
-            You have agreed. Sign in on UW's own page, and Magic Canvas starts reading your
+            You have agreed. Sign in on UW's own page, and My Magic UW starts reading your
             courses.
           </p>
           <Actions onBack={onBack}>

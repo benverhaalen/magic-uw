@@ -27,6 +27,21 @@ export interface JudgmentGateway {
     signal: AbortSignal,
   ): Promise<KindJudgment>;
 }
+/** An upstream refusal is a wait, not a failed judgment attempt. */
+export class JudgmentBudgetError extends Error {
+  readonly retryAfterMs: number;
+  constructor(retryAfterMs: number) {
+    super("Judgment budget reached. Try later.");
+    this.name = "JudgmentBudgetError";
+    this.retryAfterMs = Number.isFinite(retryAfterMs) && retryAfterMs > 0
+      ? Math.min(86_400_000, Math.max(60_000, retryAfterMs)) : 900_000;
+  }
+}
+function budgetError(header: string | null): JudgmentBudgetError {
+  const seconds = header?.trim() && /^\d+(?:\.\d+)?$/.test(header.trim()) ? Number(header) : NaN;
+  const delay = Number.isFinite(seconds) ? seconds * 1000 : header ? Date.parse(header) - Date.now() : NaN;
+  return new JudgmentBudgetError(delay);
+}
 export interface DeviceCredentialStore {
   read(): Promise<string | null>;
   write(token: string): Promise<void>;
@@ -65,6 +80,7 @@ export function gatewayClient(
           body: "{}",
           signal,
         });
+        if (r.status === 429) throw budgetError(r.headers.get("retry-after"));
         if (!r.ok)
           throw new Error(
             "Could not register this installation with the judgment gateway.",
@@ -97,11 +113,10 @@ export function gatewayClient(
           signal,
         },
       );
+      if (r.status === 429) throw budgetError(r.headers.get("retry-after"));
       if (!r.ok)
         throw new Error(
-          r.status === 429
-            ? "Judgment budget reached. Try later."
-            : r.status === 503
+          r.status === 503
               ? "The judgment gateway is not configured."
               : "The judgment gateway could not complete this request.",
         );

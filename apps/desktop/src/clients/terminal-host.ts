@@ -115,7 +115,7 @@ export function createTerminalHost(deps: TerminalHostDeps) {
     async open(owner: unknown, ...args: unknown[]): Promise<{ sessionId: string }> {
       const { id, purpose } = parseOpenRequest(args);
       if (!isIsolated(id))
-        throw new Error("This client can't be given its own profile yet, so Magic Canvas won't open it.");
+        throw new Error("This client can't be given its own profile yet, so My Magic UW won't open it.");
       if (!(await deps.consented(id)))
         throw new Error("Agree to share with this AI provider before opening its client.");
       if (sessions.size >= MAX_SESSIONS) throw new Error("Too many terminal sessions are open.");
