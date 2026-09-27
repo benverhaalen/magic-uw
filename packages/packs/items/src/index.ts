@@ -5,6 +5,7 @@
  */
 import { z } from "zod";
 import { definePack } from "../../core/src/index";
+import { evaluate } from "../../../learning/src/arith";
 import { batchCheck, OPTION_IDS, sharedRules, type Draft, type GenerationInput } from "./draft";
 
 export * from "./draft";
@@ -71,26 +72,45 @@ export function quizDrafts(output: QuizOutput): Draft[] {
         key: it.statementIsTrue === null ? "" : it.statementIsTrue ? "true" : "false",
         problem: it.statementIsTrue === null ? "a true/false item needs statementIsTrue" : it.options.length ? "a true/false item takes no options" : null,
       };
+    const unit = it.numeric?.unit?.trim() || null;
     return {
       ...base,
       kind: "numeric",
       options: null,
       key: it.numeric?.value ?? Number.NaN,
-      unit: it.numeric?.unit?.trim() || null,
-      formula: it.numeric?.formula?.trim() || null,
+      unit,
+      formula: withUnit(it.numeric?.formula?.trim() || null, unit),
       problem: it.numeric ? null : "a numeric item needs its value",
     };
   });
 }
 
+/**
+ * The prompt asks for the formula "using numbers, + - * / and parentheses" and the unit apart,
+ * so a compliant formula for 100 bytes is "25 * 4": unitless. Stage 6 compares units too, and
+ * dropped that correct item. When the formula carries no unit and the item has a one-word unit,
+ * code applies the unit to the whole formula ("(25 * 4) bytes"). The value is still recomputed
+ * and compared, so a wrong value still fails.
+ */
+export function withUnit(formula: string | null, unit: string | null): string | null {
+  if (!formula || !unit || !/^[A-Za-zµΩ°%][A-Za-zµΩ°%0-9^]*$/.test(unit)) return formula;
+  try {
+    if (evaluate(formula).unit !== null) return formula;
+    const wrapped = `(${formula}) ${unit}`;
+    return evaluate(wrapped).unit === unit ? wrapped : formula;
+  } catch {
+    return formula;
+  }
+}
+
 export const quizPack = definePack<GenerationInput, QuizOutput>({
   id: "quiz",
-  version: "v1",
+  version: "v2",
   tier: "pass",
   system:
     "You write quiz questions for a university student from their own course passages. Mix multiple choice (4 options, exactly one correct, plausible distractors of similar length, no \"all/none of the above\"), true/false statements and numeric questions where the passages give numbers. Emphasise a negation in capitals (NOT). Return only JSON matching the schema.",
   template: (i) =>
-    `${sharedRules(i)}\n\nWrite ${i.count} quiz questions. For numeric questions give the value, its unit (or null) and, when the passage shows the arithmetic, the formula using numbers, + - * / and parentheses.`,
+    `${sharedRules(i, "quiz")}\n\nWrite ${i.count} quiz questions. For numeric questions give the value, its unit (or null) and, when the passage shows the arithmetic, the formula using numbers, + - * / and parentheses.`,
   schema: quizOutputSchema,
   checks: [batchCheck(quizDrafts)],
   cacheKey: (i) => i,

@@ -16,7 +16,8 @@ import { GUIDE_PACKS } from "../../packs/guide/src/index";
 import { buildPrompt, packCacheKey, type ArtifactStore, type CourseFrame, type LedgerStore, type PackSpec, type Passage } from "../../packs/core/src/index";
 import { learningArtifactStore, sqlLedgerStore } from "../../packs/core/src/learning-stores";
 import { quizDrafts, quizPack, type Draft, type GenerationInput } from "../../packs/items/src/index";
-import { cardDrafts, cardsPack } from "../../packs/cards/src/index";
+import { cardDrafts, cardsPack, reverseCards } from "../../packs/cards/src/index";
+import { subjectFamily } from "../../notes/src/templates/index";
 import { runPipeline, type CandidateItem, type PipelineResource, type StageName } from "../../learning/src/items";
 import { conceptId, normaliseLabel } from "../../learning/src/concepts";
 import { newCard } from "../../learning/src/fsrs";
@@ -93,6 +94,8 @@ interface Scoped {
   restricted: boolean;
   /** The effective course policy (profile claims first; a restriction wins), as tutoring reads it. */
   policy: { mode: string; evidence: string } | undefined;
+  /** The subject family code derives from the course code and title (plan D35); "unknown" when it can't tell. */
+  family: string;
 }
 
 /** The course (and optional module or resources) the scope names, with only eligible, included study sources. */
@@ -117,6 +120,8 @@ function resolveScope(store: WorkspaceStore, scope: PackScope): Scoped | null {
     .filter((r) => !scope.moduleId || r.module?.id === scope.moduleId)
     .sort((a, b) => a.id.localeCompare(b.id));
   const label = resources.find((r) => r.courseName)?.courseName ?? scope.courseId;
+  const courseCode = course.find((r) => r.course?.courseCode)?.course?.courseCode ?? null;
+  const family = subjectFamily({ courseName: course.find((r) => r.courseName)?.courseName ?? label, courseCode }).family;
   return {
     accountScope,
     courseId: scope.courseId,
@@ -125,6 +130,7 @@ function resolveScope(store: WorkspaceStore, scope: PackScope): Scoped | null {
     resources,
     restricted,
     policy: policies.find((p) => p.mode !== "unknown") ?? policies[0],
+    family,
   };
 }
 
@@ -247,7 +253,8 @@ export function createPackHandler(deps: PackHandlerDeps) {
     const itemIds: string[] = [];
     const drops: PackDrop[] = [];
     for (const d of drafts) {
-      const id = `${prefix}-${d.index}`;
+      // A code-derived card (a language card's reverse) is named after the card it comes from.
+      const id = d.derivedFrom === undefined ? `${prefix}-${d.index}` : `${prefix}-${d.derivedFrom}r`;
       if (d.problem) {
         drops.push({ index: d.index, stage: "schema", reason: d.problem });
         continue;
@@ -326,6 +333,7 @@ export function createPackHandler(deps: PackHandlerDeps) {
       sections: units.map((u) => u.studentLabel ?? u.label),
       topics: concepts.filter((c) => c.kind === "concept").map((c) => c.studentLabel ?? c.label).slice(0, 60),
       focus,
+      ...(s.family !== "unknown" ? { subject: s.family } : {}),
     };
     const frame = frameFor(s, units);
     return name === "quiz"
@@ -384,7 +392,9 @@ export function createPackHandler(deps: PackHandlerDeps) {
     const at = () => now().toISOString();
     const base = { ...empty(name, "done", "", s.courseRef), receiptIds };
     const finish = (artifact: { id: string; cacheKey: string; client: string; model: string; output: O; usage: PackRunResult["tokens"] }, cached: boolean): PackRunResult => {
-      const drafts = draftsOf(artifact.output);
+      const written = draftsOf(artifact.output);
+      // Languages: vocabulary in both directions (plan D35), derived by code at 0 tokens.
+      const drafts = name === "cards" && s.family === "languages" ? [...written, ...reverseCards(written)] : written;
       const generator = { client: artifact.client, model: artifact.model, promptVersion: `${pack.id}@${pack.version}` };
       const { itemIds, drops } = accept(s, pack.id, artifact.cacheKey, drafts, resourceOf, generator);
       const droppedBy: Partial<Record<StageName, number>> = {};
