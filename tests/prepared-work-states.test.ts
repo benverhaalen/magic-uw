@@ -225,3 +225,10 @@ test("destination mark is decorative, small and shares exact provider/host wordi
   assert.match(detailHtml, /Page on example.org in your browser/);
   assertStableTile(html);
 });
+
+ test("Upcoming task entry remains available while preparation loads", () => {
+  const html = renderToStaticMarkup(createElement(WorkView, {resource, refreshKey:"r", work:controller({set:null,prepare:{kind:"loading"},pending:true}),anchor:"work-essay",onInspect:()=>{},openTask:true,compact:{className:"tone-1",summary}}));
+  assert.match(html, /aria-label="Open task: Essay 2"/);
+  const target=html.slice(html.indexOf("<button"),html.indexOf("</button>"));
+  assert.doesNotMatch(target,/aria-disabled|aria-busy/);
+ });

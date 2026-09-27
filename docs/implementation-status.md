@@ -1,6 +1,6 @@
 # Implementation status
 
-One row per feature: its status, where it is, and the evidence behind it. **Checked against `main` at `d832d61` on September 27, 2026**, after wave 2 and tab speed (#53), course analytics (#55), the study prepper (#57), the stall fix (#58), the break-card fixes (#59) and Sean's sync fixes (#48, #52, #61). **Known on main at this check:** six failing tests (Today, readiness and seams tests) are being fixed on `fix/main-green`; the intent-latency test is slow on Windows since the per-ask sessions (#53). How the parts fit together is in [the architecture](architecture.md); measurement methods are in [benchmarks](benchmarks.md). The dated verification log this table replaces, with its full test narratives, is [archived](archive/implementation-log-2026-09-27.md). The desktop frontend's runtime receipts and boundaries are kept in [the desktop handoff](design-handoff.md).
+One row per feature: its status, where it is, and the evidence behind it. **Checked against `main` at `5f79bb0` on September 27, 2026**, after wave 2 and tab speed (#53), course analytics (#55), the study prepper (#57), the stall fix (#58), the break-card fixes (#59) Sean's sync fixes (#48, #52, #61), the stale sign-in cleanup (#54) and the desktop task setup. **Known on main at this check:** six failing tests (Today, readiness and seams tests) are being fixed on `fix/main-green`; the intent-latency test is slow on Windows since the per-ask sessions (#53). How the parts fit together is in [the architecture](architecture.md); measurement methods are in [benchmarks](benchmarks.md). The dated verification log this table replaces, with its full test narratives, is [archived](archive/implementation-log-2026-09-27.md). The desktop frontend's runtime receipts and boundaries are kept in [the desktop handoff](design-handoff.md).
 
 **Status** uses the ladder in [AGENTS.md](../AGENTS.md):
 
@@ -20,6 +20,7 @@ One row per feature: its status, where it is, and the evidence behind it. **Chec
 | Feature | Status | Where | Evidence |
 |---|---|---|---|
 | UW sign-in in the app's own window; "Keep me signed in" | demonstrated | `main` (`apps/desktop/src/main.ts`) | live, 2026-09-26: sign-in to confirmed in 16.5 s including typing; Duo "Remember me" survived a quit and relaunch (#6) |
+| Stale sign-in cleanup: an unfinished sign-in clears only `login.wisc.edu` cookies before the next attempt | integrated | `main` (#54) | 6 tests; tested live on one account on an earlier build, not this exact build |
 | One-checkbox consent and the egress gate | demonstrated | `main` (`packages/core/src/egress.ts`) | 0 requests before the checkbox, in a spy test and the live trial (#6) |
 | Enrollment first, current courses only, the "Your courses" step | integrated | `main` (`a62bcb1`, via #51) | 169/169 targeted tests (synthetic); live-shaped classification: 5 this term, 11 other, 11 past hidden, 7 nameless dropped ([status](status-2026-09-27.md)). The Canvas session also working for Course Search & Enroll is not verified live |
 | Canvas sync: inventory, bounded concurrent reads; page-scope budgets and a responsive worker during a first sync (#48, #52) | demonstrated | `main` (`apps/desktop/src/ingestion.ts`) | live first read of 6 courses: 125 requests, 65 s (#6); replay 115 → 65 requests, 5.7 → 2.1 s after the scheduler (#8, synthetic replay) |
@@ -31,6 +32,7 @@ One row per feature: its status, where it is, and the evidence behind it. **Chec
 | My UW: enrollment, saved DARS, course search, holds | integrated | `main` (`packages/connectors`, `renderer/myuw`) | synthetic adapters and copied-data desktop runs ([planning integration](planning-upgrade.md), [desktop handoff](design-handoff.md)) |
 | GPA calculator: by semester, what-if, grades needed | tested in isolation | `main` (#53, `packages/domain/src/gpa.ts`) | 10/10 tests with worked examples; the panel is not yet mounted in the My UW page |
 | Calendar with the enrolled class schedule | integrated | `main` (`renderer/CalendarPage.tsx`, `7b9bdf9`) | 48 focused tests; a copied-data Electron run ([desktop handoff](design-handoff.md)) |
+| Task setup and owned browser windows | integrated | `main` (Ben's desktop integration) | copied-data setup, save and reload; real split windows are a user trial ([desktop handoff](design-handoff.md)) |
 | Today rail and Home | integrated | `main` (`renderer/Home.tsx`, `TodayRail.tsx`) | [desktop handoff](design-handoff.md); rail duplicates 12 → 3 due-today rows on a read-only real workspace ([log](archive/implementation-log-2026-09-27.md#verification)) |
 | Critical-action agenda (least slack first) | tested in isolation | `main` (#27) | reviewed; tests pass. Its Workspace tools preview is no longer mounted after the design integration |
 | Notifications from stored changes | integrated | `main` (#32, #33, `renderer/notifications`) | synthetic captures; Jev sorting only where Jev is configured |
@@ -75,7 +77,7 @@ One row per feature: its status, where it is, and the evidence behind it. **Chec
 | Course mastery and "Build my strategy" | integrated (through the Analytics tab) | `main` (`packages/learning/src/mastery`) | 23 ms median on 5,000 resources (synthetic) |
 | Practice analytics | integrated (through the Analytics tab) | `main` (`packages/learning/src/analytics`) | tests |
 | Study & Learn page and the Home study card | integrated | `main` (#57, `renderer/study-prep/StudyLearn.tsx`) | every assignment, quiz and exam across current courses with readiness and cards due; paint gated under 100 ms (list) and 150 ms (item space), report-only on CI |
-| Study prep per assessment (`study.prep`, KaTeX) | integrated | `main` (#57, `packages/core/src/study-prep`) | ~23 ms warm on a 5,000-resource store (synthetic); a generation run on real course content is not recorded |
+| Study prep per assessment (`study.prep`, KaTeX) | integrated (generation and Ask held; see evidence) | `main` (#57, `packages/core/src/study-prep`) | ~23 ms warm on a 5,000-resource store (synthetic); a generation run on real course content is not recorded. Held on `main` since `a719430`: the renderer returns "unavailable" for new Study generation and Ask, with no producing call, until exact-account, source-version and effective-policy enforcement is connected ([desktop handoff](design-handoff.md)); browsing materials still works |
 | Item space per work item (11 types) | integrated | `main` (#57, `renderer/study-prep/ItemSpace.tsx`) | code types items with a reason: 40/40 synthetic cases; practice problems and exams with recomputed answers (tests) |
 | Course Analytics tab | integrated | `main` (#55, `renderer/analytics`) | 10/10 tests; paints in ~8–10 ms median; three batched learning calls whatever the course size; a synthetic term in the sample course |
 
@@ -128,4 +130,4 @@ One row per feature: its status, where it is, and the evidence behind it. **Chec
 
 ## Open pull requests (not reflected above)
 
-#54 (Canvas downloads, refresh timeouts, stale UW sign-in), #56 (the website: every current feature), #60 (the launch film pipeline) and #62 (Data & AI redesign). Their state is in each PR.
+#56 (the website: every current feature), #60 (the launch film pipeline) and #62 (Data & AI redesign). Their state is in each PR.

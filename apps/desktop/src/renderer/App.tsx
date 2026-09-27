@@ -90,6 +90,7 @@ function ShellFeedback({ error, notice, view, onDismiss }: { error: string; noti
 import { ResourceDetailHeader, ResourceProvenance } from "./ResourceDetailHeader";
 import { effectiveCoursePolicy } from "../../../../packages/domain/src/course-policy";
 import { ResourceAssignment } from "./ResourceAssignment";
+import { clearTaskWorkspaces } from "./task-workspace/model";
 import { DeadlineReview } from "./DeadlineReview";
 
 type View = DesktopView;
@@ -1417,6 +1418,7 @@ function Privacy({
       "Local coursework and activity deleted.",
     );
     if (result) {
+      clearTaskWorkspaces();
       setDeleteText("");
       setShowDelete(false);
     }

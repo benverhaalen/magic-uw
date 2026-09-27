@@ -78,7 +78,7 @@ import {
   gitlabProjectFromUrl,
   gitlabProjectsForCourse,
 } from "../../../packages/connectors/src/gitlab";
-import { courseInclusion } from "../../../packages/core/src/access";
+import { courseInclusion, courseRowIncluded } from "../../../packages/core/src/access";
 import { createRefreshCoordinator } from "../../../packages/core/src/refresh";
 import { readFileSync, rmSync, writeFileSync } from "node:fs"; // fix/sync-events
 import { canvasTargetedRead } from "../../../packages/connectors/src/canvas-targeted"; // fix/sync-events
@@ -255,6 +255,24 @@ export function inputResource(resource: Resource): ResourceInput {
     ),
   );
 }
+/**
+ * owner: T05b. A Canvas space's candidate rows (not deleted, not an extracted document), indexed
+ * by course from one workspace read per access pass; each space was a full scan per call.
+ */
+export function accessCandidateIndex(resources: Resource[]) {
+  const byCourse = new Map<string, Resource[]>();
+  for (const r of resources)
+    if (!r.deleted && !r.document) {
+      const rows = byCourse.get(r.courseId);
+      if (rows) rows.push(r);
+      else byCourse.set(r.courseId, [r]);
+    }
+  return (courseId: string, url: string, fileId: string | undefined) =>
+    (byCourse.get(courseId) ?? []).filter(
+      (r) => r.url === url || (fileId && r.file?.id === fileId),
+    );
+}
+const yieldToEvents = () => new Promise<void>((resolve) => setImmediate(resolve));
 /** One owner schedules reads; only the main process can attach the app-owned UW session. */
 export function createIngestion(
   store: Store & CourseCoreStore,
@@ -317,11 +335,10 @@ export function createIngestion(
       firstValueMs = Math.max(0, performance.now() - activeStart);
     return report;
   }
-  function courses() {
-    const included = courseInclusion(store),
+  function courses(all = store.resources()) {
+    const included = courseInclusion(store, all),
       sources = new Map(store.sources().map((s) => [s.id, s]));
-    return store
-      .resources()
+    return all
       .filter(
         (r) =>
           r.kind === "course" &&
@@ -783,11 +800,7 @@ export function createIngestion(
                     s.accountScope === job.account &&
                     s.courseId === job.course.courseId &&
                     s.scope === "course",
-                ) &&
-              store
-                .courseOverrides()
-                .find((o) => o.accountScope === job.account && o.courseId === job.course.courseId)
-                ?.included !== false;
+                ) && courseRowIncluded(store, job.course);
             try {
               signal.throwIfAborted();
               const response = await http.request(
@@ -1287,10 +1300,12 @@ export function createIngestion(
       capturedLatePage = false;
     const settings = store.ingestionSettings();
     const sources = new Map(store.sources().map((s) => [s.id, s]));
-    const stored = store.resources(); // fix/sync-events: one decode per run, not one per course
-    for (const { resource: course, source } of courses()) {
+    // One read per pass: each course only writes its own rows, which no later course reads.
+    const all = store.resources();
+    for (const { resource: course, source } of courses(all)) {
+      await yieldToEvents(); // serve port messages between courses
       signal.throwIfAborted();
-      const resources = stored
+      const resources = all
         .filter(
           (r) =>
             r.courseId === course.courseId &&
@@ -1568,6 +1583,7 @@ export function createIngestion(
     accountScope: string,
     courseId: string,
     signal: AbortSignal,
+    candidatesFor: ReturnType<typeof accessCandidateIndex>,
   ) {
     const sources = store
       .sources()
@@ -1577,7 +1593,6 @@ export function createIngestion(
           s.accountScope === accountScope &&
           s.courseId === courseId,
       );
-    let courseRows: Resource[] | undefined;
     return {
       session: sessionTransport,
       public: publicAccessTransport(client),
@@ -1597,15 +1612,7 @@ export function createIngestion(
             checkedAt: expired.lastAttemptAt,
           };
         const fileId = canvasFileId(space.url, origin, courseId);
-        // fix/sync-events: one decode per course check, not one per space.
-        const candidates = (courseRows ??= store.resources().filter((r) => r.courseId === courseId))
-          .filter(
-            (r) =>
-              !r.deleted &&
-              !r.document &&
-              r.courseId === courseId &&
-              (r.url === space.url || (fileId && r.file?.id === fileId)),
-          );
+        const candidates = candidatesFor(courseId, space.url, fileId);
         const observations = sources
           .filter(
             (s) =>
@@ -1651,10 +1658,12 @@ export function createIngestion(
       scheduler: scheduler(),
     });
     const sources = new Map(store.sources().map((x) => [x.id, x]));
-    const all = store.resources();
-    for (const { resource: course, source } of courses()) {
+    const all = store.resources(),
+      candidatesFor = accessCandidateIndex(all);
+    for (const { resource: course, source } of courses(all)) {
       if (only && !only.has(course.courseId)) continue;
       if (http.needsSignIn) break;
+      await yieldToEvents(); // serve port messages between courses
       signal.throwIfAborted();
       const stored = all.filter(
         (r) =>
@@ -1692,7 +1701,7 @@ export function createIngestion(
           merged,
         ),
         {
-          ...accessDeps(source.accountScope, course.courseId, signal),
+          ...accessDeps(source.accountScope, course.courseId, signal, candidatesFor),
           ...(probe ? { only: probe } : {}),
         },
       );
@@ -1735,14 +1744,17 @@ export function createIngestion(
   async function recheckAccess(signal: AbortSignal) {
     const all = recheckAll;
     recheckAll = false;
+    const candidatesFor = accessCandidateIndex(store.resources());
     for (const [key, list] of spaces) {
+      await yieldToEvents(); // serve port messages between courses
+      signal.throwIfAborted();
       const [accountScope, courseId] = [
         key.slice(0, key.lastIndexOf(":")),
         key.slice(key.lastIndexOf(":") + 1),
       ];
       const probe = await probeFilter(accountScope, courseId, signal);
       const checked = await checkSpaceAccess(list, {
-        ...accessDeps(accountScope, courseId, signal),
+        ...accessDeps(accountScope, courseId, signal, candidatesFor),
         only: (space) =>
           (!probe || probe(space)) &&
           (all ||

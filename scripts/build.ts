@@ -73,6 +73,7 @@ const geistFiles = (await readdir(rendererAssets)).filter(name => /^Geist-Variab
 if (geistFiles.length !== 1 || !(await readFile(join(fonts, "Geist-Variable.woff2"))).equals(await readFile(join(rendererAssets, geistFiles[0]))))
   throw new Error("Emitted desktop Geist font differs from the supplied file.");
 await copyFile(join(fonts, "Geist-OFL.txt"), join(rendererAssets, "Geist-OFL.txt"));
+execFileSync(process.execPath, ["scripts/build-task-window-helper.mjs"], { stdio: "inherit" }); // owner: task-workspace
 execFileSync(process.execPath, ["scripts/build-web.mjs"], { stdio: "inherit" });
 console.log(
   "Built desktop main, isolated preload, local worker, renderer, and informational website.",
