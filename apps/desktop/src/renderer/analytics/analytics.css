@@ -1,3 +1,8 @@
+/* Uniform Geist 400 (docs/design/decision-record.md, September 27): emphasis by size and colour, not weight. */
+.course-analytics strong,
+.course-analytics th {
+  font-weight: var(--magic-font-interface-weight);
+}
 /* Course Analytics tab. Design tokens only (docs/design/tokens.css), via the chart tokens in
    ../charts/charts.css for anything that changes in dark mode. */
 .ca-tabs {
@@ -17,7 +22,7 @@
 .ca-tab.is-active {
   color: var(--chart-ink);
   border-bottom-color: var(--chart-ink);
-  font-weight: 600;
+  font-weight: var(--magic-font-interface-weight);
 }
 .ca-panel {
   padding: 20px 28px 40px;
@@ -53,7 +58,7 @@
   margin: 0;
   font-family: var(--magic-font-editorial);
   font-size: var(--magic-type-section);
-  font-weight: 400;
+  font-weight: 500;
 }
 .ca-headline {
   margin: 6px 0 0;
@@ -90,7 +95,7 @@
 }
 .ca-grade-figure {
   font-size: 26px;
-  font-weight: 600;
+  font-weight: var(--magic-font-interface-weight);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
 }
@@ -103,7 +108,7 @@
   border-radius: var(--magic-radius-control);
   background: var(--chart-band);
   color: var(--chart-line);
-  font-weight: 700;
+  font-weight: var(--magic-font-interface-weight);
 }
 .ca-notes {
   display: flex;
@@ -192,7 +197,7 @@
 }
 .ca-due {
   color: var(--chart-late);
-  font-weight: 500;
+  font-weight: var(--magic-font-interface-weight);
 }
 .ca-topics {
   display: grid;
@@ -245,7 +250,7 @@
   border: 1px solid var(--chart-grid);
   background: var(--chart-surface);
   font-size: 11.5px;
-  font-weight: 600;
+  font-weight: var(--magic-font-interface-weight);
   font-variant-numeric: tabular-nums;
 }
 .ca-action-body {
@@ -262,7 +267,7 @@
 .ca-secondary {
   border-radius: var(--magic-radius-control);
   padding: 6px 12px;
-  font-weight: 500;
+  font-weight: var(--magic-font-interface-weight);
   font-size: 12.5px;
 }
 .ca-primary {

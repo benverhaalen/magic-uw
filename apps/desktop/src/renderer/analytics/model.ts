@@ -137,7 +137,7 @@ export type GradeTrendView =
 
 /**
  * The what-if range: the course grade if every remaining counted item scored at the student's own
- * lowest item percent so far, and at their highest. Both edges come from captured scores; this is a
+ * lower-quartile item percent so far, and at their upper quartile. Both edges come from captured scores; this is a
  * range of what-ifs, not a forecast. Needs known weights and no group drop rules.
  */
 export function whatIfBand(grades: CourseGrades, work: GradeItem[], now: Date): WhatIfBand | null {
@@ -147,9 +147,16 @@ export function whatIfBand(grades: CourseGrades, work: GradeItem[], now: Date): 
   const remaining = work.filter((x) => counted(x) && x.score === null && x.groupId !== null && (x.dueAt ?? "") >= nowIso);
   const past = grades.trajectory.course;
   if (!remaining.length || past.length < 3) return null;
-  const rates = past.map((p) => p.percent / 100);
-  const loRate = Math.min(...rates),
-    hiRate = Math.max(...rates);
+  // The middle half of the student's own item scores (25th to 75th percentile), so one missing zero
+  // or one perfect score doesn't set the whole range.
+  const rates = past.map((p) => p.percent / 100).sort((a, b) => a - b);
+  const q = (f: number) => {
+    const i = (rates.length - 1) * f,
+      lo = Math.floor(i);
+    return rates[lo]! + (rates[Math.min(lo + 1, rates.length - 1)]! - rates[lo]!) * (i - lo);
+  };
+  const loRate = q(0.25),
+    hiRate = q(0.75);
   const at = (rate: number) => {
     let total = 0,
       sum = 0;
@@ -174,7 +181,7 @@ export function whatIfBand(grades: CourseGrades, work: GradeItem[], now: Date): 
     hi,
     loRate: round1(loRate * 100),
     hiRate: round1(hiRate * 100),
-    text: `What-if range ${lo}–${hi}%: every remaining item at your lowest (${round1(loRate * 100)}%) to your highest (${round1(hiRate * 100)}%) item so far. Not a prediction.`,
+    text: `What-if range ${lo}–${hi}%: if every remaining item scores like the middle half of your items so far (${round1(loRate * 100)}–${round1(hiRate * 100)}%). Not a prediction.`,
   };
 }
 

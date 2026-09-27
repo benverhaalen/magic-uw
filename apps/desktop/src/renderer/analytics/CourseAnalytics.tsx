@@ -7,6 +7,7 @@ import type { FlashcardData, PracticeRoundData } from "../../../../../packages/l
 import { ChartFrame, Legend, LevelBar, LineChart, ProgressBar, RingChart, StackedBarChart, percentDomain, type Series } from "../charts";
 import { SessionRunner, type SessionStart } from "../backend/mastery/SessionRunner";
 import { operationId, type MasteryApi } from "../backend/mastery/api";
+import { Action } from "../../../../../packages/ui/src";
 import { loadAnalyticsInputs, localCourseData, type CourseRef } from "./load";
 import {
   COMPLETION,
@@ -44,9 +45,9 @@ function Empty({ state, onCoursework }: { state: EmptyState; onCoursework: () =>
   return (
     <div className="ca-empty" role="status">
       <p>{state.message}</p>
-      <button type="button" className="ca-secondary" onClick={onCoursework}>
+      <Action tone="quiet" intent="coursework" onClick={onCoursework}>
         {state.action.label}
-      </button>
+      </Action>
     </div>
   );
 }
@@ -179,9 +180,9 @@ function Prep({ view, onPrep, onCoursework }: { view: PrepView; onPrep: (id: str
                   <span className="ca-chip">{r.kind}</span>
                   <strong className="ca-prep-title">{r.title}</strong>
                 </div>
-                <button type="button" className="ca-secondary" onClick={() => onPrep(r.itemId)} aria-label={`Prep for ${r.title}`}>
+                <Action tone="quiet" intent="study" onClick={() => onPrep(r.itemId)} aria-label={`Prep for ${r.title}`}>
                   Prep
-                </button>
+                </Action>
               </div>
               <p className="ca-meta">
                 {r.when} · {r.weight}
@@ -268,9 +269,9 @@ function Actions({ view, onAction, onCoursework, busy }: { view: ActionsView; on
                 <strong>{c.title}</strong>
                 <p className="ca-meta">{c.detail}</p>
                 {c.usesAi ? <p className="ca-cite">Uses your AI, with its consent and receipt.</p> : null}
-                <button type="button" className={i === 0 ? "ca-primary" : "ca-secondary"} disabled={busy} onClick={() => onAction(c)}>
+                <Action tone={i === 0 ? "primary" : "quiet"} intent={c.kind === "start" ? "coursework" : "study"} pending={busy} onClick={() => onAction(c)}>
                   {c.cta}
-                </button>
+                </Action>
               </div>
             </li>
           ))}
@@ -403,9 +404,9 @@ export function CourseAnalyticsTab({
     return (
       <div className="ca-empty" role="alert">
         <p>{error}</p>
-        <button type="button" className="ca-secondary" onClick={() => setNonce((n) => n + 1)}>
+        <Action tone="quiet" onClick={() => setNonce((n) => n + 1)}>
           Try again
-        </button>
+        </Action>
       </div>
     );
   if (!view) return <p className="ca-loading" aria-busy="true">Reading this course…</p>;
