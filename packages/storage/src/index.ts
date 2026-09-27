@@ -1955,6 +1955,25 @@ export function createStore(
         ).all() as Row[]
       ).map((r) => String(r.read_id));
     },
+    // sync-cap: see the Store contract. Only the source row changes; no resource is written or removed.
+    settleSource(sourceId, value) {
+      const row = prepare("SELECT status, complete, details FROM sources WHERE id=?").get(sourceId) as Row | undefined;
+      if (!row) return;
+      const details = JSON.parse(String(row.details)) as { progress?: { phase: string }; diagnostics?: CaptureDiagnostic[] };
+      if (details.progress) details.progress = { ...details.progress, phase: value.phase };
+      let status = String(row.status),
+        complete = Number(row.complete),
+        success: string | null = null;
+      if (value.done && !complete && (status === "ok" || status === "partial")) {
+        status = "ok";
+        complete = 1;
+        success = value.done.at;
+        details.diagnostics = [...(details.diagnostics ?? []), value.done.diagnostic].slice(-2000);
+      }
+      prepare(
+        "UPDATE sources SET status=?, complete=?, last_success_at=COALESCE(?, last_success_at), details=? WHERE id=?",
+      ).run(status, complete, success, JSON.stringify(details), sourceId);
+    },
     removeSource(sourceId) {
       return transaction(() => {
         const source = db

@@ -1116,6 +1116,13 @@ export interface Store {
    * number of items removed. Not for failed or empty reads, which must never erase coursework.
    */
   removeSource(sourceId: string): number;
+  /**
+   * sync-cap. Ends one source's read after a sync: its progress phase becomes `phase` (never left
+   * "reading"). With `done`, an ok/partial source that did not finish is shown as read (ok and
+   * complete) and `done.diagnostic` is appended, so the data still records that the read was cut
+   * short. Resources are never touched.
+   */
+  settleSource?(sourceId: string, value: { phase: string; done?: { at: string; diagnostic: CaptureDiagnostic } }): void;
   resources(search?: string): Resource[];
   resource(id: string): Resource | undefined;
   /**
