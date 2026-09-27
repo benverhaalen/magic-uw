@@ -16,6 +16,8 @@ Follow-up:
 | --- | --- | --- |
 | [FDB-001](#fdb-001-assignment-grade-share-lacks-account-and-capture-coverage-boundaries) | Assignment grade share lacks account and capture-coverage boundaries | Reproduced with synthetic inputs |
 | [FDB-002](#fdb-002-sign-in-bridge-discards-the-cancelled-outcome) | Sign-in bridge discards the cancelled outcome | Code-inspected; live authentication not reproduced |
+| [FDB-003](#fdb-003-generation-pack-scope-cannot-select-the-requesting-account) | Generation pack scope cannot select the requesting account | Code-inspected; generation not run |
+| [FDB-004](#fdb-004-student-record-freshness-uses-a-term-length-horizon) | Student-record freshness uses a term-length horizon | Code-inspected; live hold changes not reproduced |
 
 Existing syllabus discovery, extraction, and capture gaps remain in [backend packet 12](../.agents/team/packets/backend/12-syllabus-discovery.md); that investigation belongs to Nathaniel and is not duplicated here.
 
@@ -65,3 +67,31 @@ Private coursework, account identifiers, captures, logs, credentials, and sessio
 **Proposed backend owner:** Nate/Nathaniel, pending acceptance. **Next action:** agree an additive typed sign-in outcome and update its IPC/bridge contract; preserve consent and existing sign-in gating.
 
 **Resolution proof:** cover confirmed, cancelled, and failed outcomes through the IPC contract and frontend consumer, including a cancellation that triggers no success claim or automatic follow-up sync. Verify the shell still offers recovery when access remains unresolved.
+
+## FDB-003: Generation pack scope cannot select the requesting account
+
+**Status:** code-inspected at main `ae66b91`; no model, generation, or real account data used. The Study frontend exposed this contract limitation during integration review.
+
+**Student impact:** when two included accounts have the same provider course ID, a generation request cannot identify which account's course the student opened. Resource-specific requests can return no material despite that account having the requested source; a course-wide request can choose the other account's course.
+
+**Code and sanitized trace:** `packages/contracts/src/index.ts` defines `packScopeSchema` with `courseId` and optional resource/module/assessment/topic IDs, but no account field. In `packages/core/src/pack-handler.ts`, `resolveScope` gathers every matching course ID, sorts their source account scopes, and chooses the first account before filtering `scope.resourceIds`. Trace two synthetic sources with account scopes `account-a` and `account-b`, both course `course-1`: a request from B with only `courseId` selects A; adding B's resource ID still selects A first and then removes A's resources. This is a code-path reproduction, not an executed generation test. Other guide/intent adapters require separate inspection; this finding does not claim every generation path has the same behavior.
+
+**Expected / actual:** the requested account should be explicit or unambiguously derived from a verified resource before selecting course context, with ambiguity rejected. Actual pack selection is determined by sorted account scope rather than the requesting page or selected resource.
+
+**Frontend handling:** maintain account-scoped resource selection and filter returned study artifacts by their actual course reference. Do not treat that output filtering as enforcing the account used for generation. When the target account cannot be established through the existing backend contract, keep generation unavailable rather than claim a correctly scoped run.
+
+**Proposed backend owner:** Nate/Nathaniel, pending acceptance. **Next action:** establish an account-scoped pack contract or verified-resource resolution, including guide and command-router adapters that call it. **Resolution proof:** two-account synthetic tests must select the requested account, preserve policy and consent checks, reject ambiguity, and verify the frontend's requested/returned course references agree.
+
+## FDB-004: Student-record freshness uses a term-length horizon
+
+**Status:** code-inspected at main `ae66b91`; no live hold, enrollment appointment, or student-account change was reproduced. This records a freshness-policy gap for backend review rather than claiming a specific student's saved hold is wrong.
+
+**Student impact:** a changed enrollment hold or appointment can remain presented as current by a consumer relying on the planning freshness classification for much of a term.
+
+**Code and sanitized trace:** `packages/core/src/planning.ts`, `planningEvidenceKind`, maps `student_record` to `public`; `planningHorizon` gives every kind except enrollment during add/drop a 120-day horizon. A successful `student_record` capture observed ten days ago is therefore still within that horizon. `planningRefreshDue` also uses a term cadence outside a known add/drop window; an unknown window currently takes the conservative seven-day branch. No evidence here establishes how often a particular live account actually refreshes.
+
+**Expected / actual:** decision-sensitive holds and enrollment appointments need an explicitly justified freshness policy that can differ from public catalog data. Actual classification shares the 120-day policy. A shorter exact interval is a product/backend decision, not established by this observation.
+
+**Frontend handling:** My UW uses a conservative seven-day confirmation cue for saved holds/windows and retains a refresh action. This is a temporary renderer policy, not evidence that the source changed. Mirrored horizons can drift when the backend policy changes.
+
+**Proposed backend owner:** Nate/Nathaniel, pending acceptance. **Next action:** distinguish student-record freshness where needed and expose a renderer-safe freshness result or shared policy. **Resolution proof:** synthetic boundary tests for holds/appointments versus public catalog data, cadence before a known enrollment window, and a UI check that stale saved facts remain visible with a clear confirmation action.
