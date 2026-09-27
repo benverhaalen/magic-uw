@@ -3,42 +3,10 @@
 // below without touching the rollups. Every link carries the reason code found it.
 import type { Assessment, Link, MapLink, Resource } from "@magic/contracts";
 import { resolveDeadline } from "@magic/domain";
-import type { ExamRef } from "../router-types";
+import type { AssessmentLink, ExamDate, ExamRef, MaterialLink, ReferencesPort } from "../router-types";
 
-export interface MaterialLink {
-  resourceId: string;
-  title: string;
-  reason: string;
-}
-
-export interface AssessmentLink {
-  assessmentId: string;
-  title: string;
-  /** `assignment`: graded work that is not an exam or quiz. */
-  kind: ExamRef["kind"] | "assignment";
-}
-
-export interface ExamDate {
-  assessmentId: string;
-  title: string;
-  kind: ExamRef["kind"];
-  /** Null: no date is known; never invented. */
-  at: string | null;
-  dateSource: ExamRef["dateSource"];
-  /** The captured resource the exam is, when there is one. */
-  resourceId: string | null;
-}
-
-export interface ReferencesPort {
-  /** The assignment (or exam) as captured, or null when unknown. */
-  assignment(assignmentId: string): { id: string; title: string; courseId: string } | null;
-  /** The materials an assignment or exam references. */
-  references(assignmentId: string): MaterialLink[];
-  /** The assignments and exams a material serves. */
-  assessmentsFor(materialId: string): AssessmentLink[];
-  /** The course's exams and quizzes, dated where code can date them. */
-  examDates(courseId: string): ExamDate[];
-}
+// The port and its row types are documented in router-types.ts (the pipeline adapter implements them there).
+export type { AssessmentLink, ExamDate, MaterialLink, ReferencesPort };
 
 /** The parts of the coursework store the current adapter reads (Store & CourseCoreStore satisfy it). */
 export interface CurrentReferenceSources {
@@ -81,6 +49,14 @@ export function urlKey(raw: string): string | null {
 const linkUrl = (l: NonNullable<Resource["links"]>[number]) => (typeof l === "string" ? l : l.url);
 const isModuleHeader = (r: Resource) => !!r.module && !r.moduleItem;
 const LINKABLE = new Set<Resource["kind"]>(["material", "assignment"]);
+/** Module item types that are course material (not graded work, headers or tools). */
+const MODULE_MATERIAL_TYPES = new Set(["Page", "File", "ExternalUrl"]);
+/** The containing module's ID on a module item, once the connector records it (`moduleItem.moduleId`). */
+function moduleIdOf(r: Resource): string | null {
+  const mi = r.moduleItem;
+  if (!mi || !("moduleId" in mi)) return null;
+  return typeof mi.moduleId === "string" && mi.moduleId ? mi.moduleId : null;
+}
 
 /** Exam date for a Canvas assignment: its resolved due date, else the captured due field. */
 function assignmentDate(r: Resource): string | null {
@@ -92,7 +68,9 @@ function assignmentDate(r: Resource): string | null {
 /**
  * The adapter over what exists today: an assignment's description links (resolved to captured
  * resources in the same course, through a module item to its page, file or assignment), stored
- * `links` that are not rejected, and current course-map links. Exam dates come from the course
+ * `links` that are not rejected, current course-map links and, when module items carry their
+ * module's ID (`moduleItem.moduleId`), the pages, files and links in the assignment's own module.
+ * Without that ID the module step is skipped, never guessed. Exam dates come from the course
  * map's assessments, Canvas assignments and quizzes, and calendar events. Build one per request.
  */
 export function createCurrentReferences(src: CurrentReferenceSources): ReferencesPort {
@@ -111,7 +89,15 @@ export function createCurrentReferences(src: CurrentReferenceSources): Reference
     const links = (src.links?.() ?? []).filter((l) => l.status !== "rejected" && l.type !== "same_as");
     const assessments = src.assessments?.() ?? [];
     const mapLinks = (src.mapLinks?.() ?? []).filter((l) => l.current && l.status !== "rejected");
-    return { all, byId, byUrl, links, assessments, mapLinks, refs: new Map<string, MaterialLink[]>(), served: new Map<string, Map<string, AssessmentLink[]>>() };
+    // Module membership: module items by `courseId|moduleId`, and each module's title from its header.
+    const moduleItems = new Map<string, Resource[]>();
+    const moduleTitle = new Map<string, string>();
+    for (const r of all) {
+      if (isModuleHeader(r) && r.module?.id) moduleTitle.set(`${r.courseId}|${r.module.id}`, r.title);
+      const m = moduleIdOf(r);
+      if (m) moduleItems.set(`${r.courseId}|${m}`, [...(moduleItems.get(`${r.courseId}|${m}`) ?? []), r]);
+    }
+    return { all, byId, byUrl, links, assessments, mapLinks, moduleItems, moduleTitle, refs: new Map<string, MaterialLink[]>(), served: new Map<string, Map<string, AssessmentLink[]>>() };
   }
 
   /** A module item's own target: its page, file, assignment or quiz, when captured. */
@@ -153,6 +139,12 @@ export function createCurrentReferences(src: CurrentReferenceSources): Reference
       for (const l of self.links ?? []) {
         const key = urlKey(linkUrl(l));
         if (key) add(ix.byUrl.get(`${self.courseId}|${key}`), "Linked in the description.");
+      }
+      // The assignment's own module(s): the module items that point at it, then their module's materials.
+      for (const [key, items] of ix.moduleItems) {
+        if (!key.startsWith(`${self.courseId}|`) || !items.some((i) => i.id === self.id || moduleTarget(i)?.id === self.id)) continue;
+        const reason = `In the same module${ix.moduleTitle.has(key) ? `: ${ix.moduleTitle.get(key)}` : ""}.`;
+        for (const i of items) if (MODULE_MATERIAL_TYPES.has(i.moduleItem!.type)) add(i, reason);
       }
     }
     for (const l of ix.links) {

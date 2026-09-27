@@ -55,7 +55,7 @@ import {
 } from "./router-types";
 // end owner: study-backend
 // owner: analytics. Practice analytics ops (additive): code-only rollups, 0 tokens.
-import { analyticsRequestSchema, createAnalytics, refreshTopics, type ReferencesPort } from "./analytics";
+import { createAnalytics, refreshTopics, type ReferencesPort } from "./analytics";
 import type { AnalyticsOp, AnalyticsResult } from "./router-types";
 // end owner: analytics
 
@@ -94,7 +94,7 @@ export interface LearningRouter {
     signal: AbortSignal,
   ): Promise<LearningResult>;
 }
-// owner: analytics. The analytics ops, parsed here until the contracts' learning request schema carries them.
+// owner: analytics. The analytics ops through `handle`, or directly through `analytics` (same request shape).
 export interface AnalyticsRouter {
   analytics(request: unknown, signal: AbortSignal): Promise<AnalyticsResult>;
 }
@@ -799,10 +799,16 @@ export function createLearningRouter(
   async function analytics(raw: unknown, signal: AbortSignal): Promise<AnalyticsResult> {
     const guess = typeof raw === "object" && raw !== null && "op" in raw ? raw.op : undefined;
     const named = ANALYTICS_OPS.find((o) => o === guess) ?? "analytics.course";
-    const parsed = analyticsRequestSchema.safeParse(raw);
+    const parsed = learningRequestSchema.safeParse(raw);
     if (!parsed.success) return { op: named, status: "failed", message: "Invalid analytics request." };
-    const request = parsed.data,
-      op = request.op;
+    const request = parsed.data;
+    if (
+      request.op !== "analytics.assignment" &&
+      request.op !== "analytics.course" &&
+      request.op !== "analytics.agendaHints"
+    )
+      return { op: named, status: "failed", message: "Invalid analytics request." };
+    const op = request.op;
     if (!deps) return { op, status: "not_built", message: "This study feature isn't built yet." };
     if (!deps.analyticsReferences)
       return { op, status: "not_built", message: "Course references aren't connected yet." };
@@ -845,6 +851,10 @@ export function createLearningRouter(
       if (!deps)
         return fail(op, "This study feature isn't built yet.", "not_built");
       if (signal.aborted) return fail(op, "Study request cancelled.");
+      // owner: analytics
+      if (op === "analytics.assignment" || op === "analytics.course" || op === "analytics.agendaHints")
+        return analytics(request, signal);
+      // end owner: analytics
       const store = deps.store;
       try {
         if (op === "study.sessions") {

@@ -52,6 +52,8 @@ function seed() {
       resource("f-77", "material", "Trees notes", "files/77", TREES),
       resource("f-88", "material", "Graphs notes", "files/88", GRAPHS),
       resource("mi-9", "material", "Trees notes (module item)", "modules/items/9", "", { moduleItem: { type: "File", title: "Trees notes", contentId: "77" } }),
+      resource("mod-7", "material", "Week 7", "modules/7", "", { module: { id: "7", position: 7 } }),
+      resource("mi-30", "material", "Participation (module item)", "modules/items/30", "", { moduleItem: { type: "Assignment", title: "Participation", contentId: "3" } }),
       resource("a-1", "assignment", "Homework 1", "assignments/1", "Read the hashing notes first.", { links: [{ url: url("pages/hashing?module_item_id=3") }], dueAt: inDays(3) }),
       resource("a-2", "assignment", "Homework 2", "assignments/2", "Tree exercises.", { links: [{ url: url("modules/items/9") }], dueAt: inDays(8) }),
       resource("a-3", "assignment", "Participation", "assignments/3", "", { dueAt: inDays(9) }),
@@ -319,6 +321,44 @@ test("a flashcard review refreshes its topic's cached state on commit", async ()
     const row = store.conceptState(ref).find((r) => r.conceptId === "t1")!;
     assert.equal((row.counts as { cardReviews: number }).cardReviews, 1);
     assert.equal(row.band, "getting_there");
+  } finally {
+    done();
+  }
+});
+
+test("references adapter: with module IDs on module items, an assignment reaches its module's materials; without them, nothing is guessed", () => {
+  const { owner, rid, done } = seed();
+  try {
+    // Today's capture has no moduleItem.moduleId: the module step is skipped.
+    assert.deepEqual(createCurrentReferences(owner).references(rid("a-3")), []);
+    // Once the connector records it (feat/course-page), the same data links through the module.
+    const withModules = {
+      resources: () =>
+        owner.resources().map((r) => {
+          if (r.externalId !== "mi-9" && r.externalId !== "mi-30") return r;
+          const moduleItem = { ...r.moduleItem!, moduleId: "7" };
+          return { ...r, moduleItem };
+        }),
+    };
+    const port = createCurrentReferences(withModules);
+    assert.deepEqual(port.references(rid("a-3")).map((m) => [m.resourceId, m.reason]), [[rid("f-77"), "In the same module: Week 7."]]);
+    assert.deepEqual(port.assessmentsFor(rid("f-77")).map((a) => a.title).sort(), ["Homework 2", "Midterm 1", "Participation"]);
+  } finally {
+    done();
+  }
+});
+
+test("the analytics ops also run through handle() with the contracts' learning request schema", async () => {
+  const { call, done } = seed();
+  try {
+    const res = await call({ op: "analytics.course", courseId: "SYN201", anchorIds: ["a1"] });
+    assert.equal(res.status, "ok", res.message);
+    assert.equal(res.op, "analytics.course");
+    assert.ok((res.data as CourseAnalyticsData).modules.length > 0);
+    const hints = await call({ op: "analytics.agendaHints", courseId: "SYN201", anchorIds: ["a1"] });
+    assert.equal(hints.status, "ok", hints.message);
+    const bad = await call({ op: "analytics.assignment", courseId: "SYN201", anchorIds: [], assignmentId: "x" } as unknown as LearningRequest);
+    assert.equal(bad.status, "failed", "anchors are required by the schema");
   } finally {
     done();
   }

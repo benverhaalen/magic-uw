@@ -11,4 +11,3 @@ export {
   type ReferencesPort,
 } from "./references";
 export { agendaHints, assignmentAnalytics, courseAnalytics, createAnalytics, refreshTopics, type AnalyticsInput } from "./rollup";
-export { analyticsRequestSchema, type AnalyticsRequest } from "./ops";

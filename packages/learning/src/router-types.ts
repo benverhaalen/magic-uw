@@ -343,6 +343,72 @@ export interface AgendaHintsData {
   hints: AgendaHint[];
 }
 
+/**
+ * The assignment → references graph behind practice analytics: the port the material pipeline's
+ * adapter implements (`feat/material-pipeline`: `references(assignmentId)` and `material_facts`).
+ * Today's adapter is `createCurrentReferences` in `analytics/references.ts`. The router takes a
+ * factory (`LearningRouterDependencies.analyticsReferences`) and builds one port per request, so an
+ * adapter may index eagerly and cache freely within that request. Every method is synchronous,
+ * code-only and reads only the student's own coursework store.
+ */
+export interface ReferencesPort {
+  /**
+   * The assignment or exam as captured: its resource ID, title and Canvas course ID. Null when the
+   * ID is unknown. The router answers `unavailable` when this is null or its `courseId` isn't
+   * the request's course, so the port must never resolve an ID into another course.
+   */
+  assignment(assignmentId: string): { id: string; title: string; courseId: string } | null;
+  /**
+   * The materials an assignment or exam references, each with the reason it was linked (shown
+   * to the student). IDs are resource IDs in the same course. An assignment's own resource may be
+   * included when its text can source topics. Unknown ID or no links: an empty list, never a guess.
+   * Exams are passed by their `ExamDate.resourceId` when they have one, else by `assessmentId`.
+   */
+  references(assignmentId: string): MaterialLink[];
+  /**
+   * The inverse: the assignments and exams that reference a material (`kind: "assignment"` for
+   * graded work that isn't an exam or quiz). It must agree with `references`: a material is
+   * listed under a subject iff `references(subject)` lists that material. Exam proximity and
+   * scope share in the priority come from this.
+   */
+  assessmentsFor(materialId: string): AssessmentLink[];
+  /**
+   * The course's exams and quizzes, dated where code can date them, with where the date came
+   * from. `at: null` when no date is known: never invented; such exams are listed apart as
+   * undated. Duplicates across sources (the same title and day) appear once. Sorted: dated first,
+   * by date. `courseId` is the Canvas course ID.
+   */
+  examDates(courseId: string): ExamDate[];
+}
+
+/** A material an assignment or exam references. */
+export interface MaterialLink {
+  resourceId: string;
+  title: string;
+  /** Why it is linked, shown to the student ("Linked in the description.", "In the same module: …"). */
+  reason: string;
+}
+
+/** An assignment or exam a material serves. */
+export interface AssessmentLink {
+  assessmentId: string;
+  title: string;
+  /** `assignment`: graded work that is not an exam or quiz. */
+  kind: ExamRef["kind"] | "assignment";
+}
+
+/** An exam or quiz with its date, when code can date it. */
+export interface ExamDate {
+  assessmentId: string;
+  title: string;
+  kind: ExamRef["kind"];
+  /** ISO date or instant. Null: no date is known; never invented. */
+  at: string | null;
+  dateSource: ExamRef["dateSource"];
+  /** The captured resource the exam is, when there is one. */
+  resourceId: string | null;
+}
+
 export type AnalyticsOp = "analytics.assignment" | "analytics.course" | "analytics.agendaHints";
 
 export interface AnalyticsOpData {
