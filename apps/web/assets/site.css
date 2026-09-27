@@ -695,6 +695,16 @@ button {
   animation: wizSpark 7s 0.18s infinite;
   fill: var(--cardinal);
 }
+/* On the dark FAQ panel the wizard stage centres itself and the red spark turns white. */
+.ask .wizard-stage {
+  align-self: center;
+}
+.ask .spark {
+  stroke: #1a0d0b;
+}
+.ask .spark.s2 {
+  fill: #fff;
+}
 .spark.s3 {
   animation: wizSpark 7s 0.36s infinite;
 }
