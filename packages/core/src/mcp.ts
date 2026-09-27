@@ -127,7 +127,22 @@ export function createMcpService(
       const source = sourceMap.get(r.sourceId)!;
       const s = (value: string) => out(value, r.courseId);
       const text = s(r.text);
-      const deadline = resolveDeadline(evidence.deadlines(r));
+      const resolved = resolveDeadline(evidence.deadlines(r), evidence.unresolvedDeadlines(r));
+      // Every free-text field of the resolution leaves the device too, so scrub all of it.
+      const deadline = {
+        ...resolved,
+        reason: s(resolved.reason),
+        ...(resolved.notes ? { notes: resolved.notes.map(s) } : {}),
+        claims: resolved.claims.map((c) => ({
+          ...c,
+          quote: s(c.quote),
+          ...(c.note === undefined ? {} : { note: s(c.note) }),
+          ...(c.span ? { span: { ...c.span, text: s(c.span.text) } } : {}),
+        })),
+        ...(resolved.unresolved
+          ? { unresolved: resolved.unresolved.map((u) => ({ ...u, reason: s(u.reason), span: { ...u.span, text: s(u.span.text) } })) }
+          : {}),
+      };
       const match =
         terms
           .map((t) => text.toLocaleLowerCase().indexOf(t))
@@ -145,7 +160,7 @@ export function createMcpService(
         kind: r.kind,
         text: text.slice(start, start + 8000),
         excerpt: { start, end: Math.min(text.length, start + 8000), basis: "outgoing" as const },
-        deadline: { ...deadline, claims: deadline.claims.map((c) => ({ ...c, quote: s(c.quote) })) },
+        deadline,
         citation: {
           url: safeUrl(r.url),
           version: r.version,

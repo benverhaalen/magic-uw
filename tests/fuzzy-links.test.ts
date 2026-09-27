@@ -349,7 +349,10 @@ test("uncertain links remain inspectable and never reach hosted context, MCP evi
     assert.ok(!manifest.payload.text.includes("Guide for membrane transport"));
     const evidence = evidenceFor(store);
     assert.deepEqual(evidence.supporting(hw3).map((r) => r.id), [syllabus.id]);
-    assert.deepEqual(evidence.deadlines(hw3), hw3.deadlines);
+    // Only the assignment's own structured claims; a suggested document contributes no date.
+    const claims = evidence.deadlines(hw3);
+    assert.ok(claims.every((c) => "origin" in c && c.origin === "canvas"));
+    assert.deepEqual(claims.map(({ origin: _origin, ...c }) => c), hw3.deadlines);
   } finally {
     await core.close();
   }

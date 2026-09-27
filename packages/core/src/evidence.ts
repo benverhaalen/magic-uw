@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
-import type { Store, Resource, DeadlineClaim } from "@magic/contracts";
+import type {
+  Store,
+  Resource,
+  DeadlineEvidenceClaim,
+  UnresolvedDeadlineMention,
+} from "@magic/contracts";
+import { proseDeadlines } from "./deadline-evidence";
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 function normalized(url: string) {
   try {
@@ -89,16 +95,29 @@ export function evidenceFor(store: Store) {
     .filter(
       (l) => l.status === "accepted" && byId.has(l.fromId) && byId.has(l.toId),
     );
+  const prose = proseDeadlines(
+    resources,
+    new Map(store.sources().map((s) => [s.id, s])),
+  );
   return {
-    deadlines(resource: Resource): DeadlineClaim[] {
+    deadlines(resource: Resource): DeadlineEvidenceClaim[] {
       return [
-        ...resource.deadlines,
+        ...resource.deadlines.map((c) => ({
+          ...c,
+          origin: resource.calendar ? ("calendar" as const) : ("canvas" as const),
+        })),
         ...links
           .filter((l) => l.type === "same_as" && l.toId === resource.id)
           .flatMap((l) =>
             byId.get(l.fromId)?.calendar ? byId.get(l.fromId)!.deadlines : [],
-          ),
+          )
+          .map((c) => ({ ...c, origin: "calendar" as const })),
+        ...prose(resource).claims,
       ];
+    },
+    /** Deadline phrases in scoped prose that could not be pinned to a date. */
+    unresolvedDeadlines(resource: Resource): UnresolvedDeadlineMention[] {
+      return prose(resource).unresolved;
     },
     supporting(resource: Resource) {
       const seen = new Set([resource.id]),

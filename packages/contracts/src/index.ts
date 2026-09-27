@@ -459,12 +459,64 @@ export interface IngestReport {
   diagnostics?: CaptureDiagnostic[];
   readId?: string;
 }
+/**
+ * Read-time deadline evidence. These fields are derived deterministically from
+ * saved text, never persisted, so the stored `deadlineClaimSchema` is unchanged.
+ */
+export type DeadlineOrigin =
+  | "canvas"
+  | "announcement"
+  | "assignment_text"
+  | "syllabus"
+  | "page"
+  | "calendar"
+  | "title";
+/** A literal slice of one saved resource version. */
+export interface DeadlineSpan {
+  resourceId: string;
+  version: number;
+  contentHash: string;
+  field: "title" | "text";
+  start: number;
+  end: number;
+  text: string;
+}
+export interface DeadlineClaimDetails {
+  origin?: DeadlineOrigin;
+  span?: DeadlineSpan;
+  /** late_until/closes refine `lock`; exam refines `event`. */
+  detail?: "late_until" | "closes" | "exam";
+  /** "day": the text names a date without a usable time; value is that day's start in America/Chicago. */
+  precision?: "minute" | "day";
+  /** How a missing year or relative day was anchored. Absent when fully explicit. */
+  inference?: "year_from_term" | "year_from_source_date" | "relative_to_post";
+  /** For an explicit change: the prior date the text says it replaces, when stated and resolvable. */
+  supersedes?: string;
+  /** When the source said this (announcement post time), used to order changes. */
+  statedAt?: string;
+  note?: string;
+}
+export type DeadlineEvidenceClaim = DeadlineClaim & DeadlineClaimDetails;
+/** A deadline-like phrase that could not be pinned to an instant without inventing information. */
+export interface UnresolvedDeadlineMention {
+  kind: DeadlineClaim["kind"];
+  origin: DeadlineOrigin;
+  span: DeadlineSpan;
+  reason: string;
+}
 export interface DeadlineResolution {
   dueAt: string | null;
   planningAt: string | null;
   conflict: boolean;
-  claims: DeadlineClaim[];
+  claims: DeadlineEvidenceClaim[];
   reason: string;
+  /** Value from the highest-authority tier, shown with its basis even while a conflict keeps `dueAt` null. */
+  preferredAt?: string | null;
+  basis?: DeadlineOrigin | "explicit_change" | null;
+  /** Per-claim explanations: superseded, disagreeing, unconfirmed, or lower authority. */
+  notes?: string[];
+  unresolved?: UnresolvedDeadlineMention[];
+  lockAt?: string | null;
 }
 export const privacySchema = z
   .object({
