@@ -25,6 +25,7 @@ We are entering Applied AI & Automation, DoIT's Badgers Building for Badgers, an
 | Read                                                  | Contents                                                                                                 |
 | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | [Design system](../DESIGN.md) / [handoff](design-handoff.md) | Small entry point: visual anchor, semantic tokens, behavior contracts, platform handoffs and scoped audit workflow |
+| [Marketing materials](../marketing/README.md)          | Website page directions, wizard logo pack, and team photos (design exports, not the built site)          |
 | [Home and visual direction](home-design-direction.md) | Current flagship Home, near-approved layout/type, remaining local refinements and reference transfers |
 | [Product](product.md)                                 | Vision, student experience, learning loop, interface ideas, visual taste                                 |
 | [Organizing concepts](product-directions.md)          | Earlier organizing alternatives; current Home decisions supersede their unresolved entry/navigation status |
