@@ -24,7 +24,8 @@ if (stage && !reduceMotion) {
 const cards = document.querySelector("[data-cards]");
 for (const button of document.querySelectorAll("[data-scroll]")) {
   button.addEventListener("click", () => {
-    cards?.scrollBy({ left: Number(button.dataset.scroll) * 266, behavior: "smooth" });
+    const step = (cards?.firstElementChild?.getBoundingClientRect().width ?? 240) + 12;
+    cards?.scrollBy({ left: Number(button.dataset.scroll) * step, behavior: "smooth" });
   });
 }
 

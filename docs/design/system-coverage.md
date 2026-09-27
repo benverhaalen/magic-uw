@@ -12,7 +12,7 @@ Version 2 · September 26, 2026. **Design maturity is separate from feature impl
 | My UW | Access useful UW academic/administrative context; see planning adapters and source constraints | Nav destination accepted; page composition and primary tasks need Ben's input | Define the first useful task before a teammate invents a dashboard; no registration/write capability implied |
 | Calendar | Understand commitments; week/month; request study suggestions | View/default/suggestion semantics accepted; Sean's Today domain work reviewed separately | Week/month visual design, overlap/timezone and proposal acceptance flow |
 | Profile/settings | Account entry, preferences and actual connections | Bottom profile/expanded name accepted; broader settings composition unspecified | Font/branding configuration and later shell customization; respect real capability boundaries |
-| Public website | Understand product → legitimate download or GitHub | Portable brand/type/material roles; current HTML site; no transferred visual proof | Resolve branding divergence with Aiden; independent website render/real link journey |
+| Public website | Understand product → legitimate download or GitHub | Four static pages consume `tokens.css` roles (shell, workspace, actions, study, identity, focus); rendered at desktop and phone widths locally | Wizard branding in the app needs Ben’s agreement; fonts wait for Ben’s font change; live deploy check |
 
 ## Current owners and change impact
 
