@@ -170,7 +170,7 @@ export function App() {
     try {
       if (!window.magic)
         throw new Error(
-          "The desktop connection is unavailable. Open Magic Canvas from the desktop app.",
+          "The desktop connection is unavailable. Open My Magic UW from the desktop app.",
         );
       const result = await window.magic.execute({ type: "snapshot" });
       if (mounted.current && version === requestVersion.current)
@@ -376,7 +376,7 @@ export function App() {
           <span className="brand-mark" aria-hidden="true">
             m
           </span>
-          <span>Magic Canvas</span>
+          <span>My Magic UW</span>
         </div>
         <nav aria-label="Main navigation">
           {(
@@ -1289,7 +1289,7 @@ function Sources({
             <p>
               Sign in in the app’s browser. The session stays on this device.
               Reading content may mark it viewed or satisfy a “must view”
-              requirement in Canvas. Magic Canvas does not submit work, post,
+              requirement in Canvas. My Magic UW does not submit work, post,
               enroll, or send explicit completion commands.
             </p>
           </div>
@@ -1708,6 +1708,9 @@ function Privacy({
           not delete UW records.
         </p>
       </section>
+      <p className="small muted settings-affiliation">
+        My Magic UW is an independent student project. It is not affiliated with, sponsored by or endorsed by the University of Wisconsin–Madison.
+      </p>
     </div>
   );
 }
@@ -1733,7 +1736,7 @@ function KeepSignedInToggle({ busy }: { busy: boolean }) {
   return (
     <SettingToggle
       label="Keep me signed in"
-      description="Closing the window keeps Magic Canvas running, and it starts with your computer, so your UW session stays open. Quit or Sign out ends the session."
+      description="Closing the window keeps My Magic UW running, and it starts with your computer, so your UW session stays open. Quit or Sign out ends the session."
       checked={value}
       disabled={busy || saving}
       onChange={(next) => {

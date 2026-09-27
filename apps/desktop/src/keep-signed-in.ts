@@ -122,7 +122,7 @@ export function trayWanted(input: {
 export type TrayAction = "open" | "signout" | "quit";
 export const trayMenu: ReadonlyArray<{ action: TrayAction; label: string }> =
   Object.freeze([
-    { action: "open", label: "Open Magic Canvas" },
+    { action: "open", label: "Open My Magic UW" },
     { action: "signout", label: "Sign out" },
     { action: "quit", label: "Quit" },
   ]);
