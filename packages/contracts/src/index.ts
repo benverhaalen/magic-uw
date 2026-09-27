@@ -566,6 +566,9 @@ export const captureBatchSchema = z
           "mail",
           "feed",
           "notes", // owner: T30: OneNote and OneDrive through Graph; owner: notes: session notes (passages)
+          // owner: site-recipes: items code extracted from a course website's stored pages with a
+          // layout recipe (D32). Kept apart from "web" so the crawler never reads them back as pages.
+          "site",
         ]),
         accountScope: id,
         courseId: id,

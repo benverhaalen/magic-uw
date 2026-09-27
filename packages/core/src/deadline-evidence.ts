@@ -15,7 +15,7 @@ import {
 
 const DAY = 86_400_000;
 /** Approximate UW term windows, used only when Canvas gives no course dates. Resolver adds slack. */
-function termFromName(name: string | undefined) {
+export function termFromName(name: string | undefined) {
   const m = /\b(fall|spring|summer)\s+(\d{4})\b/i.exec(name ?? "");
   if (!m) return null;
   const y = Number(m[2]);
@@ -77,6 +77,8 @@ export function proseDeadlines(
     if (r.kind === "message")
       return sources.get(r.sourceId)?.scope === "announcements" ? "announcement" : null;
     if (r.kind !== "material" || !r.text) return null;
+    // owner: site-recipes: a course website's organized items (D32) are page evidence, below Canvas.
+    if (sources.get(r.sourceId)?.kind === "site") return "page";
     if (r.externalId === "syllabus" || /\bsyllabus\b/i.test(r.title)) return "syllabus";
     return /\/pages\//.test(r.url) ? "page" : null;
   }
