@@ -60,7 +60,8 @@ const MAX_PASSAGES = 40;
 const PER_QUERY = 2;
 const MAX_QUERIES = 24;
 const FACT_CHARS = 3000;
-export const PREP_COUNTS = { quiz: 10, cards: 12, problems: 5 };
+// Operator decision 2026-09-27: a smaller first set comes back faster (output tokens drive the wait; 12 cards took 34–58 s).
+export const PREP_COUNTS = { quiz: 6, cards: 8, problems: 4 };
 const NOT_SPLIT = "The course material hasn't been split into passages yet. Try again after it syncs.";
 const NOUN: Record<StudyPrepKind, string> = { guide: "study guide", quiz: "practice quiz", cards: "flashcards", exam: "practice exam", problems: "practice problems", outline: "outline coach" };
 
