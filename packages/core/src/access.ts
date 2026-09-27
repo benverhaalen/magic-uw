@@ -4,7 +4,11 @@ import { OUTLOOK_CALENDAR_COURSE_ID, type McpCategory, type Resource, type Store
 export function courseIncluded(store: Store, resource: Resource): boolean {
   return courseInclusion(store)(resource);
 }
-export function courseInclusion(store: Store): (resource: Resource) => boolean {
+/** `resources` lets a caller that already loaded the workspace skip a second full read. */
+export function courseInclusion(
+  store: Store,
+  resources: Resource[] = store.resources(),
+): (resource: Resource) => boolean {
   const sources = new Map(store.sources().map((s) => [s.id, s]));
   const overrides = new Map(
     store
@@ -12,8 +16,7 @@ export function courseInclusion(store: Store): (resource: Resource) => boolean {
       .map((o) => [`${o.accountScope}:${o.courseId}`, o.included]),
   );
   const courses = new Map(
-    store
-      .resources()
+    resources
       .filter(
         (r) =>
           r.kind === "course" &&
