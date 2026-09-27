@@ -32,6 +32,7 @@ import { CalendarPage } from "./CalendarPage";
 import { DesktopShell, Glyph } from "./DesktopShell";
 import { Home, ObjectLink } from "./Home";
 import { SnapshotGate } from "./snapshot-gate";
+import { startSnapshotPolling } from "./snapshot-poll";
 import { StartWork, preparedWorkRevision } from "./StartWork";
 import { WORKSPACE_FAILURE, workspaceFailureMessage } from "./workspace-feedback";
 import { PersonalReport } from "./PersonalReport";
@@ -193,8 +194,8 @@ export function App() {
     return () => document.removeEventListener("magic-resource-open", handle);
   }, [navigation]);
 
-  const refresh = useCallback(async () => {
-    const version = snapshotGate.current.beginRead();
+  const refresh = useCallback(async (queueIfBusy = true) => {
+    const version = snapshotGate.current.beginRead(queueIfBusy);
     if (version === null) return;
     try {
       if (!window.magic)
@@ -221,14 +222,19 @@ export function App() {
 
   useEffect(() => {
     mounted.current = true;
-    void refresh();
-    const timer = window.setInterval(() => {
-      if (!document.hidden) void refresh();
-    }, 2000);
+    const stopPolling = startSnapshotPolling(() => refresh(false), {
+      hidden: () => document.hidden,
+      schedule: callback => window.setTimeout(callback, 2000),
+      cancel: timer => window.clearTimeout(timer),
+      onVisibility: callback => {
+        document.addEventListener('visibilitychange', callback);
+        return () => document.removeEventListener('visibilitychange', callback);
+      },
+    });
     return () => {
       mounted.current = false;
       snapshotGate.current.invalidate();
-      window.clearInterval(timer);
+      stopPolling();
     };
   }, [refresh]);
 
