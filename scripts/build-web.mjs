@@ -12,7 +12,7 @@ const github = "https://github.com/benverhaalen/magic-uw";
 const nav = [
   ["home", "/#how", "How it works"],
   ["pricing", "/pricing/", "Pricing"],
-  ["devs", "/pricing/#pipeline", "For devs"],
+  ["devs", "/developers/", "For devs"],
   ["about", "/about/", "About us"],
   ["faq", "/faq/", "FAQ"],
 ];
@@ -49,7 +49,7 @@ const header = (current) => `<header class="site-header">
 
 const footer = `<footer class="site-footer">
         <div>My Magic UW · Built for Badger BuildFest 2026<small>My Magic UW is an independent student project. It is not affiliated with, sponsored by or endorsed by the University of Wisconsin–Madison.</small></div>
-        <nav aria-label="Footer"><a href="${github}">GitHub</a><a href="/faq/#privacy">Privacy</a><a href="/about/">About us</a><a href="/faq/">FAQ</a></nav>
+        <nav aria-label="Footer"><a href="${github}">GitHub</a><a href="/faq/#privacy">Privacy</a><a href="/developers/">For developers</a><a href="/about/">About us</a><a href="/faq/">FAQ</a></nav>
       </footer>`;
 
 // Wizard marks are inlined rather than loaded with <img>, so the page's --wizard-robe variable
