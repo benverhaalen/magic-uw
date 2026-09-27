@@ -70,3 +70,7 @@ The new course page (`feat/course-page`, [packet 10](../courses/10-course-page.m
 - Say whether Claude Code should also stop editing this code.
 
 Ben said not to implement anything from this packet in this session.
+
+## Related frontend findings
+
+New backend data defects found during the frontend completion work are tracked in [frontend data bugs](../../../../docs/frontend-data-bugs.md). This does not change the ownership or investigation-only status of this syllabus packet.

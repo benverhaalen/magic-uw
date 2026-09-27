@@ -629,6 +629,11 @@ function unavailable(
       : result?.status === "unsupported"
         ? "unsupported"
         : "failed";
+  // owner: planning-perf: a read the sync deadline cut off is named as unfinished.
+  if (result?.code === "refresh_failed")
+    return capture(context, scope, sourceUrl, [], "failed", [
+      { code: "refresh_failed", message: "The saved audit read did not finish before the refresh deadline; existing audit evidence was retained." },
+    ]);
   return capture(context, scope, sourceUrl, [], status, [
     {
       code: "saved_audit_read_unavailable",
@@ -641,7 +646,13 @@ function unavailable(
 /** Reads only saved report metadata and GET report descriptors; never requests a new audit. */
 export async function pullUwSavedAudits(
   client: Pick<UwPlanningHttp, "read">,
-  options: UwSavedAuditContext & { signal?: AbortSignal },
+  options: UwSavedAuditContext & {
+    signal?: AbortSignal;
+    /** owner: planning-perf. Report IDs already stored with complete coverage: listed again, not downloaded. */
+    storedReportIds?: ReadonlySet<string>;
+    /** Receives each stored report the metadata listed again (reconfirmed without a read). */
+    reconfirmed?: Array<{ scopeKey: string; reportId: string }>;
+  },
 ): Promise<PlanningCapture[]> {
   const context = checkedContext(options);
   options.signal?.throwIfAborted();
@@ -720,6 +731,11 @@ export async function pullUwSavedAudits(
           },
         ]),
       );
+      continue;
+    }
+    const reportId = String(metadata.darsDegreeAuditReportId);
+    if (options.storedReportIds?.has(reportId)) {
+      options.reconfirmed?.push({ scopeKey: key, reportId });
       continue;
     }
     try {

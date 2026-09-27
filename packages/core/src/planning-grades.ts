@@ -96,3 +96,19 @@ export function summarizePlanningGrades(store: Pick<Store, "planningRecords" | "
   if (rows.length) summary.warnings.push("Historical averages of published grades. Not a prediction of your grade, a measure of instructor quality, or a ranking signal.");
   return summary;
 }
+
+// owner: planning-perf. Madgrades publishes a term once it is past. When the saved complete
+// distribution already covers the latest past term the published term list names, a refresh
+// would return the same rows: skip the three serial requests.
+export function madgradesUpToDate(store: Pick<Store, "planningRecords" | "planningSources">, courseKey: string): boolean {
+  const table = planningIdentityTable(store);
+  if (!table) return false;
+  const records = store.planningRecords().filter((row) => !row.deleted && row.accountScope === "public");
+  const latestPast = records.flatMap((row) => row.kind === "term" && row.past === true ? [row.code] : []).sort().at(-1);
+  if (!latestPast) return false;
+  const canonical = canonicalizeCourseKey(courseKey, table);
+  const source = store.planningSources().find((entry) => entry.source === "madgrades" && entry.accountScope === "public" &&
+    entry.scope.kind === "grade_course" && entry.scope.key === `madgrades:${canonical}`);
+  if (!source || source.status !== "complete" || source.completeness !== "complete") return false;
+  return records.some((row) => row.sourceId === source.id && row.kind === "grade_distribution" && row.termCode >= latestPast);
+}

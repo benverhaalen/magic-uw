@@ -16,7 +16,6 @@
     "fixture": "tsx scripts/inspect-fixture.ts",
     "preview": "tsx scripts/preview.ts",
     "test:desktop": "pnpm build && tsx scripts/desktop-smoke.ts",
-    "magic:acceptance": "tsx scripts/acceptance.ts",
     "magic:perf": "tsx evals/perf/run.ts"
   },
   "devDependencies": {

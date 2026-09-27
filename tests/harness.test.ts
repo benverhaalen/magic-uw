@@ -164,11 +164,11 @@ test("check-probes fails a synthetic file containing a token", () => {
   }
 });
 
-test("package.json declares both magic scripts", () => {
+test("package.json declares the magic:perf script; magic:acceptance was removed with its missing script", () => {
   const pkg = JSON.parse(
     readFileSync(join(repoRoot, "package.json"), "utf8"),
   );
-  assert.equal(pkg.scripts["magic:acceptance"], "tsx scripts/acceptance.ts");
+  assert.equal(pkg.scripts["magic:acceptance"], undefined);
   assert.equal(pkg.scripts["magic:perf"], "tsx evals/perf/run.ts");
 });
 
