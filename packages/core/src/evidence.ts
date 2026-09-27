@@ -92,6 +92,9 @@ export function linkExactEvidence(store: Store) {
 export function evidenceFor(store: Store, permitted: (resource: Resource) => boolean = () => true) {
   const resources = store.resources().filter((r) => !r.deleted && permitted(r)),
     byId = new Map(resources.map((r) => [r.id, r]));
+  // owner: site-recipes: an item from a course website states its own dates as page evidence,
+  // never as Canvas, so it cannot outrank or silently replace a Canvas date (D32).
+  const siteSources = new Set(store.sources().filter((s) => s.kind === "site").map((s) => s.id));
   const links = store
     .links()
     .filter(
@@ -110,7 +113,11 @@ export function evidenceFor(store: Store, permitted: (resource: Resource) => boo
       return [
         ...resource.deadlines.map((c) => ({
           ...c,
-          origin: resource.calendar ? ("calendar" as const) : ("canvas" as const),
+          origin: resource.calendar
+            ? ("calendar" as const)
+            : siteSources.has(resource.sourceId)
+              ? ("page" as const)
+              : ("canvas" as const),
         })),
         ...links
           .filter((l) => l.type === "same_as" && l.toId === resource.id)

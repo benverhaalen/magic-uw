@@ -223,11 +223,28 @@ const notes = createNotesService({ store, runner: generationRunner, remotes: not
 const jobs = pipelineJobRegistry();
 registerAgendaJobs(jobs, { runner: generationRunner });
 // end owner: agenda
+// owner: site-recipes (D32 step 4). A crawled course-site page saved or changed → organize that
+// course's stored site pages: stored recipes replay as code; only a new layout calls the
+// student's client (background lane, consent and receipts); leftovers go to Jev when configured.
+import { siteRecipeJob } from "../../../packages/core/src/site-recipes";
+import { createSiteTriage } from "../../../packages/core/src/site-triage";
+// Host triage before any crawl: code from Canvas evidence, one batched call for ambiguous hosts.
+const siteTriage = createSiteTriage({ store, runner: generationRunner });
+jobs.register(
+  siteRecipeJob({
+    runner: generationRunner,
+    onSaved: (sourceId) => void core.saved(sourceId),
+    ...(process.env.MAGIC_GATEWAY_URL
+      ? { jev: { evaluate: (payload, signal) => relayJudgment({ kind: "evaluate", payload }, signal) } }
+      : {}),
+  }),
+);
+// end owner: site-recipes
 const core = createCore(store, {
   fixture: captureBatchSchema.parse(fixture),
   courseExtractor: createLocalCourseExtractor(),
   planningPublicClient: publicClients.core, // owner: T06
-  jobs, // owner: pipeline: passages, links and facts, the course pass; owner: agenda: agenda.estimate
+  jobs, // owner: pipeline: passages, links and facts, the course pass; owner: agenda: agenda.estimate; owner: site-recipes
   madgrades: { read: (request, signal) => hostRead("madgrades-read", { request }, signal) },
   planningHttp: { read: (request, signal) => hostRead("planning-public-read", { request }, signal) },
   seams: { learning: createLearningRouter({
@@ -245,6 +262,8 @@ const core = createCore(store, {
         ? correctAgendaEstimate(store, value, at)
         : "Corrections aren't built yet; nothing was changed.",
     // end owner: agenda
+    // owner: site-recipes. Opening an item reads its `read_once` links (the renderer's "open" event).
+    uiEvent: (event) => void ingestion.onUiEvent(event),
   },
   ...(process.env.MAGIC_GATEWAY_URL
     ? {
@@ -352,6 +371,10 @@ const graphHost = {
 };
 // end owner: T30
 const ingestion = createIngestion(store, {
+  // owner: site-recipes: the crawler reads only hosts triage decided `sync`.
+  triage: async (accountScope, courseId, signal) =>
+    new Map((await siteTriage.decide({ accountScope, courseId }, signal)).hosts.map((h) => [h.host, h])),
+  triageDecisions: (accountScope, courseId) => siteTriage.decisions({ accountScope, courseId }),
   directory: dirname(process.env.MAGIC_DB_PATH!),
   extractor,
   client: publicClients.ingestion, // owner: T06
