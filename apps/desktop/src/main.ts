@@ -35,6 +35,7 @@ import {
 import { MaterialReadError } from "../../../packages/connectors/src/network";
 // end owner: acquisition
 import { clearSignOutSecrets, createSecretVault } from "./secrets";
+import { createGoogleNotesAuth } from "./notes-google"; // owner: notes
 // owner: T30. Outlook through the app's own Microsoft sign-in (Graph); the token stays in main.
 import { createOutlook, readOutlookConfig } from "./outlook";
 import { electronAuthWindow } from "./outlook-window";
@@ -69,6 +70,7 @@ import {
   planningCaptureSchema,
   localQuestionSchema,
   queryRequestSchema, // owner: T15
+  graphQuerySchema, // owner: pipeline
   type CommandResult,
 } from "@magic/contracts";
 const headless = process.env.MAGIC_HEADLESS === "1";
@@ -187,6 +189,13 @@ app
       encrypt: (value) => safeStorage.encryptString(value),
       decrypt: (value) => safeStorage.decryptString(Buffer.from(value)),
     });
+    // owner: notes. Google Docs sync: OAuth (PKCE, loopback) and the Drive proxy; the token stays here.
+    const notesGoogle = createGoogleNotesAuth({
+      clientId: process.env.MAGIC_GOOGLE_CLIENT_ID || undefined,
+      vault,
+      openExternal: (url) => shell.openExternal(url),
+    });
+    // end owner: notes
     // The Madgrades token stays in the main-process vault; the workspace sends only fixed request shapes.
     const madgradesHttp = new MadgradesHttp({
       fetch: (url, init) => fetch(url, init),
@@ -312,6 +321,23 @@ app
         sourceReads.get(message.id)?.abort();
         return;
       }
+      // owner: notes. The worker's Google Docs calls: status, the student's sign-in, and Drive requests.
+      if (message.kind === "notes-google") {
+        try {
+          const { op, request } = message.payload ?? {};
+          const result =
+            op === "status" ? await notesGoogle.status()
+            : op === "connect" ? await notesGoogle.connect()
+            : op === "disconnect" ? await notesGoogle.disconnect()
+            : op === "request" ? await notesGoogle.request(request)
+            : (() => { throw new Error("Unsupported notes operation"); })();
+          worker.postMessage({ kind: "source-response", id: message.id, result });
+        } catch {
+          worker.postMessage({ kind: "source-response", id: message.id, error: true });
+        }
+        return;
+      }
+      // end owner: notes
       if (message.kind === "source-secret") {
         try {
           const { operation, key, value } = message.payload;
@@ -1126,6 +1152,23 @@ app
       });
     });
     // end owner: T15
+    // owner: pipeline. Graph reads (references, agenda, a course's graph): sender-checked, parsed
+    // here and again in the worker, answered on the same response channel as queries.
+    ipcMain.handle("magic:graph", async (event, request) => {
+      validateSender(event);
+      const parsed = graphQuerySchema.parse(request);
+      await ready;
+      const id = randomUUID();
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          calls.delete(id);
+          reject(new Error("Local workspace request timed out."));
+        }, 30000);
+        calls.set(id, { resolve, reject, timer });
+        worker.postMessage({ kind: "graph", id, query: parsed });
+      });
+    });
+    // end owner: pipeline
     // owner: T05b. Link cards (D40): the default browser, https only.
     ipcMain.handle("magic:open-link", async (event, url) => {
       validateSender(event);
