@@ -238,6 +238,23 @@ test("the launch views work with no network and before any sync, from local data
   }
 });
 
+test("more open items than one batch: soonest due goes first and every item gets a model estimate in the pass", async () => {
+  // Read last but due soonest, so source order and due order differ.
+  const store = seeded([resource("4", { dueAt: at(20) })]);
+  const { runner, calls } = fakeRunner((call) =>
+    call.pack.id === "agenda-estimate" ? { items: ids(call.input, "e").map((id) => ({ id, minutes: 30, basis: "synthetic" })) } : { lines: [] },
+  );
+  const config = { ...AGENDA_CONFIG, estimate: { ...AGENDA_CONFIG.estimate, modelBatchMax: 1 } };
+  const result = await estimateCourse(store, course, { ...deps(runner), config });
+  assert.equal(result.status, "done");
+  assert.equal(result.modelCalls, 3, "one call per batch, all batches in this pass");
+  const estimateCalls = calls.filter((c) => c.pack.id === "agenda-estimate");
+  assert.ok(estimateCalls[0]!.input.includes("Problem set 4"), "the item due soonest is in the first batch");
+  assert.ok(estimateCalls[2]!.input.includes("Problem set 2"), "the item due latest is in the last batch");
+  assert.deepEqual(new Set(ranked(store).items.map((i) => i.estimate.method)), new Set(["model"]));
+  store.close();
+});
+
 test("the model refines each estimate once per text hash, bounded; a repeat costs 0 tokens", async () => {
   const store = seeded();
   const { runner, calls } = fakeRunner((call) =>
@@ -329,6 +346,16 @@ test("why-now lines: code drops a line whose date or number doesn't match; a rep
   const again = await narrateAgenda(store, deps(runner));
   assert.equal(again.modelCalls, 0);
   assert.equal(calls.filter((c) => c.pack.id === "agenda-why").length, 1);
+  store.close();
+});
+
+test("why-now lines: two concurrent requests for the same agenda share one send", async () => {
+  const store = seeded();
+  const { runner, calls } = fakeRunner((call) => (call.pack.id === "agenda-why" ? { lines: [] } : { items: [] }));
+  const [a, b] = await Promise.all([narrateAgenda(store, deps(runner)), narrateAgenda(store, deps(runner))]);
+  assert.equal(calls.filter((c) => c.pack.id === "agenda-why").length, 1, "the second request joins the first");
+  assert.equal(a, b);
+  assert.equal(a.current, true);
   store.close();
 });
 

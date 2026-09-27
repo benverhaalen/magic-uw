@@ -378,8 +378,9 @@ const pipelineBackfill = setTimeout(() => void pipeline.backfill().then(() => pi
 pipelineBackfill.unref();
 // end owner: pipeline
 // owner: agenda. After the first sync of each local day, refresh the agenda's why-now lines once
-// (cached by the top items' fact hash, so an unchanged agenda costs nothing). A failure clears the
-// day so the next sync tries again.
+// (cached by the top items' fact hash, so an unchanged agenda costs nothing; a send already in
+// flight for the same hash, from the drain, is shared). Unless the lines end current (a paused,
+// blocked or unconnected client, or a throw), the day is cleared so the next sync tries again.
 let agendaNarratedDay = "";
 const agendaSyncTick = ingestion.tick;
 ingestion.tick = (trigger) => {
@@ -389,7 +390,8 @@ ingestion.tick = (trigger) => {
       const day = new Date().toLocaleDateString("en-CA");
       if (day === agendaNarratedDay) return;
       agendaNarratedDay = day;
-      await narrateAgenda(store, { runner: generationRunner });
+      const narrated = await narrateAgenda(store, { runner: generationRunner });
+      if (!narrated.current && agendaNarratedDay === day) agendaNarratedDay = "";
     })
     .catch(() => {
       agendaNarratedDay = "";
