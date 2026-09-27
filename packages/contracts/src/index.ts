@@ -2524,6 +2524,10 @@ export interface AppBridge {
   chatAsk?(request: { operationId: string; text: string }): Promise<ClaudeChatOutcome>;
   cancelChat?(operationId: string): Promise<void>;
   onChatDelta?(listener: (operationId: string, delta: { text?: string; tool?: string }) => void): () => void;
+  /** owner: claude-chat. Opens the student's Claude Code in a terminal on the app's tools (voice via /voice). */
+  launchAgent?(): Promise<{ status: "opened" } | { status: "setup"; reason: string }>;
+  /** owner: claude-chat. The agent's open_page and study tools navigate the window. */
+  onAgentNavigate?(listener: (target: { page: string; courseId?: string; accountScope?: string; resourceId?: string; action?: string }) => void): () => void;
   /** owner: accounts. Sign-in and purchase status; absent in builds without the bridge. */
   account?: AccountBridge;
   execute(command: ResultOnlyCommand): Promise<ResultOnlyCommandResult>;

@@ -6,6 +6,9 @@ import { startChatMcpEndpoint, type ChatMcpEndpoint } from "./mcp-http";
 
 export { CHAT_ALLOWED_TOOLS, CHAT_SERVER, CHAT_GRANT_ID, createChatTools, includedCourses, refreshChatGrant } from "./tools";
 export { startChatMcpEndpoint } from "./mcp-http";
+export { createControlTools, CONTROL_TOOLS, CONTROL_TOOL_NAMES, PAGES, ControlRefused, type AppControlPort, type AppPage } from "./control";
+export { prepareAgentTerminal, AGENT_SKILLS, AGENT_BRIEF, agentTerminalArgs } from "./agent-terminal";
+import type { AppControlPort } from "./control";
 
 /**
  * The in-app chat (decisions.md, 2026-09-27): one persistent Claude Code session on Opus 5.5 that
@@ -90,6 +93,8 @@ export interface ClaudeChatOptions {
   session(endpoint: { mcpConfig: string; allowedTools: readonly string[]; serverName: string; systemPrompt: string }): Promise<ChatSessionLike | null>;
   /** The existing pack path (checked quotes, egress gate, receipts). */
   pack(name: string, scope: PackScope, signal: AbortSignal): Promise<unknown>;
+  /** App-control tools (open a page, open in Canvas, make and show study material). */
+  control?: AppControlPort;
   now?: () => Date;
 }
 
@@ -106,14 +111,18 @@ export function createClaudeChat(options: ClaudeChatOptions) {
   let session: ChatSessionLike | null = null;
   const calls: string[] = [];
 
-  async function ensure(): Promise<ChatSessionLike | null> {
+  async function tooling(): Promise<ChatMcpEndpoint> {
     token = refreshChatGrant(options.store, token ?? undefined);
-    tools = createChatTools(options.store, token, now);
+    tools = createChatTools(options.store, token, now, options.control);
     endpoint ??= await startChatMcpEndpoint(() => ({
       list: () => tools!.list,
       call: (name, args) => tools!.call(name, args),
       onCall: (name) => calls.push(name),
     }));
+    return endpoint;
+  }
+  async function ensure(): Promise<ChatSessionLike | null> {
+    const endpoint = await tooling();
     if (session) return session;
     session = await options.session({
       mcpConfig: endpoint.config(CHAT_SERVER),
@@ -167,6 +176,16 @@ export function createClaudeChat(options: ClaudeChatOptions) {
   }
 
   return {
+    /**
+     * The same endpoint for the student's own Claude Code terminal (voice via its /voice): its
+     * `--mcp-config` and the context line. Refused while course text isn't shared with Claude.
+     */
+    async agentEndpoint(): Promise<{ status: "ready"; mcpConfig: string; context: string } | { status: "setup"; reason: string }> {
+      const gate = maySend(options.store.privacy(), "claude", ["course_text"]);
+      if (!gate.allowed) return { status: "setup", reason: gate.reason };
+      const e = await tooling();
+      return { status: "ready", mcpConfig: e.config(CHAT_SERVER), context: context() };
+    },
     /** Starts the tool endpoint and the session (0 tokens). */
     async warm(): Promise<boolean> {
       if (!maySend(options.store.privacy(), "claude", ["course_text"]).allowed) return false;

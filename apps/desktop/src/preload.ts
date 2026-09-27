@@ -95,6 +95,14 @@ const bridge: AppBridge = {
     ipcRenderer.on("magic:chat-delta", forward);
     return () => void ipcRenderer.removeListener("magic:chat-delta", forward);
   },
+  launchAgent: () => ipcRenderer.invoke("magic:agent-terminal"),
+  onAgentNavigate(listener) {
+    const forward = (_event: unknown, target: unknown) => {
+      if (target && typeof target === "object" && typeof (target as { page?: unknown }).page === "string") listener(target as { page: string });
+    };
+    ipcRenderer.on("magic:agent-navigate", forward);
+    return () => void ipcRenderer.removeListener("magic:agent-navigate", forward);
+  },
   // end owner: claude-chat
   execute: (command) => ipcRenderer.invoke("magic:execute", command),
   // owner: stall-audit. The workspace changed (at most once a second); the window re-reads then.

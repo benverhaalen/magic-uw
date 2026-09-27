@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { ChatToolDef } from "./tools";
+import { ControlRefused } from "./control";
 
 /**
  * The chat's read tools as a loopback MCP endpoint (Streamable HTTP, JSON responses only) inside the
@@ -11,7 +12,7 @@ import type { ChatToolDef } from "./tools";
  */
 export interface ChatToolHost {
   list(): ChatToolDef[];
-  call(name: string, args: unknown): unknown;
+  call(name: string, args: unknown): unknown | Promise<unknown>;
   /** A tool call, for the chat's activity record (names only). */
   onCall?(name: string, ok: boolean): void;
 }
@@ -104,12 +105,13 @@ export async function startChatMcpEndpoint(host: () => ChatToolHost): Promise<Ch
       case "tools/call": {
         const name = String(message.params?.name ?? "");
         try {
-          const value = tools.call(name, message.params?.arguments ?? {});
+          const value = await tools.call(name, message.params?.arguments ?? {});
           tools.onCall?.(name, true);
           return reply({ content: [{ type: "text", text: JSON.stringify(value) }] });
         } catch (cause) {
           tools.onCall?.(name, false);
-          const reason = cause instanceof Error && /Degree plan|degree plan/.test(cause.message) ? cause.message : REFUSED;
+          // Our own refusal wording only (never an exception's internals).
+          const reason = cause instanceof ControlRefused || (cause instanceof Error && /degree plan/i.test(cause.message)) ? cause.message : REFUSED;
           return reply({ isError: true, content: [{ type: "text", text: reason }] });
         }
       }

@@ -1,6 +1,6 @@
 import { SHOW_DATE_CONFLICT_UI } from './date-conflict-policy';
 import { MagicGlyph } from '../../../../packages/ui/src/glyph';
-import { ItemSpaceHost, PrepFirstPrompt, StudyLearnPage, STUDY_LEARN_EVENT } from "./study-prep"; // owner: study-prep
+import { ItemSpaceHost, PrepFirstPrompt, StudyLearnPage, STUDY_LEARN_EVENT, openItemSpace } from "./study-prep"; // owner: study-prep
 import { CoursesViewHeader } from './courses/CoursesViewToggle';
 import { CoursesWorkList, type WorkReportResult } from './courses/CoursesWorkView';
 import { projectCourseWork, isCourseWorkActionCurrent, type CourseWorkRow } from './courses/course-work-model';
@@ -519,6 +519,29 @@ export function App() {
     else return false;
     return true;
   };
+  // owner: claude-chat. The student's Claude Code agent (a terminal, voice via its /voice) drives the
+  // window through the app's open_page and study tools; main has checked the page and ids.
+  const agentNavigate = useRef<(t: {page: string; courseId?: string; accountScope?: string; resourceId?: string; action?: string}) => void>(() => undefined);
+  agentNavigate.current = t => {
+    if (t.page === 'home') setView('today');
+    else if (t.page === 'course' && t.courseId) navigateFromIntent({view: 'course', courseId: t.courseId, accountScope: t.accountScope});
+    else if (t.page === 'item' && t.resourceId) navigation.navigate('resource', t.resourceId);
+    else if (t.page === 'prep' && t.resourceId && t.courseId) {
+      navigation.navigate('study');
+      const action = t.action === 'cards' || t.action === 'quiz' || t.action === 'guide' ? t.action : undefined;
+      openItemSpace({courseId: t.courseId, itemId: t.resourceId, ...(action ? {action} : {})});
+    }
+    else if (t.page === 'study') setView('study');
+    else if (t.page === 'calendar') setView('calendar');
+    else if (t.page === 'data-ai') setView('privacy');
+  };
+  useEffect(() => window.magic.onAgentNavigate?.(t => agentNavigate.current(t)), []);
+  const [agentNote, setAgentNote] = useState<string | null>(null);
+  const agentVoice = {
+    state: 'ready' as const,
+    onStart: () => { void window.magic.launchAgent?.().then(r => setAgentNote(r.status === 'opened' ? 'Claude Code opened in a terminal. Tap Space to talk (/voice).' : r.reason), (e: unknown) => setAgentNote(e instanceof Error ? e.message : 'Claude Code could not be opened.')); },
+  };
+  // end owner: claude-chat
   const desktopVoice = useDesktopVoice(chatAccountKey, () => {
     const origin = captureChatOrigin(), courses = scopeCourses(origin.scope);
     return {origin: {chat: origin, followUpId: view === 'chat' ? selectedId ?? undefined : undefined}, context: {view: origin.view, ...(courses.length === 1 ? {courseId: courses[0]!.key} : {}), ...(origin.scope.kind === 'item' ? {resourceId: origin.scope.item.id} : {})}};
@@ -570,7 +593,7 @@ export function App() {
         <ShellFeedback error={error} notice={notice} view={view} onDismiss={() => { setError(""); setNotice(""); }}/>
       </>}
       trailing={<NotificationsMenu feed={snapshot?.notifications} busy={busy} run={run} destinationOf={notificationTarget} onOpen={openNotification} onOpenSources={() => setView("sources")} onOpenPrivacy={() => navigation.navigate("privacy", null, null, undefined, snapshot?.privacy.mode === "local_only" ? undefined /* the mode choice at the top unlocks Jev */ : { focus: "privacy-jev", anchor: "privacy-models" })}/>}
-      launcher={snapshot ? <ConversationLauncher<ChatOrigin> key={chatAccountKey} voice={desktopVoice.voice} feedback={desktopVoice.feedback || undefined} here={{key:`${view}:${selectedId ?? ''}:${navigation.courseKey ?? ''}`,label:pageTitle}} captureOrigin={captureChatOrigin} mode={view === 'chat' && selectedId ? 'follow-up' : 'new-chat'} chatId={view === 'chat' ? selectedId ?? undefined : undefined} onSubmit={entry => {
+      launcher={snapshot ? <ConversationLauncher<ChatOrigin> key={chatAccountKey} voice={window.magic.launchAgent ? agentVoice /* owner: claude-chat: Talk to Claude (Claude Code /voice; audio goes to Anthropic, needs a Claude.ai sign-in) */ : desktopVoice.voice} feedback={(window.magic.launchAgent ? agentNote : desktopVoice.feedback) || undefined} here={{key:`${view}:${selectedId ?? ''}:${navigation.courseKey ?? ''}`,label:pageTitle}} captureOrigin={captureChatOrigin} mode={view === 'chat' && selectedId ? 'follow-up' : 'new-chat'} chatId={view === 'chat' ? selectedId ?? undefined : undefined} onSubmit={entry => {
         const invalid = chatPromptError(entry.prompt); if (invalid) return {accepted:false,message:invalid};
         if (entry.destination.kind === 'follow-up') {
           if (!continueChat(entry.destination.chatId, entry.prompt, entry.idempotencyKey)) return {accepted:false,message:'This chat is no longer open. Start a new chat.'};

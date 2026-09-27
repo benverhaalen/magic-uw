@@ -210,7 +210,7 @@ import { notesActions } from "../../../packages/notes/src/actions";
 import { notesRequestSchema } from "@magic/contracts";
 import { createModelRunner, createSessionPool, type SessionPool } from "../../../packages/runner/src/index";
 import { askPack, classifyPack } from "../../../packages/packs/intent/src/index";
-import { createClaudeChat } from "../../../packages/core/src/chat/index"; // owner: claude-chat
+import { createClaudeChat, prepareAgentTerminal } from "../../../packages/core/src/chat/index"; // owner: claude-chat
 import { createChatSession, CHAT_MODEL, RunnerError } from "../../../packages/runner/src/index"; // owner: claude-chat
 import { errorForState } from "./clients/health"; // owner: claude-chat
 // owner: voice-plan: `voice` is the planner's own Claude pool (below); null for a one-shot client.
@@ -317,7 +317,28 @@ const claudeChat = createClaudeChat({
     return createChatSession({ ...run.options, ...endpoint, model: CHAT_MODEL });
   },
   pack: (name, scope, signal) => generation.pack(name, scope, signal),
+  // The agent's app-control tools: main acts on the window; packs run here.
+  control: {
+    navigate: async (target) => (await hostRead("app-control", { op: "navigate", target }, undefined, 15_000))?.ok === true,
+    openExternal: async (url) => {
+      const reply = await hostRead("app-control", { op: "open", url }, undefined, 15_000);
+      if (reply?.ok !== true) throw new Error("The link could not be opened.");
+    },
+    pack: (name, scope) => generation.pack(name, scope, AbortSignal.timeout(180_000)),
+  },
 });
+// The voice agent: the student's own Claude Code in a terminal, on this endpoint (main launches it).
+async function agentTerminal(): Promise<unknown> {
+  const chosen = await chosenClient();
+  if (chosen?.id !== "claude") return { status: "setup", reason: "Choose Claude Code as Your AI first." };
+  const command = resolveClient("claude", { userData: generationUserData });
+  if (!command) return { status: "setup", reason: "Claude Code isn't installed." };
+  const endpoint = await claudeChat.agentEndpoint();
+  if (endpoint.status !== "ready") return endpoint;
+  const folder = join(generationUserData, "agent", `${Date.now().toString(36)}`);
+  const prepared = await prepareAgentTerminal({ folder, mcpConfig: endpoint.mcpConfig, context: endpoint.context, command });
+  return { status: "ready", folder, launcher: prepared.launcher };
+}
 async function claudeChatAsk(id: string, text: string): Promise<void> {
   const abort = new AbortController();
   chatRuns.set(id, abort);
@@ -796,6 +817,11 @@ port.on("message", async ({ data }: { data: any }) => {
     return void claudeChatAsk(data.id, data.text);
   if (data.kind === "claude-chat-cancel" && typeof data.id === "string") return void chatRuns.get(data.id)?.abort();
   if (data.kind === "claude-chat-warm") return void claudeChat.warm().catch(() => false);
+  if (data.kind === "agent-terminal" && typeof data.id === "string")
+    return void agentTerminal().then(
+      (result) => port.postMessage({ kind: "response", id: data.id, result }),
+      () => port.postMessage({ kind: "response", id: data.id, error: "The Claude Code terminal couldn't be prepared." }),
+    );
   if (data.kind === "voice-agent-refresh") claudeChat.reset();
   // end owner: claude-chat
   if (voicePlan.handle(data)) return; // owner: voice-plan

@@ -579,6 +579,30 @@ app
       }
       // owner: client-health (D36, D50). Gemini's key for the worker's runner, only when the
       // worker builds a Gemini backend. Read from the safeStorage vault; never logged.
+      // owner: claude-chat. The agent's app-control tools: navigate the window (fixed pages, ids the
+      // worker already checked) and bring it forward, or open a stored Canvas link through the safe path.
+      if (message.kind === "app-control") {
+        try {
+          const p = message.payload ?? {};
+          if (p.op === "navigate" && window && !window.isDestroyed()) {
+            const t = p.target ?? {};
+            const pages = ["home", "course", "item", "prep", "study", "calendar", "data-ai"];
+            if (!pages.includes(t.page)) throw new Error();
+            const clean = Object.fromEntries(["page", "courseId", "accountScope", "resourceId", "action"].flatMap((k) => (typeof t[k] === "string" && t[k].length <= 300 ? [[k, t[k]]] : [])));
+            window.webContents.send("magic:agent-navigate", clean);
+            if (window.isMinimized()) window.restore();
+            window.show();
+            window.focus();
+            worker.postMessage({ kind: "source-response", id: message.id, result: { ok: true } });
+          } else if (p.op === "open" && typeof p.url === "string" && !headless) {
+            await shell.openExternal(safeExternal(p.url));
+            worker.postMessage({ kind: "source-response", id: message.id, result: { ok: true } });
+          } else worker.postMessage({ kind: "source-response", id: message.id, result: { ok: false } });
+        } catch {
+          worker.postMessage({ kind: "source-response", id: message.id, result: { ok: false } });
+        }
+        return;
+      }
       if (message.kind === "ai-key") {
         try {
           if (message.payload?.provider !== "gemini") throw new Error();
@@ -1360,6 +1384,31 @@ app
         chatCalls.set(id, { resolve, reject, sender: event.sender, timer });
         worker.postMessage({ kind: "claude-chat", id, text: r.text });
       });
+    });
+    // The voice agent: Claude Code in Windows Terminal (else a console window) on the app's tools.
+    ipcMain.handle("magic:agent-terminal", async (event) => {
+      validateSender(event);
+      if (headless) throw new Error("Terminal windows are disabled in headless mode.");
+      await ready;
+      const id = randomUUID();
+      const prepared = (await new Promise<unknown>((resolve, reject) => {
+        const timer = setTimeout(() => { calls.delete(id); reject(new Error("The Claude Code terminal couldn't be prepared.")); }, 30_000);
+        calls.set(id, { resolve: (value: CommandResult) => resolve(value), reject, timer });
+        worker.postMessage({ kind: "agent-terminal", id });
+      })) as { status: string; reason?: string; folder?: string; launcher?: string };
+      if (prepared.status !== "ready" || !prepared.folder || !prepared.launcher) return { status: "setup", reason: prepared.reason ?? "Claude Code isn't ready." };
+      const { spawn } = await import("node:child_process");
+      const wt = join(process.env.LOCALAPPDATA ?? "", "Microsoft", "WindowsApps", "wt.exe");
+      const cmd = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "cmd.exe");
+      const launch = (file: string, args: string[]) => new Promise<boolean>((resolve) => {
+        const child = spawn(file, args, { cwd: prepared.folder, detached: true, stdio: "ignore", windowsHide: false, shell: false });
+        child.once("error", () => resolve(false));
+        child.once("spawn", () => { child.unref(); resolve(true); });
+      });
+      const opened = process.platform === "win32"
+        && ((await stat(wt).then(() => true, () => false) && await launch(wt, ["-w", "new", "new-tab", "--title", "My Magic UW agent", "-d", prepared.folder, cmd, "/k", prepared.launcher]))
+          || await launch(cmd, ["/c", "start", "My Magic UW agent", cmd, "/k", prepared.launcher]));
+      return opened ? { status: "opened" } : { status: "setup", reason: "No terminal could be opened on this computer." };
     });
     ipcMain.handle("magic:chat-cancel", (event, operationId: unknown) => {
       validateSender(event);

@@ -4,6 +4,7 @@ import { mcpCategorySchema, type McpCategory, type Store } from "@magic/contract
 import { maySend } from "@magic/domain";
 import { courseInclusion } from "../access";
 import { createMcpService, mcpArgumentsSchema, toolDescriptions, type ToolName } from "../mcp";
+import { CONTROL_TOOL_NAMES, createControlTools, type AppControlPort } from "./control";
 
 /**
  * The in-app Claude chat's read tools (decisions.md, 2026-09-27: the chat is one Claude Code session
@@ -14,8 +15,8 @@ import { createMcpService, mcpArgumentsSchema, toolDescriptions, type ToolName }
 export const CHAT_SERVER = "magic";
 export const CHAT_GRANT_ID = "in-app-claude-chat";
 const DEGREE_PLAN = "degree_plan";
-export const CHAT_TOOL_NAMES = [...(Object.keys(toolDescriptions) as ToolName[]), DEGREE_PLAN] as const;
-/** The `--allowedTools` list: exactly the app's own read tools, nothing built in. */
+export const CHAT_TOOL_NAMES = [...(Object.keys(toolDescriptions) as ToolName[]), DEGREE_PLAN, ...CONTROL_TOOL_NAMES] as const;
+/** The `--allowedTools` list: exactly the app's own read and app-control tools, nothing built in. */
 export const CHAT_ALLOWED_TOOLS = CHAT_TOOL_NAMES.map((name) => `mcp__${CHAT_SERVER}__${name}`);
 
 const degreePlanArgs = z.object({ query: z.string().max(200).optional() }).strict();
@@ -62,8 +63,9 @@ export interface ChatToolDef {
   inputSchema: Record<string, unknown>;
 }
 
-export function createChatTools(store: Store, token: string, now = () => new Date()) {
+export function createChatTools(store: Store, token: string, now = () => new Date(), control?: AppControlPort) {
   const mcp = createMcpService(store, CHAT_GRANT_ID, token, now);
+  const controls = control ? createControlTools(store, { clientId: CHAT_GRANT_ID, token }, control, now) : null;
   const courseSchema = z.toJSONSchema(mcpArgumentsSchema, { io: "input" }) as Record<string, unknown>;
   const list: ChatToolDef[] = [
     ...(Object.entries(toolDescriptions) as [ToolName, string][]).map(([name, description]) => ({ name, description, inputSchema: courseSchema })),
@@ -73,6 +75,7 @@ export function createChatTools(store: Store, token: string, now = () => new Dat
         "Read the student's saved degree audit (DARS) requirements with their status, completed and planned courses, and catalog entries for courses that satisfy open requirements. Refused unless the student shares their degree plan and audit.",
       inputSchema: z.toJSONSchema(degreePlanArgs, { io: "input" }) as Record<string, unknown>,
     },
+    ...(controls?.list ?? []),
   ];
 
   function degreePlan(raw: unknown) {
@@ -132,8 +135,9 @@ export function createChatTools(store: Store, token: string, now = () => new Dat
 
   return {
     list,
-    /** One read. Throws when the grant, sharing or inclusion refuses it. */
-    call(name: string, args: unknown): unknown {
+    /** One read or app action. Throws when the grant, sharing or inclusion refuses it. */
+    async call(name: string, args: unknown): Promise<unknown> {
+      if (controls && (CONTROL_TOOL_NAMES as readonly string[]).includes(name)) return controls.call(name, args);
       if (name === DEGREE_PLAN) return degreePlan(args);
       if (!(name in toolDescriptions)) throw new Error("Unknown tool.");
       return mcp.call(name as ToolName, args ?? {});
