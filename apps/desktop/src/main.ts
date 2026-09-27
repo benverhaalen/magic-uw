@@ -26,6 +26,7 @@ import {
 } from "../../../packages/connectors/src/network";
 import { checkedSpaceProbeUrl } from "../../../packages/connectors/src/space-hosts"; // owner: T05b
 import { clearSignOutSecrets, createSecretVault } from "./secrets";
+import { createGoogleNotesAuth } from "./notes-google"; // owner: notes
 import sampleFixture from "../../../fixtures/course.json";
 // owner: T05c
 import { Tray, Menu, nativeImage } from "electron";
@@ -171,6 +172,13 @@ app
       encrypt: (value) => safeStorage.encryptString(value),
       decrypt: (value) => safeStorage.decryptString(Buffer.from(value)),
     });
+    // owner: notes. Google Docs sync: OAuth (PKCE, loopback) and the Drive proxy; the token stays here.
+    const notesGoogle = createGoogleNotesAuth({
+      clientId: process.env.MAGIC_GOOGLE_CLIENT_ID || undefined,
+      vault,
+      openExternal: (url) => shell.openExternal(url),
+    });
+    // end owner: notes
     const sourceReads = new Map<string, AbortController>();
     studentSession.setPermissionRequestHandler((_wc, _permission, callback) =>
       callback(false),
@@ -259,6 +267,23 @@ app
         sourceReads.get(message.id)?.abort();
         return;
       }
+      // owner: notes. The worker's Google Docs calls: status, the student's sign-in, and Drive requests.
+      if (message.kind === "notes-google") {
+        try {
+          const { op, request } = message.payload ?? {};
+          const result =
+            op === "status" ? await notesGoogle.status()
+            : op === "connect" ? await notesGoogle.connect()
+            : op === "disconnect" ? await notesGoogle.disconnect()
+            : op === "request" ? await notesGoogle.request(request)
+            : (() => { throw new Error("Unsupported notes operation"); })();
+          worker.postMessage({ kind: "source-response", id: message.id, result });
+        } catch {
+          worker.postMessage({ kind: "source-response", id: message.id, error: true });
+        }
+        return;
+      }
+      // end owner: notes
       if (message.kind === "source-secret") {
         try {
           const { operation, key, value } = message.payload;

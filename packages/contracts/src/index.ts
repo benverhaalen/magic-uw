@@ -9,6 +9,10 @@ export * from "./planning";
 export * from "./course-intelligence";
 // owner: T05b. The data builder's course core (schema v5) replaces the placeholder module.
 export * from "./course-core";
+// owner: notes
+export * from "./notes";
+import { notesRequestSchema, type NotesResult } from "./notes";
+// end owner: notes
 import type {
   CourseIntelligence,
   CourseIntelligenceView,
@@ -421,6 +425,8 @@ export const captureBatchSchema = z
           "kaltura",
           "mail",
           "feed",
+          // owner: notes. The student's own session notes, indexed as passages (never a Canvas read).
+          "notes",
         ]),
         accountScope: id,
         courseId: id,
@@ -1436,6 +1442,9 @@ export const commandSchema = z.discriminatedUnion("type", [
     .object({ type: z.literal("learning"), request: learningRequestSchema })
     .strict(),
   // end owner: T05b
+  // owner: notes
+  z.object({ type: z.literal("notes"), request: notesRequestSchema }).strict(),
+  // end owner: notes
 ]);
 export type Command = z.infer<typeof commandSchema>;
 export type CommandResult = {
@@ -1449,6 +1458,7 @@ export type CommandResult = {
   pack?: unknown;
   workspace?: WorkspaceResult;
   // end owner: T05b
+  notes?: NotesResult; // owner: notes
 };
 export const localQuestionSchema = z
   .object({

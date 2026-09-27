@@ -16,6 +16,8 @@ import { createPassageIndex, scopeToken } from "./passages";
 import { LEARNING_SCHEMA } from "./learning";
 import { LEARNING_V8 } from "./learning-v8";
 import { createSqlLearningStore, type SqlLearningStore } from "../../learning/src/sql-store";
+import { NOTES_V9 } from "./notes-v9"; // owner: notes
+import { createSqlNotesStore, type SqlNotesStore } from "../../notes/src/sql-store"; // owner: notes
 import { decodePayload, encodePayload } from "./payload";
 import {
   LIFE_COURSE_ID,
@@ -69,7 +71,7 @@ import {
   type Store,
 } from "@magic/contracts";
 
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 const MAX_ATTEMPTS = 3;
 /** The latest pre-migration backup, beside the database (one kept; purge deletes it). */
 export function migrationBackupPath(path: string): string {
@@ -169,7 +171,7 @@ function payloadTextHash(payload: unknown): string {
 export function createStore(
   path: string,
   options: { now?: () => Date } = {},
-): Store & CourseCoreStore & { learning: SqlLearningStore } {
+): Store & CourseCoreStore & { learning: SqlLearningStore; notes: SqlNotesStore } {
   const clock = options.now ?? (() => new Date());
   const file = path !== ":memory:";
   if (file) mkdirSync(dirname(resolve(path)), { recursive: true, mode: 0o700 });
@@ -340,6 +342,8 @@ export function createStore(
   // v7: learning and practice tables (T10L, D17).
   steps.push([7, () => db.exec(LEARNING_SCHEMA + "PRAGMA user_version = 7;")]);
   steps.push([8, () => db.exec(LEARNING_V8 + "PRAGMA user_version = 8;")]);
+  // v9 "notes": session notes (packages/notes); additive tables only.
+  steps.push([9, () => db.exec(NOTES_V9 + "PRAGMA user_version = 9;")]);
   const migrationBackup = file ? migrationBackupPath(path) : null;
   const passageIndex = createPassageIndex(db, prepare);
   const courseScope = (accountScope: string, courseId: string) =>
@@ -686,6 +690,7 @@ export function createStore(
     versionText,
   });
   const learning = createSqlLearningStore(prepare, transaction, () => clock().toISOString());
+  const notes = createSqlNotesStore(prepare, transaction, () => clock().toISOString()); // owner: notes
   let closed = false;
   // Keep two weeks of day-plan history, measured from the newest saved day.
   const DAY_PLAN_KEEP_DAYS = 14;
@@ -725,6 +730,7 @@ export function createStore(
   }
   return {
     learning,
+    notes, // owner: notes
     courseIntelligence() {
       return prepare(
           "SELECT payload FROM course_intelligence p WHERE version=(SELECT MAX(version) FROM course_intelligence WHERE id=p.id) ORDER BY id",
