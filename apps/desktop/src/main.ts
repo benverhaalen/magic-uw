@@ -575,6 +575,7 @@ app
             http: planningHttp, accountSeed: planningAccountScope, signal: controller.signal,
             deadline: AbortSignal.timeout(70_000),
             storedAudits: message.payload?.storedAudits, freshSubjects: message.payload?.freshSubjects,
+            ...(message.payload?.phase === "enrollment" ? { phase: "enrollment" as const } : {}), // fix/current-courses-only
           });
           // end owner: planning-perf
           controller.signal.throwIfAborted();
@@ -1900,8 +1901,13 @@ app
         worker.postMessage({ kind: "refresh", id, ...(confirm ? { confirm: true } : discover ? { discover: true } : {}) });
       });
     });
-    ipcMain.handle("magic:planning-sync", async (event) => {
+    ipcMain.handle("magic:planning-sync", async (event, options?: unknown) => {
       validateSender(event);
+      // fix/current-courses-only: onboarding reads this term's enrollment first.
+      const phase =
+        !!options && typeof options === "object" && (options as { phase?: unknown }).phase === "enrollment"
+          ? ("enrollment" as const)
+          : undefined;
       if (!(await consentGate("magic:planning-sync"))) throw new Error(consentRefused);
       await ready;
       if (planningClears > 0) throw new Error("Planning is unavailable while local data or sessions are being cleared.");
@@ -1920,7 +1926,7 @@ app
           reject(new Error("Planning refresh timed out. Saved records are still available."));
         }, 90_000);
         calls.set(id, { resolve, reject, timer });
-        worker.postMessage({ kind: "planning-sync", id });
+        worker.postMessage({ kind: "planning-sync", id, ...(phase ? { phase } : {}) });
       });
       planningCall = { id, promise };
       try { return await promise; }

@@ -88,13 +88,7 @@ import {
 } from "../../../packages/connectors/src/canvas-selection";
 // end owner: T33
 // fix/current-courses-only: the student's UW enrollment corroborates Canvas's current courses.
-import type { PlanningCrosslist, PlanningSubject } from "../../../packages/contracts/src/planning";
-import {
-  buildCourseIdentityTable,
-  canonicalizeCourseKey,
-  decodeUwTerm,
-  resolveCourseIdentity,
-} from "../../../packages/domain/src/planning";
+import { currentEnrollment } from "../../../packages/domain/src/enrollment-match";
 import { courseChoices } from "./renderer/onboarding/model";
 import {
   linkExactEvidence,
@@ -1848,59 +1842,14 @@ export function createIngestion(
    * (and section, when both name one). Code only; nothing here reaches AI, Jev or MCP. Without
    * planning data, Canvas's own signals decide alone.
    */
+  /** The enrollment matcher for the connector; authoritative whenever the read found this term's classes. */
+  function enrollmentOptions() {
+    const enrolledThisTerm = planningEnrollment();
+    return enrolledThisTerm ? { enrolledThisTerm, enrollmentAuthoritative: true } : {};
+  }
   function planningEnrollment(): ((course: SelectableCanvasCourse) => boolean) | undefined {
-    const records = (store.planningRecords?.() ?? []).filter((r) => !r.deleted);
-    const enrolled = records.flatMap((r) =>
-      r.kind === "enrollment_package" && r.enrollmentState === "enrolled" ? [r] : [],
-    );
-    if (!enrolled.length) return undefined;
-    // The enrolled terms that aren't over: UW's own past flag on its term record, else the term
-    // code's approximate end (fall Dec 23, spring May 20, summer Aug 20) plus 14 days.
-    const pastFlag = new Map(
-      records.flatMap((r) => (r.kind === "term" && typeof r.past === "boolean" ? [[r.code, r.past] as const] : [])),
-    );
-    const notPast = (code: string) => {
-      const flag = pastFlag.get(code);
-      if (flag !== undefined) return !flag;
-      try {
-        const term = decodeUwTerm(code);
-        const end =
-          term.season === "fall"
-            ? Date.UTC(term.year, 11, 23)
-            : term.season === "spring"
-              ? Date.UTC(term.year, 4, 20)
-              : Date.UTC(term.year, 7, 20);
-        return end + 14 * 86400_000 >= now().getTime();
-      } catch {
-        return false;
-      }
-    };
-    const current = new Set(enrolled.map((r) => r.termCode).filter(notPast));
-    if (!current.size) return undefined;
-    let table: ReturnType<typeof buildCourseIdentityTable>;
-    try {
-      table = buildCourseIdentityTable(
-        records.flatMap((r) => (r.kind === "subject" ? [r as PlanningSubject] : [])),
-        records.flatMap((r) => (r.kind === "crosslist" ? [r as PlanningCrosslist] : [])),
-      );
-    } catch {
-      return undefined;
-    }
-    const byKey = new Map(
-      enrolled
-        .filter((r) => current.has(r.termCode))
-        .map((r) => [canonicalizeCourseKey(r.courseKey, table), r] as const),
-    );
-    return (course) => {
-      const code = canvasCourseCode(course.course_code) ?? canvasCourseCode(course.name);
-      if (!code) return false;
-      const identity = resolveCourseIdentity({ subject: code.subject, catalog: code.catalog }, table);
-      if (identity.status !== "resolved") return false;
-      const match = byKey.get(canonicalizeCourseKey(identity.courseKey, table));
-      if (!match) return false;
-      const sections = match.sections.flatMap((s) => s.match(/(\d{3})\s*$/)?.[1] ?? []);
-      return !code.sections.length || !sections.length || code.sections.some((s) => sections.includes(s));
-    };
+    const enrollment = currentEnrollment(store.planningRecords?.() ?? [], now());
+    return enrollment ? (course) => !!enrollment.match(course) : undefined;
   }
   /**
    * fix/current-courses-only. Canvas's nameless `{id, access_restricted_by_date}` rows are no
@@ -1979,7 +1928,7 @@ export function createIngestion(
       selectedTerm: s.selectedTerm,
       courseOverrides: store.courseOverrides(),
       knownResources: store.resources(),
-      enrolledThisTerm: planningEnrollment(),
+      ...enrollmentOptions(),
       now,
       catalogOnly: true,
     }).pull(signal))
@@ -2013,7 +1962,7 @@ export function createIngestion(
       selectedTerm: s.selectedTerm,
       courseOverrides: store.courseOverrides(),
       knownResources: store.resources(),
-      enrolledThisTerm: planningEnrollment(), // fix/current-courses-only
+      ...enrollmentOptions(), // fix/current-courses-only
       moduleRun,
       onModuleRun: (run) => {
         if (!signal.aborted && !reconnecting) moduleRun = run;

@@ -492,7 +492,7 @@ function cancelPlanning() {
   planningRun?.controller.abort();
 }
 
-function refreshPlanning(trigger: "manual" | "scheduled" = "manual"): Promise<void> {
+function refreshPlanning(trigger: "manual" | "scheduled" = "manual", phase?: "enrollment"): Promise<void> {
   // owner: planning-perf. Incremental: stored complete DARS reports are reconfirmed without a
   // download, term-fresh public reads are skipped, a slow sync keeps what arrived, and each
   // sync's captures are written in one transaction.
@@ -524,7 +524,7 @@ function refreshPlanning(trigger: "manual" | "scheduled" = "manual"): Promise<vo
   const promise = Promise.all([
     (async () => {
       let result: UwPlanningSyncResult;
-      const hints = { storedAudits: storedAuditReports(store), freshSubjects: termFreshSearchSubjects(store, nowIso) ?? undefined, scheduled: trigger === "scheduled" };
+      const hints = { storedAudits: storedAuditReports(store), freshSubjects: termFreshSearchSubjects(store, nowIso) ?? undefined, scheduled: trigger === "scheduled", ...(phase ? { phase } : {}) };
       try { result = await hostRead("planning-refresh", hints, signal, PLANNING_WORKER_TIMEOUT_MS); }
       catch {
         signal.throwIfAborted();
@@ -721,7 +721,7 @@ port.on("message", async ({ data }: { data: any }) => {
   }
   if (data.kind === "planning-sync") {
     try {
-      await refreshPlanning();
+      await refreshPlanning("manual", data.phase === "enrollment" ? "enrollment" : undefined);
       port.postMessage({ kind: "response", id: data.id, result: {
         ...(await core.execute({ type: "snapshot" })),
         message: "Planning sources checked. Each source shows what was verified and what still needs attention.",

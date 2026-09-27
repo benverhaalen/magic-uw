@@ -237,6 +237,7 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
         selectedTerm: options.selectedTerm,
         currentTime: now(),
         enrolledThisTerm: options.enrolledThisTerm,
+        enrollmentAuthoritative: options.enrollmentAuthoritative,
       });
       function source(
         courseId: string,
