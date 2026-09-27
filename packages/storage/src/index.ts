@@ -18,6 +18,8 @@ import {
   defaultPrivacy,
   instant,
   privacySchema,
+  identityRosterSchema,
+  type IdentityRoster,
   type Attempt,
   type EgressReceipt,
   type IngestReport,
@@ -968,6 +970,21 @@ export function createStore(path: string): Store {
       const parsed = privacySchema.parse(value);
       db.prepare(
         "INSERT INTO preferences VALUES ('privacy', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      ).run(JSON.stringify(parsed));
+    },
+    identityRoster() {
+      // Stored in the existing preferences table: no schema change. Cleared by purge().
+      const row = db
+        .prepare("SELECT value FROM preferences WHERE key = 'identity_roster'")
+        .get();
+      return row
+        ? identityRosterSchema.parse(JSON.parse(String(row.value)))
+        : identityRosterSchema.parse({});
+    },
+    setIdentityRoster(value: IdentityRoster) {
+      const parsed = identityRosterSchema.parse(value);
+      db.prepare(
+        "INSERT INTO preferences VALUES ('identity_roster', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
       ).run(JSON.stringify(parsed));
     },
     setCompleted(id, completed) {

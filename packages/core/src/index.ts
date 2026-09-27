@@ -13,6 +13,8 @@ import { maySend, resolveDeadline } from "@magic/domain";
 import { judgmentResultSchema, type JudgmentGateway } from "@magic/ai";
 import { contentCategories, courseIncluded } from "./access";
 import { evidenceFor } from "./evidence";
+import { payloadScrubber, validateCitations } from "./identity";
+export { scrubText, rosterFor, toOriginalSpan, validateCitations } from "./identity";
 import { pullGuideForSubject } from "../../connectors/src/planning-public";
 import { createPublicClient, type PublicClient } from "../../connectors/src/network";
 import { comparePlanning } from "./planning";
@@ -109,14 +111,22 @@ export function createCore(store: Store, options: CoreOptions) {
                   (c) => maySend(store.privacy(), recipient, [c]).allowed,
                 ),
             );
+    // Hosted recipients get identity-scrubbed free text; this payload is both
+    // the preview and the exact outgoing body. Each field is scrubbed on its own
+    // so citations can be re-validated per source field.
+    const scrub = payloadScrubber(store, recipient !== "local");
     const payload = {
-      course: r.courseName.slice(0, 200),
-      title: r.title.slice(0, 500),
-      text: [r.text, ...supporting.map((s) => `${s.title}\n${s.text}`)]
+      course: scrub.field(r.courseName, r.courseId).slice(0, 200),
+      title: scrub.field(r.title, r.courseId).slice(0, 500),
+      text: [
+        scrub.field(r.text, r.courseId),
+        ...supporting.map((s) => `${scrub.field(s.title, s.courseId)}\n${scrub.field(s.text, s.courseId)}`),
+      ]
         .join("\n\n")
         .slice(0, 12000),
-      policy: r.policy.evidence.slice(0, 4000),
+      policy: scrub.field(r.policy.evidence, r.courseId).slice(0, 4000),
     };
+    const redaction = scrub.summary(r.courseId);
     const categories = [
       ...new Set([r, ...supporting].flatMap(contentCategories)),
     ];
@@ -134,6 +144,7 @@ export function createCore(store: Store, options: CoreOptions) {
       characters: JSON.stringify(payload).length,
       ...permission,
       payload,
+      ...(redaction ? { redaction } : {}),
     };
   }
   function receipt(
@@ -370,6 +381,12 @@ export function createCore(store: Store, options: CoreOptions) {
         message = "Judgment queued.";
         break;
       }
+      case "identity-roster":
+        store.setIdentityRoster(command.value);
+        message = "Names to remove saved on this device. Future hosted requests use them; earlier requests are unchanged.";
+        break;
+      case "validate-citations":
+        return { snapshot: snapshot(), citations: validateCitations(store, command.claims) };
       case "link":
         store.decideLink(command.id, command.status);
         break;

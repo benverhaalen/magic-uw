@@ -69,6 +69,12 @@ export const courseSchema = z.object({
     .object({ ics: z.string().max(4000).optional() })
     .nullable()
     .optional(),
+  // include[]=teachers: only display names are kept, to retain them when scrubbing hosted payloads.
+  teachers: z
+    .array(z.object({ display_name: z.string().max(300).nullable().optional() }))
+    .max(50)
+    .nullable()
+    .optional(),
 });
 export type CanvasCourse = z.infer<typeof courseSchema> & { historicalOnly?: boolean };
 const rating = z.object({
@@ -348,8 +354,13 @@ export function courseResource(
       endAt: course.end_at,
       selection: courseSelection(course, selection),
       gradeEvidence: gradeEvidence?.length ? gradeEvidence : undefined,
+      instructors: instructorNames(course),
     },
   });
+}
+function instructorNames(course: CanvasCourse) {
+  const names = [...new Set((course.teachers ?? []).map((t) => t.display_name?.trim()).filter((n): n is string => !!n))];
+  return names.length ? names : undefined;
 }
 export function assignmentResource(
   raw: z.infer<typeof assignmentSchema>,

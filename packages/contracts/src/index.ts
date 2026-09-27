@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { planningCaptureSchema, type PlanningCapture, type PlanningRecord, type PlanningScope } from "./planning";
 export * from "./planning";
+import { identityRosterSchema, citationClaimSchema, type IdentityRoster, type RedactionSummary, type CitationResult } from "./identity";
+export * from "./identity";
 
 export const instant = z.iso.datetime({ offset: true });
 const id = z.string().min(1).max(256);
@@ -162,6 +164,8 @@ export const courseMetadataSchema = z
     startAt: optionalInstant,
     endAt: optionalInstant,
     selection: courseSelectionSchema.optional(),
+    /** Teacher display names; retained (not scrubbed) in hosted payloads. */
+    instructors: z.array(z.string().min(1).max(300)).max(50).optional(),
   })
   .strict();
 export const moduleItemSchema = z
@@ -703,6 +707,8 @@ export interface Store {
   attempts(resourceId?: string): Attempt[];
   addReceipt(value: EgressReceipt): void;
   receipts(): EgressReceipt[];
+  identityRoster(): IdentityRoster;
+  setIdentityRoster(value: IdentityRoster): void;
   purge(): void;
 }
 export interface ContextManifest {
@@ -714,6 +720,8 @@ export interface ContextManifest {
   allowed: boolean;
   reason: string;
   payload: { course: string; title: string; text: string; policy: string };
+  /** Present when free text was scrubbed for a hosted recipient; payload is the exact outgoing text. */
+  redaction?: RedactionSummary;
 }
 export interface ResourceView extends Resource {
   deadline: DeadlineResolution;
@@ -775,6 +783,8 @@ export const commandSchema = z.discriminatedUnion("type", [
     })
     .strict(),
   z.object({ type: z.literal("enrich"), id }).strict(),
+  z.object({ type: z.literal("identity-roster"), value: identityRosterSchema }).strict(),
+  z.object({ type: z.literal("validate-citations"), claims: z.array(citationClaimSchema).min(1).max(200) }).strict(),
   z
     .object({
       type: z.literal("link"),
@@ -795,6 +805,7 @@ export type CommandResult = {
   snapshot: Snapshot;
   manifest?: ContextManifest;
   message?: string;
+  citations?: CitationResult[];
 };
 export const localQuestionSchema = z
   .object({
