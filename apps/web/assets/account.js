@@ -6,8 +6,13 @@ const page = new URL(location.href);
 const wantsToBuy = page.searchParams.get("buy") === "1";
 const justPaid = page.searchParams.get("paid") === "1";
 // Read before Supabase consumes them: how a sign-in link landed here, if it did.
-const linkError = page.searchParams.get("error_code") ?? new URLSearchParams(location.hash.slice(1)).get("error_code");
+const hash = new URLSearchParams(location.hash.slice(1));
+const linkError = page.searchParams.get("error_code") ?? hash.get("error_code");
 const cameFromLink = page.searchParams.has("code");
+// The email's link lands here with its one-time token in the hash. It's only spent when the
+// student presses Finish signing in, so a scanner that opens the link can't use it (or the
+// code, which is the same token) up. It works in any browser, unlike a PKCE redirect.
+let emailLink = hash.get("token_hash");
 
 const $ = (selector) => document.querySelector(selector);
 const views = [...document.querySelectorAll("[data-view]")];
@@ -80,6 +85,19 @@ async function start() {
     codeForm.reset(); // signing in re-renders the page through onAuthStateChange
   });
 
+  $('[data-action="confirm"]').addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    say("");
+    const { error } = await supabase.auth.verifyOtp({ token_hash: emailLink, type: "email" });
+    button.disabled = false;
+    emailLink = null;
+    if (error) {
+      show("signed-out");
+      say("That sign-in link has expired or was already used. Enter your email for a new one.");
+    } // on success, signing in re-renders the page through onAuthStateChange
+  });
+
   $('[data-action="restart"]').addEventListener("click", () => {
     codeForm.reset();
     say("");
@@ -114,6 +132,11 @@ async function start() {
       const clean = new URL(location.href);
       ["code", "error", "error_code", "error_description"].forEach((key) => clean.searchParams.delete(key));
       history.replaceState(null, "", clean.pathname + clean.search);
+    }
+    if (!current && emailLink) {
+      show("confirm");
+      $('[data-action="confirm"]').focus();
+      return;
     }
     if (!current) {
       show("signed-out");

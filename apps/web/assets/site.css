@@ -1439,6 +1439,7 @@ button {
 }
 .account-form,
 .account-card [data-view="sent"],
+.account-card [data-view="confirm"],
 .account-card [data-view="signed-in"] {
   display: flex;
   flex-direction: column;

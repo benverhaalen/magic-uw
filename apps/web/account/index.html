@@ -24,7 +24,7 @@
             </div>
 
             <form class="account-form" data-view="signed-out" hidden novalidate>
-              <p class="lede">Sign in with your email. There's no password: we'll send you a link.</p>
+              <p class="lede">Sign in with your email. There's no password: we'll send you a link and a code.</p>
               <label for="account-email">Email</label>
               <div class="field-row">
                 <input id="account-email" name="email" type="email" autocomplete="email" inputmode="email" required placeholder="you@wisc.edu" />
@@ -34,7 +34,7 @@
 
             <div data-view="sent" hidden>
               <p class="lede">Check your email. We sent a sign-in email to <b data-bind="sent-to"></b>.</p>
-              <p class="note">Open the link in this browser, or type the code from the email below. It can take a minute to arrive; check spam if it doesn't.</p>
+              <p class="note">Open the link in the email, or type the code from it below. It can take a minute to arrive; check spam if it doesn't.</p>
               <form class="account-form code-form" data-form="code" novalidate>
                 <label for="account-code">Code from the email</label>
                 <div class="field-row">
@@ -43,6 +43,12 @@
                 </div>
               </form>
               <button class="btn btn-white" type="button" data-action="restart">Use a different email</button>
+            </div>
+
+            <div data-view="confirm" hidden>
+              <p class="lede">You're one click from signed in.</p>
+              <p class="note">This step stops email security scanners from using up your link before you open it.</p>
+              <button class="btn btn-blue" type="button" data-action="confirm">Finish signing in</button>
             </div>
 
             <div data-view="signed-in" hidden>
