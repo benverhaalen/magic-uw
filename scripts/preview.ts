@@ -14,10 +14,12 @@ import {
 import { createStudyContextResolver } from "../apps/desktop/src/learning-context";
 import { seedLearningFixture } from "./learning-fixture";
 import { seedSyncResilienceFixture } from "./sync-resilience-fixture";
+import { seedNotificationFixture } from "./notification-fixture";
 import { linkExactEvidence } from "../packages/core/src/evidence";
 // Explicit opt-in QA output, never a substitute for live model inference.
 const syncFixture = process.env.MAGIC_PREVIEW_SYNC_FIXTURE === "1";
 const learningFixture = process.env.MAGIC_PREVIEW_LEARNING_FIXTURE === "1";
+const notificationFixture = process.env.MAGIC_PREVIEW_NOTIFICATION_FIXTURE === "1";
 // Local verification surface using the real core/store. No browser sessions or gateway.
 const directory = await mkdtemp(join(tmpdir(), "magic-preview-"));
 const store = createStore(join(directory, "workspace.sqlite"));
@@ -99,6 +101,10 @@ const server = createServer(async (req, res) => {
         seedSyncResilienceFixture(store);
         result = await core.execute({type:"snapshot"});
       }
+      if (notificationFixture && path === "/command" && parsed.type === "fixture") {
+        seedNotificationFixture(store);
+        result = await core.execute({ type: "snapshot" });
+      }
       if (learningFixture && parsed.type === "fixture") {
         linkExactEvidence(store);
         const loaded = await core.execute({ type: "snapshot" });
@@ -136,7 +142,7 @@ const server = createServer(async (req, res) => {
           .replace("<head>", '<head><script src="/bridge.js"></script>')
           .replace(
             "<body>",
-            learningFixture || syncFixture
+            learningFixture || syncFixture || notificationFixture
               ? '<body><div role="note" style="padding:8px;background:#ffe7a8;color:#382700">Synthetic verification — test fixtures, no live school or AI connections.</div>'
               : "<body>",
           ),

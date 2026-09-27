@@ -1,0 +1,166 @@
+/* Notifications: the shell bell and its anchored panel. Semantic roles come from
+   docs/design/tokens.css; the panel uses the shared popover material (.magic-ui-popover).
+   Selectors start at .notif so shell rules such as `.desktop-chrome button` never reach the panel. */
+.notif { display: flex; flex-shrink: 0; align-items: center; -webkit-app-region: no-drag; }
+
+/* Bell: a shell control like history and compose; the count sits on the ember. */
+.desktop-chrome .notif .notif-bell { position: relative; }
+.notif .notif-bell[aria-expanded="true"] { background: var(--magic-fill-shell-selected); }
+.notif-badge {
+  position: absolute;
+  /* Anchored left so a wider "9+" grows away from the glyph instead of over it. */
+  top: 3px;
+  left: 17px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--magic-ink-on-shell);
+  color: var(--magic-color-status-problem-ink);
+  font: 600 10px/16px var(--magic-font-interface);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+/* Panel */
+.notif .notif-panel {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+  border: 1px solid var(--magic-line-quiet);
+  border-radius: var(--magic-radius-overlay);
+  background: var(--magic-surface-raised);
+  box-shadow: var(--magic-shadow-popover);
+  color: var(--magic-ink);
+  font: 400 var(--magic-type-compact-control)/1.45 var(--magic-font-interface);
+  text-align: left;
+  -webkit-app-region: no-drag;
+}
+.notif .notif-panel:focus-visible { outline: 2px solid var(--magic-focus); outline-offset: 2px; }
+.notif .notif-panel button {
+  width: auto;
+  height: auto;
+  display: revert;
+  place-items: normal;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.notif .notif-panel button:focus-visible,
+.notif .notif-panel summary:focus-visible { outline: 2px solid var(--magic-focus); outline-offset: -2px; }
+
+.notif-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px 10px;
+  background: var(--magic-surface-raised);
+}
+.notif-header h2 { margin: 0; font: 500 var(--magic-type-page-title)/1.2 var(--magic-font-editorial); color: var(--magic-ink); }
+
+/* Quiet text action (Mark all read, Check sources, Data & AI) */
+.notif .notif-panel .notif-quiet {
+  flex-shrink: 0;
+  padding: 4px 6px;
+  border-radius: var(--magic-radius-control);
+  color: var(--magic-ink-link);
+  font-size: var(--magic-type-meta);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.notif .notif-panel .notif-quiet:disabled { color: var(--magic-ink-disabled); text-decoration: none; cursor: default; }
+
+.notif-section { padding: 0 8px 6px; }
+.notif-section h3,
+.notif-other > summary {
+  margin: 0;
+  padding: 8px 10px 4px;
+  font: 500 var(--magic-type-meta)/1.4 var(--magic-font-interface);
+  color: var(--magic-ink-muted-strong);
+}
+.notif-other { border-top: 1px solid var(--magic-line-quiet); margin: 4px 10px 0; padding: 6px 0 4px; }
+.notif-other > summary { display: flex; align-items: center; gap: 6px; padding-inline: 0; list-style: none; cursor: pointer; border-radius: var(--magic-radius-control); }
+.notif-other > summary::-webkit-details-marker { display: none; }
+.notif-chevron { flex-shrink: 0; transition: transform var(--magic-motion-disclosure, 180ms) ease-out; }
+.notif-other[open] > summary .notif-chevron { transform: rotate(90deg); }
+.notif-other .notif-list { margin-inline: -8px; }
+
+.notif-list { list-style: none; margin: 0; padding: 0; }
+.notif-row { display: flex; align-items: flex-start; gap: 2px; border-radius: var(--magic-radius-control); }
+.notif .notif-panel .notif-open {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border-radius: var(--magic-radius-control);
+}
+.notif-title-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 7px; min-width: 0; }
+.notif-title { font-size: var(--magic-type-control); font-weight: 500; line-height: 1.35; color: var(--magic-ink); overflow-wrap: anywhere; }
+.notif-row.read .notif-title { font-weight: 400; color: var(--magic-ink-prose); }
+/* Unread marker: the Today list's small colored bullet. Words ("Unread.") carry the meaning. */
+.notif-dot { flex-shrink: 0; align-self: center; width: 6px; height: 6px; border-radius: 50%; background: var(--magic-accent-current-time); }
+.notif-detail { color: var(--magic-ink-prose); overflow-wrap: anywhere; }
+.notif-before { text-decoration: line-through; color: var(--magic-ink-muted); }
+.notif-quote { color: var(--magic-ink-muted-strong); font-style: italic; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.notif-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 10px; font-size: var(--magic-type-meta); color: var(--magic-ink-muted-strong); }
+.notif-hint { display: inline-flex; align-items: center; gap: 4px; color: var(--magic-ink-link); }
+.notif-count { font-size: var(--magic-type-meta); color: var(--magic-ink-muted-strong); font-weight: 400; }
+
+/* Status tags: the word is the meaning; the pair reinforces it. */
+.notif-tag {
+  justify-self: start;
+  padding: 1px 6px;
+  border-radius: var(--magic-radius-tag-candidate);
+  font: 500 var(--magic-type-label)/1.5 var(--magic-font-interface);
+  letter-spacing: 0.02em;
+}
+.notif-tag--urgent { background: var(--magic-color-status-problem-fill); color: var(--magic-color-status-problem-ink); text-transform: uppercase; }
+.notif-tag--jev { background: var(--magic-color-status-info-fill); color: var(--magic-color-status-info-ink); font-size: var(--magic-type-meta); letter-spacing: normal; }
+
+.notif .notif-panel .notif-dismiss {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin: 6px 4px 0 0;
+  border-radius: var(--magic-radius-control);
+  color: var(--magic-ink-muted);
+}
+.notif-dismiss svg { fill: none; stroke: currentColor; stroke-width: var(--magic-icon-stroke-seed); stroke-linecap: round; }
+.notif .notif-panel .notif-dismiss:disabled { color: var(--magic-ink-disabled); cursor: default; }
+
+.notif-empty,
+.notif-none { margin: 0; padding: 6px 18px 14px; color: var(--magic-ink-muted-strong); }
+.notif-none { padding: 2px 10px 8px; }
+
+.notif-footer { display: grid; gap: 8px; padding: 10px 18px 16px; border-top: 1px solid var(--magic-line-quiet); font-size: var(--magic-type-meta); color: var(--magic-ink-muted-strong); }
+.notif-checked { margin: 0; }
+.notif-note { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.notif-note p { margin: 0; }
+.notif-note--attention { margin-inline: -8px; padding: 8px; border-radius: var(--magic-radius-control); background: var(--magic-color-status-attention-fill); color: var(--magic-color-status-attention-ink); }
+
+.notif-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+@media (hover: hover) {
+  .notif .notif-panel .notif-open:hover,
+  .notif .notif-panel .notif-dismiss:not(:disabled):hover,
+  .notif-other > summary:hover { background: var(--magic-surface-quiet); }
+  .notif .notif-panel .notif-quiet:not(:disabled):hover { background: var(--magic-fill-secondary-hover); }
+  .notif .notif-panel .notif-dismiss:not(:disabled):hover { color: var(--magic-ink); }
+}
+@media (prefers-reduced-motion: reduce) { .notif-chevron { transition: none; } }

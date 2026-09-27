@@ -6,7 +6,7 @@ pays for every request handled by this gateway. Students and teammates call this
 an anonymous device token instead.
 
 Status: implemented and unit/integration tested (`tests/gateway.test.ts`).
-Not deployed. A team-wide endpoint still needs a hosting destination, TLS, and persistent storage.
+Not deployed. A team-wide endpoint still needs a hosting destination, TLS, and persistent storage. Until then, a desktop build may carry the key and run this gateway in-process on loopback ([temporary decision](../../docs/decisions.md#2026-09-27--embedded-jev-key-temporary); see `apps/desktop/src/embedded-jev.ts`).
 
 The accepted OpenRouter route will bill Jev through the student's own OpenRouter key instead; that adapter is not implemented here. Claude/Codex/Gemini routes retain this company-funded gateway. See [the product decision](../../docs/decisions.md#pricing-and-ai-access-resolution--september-26).
 
@@ -234,5 +234,6 @@ If/when this is actually hosted:
 - The workspace has the `pnpm gateway` script and the `zod` dependency this app uses. No SDK or extra service is required.
 - The desktop client should call this gateway's `/v1/devices` once (caching
   the returned token locally) and then `/v1/judgments/assignment.kind.v1`,
-  `/v1/judgments/message.triage.v1` or `/v1/judgments/mail.triage.v1` with that bearer token — never bundle a TypeSafe key into the desktop
+  `/v1/judgments/message.triage.v1` or `/v1/judgments/mail.triage.v1` with that bearer token. Outside the temporary
+  embedded-key builds (see the top of this file), never bundle a TypeSafe key into the desktop
   build.

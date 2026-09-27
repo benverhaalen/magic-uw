@@ -38,7 +38,7 @@ test('one disputed object stays disputed in course summary, Next up, Home and Ca
   const calendar = calendarItems([{ ...disputed, accountScope: 'a', sourceScope: 'assignments' }], [], first.slice(0, 10), 'UTC')[0]!;
   assert.equal(calendar.resourceId, disputed.id);
   assert.equal(calendar.conflict, true);
-  assert.match(calendar.detail, /dates disagree/);
+  assert.match(calendar.detail, /^Dates disagree/);
   assert.equal(JSON.stringify(disputed), before);
   assert.equal(disputed.deadline.claims.length, 2);
 });

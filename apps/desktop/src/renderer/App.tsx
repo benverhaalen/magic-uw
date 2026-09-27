@@ -8,6 +8,7 @@ import { EvidenceInfo } from "../../../../packages/ui/src/evidence-info";
 import { requirePlanSave } from "./today-plan-save";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type {
+  AppNotification,
   Command,
   CommandResult,
   ContextManifest,
@@ -44,6 +45,7 @@ import { PersonalReport } from "./PersonalReport";
 import { Action, Disclosure } from "../../../../packages/ui/src";
 import { useDesktopNavigation, type DesktopView } from "./navigation";
 import { CourseSpaceDetails } from "./CourseSpaceDetails";
+import { NotificationsMenu, notificationDestination, type NotificationDestination } from "./notifications";
 
 function ShellFeedback({ error, notice, view, onDismiss }: { error: string; notice: string; view: DesktopView; onDismiss: () => void }) {
   const details = useRef<HTMLDetailsElement>(null);
@@ -447,6 +449,20 @@ export function App() {
     setSelectedId(row.resourceId);
   }
   const coursePage = navigation.courseKey ? buildCoursePage(courseInput, navigation.courseKey) : null;
+  // Notification rows route by stable IDs: the saved item, its course page, Outlook or Sources.
+  const notificationTarget = (item: AppNotification) => notificationDestination(item, {
+    resource: id => resources.find(resource => resource.id === id),
+    courseKey: (sourceId, courseId) => {
+      const key = courseKey(accountBySource.get(sourceId) ?? sourceId, courseId);
+      return courseCards.some(card => card.key === key) ? key : null;
+    },
+  });
+  const openNotification = (target: NotificationDestination) => {
+    if (target.kind === "resource") navigation.navigate("resource", target.id);
+    else if (target.kind === "course") navigation.navigate("courses", null, target.key);
+    else if (target.kind === "sources") setView("sources");
+    else open(target.url);
+  };
   const selected =
     canonicalHomeResources(resources, snapshot?.sources ?? [], snapshot?.links ?? [], snapshot?.courseWorkAdmission?.aliases).find((resource) => resource.id === selectedId) ??
     resources.find((resource) => resource.id === selectedId) ?? null;
@@ -497,6 +513,7 @@ export function App() {
           </button> : needsSignIn ? <button className="desktop-source-action" onClick={() => setView("sources")}><Glyph name="settings"/><span>Review sign-in</span></button> : null}
         <ShellFeedback error={error} notice={notice} view={view} onDismiss={() => { setError(""); setNotice(""); }}/>
       </>}
+      trailing={<NotificationsMenu feed={snapshot?.notifications} busy={busy} run={run} destinationOf={notificationTarget} onOpen={openNotification} onOpenSources={() => setView("sources")} onOpenPrivacy={() => navigation.navigate("privacy", null, null, undefined, snapshot?.privacy.mode === "local_only" ? undefined /* the mode choice at the top unlocks Jev */ : { focus: "privacy-jev", anchor: "privacy-models" })}/>}
       launcher={snapshot ? <ConversationLauncher<ChatOrigin> key={chatAccountKey} here={{key:`${view}:${selectedId ?? ''}:${navigation.courseKey ?? ''}`,label:pageTitle}} captureOrigin={captureChatOrigin} mode={view === 'chat' && selectedId ? 'follow-up' : 'new-chat'} chatId={view === 'chat' ? selectedId ?? undefined : undefined} onSubmit={entry => {
         const invalid = chatPromptError(entry.prompt); if (invalid) return {accepted:false,message:invalid};
         if (entry.destination.kind === 'follow-up') {
@@ -1421,19 +1438,20 @@ function Privacy({
           Agreements
         </button>
       </section>
-      <section className="settings-section">
+      <section className="settings-section" data-place-anchor="privacy-models">
         <h2>Models & services</h2>
         <SettingToggle
+          focusKey="privacy-jev"
           label="Jev judgments"
-          description="Classifies course material through our gateway. Permitted context is visible to the gateway operator and TypeSafe; the shared API key remains on the server. We pay for usage."
+          description="Classifies course material with TypeSafe, and can raise new announcements and email in Notifications when Course communications is also on. Permitted context goes to TypeSafe directly from this app, which contains our shared key, or through our gateway when one is set up. We pay for usage."
           checked={value.jevEnabled}
           disabled={busy || value.mode === "local_only"}
           onChange={(checked) => void update({ jevEnabled: checked })}
         />
         <p className="setting-note">
           {snapshot.gatewayConfigured
-            ? "Shared gateway configured."
-            : "The shared gateway has not been configured on this device."}
+            ? "Jev is available in this build."
+            : "Jev isn't set up in this build; code rules still sort Notifications."}
         </p>
         <div className="provider-setting">
           <label className="field-label" htmlFor="provider">
@@ -1495,7 +1513,7 @@ function Privacy({
         />
         <SettingToggle
           label="Course communications"
-          description="Selected announcements and messages. These may contain personal information."
+          description="Selected announcements and messages, and the subject and Outlook preview of email. With Jev on, these help sort Notifications; the sender is described only by role, such as advisor. These may contain personal information."
           checked={!!value.shareCommunications}
           disabled={busy || value.mode === "local_only"}
           onChange={(checked) => void update({ shareCommunications: checked })}
@@ -1644,12 +1662,14 @@ function KeepSignedInToggle({ busy }: { busy: boolean }) {
 // end owner: T05c
 
 function SettingToggle({
+  focusKey,
   label,
   description,
   checked,
   disabled,
   onChange,
 }: {
+  focusKey?: string;
   label: string;
   description: string;
   checked: boolean;
@@ -1665,6 +1685,7 @@ function SettingToggle({
       <input
         type="checkbox"
         role="switch"
+        data-focus-key={focusKey}
         checked={checked}
         disabled={disabled}
         onChange={(event) => onChange(event.target.checked)}

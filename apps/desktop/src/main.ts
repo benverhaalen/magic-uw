@@ -66,6 +66,7 @@ import {
 import { CONSENT_DISCLOSURE_VERSION, consentGateAllows } from "../../../packages/core/src/egress"; // owner: T06
 import { consentRecordSchema, type ConsentRecord } from "@magic/contracts"; // owner: T06
 import { launchWorkSet, materializeCopy, selectWorkRetry } from "../../../packages/core/src/work-set";
+import { startEmbeddedJev } from "./embedded-jev"; // owner: embedded-jev
 import {
   commandSchema,
   captureBatchSchema,
@@ -242,9 +243,17 @@ app
     );
     studentSession.setPermissionCheckHandler(() => false);
     studentSession.on("will-download", (event) => event.preventDefault());
+    // owner: embedded-jev. A configured MAGIC_GATEWAY_URL (hosted or local dev) wins; otherwise a
+    // build carrying the embedded key serves Jev from loopback. The worker learns only the URL.
+    const embeddedJev = process.env.MAGIC_GATEWAY_URL
+      ? null
+      : await startEmbeddedJev(data).catch(() => null); // unavailable: code rules still sort
+    const gatewayUrl = process.env.MAGIC_GATEWAY_URL || embeddedJev?.url || "";
+    // end owner: embedded-jev
     const worker = utilityProcess.fork(join(root, "worker.cjs"), [], {
       env: {
         ...process.env,
+        MAGIC_GATEWAY_URL: gatewayUrl,
         MAGIC_DB_PATH: join(data, "workspace.sqlite"),
         MAGIC_PLANNING_SCOPE: planningAccountScope,
       },
@@ -278,8 +287,8 @@ app
     );
     const evaluations = new Map<string, AbortController>();
     const credentialPath = join(data, "gateway-device.enc");
-    const gateway = process.env.MAGIC_GATEWAY_URL
-      ? gatewayClient(process.env.MAGIC_GATEWAY_URL, {
+    const gateway = gatewayUrl
+      ? gatewayClient(gatewayUrl, {
           async read() {
             if (!safeStorage.isEncryptionAvailable())
               throw new Error("Secure credential storage is unavailable.");
@@ -1763,6 +1772,7 @@ app
       for (const c of sourceReads.values()) c.abort();
       for (const c of evaluations.values()) c.abort();
       worker.postMessage({ kind: "shutdown" });
+      void embeddedJev?.close().catch(() => {}); // owner: embedded-jev
       setTimeout(() => {
         worker.kill();
         app.exit(Number(process.exitCode ?? 0));
@@ -1777,6 +1787,9 @@ app
         );
         if (initial.snapshot.resources.length !== 0)
           throw new Error("Unexpected initial data");
+        // owner: embedded-jev. `MAGIC_SMOKE_EXPECT_JEV=1 pnpm test:desktop` checks a keyed build.
+        if (process.env.MAGIC_SMOKE_EXPECT_JEV === "1" && (!embeddedJev || !initial.snapshot.gatewayConfigured))
+          throw new Error("Embedded Jev did not start");
         const imported = await window.webContents.executeJavaScript(
           "window.magic.execute({type:'fixture'})",
         );
