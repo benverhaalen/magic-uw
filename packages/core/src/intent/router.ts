@@ -19,7 +19,7 @@ import { buildPrompt, memoryArtifactStore, memoryLedgerStore, type ArtifactStore
 import { classifyPack, SLOT_GLOSSARY, type ClassifyInput, type ClassifyOutput, type ClassifySlots } from "../../../packs/intent/src/index";
 import { readPackArtifact, runPack } from "../jobs/pack";
 import { defaultActions } from "./adapters";
-import { groundedAsk } from "./ask";
+import { groundedAsk, refersBack, type PreviousExchange } from "./ask";
 import { coursePrefixes, type CoursePrefixSource } from "../course-facts/prefix"; // owner: course-facts
 import { createCourseBriefs } from "../course-facts/brief";
 import { authorizer } from "./consent";
@@ -58,6 +58,8 @@ const zero = () => ({ in: 0, cached: 0, out: 0 });
 type Tokens = ReturnType<typeof zero>;
 const add = (a: Tokens, b: Tokens): Tokens => ({ in: a.in + b.in, cached: a.cached + b.cached, out: a.out + b.out });
 const INDEX_RECHECK_MS = 2000;
+/** How long the last ask's exchange stays available to a question that refers back (the pool's idle close). */
+export const PREVIOUS_EXCHANGE_MS = 10 * 60 * 1000;
 export const NO_CLIENT_REASON =
   "Only exact commands work without an AI connected (like \"what's due tomorrow\" or \"quiz me on recursion in CS 400\"). Connect Claude or Codex in Settings to ask in your own words.";
 
@@ -92,6 +94,9 @@ export function createIntentRouter(deps: IntentRouterDeps) {
   // prefix is byte-stable and past the prompt-cache minimum. Built in memory when the host passes
   // none, the same default as the pack handler's.
   const coursePrefix = deps.coursePrefix ?? coursePrefixes(createCourseBriefs({ store }).courseBrief);
+  // The last answered exchange per ask scope. Each ask sends only its question and passages; this one
+  // exchange goes along only when the next question refers back to it.
+  const exchanges = new Map<string, PreviousExchange & { at: number }>();
 
   let cached: IntentIndex | null = null;
   let checkedAt = -Infinity;
@@ -180,7 +185,11 @@ export function createIntentRouter(deps: IntentRouterDeps) {
       signal,
       ask: async (question, courses, s): Promise<AskResult> => {
         const list = courses === "all" ? resolve.courses() : courses;
-        const r = await groundedAsk({ store, runner: () => runnerP, artifacts, ledger, now, protection, coursePrefix /* owner: course-facts */ }, question, list, s); // owner: privacy
+        const key = list.map((c) => c.ref).sort().join("\n");
+        const last = exchanges.get(key);
+        const previous = last && now().getTime() - last.at <= PREVIOUS_EXCHANGE_MS && refersBack(question) ? { question: last.question, answer: last.answer } : null;
+        const r = await groundedAsk({ store, runner: () => runnerP, artifacts, ledger, now, protection, coursePrefix /* owner: course-facts */ }, question, list, s, previous); // owner: privacy
+        if (!r.notFound && !r.unavailable) exchanges.set(key, { question, answer: r.text, at: now().getTime() });
         spent.tokens = add(spent.tokens, r.tokens);
         return r;
       },

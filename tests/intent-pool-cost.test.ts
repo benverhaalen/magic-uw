@@ -14,6 +14,7 @@ import type { IntentCommandResult } from "@magic/contracts";
 import { CLAUDE_TIER_MODELS, createClaudeBackend, createModelRunner, createSessionPool, promptCacheMinimum, type CliCommand } from "../packages/runner/src/index";
 import { askPack, classifyPack } from "../packages/packs/intent/src/index";
 import { createIntentRouter } from "../packages/core/src/intent/index";
+import { refersBack } from "../packages/core/src/intent/ask";
 import { NOW, TZ, workspace } from "./intent-fixtures";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -103,4 +104,76 @@ test("the pooled ask's prefix is byte-identical across asks and past the prompt-
   } finally {
     await h.close();
   }
+});
+
+/** Per turn: what the CLI bills as input. A session re-sends its whole conversation, so a turn costs its session's prefix, every earlier message and reply in it, and its own message. */
+async function turns(h: Awaited<ReturnType<typeof pooledBar>>, replyTokens: number) {
+  let prefix = 0;
+  let history = 0;
+  const out: { spawned: boolean; history: number; message: number; billed: number; input: string }[] = [];
+  let spawned = false;
+  for (const e of await h.sent()) {
+    if (e.event === "spawn") {
+      prefix = tokens(e.prefix);
+      history = 0;
+      spawned = true;
+      continue;
+    }
+    const message = tokens(e.input);
+    out.push({ spawned, history, message, billed: prefix + history + message, input: e.input });
+    history += message + replyTokens;
+    spawned = false;
+  }
+  return out;
+}
+
+test("a burst of asks: every turn sends its question and passages only, so input doesn't grow past turn 2", { timeout: 60_000 }, async () => {
+  const probe = await pooledBar([]);
+  const recursion = probe.pid("Recursion notes");
+  await probe.close();
+  const q = "Every recursive method needs a base case.";
+  const reply = pooledAsk(recursion, q);
+  const h = await pooledBar([reply]);
+  try {
+    const burst = [
+      "what does every recursive method need in recursion",
+      "how does recursion solve a problem with smaller instances",
+      "what are smaller instances of the same problem",
+      "why does every recursive method need a base case",
+      "explain the base case in recursion",
+    ];
+    for (const text of burst) assert.equal((await h.run(text, "c400")).status, "answer", text);
+    const t = await turns(h, tokens(JSON.stringify(reply.output)));
+    assert.equal(t.length, burst.length);
+    for (const [i, x] of t.entries()) assert.equal(x.history, 0, `turn ${i + 1} carries ${x.history} tokens of earlier turns`);
+    const second = t[1]!.billed;
+    for (const [i, x] of t.slice(2).entries()) assert.ok(x.billed <= second, `turn ${i + 3}: ${x.billed} > turn 2's ${second}`);
+  } finally {
+    await h.close();
+  }
+});
+
+test("a question that refers back carries only the last exchange", { timeout: 60_000 }, async () => {
+  const probe = await pooledBar([]);
+  const recursion = probe.pid("Recursion notes");
+  await probe.close();
+  const h = await pooledBar([pooledAsk(recursion, "Every recursive method needs a base case.")]);
+  try {
+    await h.run("what does every recursive method need", "c400");
+    await h.run("how does recursion solve a problem", "c400");
+    await h.run("why does it need one", "c400");
+    const messages = (await h.sent()).flatMap((e) => (e.event === "message" ? [e.input] : []));
+    assert.equal(messages.length, 3);
+    assert.ok(!messages[0]!.includes("Earlier exchange") && !messages[1]!.includes("Earlier exchange"), "a question naming its subject carries no earlier turn");
+    assert.ok(messages[2]!.includes("Earlier exchange"), "a back-reference carries the last exchange");
+    assert.ok(messages[2]!.includes("how does recursion solve a problem"), "the last exchange");
+    assert.ok(!messages[2]!.includes("what does every recursive method need"), "never an older one");
+  } finally {
+    await h.close();
+  }
+});
+
+test("refersBack: a back-reference before the question's own subject", () => {
+  for (const q of ["why does it resize?", "explain that more simply", "what's on it", "tell me more about those", "and what does that mean"]) assert.equal(refersBack(q), true, q);
+  for (const q of ["when and where is the midterm, and what's on it", "explain the load factor from lecture", "what is a hash table", "how is the final weighted and is it cumulative"]) assert.equal(refersBack(q), false, q);
 });

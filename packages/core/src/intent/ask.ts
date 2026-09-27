@@ -37,11 +37,35 @@ export interface AskDeps {
 
 const zero = () => ({ in: 0, cached: 0, out: 0 });
 
-export async function groundedAsk(deps: AskDeps, question: string, courses: ResolvedCourse[], signal: AbortSignal): Promise<AskResult> {
+/** Words that can open a question before the thing it is about ("what does", "explain", "tell me more about"). */
+const LEAD_WORDS = new Set(
+  "what whats when where why how who whom which whose is are was were be does do did can could should would will may might must the a an and or but so then now also of on in at for to from about with into by as explain define describe tell show give say me more again please ok okay i you we us my our your he she him her his really actually just still mean means meant simply simpler briefly further example examples".split(" "),
+);
+const BACK_WORDS = new Set(["it", "its", "that", "this", "those", "these", "they", "them"]);
+/**
+ * Whether a question points back at the previous exchange: a back-reference ("it", "that", "those")
+ * comes before any word of its own subject. "why does it resize" and "explain that more simply"
+ * refer back; "when is the midterm, and what's on it" names its subject first, so it doesn't.
+ */
+export function refersBack(question: string): boolean {
+  for (const w of question.toLowerCase().match(/[a-z0-9']+/g) ?? []) {
+    const bare = w.replace(/'(?:s|re|ll|d|ve)$/, "");
+    if (BACK_WORDS.has(bare)) return true;
+    if (!LEAD_WORDS.has(bare)) return false;
+  }
+  return false;
+}
+/** The one earlier exchange an ask may carry, shortened: an answer past this is cut. */
+export const PREVIOUS_ANSWER_CHARS = 600;
+export type PreviousExchange = { question: string; answer: string };
+
+export async function groundedAsk(deps: AskDeps, question: string, courses: ResolvedCourse[], signal: AbortSignal, previous: PreviousExchange | null = null): Promise<AskResult> {
   const { store } = deps;
   const none = (text: string, extra: Partial<AskResult> = {}): AskResult => ({ text, citations: [], notFound: true, dropped: 0, path: "none", tokens: zero(), ...extra });
   if (!courses.length) return none(NOT_IN_MATERIALS);
-  const found = store.searchPassages({ query: question, courses: courses.map((c) => ({ accountScope: c.accountScope, courseId: c.courseId })), k: 12 });
+  // A question that refers back is searched with the question it refers to, so "why does it resize" finds its passages.
+  const query = previous ? `${previous.question} ${question}` : question;
+  const found = store.searchPassages({ query, courses: courses.map((c) => ({ accountScope: c.accountScope, courseId: c.courseId })), k: 12 });
   // The coverage gate: nothing in the materials supports the question, so no model call.
   if (found.notFound || !found.hits.length) return none(NOT_IN_MATERIALS);
   const budget = deps.tokenBudget ?? ASK_TOKEN_BUDGET;
@@ -99,7 +123,12 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
   // The brief is the byte-stable system prompt: protected once per content (the stable prefix's
   // protection), so every ask on the course sends the same bytes and the provider's cache holds.
   if (p) Object.assign(frame, { course: p.text(frame.course, "teaching"), skeleton: p.text(frame.skeleton, "teaching"), policy: p.text(frame.policy, "teaching"), ...(frame.brief !== undefined ? { brief: deps.protection?.prefix(frame.brief) ?? frame.brief } : {}) });
-  const input = { question: p ? p.text(question.trim().slice(0, 2000), "personal") : question.trim().slice(0, 2000) };
+  const guard = (text: string) => (p ? p.text(text, "personal") : text);
+  const input = {
+    question: guard(question.trim().slice(0, 2000)),
+    // Only the last exchange, and only when the question refers back to it: earlier turns are never re-sent.
+    ...(previous ? { previous: { question: guard(previous.question.trim().slice(0, 500)), answer: guard(previous.answer.trim().slice(0, PREVIOUS_ANSWER_CHARS)) } } : {}),
+  };
   const prompt = buildPrompt(pack, frame, input, sent);
   const receiptIds: string[] = [];
   const authorize = authorizer(
