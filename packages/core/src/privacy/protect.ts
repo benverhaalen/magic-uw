@@ -13,7 +13,7 @@
  * content gets every detector, numbers only with a person context word.
  * The span map is identity.ts's `ScrubResult`, so `toOriginalSpan` maps quotes back unchanged.
  */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   citationClaimSchema,
   type CitationClaim,
@@ -128,12 +128,59 @@ function rosterIds(roster: EffectiveRoster) {
 }
 
 /** Every replacement for `text`: identifiers first, then roster names that do not overlap them. */
+const needleCache = new WeakMap<EffectiveRoster, Set<string>>();
+const WORD = /[\p{L}\p{N}_]+/gu;
+/** Every word of the roster's names and IDs, lower-cased and split the way `WORD` splits text. */
+function rosterNeedles(roster: EffectiveRoster) {
+  let needles = needleCache.get(roster);
+  if (!needles) {
+    const all = roster.people.flatMap(({ person }) => [...person.names, ...person.netIds, ...person.studentIds]);
+    needles = new Set(all.flatMap((v) => v.normalize("NFKC").toLocaleLowerCase().match(WORD) ?? []));
+    needleCache.set(roster, needles);
+  }
+  return needles;
+}
+/**
+ * The roster scrubber's name and roster-ID spans, run only where a roster word occurs. Name
+ * matching is local (a full name, "Last, First", a 16-character honorific look-back), so a window
+ * of 80 characters either side of each hit, widened to whitespace, finds the same spans as the
+ * whole text at a fraction of the cost (the protection-pass budget).
+ */
+function rosterSpans(text: string, roster: EffectiveRoster): RedactionSpan[] {
+  const needles = rosterNeedles(roster);
+  if (!needles.size) return [];
+  const windows: [number, number][] = [];
+  // One lower-casing of the whole text (per word is the cost); a length change means offsets would
+  // shift, so such text goes through the whole-text pass.
+  const lowered = text.toLowerCase();
+  if (lowered.length !== text.length) return scrubText(text, roster).spans;
+  let covered = 0;
+  for (const m of lowered.matchAll(WORD)) {
+    if (!needles.has(m[0])) continue;
+    let s = Math.max(0, m.index - 80), e = Math.min(text.length, m.index + m[0].length + 80);
+    while (s > 0 && !/\s/.test(text[s - 1]!)) s--;
+    while (e < text.length && !/\s/.test(text[e]!)) e++;
+    const last = windows.at(-1);
+    // Nearby windows merge: each scrubText call has a fixed cost.
+    if (last && s <= last[1] + 400) {
+      covered += Math.max(0, e - last[1]);
+      last[1] = Math.max(last[1], e);
+    } else {
+      windows.push([s, e]);
+      covered += e - s;
+    }
+  }
+  if (covered > text.length / 2) return scrubText(text, roster).spans;
+  return windows.flatMap(([s, e]) =>
+    scrubText(text.slice(s, e), roster).spans.map((sp) => ({ ...sp, originalStart: sp.originalStart + s, originalEnd: sp.originalEnd + s })),
+  );
+}
+
 export function protectionCandidates(text: string, roster: EffectiveRoster, cls: ContentClass = "personal"): Chosen[] {
-  const base = scrubText(text, roster);
   const ids = rosterIds(roster);
   const names: Chosen[] = [];
   const identifiers: Detection[] = detect(text, cls satisfies DetectMode);
-  for (const s of base.spans as RedactionSpan[]) {
+  for (const s of rosterSpans(text, roster)) {
     const original = text.slice(s.originalStart, s.originalEnd);
     if (s.kind === "student_name") {
       if (!falseNameHit(text, s.originalStart, s.originalEnd, rosterWords(roster)))
@@ -147,13 +194,35 @@ export function protectionCandidates(text: string, roster: EffectiveRoster, cls:
   return chosen.sort((a, b) => a.start - b.start);
 }
 
-const candidateCache = new WeakMap<PseudonymSession, Map<string, Chosen[]>>();
-function candidatesIn(session: PseudonymSession, text: string, roster: EffectiveRoster, cls: ContentClass) {
-  let cache = candidateCache.get(session);
-  if (!cache) candidateCache.set(session, (cache = new Map()));
-  const key = `${roster.version}\u0000${cls}\u0000${text}`;
-  let found = cache.get(key);
-  if (!found) cache.set(key, (found = protectionCandidates(text, roster, cls)));
+/**
+ * The spans to replace depend only on the text, its class and the roster, never on the request, so
+ * they are cached across requests by (roster version, class, text hash): a repeated send of the
+ * same material costs a hash and a lookup (the cost budget). Placeholders stay per request.
+ */
+const GLOBAL_ENTRIES = 512, GLOBAL_CHARS = 8_000_000;
+const globalCandidates = new Map<string, { found: Chosen[]; chars: number }>();
+let globalChars = 0;
+export function clearProtectionCache(): void {
+  globalCandidates.clear();
+  globalChars = 0;
+}
+function candidatesIn(_session: PseudonymSession, text: string, roster: EffectiveRoster, cls: ContentClass) {
+  const digest = text.length > 64 ? createHash("sha1").update(text).digest("base64") : text;
+  const key = `${roster.version}\u0000${cls}\u0000${text.length}\u0000${digest}`;
+  const hit = globalCandidates.get(key);
+  if (hit) {
+    globalCandidates.delete(key); // most recently used last
+    globalCandidates.set(key, hit);
+    return hit.found;
+  }
+  const found = protectionCandidates(text, roster, cls);
+  globalCandidates.set(key, { found, chars: text.length });
+  globalChars += text.length;
+  for (const [k, v] of globalCandidates) {
+    if (globalCandidates.size <= GLOBAL_ENTRIES && globalChars <= GLOBAL_CHARS) break;
+    globalCandidates.delete(k);
+    globalChars -= v.chars;
+  }
   return found;
 }
 

@@ -88,7 +88,18 @@ Placeholders are role-typed and consistent within one request (`[STUDENT_SELF]` 
 4. **Receipts** record replacement counts per kind (`protection`, for example 3 names, 1 email, 1 phone), counted from the exact payload, never the values. Agent-API and MCP receipts sum the request's counts.
 5. **Logs** (`privacy/log.ts`, `redactForLog`): logs need no content, so every detector runs without context. A URL becomes host plus path class with no query; name-shaped words become `[name]`; credential-keyed values become `[redacted]`.
 
-Cost per 10 KB payload (Windows 11, Node 24, a 42-person roster): the roster scrubber alone 0.30 ms; the full pass 0.61 ms for teaching and 0.53 ms for personal text.
+**Cost** (the operator: "if privacy really adds latency it has to be miniscule"; `tests/privacy-budget.test.ts`, `tests/intent-latency.test.ts`; Windows 11, Node 24, a 42-person roster):
+
+| Budget | Before | After | Limit |
+| --- | --- | --- | --- |
+| Protection pass, 10 KB teaching text, p95 | 0.84 ms | 0.32–0.36 ms | 1 ms |
+| Protection pass, 10 KB personal text, p95 | 0.87 ms | 0.84–1.06 ms | 2 ms |
+| The same text sent again (cached by text hash and roster version), p95 | 0.08–0.10 ms | 0.03–0.09 ms | close to 0 |
+| Command bar: added dispatch time of the privacy pass on a code miss, p95 | not protected | 0.19 ms (see the five runs in the PR) | 1 ms |
+| Command bar: protection work on a code hit | none | none (0 calls, 0 sends) | 0 |
+| Reading 2,000 messages, sealed vs unencrypted | +20 to +47% | 17 to 28% faster | within 10% |
+
+How: teaching text skips the detectors it would discard; the roster scrubber runs only on windows around a roster word; spans are cached per (roster version, class, text hash); the command bar's roster is rebuilt only when sources or identities change and is warmed when the bar opens. Sealed mail and notes versions are opened once per session (a version never changes) and the cache is warmed when the key arrives (45–50 ms for 2,000 messages at worker start). The outlier is artificial text naming a roster student every 200 characters: about 1.1 ms, spent in `identity.ts`'s whole-text pass.
 
 ### Egress coverage
 
@@ -100,7 +111,8 @@ Cost per 10 KB payload (Windows 11, Node 24, a 42-person roster): the roster scr
 | Study guides (six kinds) | `packages/packs/guide/src/run.ts:129` | As packs; receipt counts `run.ts:216` |
 | `notes.fill` (fill from slides) | `packages/notes/src/fill.ts:122` | Slides at their class, the student's headings as personal, the prompt again in `beforeCall`; quotes mapped back to the original before `findQuote`; receipt counts `fill.ts:153` |
 | MCP tools and agent API v1 | `packages/agent-api/src/session.ts:114`, `:168` (MCP is an adapter over it) | Fields at the resource's class; grades and comments as personal; protected projection; receipt counts `session.ts:297` |
-| Intent classify and ask | not on main yet | Must go through the pack path (`runPack` with `beforeCall`) |
+| Command bar: intent classify | `packages/core/src/intent/router.ts:131` (only after the code resolver misses) | The command and hints as personal text; the catalogue and courses as teaching text (cached); the model's arguments restored to the student's words; a code hit does no protection work and sends nothing |
+| Command bar: grounded ask | `packages/core/src/intent/ask.ts:78` | The question as personal; each passage at its resource's class; quotes and sentences mapped back to the original before code checks them |
 | Mail as a hosted prompt (`mail.gist`) | stub, `packages/core/src/jobs/mail-gist.ts:8` | `protectMail`: subject, preview and gist as personal text; sender name and address always pseudonymised (a retained instructor keeps their name); account-wide roster |
 | Notes sync to the student's own OneDrive or Google Drive | `packages/notes/src/remote.ts:51`, `:149`, `:159` | Sent verbatim by design: the student's own document to their own account, not an AI recipient. Rewriting it would corrupt their notes |
 | Planning | no path | Hard-blocked for every hosted recipient (`tests/egress.test.ts`, and the sweep) |
@@ -129,7 +141,7 @@ It drives every path above with recording fakes and asserts four things:
 - **The pre-migration backup** of a database older than v14 is a plaintext copy. After the migration commits, `PRAGMA integrity_check` must return ok, and every table carried over from the backup must keep its row count. The exceptions are the compactions migrations make by design: v6's latest observation per field and v12's capture pruning. If both checks pass, the backup is deleted. If either fails, the backup is kept, `backupCheck()` gives the reason, and the worker logs it. This was the lead's decision on September 27. `restoreMigrationBackup` still works for a kept backup.
 - **Search:** mail is indexed by subject and category only; its preview is decrypted in memory when read. Notes stay searchable for study, so their passage headings and index terms remain in the database: an accepted limit.
 - **Purge** zeroes the key in the worker, deletes `privacy-key.enc` and sends a new secret.
-- **Cost:** 2,000 messages ingest in 390 to 540 ms unsealed and 490 to 580 ms sealed. Reading them all takes 56 to 68 ms unsealed and 82 ms sealed. The lazy pass seals 2,000 rows in 266 ms.
+- **Cost:** 2,000 messages ingest in 390 to 540 ms unsealed and 490 to 580 ms sealed. Reads are 17 to 28% faster sealed than unencrypted, because opened versions are cached for the session and warmed when the key arrives; the lazy pass seals 2,000 rows in 266 ms.
 - **Known limits (accepted):**
   - The read-only MCP reader process has no key, so it serves sealed mail and notes with empty bodies.
   - A wrapped key that can no longer be unwrapped leaves sealed rows readable only as their clear part; the app never overwrites the key.

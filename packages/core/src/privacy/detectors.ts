@@ -172,7 +172,9 @@ export function detect(text: string, mode: DetectMode = "all"): Detection[] {
   for (const m of text.matchAll(EMAIL_RE)) push("email", m.index, m.index + m[0].length);
   // Digit runs: cheap pre-check skips the numeric detectors for text without long numbers.
   const hasDigits = /\d{3}/.test(text);
-  if (hasDigits) {
+  // Teaching mode never keeps these kinds, so it doesn't run their patterns (the cost budget).
+  const all = mode !== "teaching";
+  if (hasDigits && all) {
     for (const m of text.matchAll(CARD_RE)) {
       const d = digits(m[0]);
       if (d.length >= 13 && d.length <= 19 && CARD_PREFIX.test(d) && luhn(d)) push("card", m.index, m.index + m[0].length);
@@ -185,6 +187,8 @@ export function detect(text: string, mode: DetectMode = "all"): Detection[] {
         push("ssn", m.index, m.index + m[0].length);
     for (const m of text.matchAll(CARD_NUMBER_RE))
       if (WISCARD_CONTEXT.test(before(text, m.index, 40))) push("campus_id", m.index, m.index + m[0].length);
+  }
+  if (hasDigits) {
     // A bare 10-digit number is an ID only after a context word (it is often a timestamp or an ISBN).
     for (const m of text.matchAll(TEN_RE))
       if (ID_CONTEXT.test(before(text, m.index, 40))) push("student_id", m.index, m.index + m[0].length);
@@ -193,6 +197,12 @@ export function detect(text: string, mode: DetectMode = "all"): Detection[] {
       const n = digits(m[0]).length;
       if (n >= 8 && n <= 15) push("phone", m.index, m.index + m[0].length);
     }
+    for (const m of text.matchAll(CANVAS_USER_RE)) {
+      const [s, e] = (m.indices![1] ?? m.indices![2])!;
+      push("canvas_user", s, e);
+    }
+  }
+  if (hasDigits && all) {
     for (const m of text.matchAll(DOB_RE)) {
       const [s, e] = m.indices![1]!;
       push("dob", s, e);
@@ -206,12 +216,8 @@ export function detect(text: string, mode: DetectMode = "all"): Detection[] {
       if (octets[0] === 0 || (octets.every((o) => o < 10) && !IP_CONTEXT.test(pre))) continue;
       push("ip", m.index, m.index + m[0].length);
     }
-    for (const m of text.matchAll(CANVAS_USER_RE)) {
-      const [s, e] = (m.indices![1] ?? m.indices![2])!;
-      push("canvas_user", s, e);
-    }
   }
-  if (text.includes(":"))
+  if (all && text.includes(":"))
     for (const m of text.matchAll(IPV6_RE)) {
       const hex = m[0].replace(/:/g, "");
       if (hex.length >= 6 && /\d/.test(hex)) push("ip", m.index, m.index + m[0].length);

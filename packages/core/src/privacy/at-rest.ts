@@ -79,10 +79,27 @@ export function createAtRestCodec(): AtRestCodec {
   let key: Buffer | null = null;
   let dirty = false;
   const stats = { sealed: 0, opened: 0, failed: 0 };
+  // Decrypted fields for this session, keyed by the value's IV and tag (unique per sealed value),
+  // so a list read after the first costs a lookup, not a decryption (the read budget: within 10%
+  // of unencrypted). Memory only; cleared with the key.
+  const OPENED_MAX = 20_000;
+  const opened = new Map<string, Record<string, unknown>>();
+  const openSecret = (sealed: string): Record<string, unknown> => {
+    const id = sealed.slice(0, 48);
+    let secret = opened.get(id);
+    if (!secret) {
+      secret = JSON.parse(open(key!, sealed, RESOURCE_AAD).toString("utf8")) as Record<string, unknown>;
+      if (opened.size >= OPENED_MAX) opened.delete(opened.keys().next().value!);
+      opened.set(id, secret);
+      stats.opened++;
+    }
+    return secret;
+  };
   return {
     setKey(value) {
       key?.fill(0);
       key = value ? Buffer.from(value) : null;
+      opened.clear();
     },
     hasKey: () => !!key,
     unsealedWrites: () => dirty,
@@ -122,7 +139,7 @@ export function createAtRestCodec(): AtRestCodec {
         return clear as T;
       }
       try {
-        const secret = JSON.parse(open(key, __sealed, RESOURCE_AAD).toString("utf8")) as Record<string, unknown>;
+        const secret = openSecret(__sealed);
         const out: Item = { ...clear, text: secret.text };
         if (secret.parts !== undefined) out.parts = secret.parts;
         if (clear.mail) {
@@ -130,7 +147,6 @@ export function createAtRestCodec(): AtRestCodec {
           for (const f of MAIL_FIELDS) if (secret[f] !== undefined) mail[f] = secret[f];
           out.mail = mail;
         }
-        stats.opened++;
         return out as T;
       } catch {
         stats.failed++;

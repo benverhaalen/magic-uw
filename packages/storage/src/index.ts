@@ -251,6 +251,23 @@ export function createStore(
   const atRest: AtRestCodec = createAtRestCodec();
   const encodeItem = (item: Parameters<typeof encodePayload>[0]) => encodePayload(atRest.sealItem(item));
   const decodeItem = (value: unknown) => atRest.openItem(decodePayload(value));
+  // A resource version never changes, so an opened sealed version is kept for the session: a
+  // mail or notes list read after the first skips the larger sealed payload's inflate, parse and
+  // decryption (the read budget). Cleared with the key and on purge.
+  const openedVersions = new Map<string, ReturnType<typeof decodePayload>>();
+  const readItem = (row: Row): ReturnType<typeof decodePayload> => {
+    const id = `${String(row.id)}\u0000${Number(row.version)}`;
+    const hit = openedVersions.get(id);
+    if (hit) return { ...hit, ...(hit.mail ? { mail: { ...hit.mail } } : {}) };
+    const raw = decodePayload(row.payload) as ReturnType<typeof decodePayload> & { __sealed?: unknown };
+    const item = atRest.openItem(raw);
+    if (raw.__sealed && atRest.hasKey()) {
+      if (openedVersions.size >= 20_000) openedVersions.delete(openedVersions.keys().next().value!);
+      openedVersions.set(id, item);
+      return { ...item, ...(item.mail ? { mail: { ...item.mail } } : {}) };
+    }
+    return item;
+  };
   const readVersion = () =>
     Number(db.prepare("PRAGMA user_version").get()!.user_version);
   const schemaVersion = readVersion();
@@ -547,7 +564,7 @@ export function createStore(
 
   function readResource(row: Row): Resource {
     return {
-      ...decodeItem(row.payload),
+      ...readItem(row), // owner: privacy
       id: String(row.id),
       sourceId: String(row.source_id),
       contentHash: String(row.content_hash),
@@ -973,12 +990,24 @@ export function createStore(
     backupCheck: () => backupCheck,
     setAtRestKey(key) {
       atRest.setKey(key);
+      openedVersions.clear();
       if (!key || readOnly) return { sealed: 0, ms: 0, keyMatches: true };
+      // Warm the session cache now (the key arrives at worker start), so the first list read the
+      // student sees is not the one that pays for decryption.
+      const warm = () => {
+        for (const row of prepare(
+          "SELECT r.id, r.version, v.payload FROM resources r JOIN resource_versions v ON v.resource_id = r.id AND v.version = r.version WHERE r.deleted = 0",
+        ).iterate() as Iterable<Row>)
+          readItem(row);
+      };
       const check = keyCheck(key);
       const stored = prepare("SELECT value FROM preferences WHERE key = 'privacy.keyCheck'").get();
       const keyMatches = !stored || String(stored.value) === check;
       const state = prepare("SELECT value FROM preferences WHERE key = 'privacy.seal'").get();
-      if (stored && state && String(state.value) === "done" && !atRest.unsealedWrites()) return { sealed: 0, ms: 0, keyMatches };
+      if (stored && state && String(state.value) === "done" && !atRest.unsealedWrites()) {
+        warm();
+        return { sealed: 0, ms: 0, keyMatches };
+      }
       const started = performance.now();
       const sealed = transaction(() => {
         const n = sealExistingRows(db, atRest, (id, version, textHash, item, accountScope, courseId) =>
@@ -992,6 +1021,7 @@ export function createStore(
       atRest.clearUnsealedWrites();
       // Plaintext pages leave the WAL; secure_delete already zeroes the freed pages.
       if (sealed) db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+      warm();
       return { sealed, ms: performance.now() - started, keyMatches };
     },
     atRestStats: () => ({ ...atRest.stats(), keyed: atRest.hasKey() }),
@@ -2166,6 +2196,7 @@ export function createStore(
       // end owner: platform-fix
       passageIndex.invalidate();
       atRest.setKey(null); // owner: privacy: purge destroys the key; main rotates and sends a new one
+      openedVersions.clear();
       // Compact the SQLite files. A reader holding a snapshot keeps its pages until it ends.
       db.exec(
         "PRAGMA wal_checkpoint(TRUNCATE); VACUUM; PRAGMA wal_checkpoint(TRUNCATE);",
