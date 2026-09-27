@@ -35,7 +35,9 @@ export type PreparedWorkProps = {
   /** Route to the saved assignment detail, used when nothing can be launched or the list changed. */
   onInspect?: () => void;
   /** Home Upcoming tile: the whole card starts work; `trailing` holds sibling controls, never nested. */
-  compact?: { className: string; summary: ReactNode; description?: string; trailing?: ReactNode };
+  compact?: { className: string; summary: ReactNode; description?: string; trailing?: ReactNode;
+    /** Data attributes for the card surface (e.g. packages/ui deadlineSurface), spread onto the card. */
+    surface?: Readonly<Record<`data-${string}`, string>> };
   /** Labeled action beside a briefing passage, with the same prepared set, status slot and retry. */
   action?: boolean;
   /** Actual route to the UW connection setup step ("Finish setup"). */
@@ -44,6 +46,8 @@ export type PreparedWorkProps = {
   onNotice?: (text: string) => void;
   /** Original text of an unexpected failure, for the shell's global failure contract. */
   onFailure?: (detail: string) => void;
+  /** Detail only: opens the assignment's own page when nothing prepared can be sent (lets the shell drop a duplicate "Open original"). */
+  onOpenOriginal?: () => void;
   /** Shared info toggletip for routine detail (e.g. packages/ui EvidenceInfo). Children are phrasing only. */
   info?: InfoRenderer;
 };
@@ -75,7 +79,7 @@ function PreparedWorkInner(props: PreparedWorkProps) {
 
 /** Rendering only, driven by a controller. Exported as a test seam for rendered states. */
 export function WorkView(props: PreparedWorkProps & { work: PreparedWorkController; anchor: string; container?: RefObject<HTMLElement | null> }) {
-  return props.compact || props.action ? <Tile {...props}/> : <FullWork work={props.work} anchor={props.anchor} onSetup={props.onSetup}/>;
+  return props.compact || props.action ? <Tile {...props}/> : <FullWork work={props.work} anchor={props.anchor} onSetup={props.onSetup} onOpenOriginal={props.onOpenOriginal}/>;
 }
 
 /** What the tile's main target does right now. */
@@ -96,7 +100,7 @@ function Tile({ resource, work, anchor, container, compact, action, onInspect, o
   const titles = set ? `${target.label}. ${set.items.map(item => item.title).join(" + ")}${pageViewApplies(set) ? ". Canvas may record a page view." : ""}` : undefined;
   const slot = <StatusSlot work={work} anchor={anchor} onSetup={onSetup} onInspect={onInspect} info={info}/>;
   if (compact) return <section ref={container as RefObject<HTMLElement>} className="magic-start-work magic-start-work--compact magic-prepared-tile" aria-label={`Prepared work: ${resource.title}`} data-place-anchor={anchor}>
-    <div className={`home-work-card magic-prepared-card ${compact.className}`}>
+    <div className={`home-work-card magic-prepared-card ${compact.className}`} {...compact.surface}>
       <button className="home-work-row magic-prepared-target" data-focus-key={anchor} aria-label={`${target.label}: ${resource.title}`} aria-describedby={described} title={titles}
         aria-busy={pending || undefined} aria-disabled={target.disabled || undefined} onClick={activate}>
         {compact.summary}
@@ -187,7 +191,7 @@ function stageOf(outcome: LaunchOutcome | null): Stage {
 const STAGE_TITLE: Record<Stage, string> = { ready: "Start work", sending: "Start work", verify: "Verification run", return: "Return to your work", problem: "Start work" };
 
 /** Assignment detail: one flat region whose state changes; rows are separated by lines, not an inner card. */
-function FullWork({ work, anchor, onSetup }: { work: PreparedWorkController; anchor: string; onSetup?: () => void }) {
+function FullWork({ work, anchor, onSetup, onOpenOriginal }: { work: PreparedWorkController; anchor: string; onSetup?: () => void; onOpenOriginal?: () => void }) {
   const heading = useId();
   const { set, prepare, pending, canLaunch, outcome, earlier, returnedAt } = work;
   const current = outcome && !earlier ? outcome : null;
@@ -212,7 +216,7 @@ function FullWork({ work, anchor, onSetup }: { work: PreparedWorkController; anc
         <h3 id={heading}>{STAGE_TITLE[stage]}</h3>
         <div role="status" aria-live="polite">
           {returnedAt && current && stage === "return" && <p className="magic-prepared__return"><strong>Back from {assignment ?? "your work"}.</strong></p>}
-          <p className="magic-prepared__lede">{lede}</p>
+          {(set || prepare.kind !== "error") && <p className="magic-prepared__lede">{lede}</p>}
           {earlierSent.length > 0 && <p className="magic-prepared__earlier">Earlier attempt sent {earlierSent.join(", ")}.</p>}
           {extra && <p className="magic-prepared__problem-text">{extra}</p>}
           {problem?.kind === "unknown" && problem.raw && <TechnicalDetail raw={problem.raw}/>}
@@ -261,6 +265,9 @@ function FullWork({ work, anchor, onSetup }: { work: PreparedWorkController; anc
       {prepare.problem.kind === "setup" ? onSetup && <Action tone="quiet" onClick={onSetup}>Finish setup</Action>
         : <Action tone="quiet" onClick={work.refresh}>Refresh destinations</Action>}
       {prepare.problem.kind === "unknown" && prepare.problem.raw && <TechnicalDetail raw={prepare.problem.raw}/>}
+    </div>}
+    {!set && prepare.kind !== "loading" && onOpenOriginal && <div className="magic-prepared__actions">
+      <Action tone="quiet" onClick={onOpenOriginal}>Open original <Icon name="forward"/></Action>
     </div>}
   </section>;
 }

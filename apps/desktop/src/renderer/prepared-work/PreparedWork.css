@@ -49,9 +49,6 @@
 .magic-prepared-slot button, .magic-prepared-slot details, .magic-prepared-slot .magic-info { pointer-events:auto; }
 .magic-prepared-card > .magic-prepared-slot:has(details[open]) { z-index:40; }
 .magic-start-work--compact .magic-prepared-target[aria-busy=true] { cursor:progress; }
-/* Focus is drawn on the whole-card hit area, not the partial button box. */
-.magic-start-work--compact .magic-prepared-card > .magic-prepared-target:focus-visible { outline:none; }
-.magic-prepared-card > .magic-prepared-target:focus-visible::after { outline:2px solid var(--magic-focus); outline-offset:0; }
 
 /* Slot contents: one line, never wider than the reserved slot. */
 .magic-prepared-slot__text { min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }

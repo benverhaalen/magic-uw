@@ -52,11 +52,11 @@ Object.assign(globalThis, { window: { magic: { startWork: async () => receipt({}
 const summary = createElement("span", { className: "home-work-summary" }, createElement("span", { className: "home-work-name" }, "Essay 2"), createElement("span", { className: "home-work-due" }, "Tomorrow"));
 const trailing = createElement("a", { className: "home-work-details", href: "#/resource/essay", "aria-label": "Details: Essay 2" });
 function tile(work: PreparedWorkController, extra: { onSetup?: () => void; onInspect?: () => void; action?: boolean } = {}) {
-  const props = extra.action ? { action: true } : { compact: { className: "tone-1", summary, description: "Course 101, due Tomorrow 5 PM", trailing } };
+  const props = extra.action ? { action: true } : { compact: { className: "tone-1", summary, description: "Course 101, due Tomorrow 5 PM", trailing, surface: { "data-magic-deadline": "soon", "data-magic-hue": "neutral" } } };
   return renderToStaticMarkup(createElement(WorkView, { resource, refreshKey: "r", work, anchor: extra.action ? "start-essay" : "work-essay", onInspect: extra.onInspect ?? (() => {}), onSetup: extra.onSetup, ...props }));
 }
-function detail(work: PreparedWorkController, onSetup?: () => void) {
-  return renderToStaticMarkup(createElement(WorkView, { resource, refreshKey: "r", work, anchor: "start-work-essay", onSetup }));
+function detail(work: PreparedWorkController, onSetup?: () => void, onOpenOriginal?: () => void) {
+  return renderToStaticMarkup(createElement(WorkView, { resource, refreshKey: "r", work, anchor: "start-work-essay", onSetup, onOpenOriginal }));
 }
 const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&#x27;/g, "'").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
 /** Every tile state keeps one slot, beside the target and before the trailing control, with nothing below the card. */
@@ -183,6 +183,10 @@ test("rendered detail: flat rows, one fallback line, setup route, conditional Ca
   const setup = detail(controller({ set: null, prepare: { kind: "error", problem: { kind: "setup", message: "Finish the UW connection setup step before Magic opens course pages.", raw: "" } } }), () => {});
   assert.match(setup, /Finish setup/);
   assert.doesNotMatch(setup, /Refresh destinations/);
+  // The shell drops its duplicate "Open original"; the leaf offers it only when nothing prepared can be sent.
+  const failedPrepare = controller({ set: null, prepare: { kind: "error", problem: { kind: "unavailable", message: "Magic could not prepare this work.", raw: "" } } });
+  assert.match(text(detail(failedPrepare, undefined, () => {})), /Refresh destinations Open original/);
+  assert.doesNotMatch(text(detail(controller(), undefined, () => {})), /Open original/, "a prepared set already includes the assignment page");
   const css = readFileSync(new URL("../apps/desktop/src/renderer/prepared-work/PreparedWork.css", import.meta.url), "utf8");
   assert.doesNotMatch(css.match(/\.magic-prepared__list \{[^}]*\}/)![0], /background|surface-raised/, "rows are not an inner card");
 });
@@ -193,6 +197,7 @@ test("literal action names and shell notice", () => {
   assert.equal(launchLabel({ items: [set.items[0]!] }), "Open PDF");
   assert.equal(launchLabel(set), "Start work");
   assert.match(tile(controller({ set: only })), /aria-label="Open assignment: Essay 2"/);
+  assert.match(tile(controller()), /<div class="home-work-card magic-prepared-card tone-1" data-magic-deadline="soon" data-magic-hue="neutral">/, "the shared deadline surface lands on the card");
   const action = tile(controller({ set: only }), { action: true });
   assert.match(action, /Open assignment/);
   assert.doesNotMatch(action, /<small>/, "a single page shows no prepared-work subtitle");
