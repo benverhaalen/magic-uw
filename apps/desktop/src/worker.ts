@@ -290,6 +290,7 @@ const core = createCore(store, {
   seams: { learning: createLearningRouter({
     store: store.learning,
     resolveContext: (resourceId): StudyContext | null => resolveStudyContext(resourceId),
+    resolveContexts: (resourceIds) => resolveStudyContext.many(resourceIds), // one workspace read per course scope
     // owner: analytics. One references port per analytics request, over the coursework store.
     // owner: pipeline: the material pipeline's adapter (it reuses analytics' adapter for exam dates
     // and course-map assessment rows).

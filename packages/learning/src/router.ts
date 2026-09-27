@@ -93,6 +93,11 @@ export interface StudyContext {
 export interface LearningRouterDependencies {
   store: LearningStore;
   resolveContext(resourceId: string): StudyContext | null;
+  /**
+   * Optional batch form of `resolveContext`: one context (or null) per id, in order, with the
+   * workspace read once for the batch. Course practice scopes use it when present.
+   */
+  resolveContexts?(resourceIds: readonly string[]): (StudyContext | null)[];
   now?: () => Date;
   // owner: analytics. A fresh references port per analytics request (the pipeline's, or the current adapter).
   analyticsReferences?: () => ReferencesPort;
@@ -391,11 +396,17 @@ export function createLearningRouter(
   function courseContext(anchorIds: string[]): StudyContext | null {
     const anchors = [...new Set(anchorIds)].sort();
     const all: StudyContext[] = [];
-    for (const a of anchors) {
-      const c = deps!.resolveContext(a);
-      if (!c) return null;
-      all.push(c);
-    }
+    if (deps!.resolveContexts) {
+      for (const c of deps!.resolveContexts(anchors)) {
+        if (!c) return null;
+        all.push(c);
+      }
+    } else
+      for (const a of anchors) {
+        const c = deps!.resolveContext(a);
+        if (!c) return null;
+        all.push(c);
+      }
     const first = all[0];
     if (
       !first ||
