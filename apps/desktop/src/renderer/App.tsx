@@ -285,17 +285,17 @@ export function App() {
       for (const command of commands) result = await window.magic.execute(command);
       return result;
     });
-  const signIn = async () => {
+  const signIn = async (service: "canvas" | "gitlab" = "canvas") => {
     if (!uwConsented) return openConsent();
-    return startSignIn();
+    return startSignIn(service);
   };
   // end owner: T06
-  const startSignIn = async () => {
+  const startSignIn = async (service: "canvas" | "gitlab" = "canvas") => {
     if (!window.magic.signInUW) return;
     setSignInStage("signin");
     try {
       await perform(async () => {
-        await window.magic.signInUW!();
+        await window.magic.signInUW!(service);
         // The bridge does not report cancellation. Only source evidence clears the action.
         setSignInStage("checking");
         return window.magic.syncCanvas ? window.magic.syncCanvas() : undefined;
