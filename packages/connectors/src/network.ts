@@ -41,7 +41,8 @@ export function canvasFileHost(
   if (url.origin === canvasOrigin) return "canvas";
   const host = url.hostname.toLowerCase();
   if (/^(?:[a-z0-9-]+\.)+canvas-user-content\.com$/.test(host)) return "files_domain";
-  if (/^inst-fs-[a-z0-9]+-[a-z0-9]+\.inscloudgate\.net$/.test(host)) return "inst_fs";
+  // Instructure's file service, and its CDN front (cdn.inst-fs-…), which it hands downloads to.
+  if (/^(?:cdn\.)?inst-fs-[a-z0-9]+-[a-z0-9]+\.inscloudgate\.net$/.test(host)) return "inst_fs";
   if (host === "instructure-uploads.s3.amazonaws.com") return "s3_legacy";
   return undefined;
 }
