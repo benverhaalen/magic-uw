@@ -1,7 +1,8 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { access } from 'node:fs/promises';
+import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { access, constants } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, isAbsolute } from 'node:path';
+import { promisify } from 'node:util';
 import type { VoiceAudio } from './types';
 import type { VoiceTransport } from './session';
 
@@ -37,11 +38,21 @@ for line in sys.stdin:
 `;
 
 export interface LocalWhisperConfig { python: string; modelFile: string }
+const checkExecutable = promisify(execFile);
 export async function localWhisperConfig(): Promise<LocalWhisperConfig | null> {
   const python = process.env.MAGIC_VOICE_PYTHON || 'python3';
   const modelFile = process.env.MAGIC_VOICE_MODEL_FILE || join(homedir(), '.cache', 'whisper', 'base.pt');
   if (!isAbsolute(modelFile)) return null;
-  try { await access(modelFile); return { python, modelFile }; } catch { return null; }
+  try {
+    await access(modelFile, constants.R_OK);
+    // Check the actual decoder and Python environment before presenting an actionable mic.
+    // Neither command starts the model, contacts a provider, reads speech, or downloads weights.
+    await Promise.all([
+      checkExecutable(python, ['-c', 'import numpy, torch, whisper'], { timeout: 12_000, env: { PATH: process.env.PATH, HOME: homedir() } }),
+      checkExecutable('ffmpeg', ['-version'], { timeout: 3_000, env: { PATH: process.env.PATH, HOME: homedir() } }),
+    ]);
+    return { python, modelFile };
+  } catch { return null; }
 }
 
 /** One warm local worker per user-started session; stop kills the process group. */

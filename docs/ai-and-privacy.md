@@ -2,6 +2,10 @@
 
 Accepted direction and implementation notes, checked September 26, 2026. Provider guidance was checked against live official sources on that date. This is a team reference, not a published privacy policy or a claim that we changed anyone's account settings.
 
+## September 27 retrieval work — proposed data boundary
+
+The local semantic retrieval and caption upgrade is in private baseline/candidate work, not an integrated processing path. Its required boundary is local passage embedding, with no course-text upload for embedding; model-weight downloads are separate network activity. Current account/course/category grants, exclusions, redaction and deletion must apply before indexing and returning evidence, with passage-hash/model-version invalidation. Caption acquisition is limited to already authorized accessible sources. Any bounded answer-repair or MCQ check must retain the actual provider consent, policy, context budget and request receipts. Private evaluation questions/course content are excluded from team commits. See the [adoption status](design-handoff.md#2026-09-27-1131-utc--retrieval-baseline-and-shared-ownership); this proposal does not expand any live data grant.
+
 ## Paid AI direction and current implementation
 
 Ben accepted Nathaniel's $5 one-time app license plus the student's own paid AI plan or key. Intended routes are Claude Code, Codex, Gemini CLI with a paid key, and OpenRouter. Prefer existing supported client sign-in; guide setup when absent. UW, provider setup, and license activation are the intended prerequisites without a separate Magic Canvas or Jev user account. This supersedes the any-account/local-default launch requirement; see [the recorded resolution](decisions.md#pricing-and-ai-access-resolution--september-26). No payment flow or new provider adapter is implemented by this decision.

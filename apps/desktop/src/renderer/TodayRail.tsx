@@ -1,8 +1,10 @@
 import { schedulePlanning, scheduleRailResources } from './schedule-projection';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from "react";
+import { createPortal } from "react-dom";
 import { createOperationScope } from "../../../../packages/ui/src/operation-scope";
 import { MOTION_EASE, MOTION_MS } from "../../../../packages/ui/src/motion/tokens";
 import { requirePlanSave } from "./today-plan-save";
+import { Action } from "../../../../packages/ui/src";
 import type {
   Command,
   DayPlanEntry,
@@ -17,6 +19,7 @@ import {
   planEntry,
   validatePlanEdit,
   type RailChange,
+  type RailEvent,
   type RailSuggestion,
 } from "@magic/domain";
 
@@ -67,6 +70,46 @@ function duration(min: number) {
   const h = Math.floor(min / 60),
     m = min % 60;
   return h ? `${h} h${m ? ` ${m} m` : ""}` : `${m} m`;
+}
+
+const EFFORT_LABEL = {
+  exam: "Exam", quiz: "Quiz", problem_set: "Problem set", essay: "Essay",
+  project: "Project", reading: "Reading", discussion: "Discussion",
+} as const;
+type Timed = { id: string; title: string; startMin: number; endMin: number | null };
+/** Other timed items sharing any minute with this one. Declined meetings hold no time. */
+export function railOverlaps(target: Timed, items: (Timed & { response?: string })[]): string[] {
+  const end = (t: Timed) => t.endMin ?? t.startMin + 30;
+  return items
+    .filter(o => o.id !== target.id && o.response !== "declined" && o.startMin < end(target) && target.startMin < end(o))
+    .map(o => o.title);
+}
+/** The facts a rail block's details show, in reading order. Rows without a value are left out. */
+export function railBlockFacts(block:
+  | { kind: "suggestion"; suggestion: RailSuggestion; dueLabel?: string | null; overlaps: string[] }
+  | { kind: "event"; event: RailEvent; overlaps: string[] }): { label: string; value: string }[] {
+  const rows: { label: string; value: string | null | undefined }[] = [];
+  if (block.kind === "suggestion") {
+    const s = block.suggestion;
+    rows.push(
+      { label: "When", value: `${clock(s.startMin)}–${clock(s.endMin)} · ${duration(s.endMin - s.startMin)}` },
+      { label: "Course", value: s.courseName },
+      { label: "Due", value: block.dueLabel },
+      { label: "Effort", value: s.effort ? `${EFFORT_LABEL[s.effort.category]}, usually ${duration(s.effort.lowMin)} to ${duration(s.effort.highMin)}` : null },
+      { label: "Why", value: s.reason },
+    );
+  } else {
+    const e = block.event;
+    rows.push(
+      { label: "When", value: e.endMin != null ? `${clock(e.startMin)}–${clock(e.endMin)} · ${duration(e.endMin - e.startMin)}` : `${clock(e.startMin)}, start time only` },
+      { label: "Calendar", value: e.courseName },
+      { label: "Where", value: e.location },
+      { label: "Online", value: e.onlineMeeting ? PROVIDER_LABEL[e.onlineMeeting] : null },
+      { label: "Your answer", value: e.response ? RESPONSE_LABEL[e.response] : null },
+    );
+  }
+  rows.push({ label: "Overlaps", value: block.overlaps.length ? block.overlaps.join(", ") : null });
+  return rows.filter((r): r is { label: string; value: string } => !!r.value);
 }
 
 function TodayRailContent({
@@ -163,6 +206,13 @@ function TodayRailContent({
   const isCompactEmpty = compactEmpty && rail.events.length === 0 && visible.length === 0;
   const pendingCount = rail.suggestions.filter((s) => s.state === "suggested").length;
   const [focusId, setFocusId] = useState<string | null>(null);
+  // A clicked block opens its full details in the rail; clicking it again, Close or Escape hides them.
+  const [detail, setDetail] = useState<{ kind: "suggestion" | "event"; id: string } | null>(null);
+  const toggleDetail = (kind: "suggestion" | "event", id: string) =>
+    setDetail(d => d?.id === id && d.kind === kind ? null : { kind, id });
+  // After a click the pointer is still over the block; keep its hover bar hidden until it leaves.
+  const [barOff, setBarOff] = useState<string | null>(null);
+  const popRef = useRef<HTMLDivElement>(null);
   const focused =
     visible.find((s) => s.id === focusId) ??
     visible.find((s) => s.state === "planned") ??
@@ -342,6 +392,23 @@ function TodayRailContent({
     }, "Saving your changes", () => setEditing(null));
   };
 
+  /** The decisions available on a block, shared by the hover bar and the details card. */
+  function choices(s: RailSuggestion): { icon: string; label: string; fn: () => unknown; tone: string }[] {
+    if (s.state === "suggested")
+      return [
+        { icon: "✓", label: "Accept", fn: () => accept(s), tone: "ok" },
+        { icon: "✎", label: "Edit", fn: () => startEdit(s), tone: "" },
+        { icon: "✕", label: "Skip", fn: () => skip(s), tone: "no" },
+      ];
+    if (s.state === "planned")
+      return [
+        ...(isStudy(s) ? [{ icon: "☐", label: "Mark done", fn: () => markDone(s, true), tone: "ok" }] : []),
+        { icon: "✎", label: "Edit", fn: () => startEdit(s), tone: "" },
+        { icon: "↺", label: "Remove from plan", fn: () => remove(s), tone: "" },
+      ];
+    if (s.doneBy === "student") return [{ icon: "↺", label: "Mark not done", fn: () => markDone(s, false), tone: "" }];
+    return []; // Canvas-submitted blocks stay crossed out.
+  }
   function tools(s: RailSuggestion) {
     const tool = (icon: string, label: string, fn: () => unknown, tone = "") => (
       <button
@@ -359,21 +426,7 @@ function TodayRailContent({
         {icon}
       </button>
     );
-    if (s.state === "suggested")
-      return [
-        tool("✓", "Accept", () => accept(s), "ok"),
-        tool("✎", "Edit", () => startEdit(s)),
-        tool("✕", "Skip", () => skip(s), "no"),
-      ];
-    if (s.state === "planned")
-      return [
-        ...(isStudy(s) ? [tool("☐", "Mark done", () => markDone(s, true), "ok")] : []),
-        tool("✎", "Edit", () => startEdit(s)),
-        tool("↺", "Remove from plan", () => remove(s)),
-      ];
-    if (s.doneBy === "student")
-      return [tool("↺", "Mark not done", () => markDone(s, false))];
-    return []; // Canvas-submitted blocks stay crossed out.
+    return choices(s).map(c => tool(c.icon, c.label, c.fn, c.tone));
   }
 
   const grid = useRef<HTMLDivElement>(null);
@@ -428,8 +481,120 @@ function TodayRailContent({
     return { left: `calc(34px + ${col} * ${lane})`, width: `calc(${col} - 2px)`, right: "auto" };
   };
 
+  const openSuggestion = detail?.kind === "suggestion" ? visible.find(s => s.id === detail.id) : undefined;
+  const openEvent = detail?.kind === "event" ? rail.events.find(e => e.id === detail.id) : undefined;
+  const timed = [...rail.events, ...visible];
+  const closeDetail = () => {
+    const key = detail ? `block-${detail.id}` : "";
+    setDetail(null);
+    railRoot.current?.querySelector<HTMLElement>(`[data-focus-key="${key}"]`)?.focus({ preventScroll: true });
+  };
+  const closeRef = useRef(closeDetail);
+  closeRef.current = closeDetail;
+  const dueLabel = (s: RailSuggestion) => {
+    const resource = resources.find(r => r.id === s.resourceId);
+    const planning = resource ? schedulePlanning(resource, timeZone) : null;
+    if (!planning) return null;
+    const at = new Date(planning.at);
+    return new Intl.DateTimeFormat(undefined, planning.minute === null
+      ? { weekday: "short", month: "short", day: "numeric" }
+      : { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(at);
+  };
+  const stateLabel = (s: RailSuggestion) =>
+    s.state === "done" ? (s.doneBy === "canvas" ? "Submitted on Canvas" : "Done") : s.state === "planned" ? "Planned" : "Suggested";
+  const detailCard = openSuggestion || openEvent ? (
+    <section
+      className={`rail-detail ${openSuggestion ? `suggestion ${openSuggestion.type} ${openSuggestion.state}` : `event ${openEvent!.response ?? ""}`}`}
+      aria-label={`Details: ${(openSuggestion ?? openEvent)!.title}`}
+    >
+      <div className="rail-heading">
+        <span>{openSuggestion ? stateLabel(openSuggestion) : openEvent!.onlineMeeting ? `${PROVIDER_LABEL[openEvent!.onlineMeeting]} meeting` : "Event"}</span>
+        <button type="button" className="rail-detail-close" aria-label="Close details" title="Close" onClick={closeDetail}>✕</button>
+      </div>
+      <h3 className="rail-detail-title">{(openSuggestion ?? openEvent)!.title}</h3>
+      <dl className="rail-detail-facts">
+        {railBlockFacts(openSuggestion
+          ? { kind: "suggestion", suggestion: openSuggestion, dueLabel: dueLabel(openSuggestion), overlaps: railOverlaps(openSuggestion, timed) }
+          : { kind: "event", event: openEvent!, overlaps: railOverlaps(openEvent!, timed) },
+        ).map(row => (
+          <div key={row.label} className={`rail-detail-row${row.label === "Overlaps" ? " rail-warn-text" : ""}`}>
+            <dt>{row.label}</dt>
+            <dd>{row.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {openSuggestion && openSuggestion.factors.length ? (
+        <span className="rail-chips">
+          {openSuggestion.factors.map(f => <span key={f} className="rail-chip">{f}</span>)}
+        </span>
+      ) : null}
+      <div className="rail-detail-actions">
+        {openSuggestion ? (
+          <>
+            {choices(openSuggestion).map((c, i) => (
+              <Action key={c.label} tone={i === 0 ? "primary" : "quiet"} pending={!!pending && i === 0}
+                onClick={() => { if (pendingRef.current) return; if (c.label === "Edit") setDetail(null); void c.fn(); }}>
+                {c.label}
+              </Action>
+            ))}
+            <Action tone="quiet" onClick={() => onSelect(openSuggestion.resourceId)}>Open assignment</Action>
+          </>
+        ) : (
+          <>
+            {openEvent!.joinUrl && onJoin && openEvent!.response !== "declined" ? (
+              <Action onClick={() => onJoin(openEvent!.joinUrl!)}>Join</Action>
+            ) : null}
+            <Action tone="quiet" onClick={() => onSelect(openEvent!.id)}>Open full details</Action>
+          </>
+        )}
+      </div>
+    </section>
+  ) : null;
+  // The details open beside the clicked block, over the page, like a calendar event popover:
+  // the rail is too narrow for them and the timeline keeps its size and scroll position.
+  const [popPos, setPopPos] = useState<{ top: number; left: number } | null>(null);
+  useLayoutEffect(() => {
+    if (!detail) { setPopPos(null); return; }
+    const place = () => {
+      const block = railRoot.current?.querySelector<HTMLElement>(`[data-focus-key="block-${detail.id}"]`);
+      const pop = popRef.current;
+      if (!block || !pop) return;
+      // Beside the rail (not just the block) so the hour labels stay visible; below it when there's no room.
+      const b = block.getBoundingClientRect(), h = pop.offsetHeight, w = pop.offsetWidth, gap = 12;
+      const edge = railRoot.current?.getBoundingClientRect().left ?? b.left;
+      const beside = edge - w - gap >= 8;
+      const left = beside ? edge - w - gap : Math.max(8, Math.min(b.left, window.innerWidth - w - 8));
+      const want = beside ? b.top : b.bottom + 6 + h <= window.innerHeight - 8 ? b.bottom + 6 : b.top - 6 - h;
+      const top = Math.max(8, Math.min(want, window.innerHeight - h - 8));
+      setPopPos(p => (p && p.top === top && p.left === left ? p : { top, left }));
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => { window.removeEventListener("resize", place); window.removeEventListener("scroll", place, true); };
+  });
+  useEffect(() => {
+    if (!detail) return;
+    const outside = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (!target || popRef.current?.contains(target) || target.closest(".rail-block")) return;
+      setDetail(null);
+    };
+    // Escape works even after a save re-renders the card and focus falls back to the page.
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (document.activeElement && document.activeElement !== document.body &&
+          !popRef.current?.contains(document.activeElement) && !railRoot.current?.contains(document.activeElement)) return;
+      closeRef.current();
+    };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); };
+  }, [detail]);
+
   return (
-    <aside ref={railRoot} tabIndex={-1} className={`today-rail${isCompactEmpty ? " is-compact-empty" : ""}`} aria-label="Today's schedule">
+    <aside ref={railRoot} tabIndex={-1} className={`today-rail${isCompactEmpty ? " is-compact-empty" : ""}`} aria-label="Today's schedule"
+      onKeyDown={(event) => { if (event.key === "Escape" && detailCard && !editing) { event.preventDefault(); event.stopPropagation(); closeDetail(); } }}>
       <div className="rail-heading">
         <span>Due today</span>
         <span>{due.length || ""}</span>
@@ -606,10 +771,12 @@ function TodayRailContent({
                 style={{ top: top(e.startMin) + 1, height: height(e.startMin, end), ...across(e.id) }}
               >
                 <button
-                  className={`rail-block event ${e.startOnly ? "start-only" : ""}`}
+                  className={`rail-block event ${e.startOnly ? "start-only" : ""} ${openEvent?.id === e.id ? "focused" : ""}`}
                   title={`${e.title} · ${range}${e.location ? ` · ${e.location}` : ""}${status ? ` · ${status}` : ""}`}
-                  aria-label={`${e.title}, ${range}${status ? `, ${status}` : ""}. Open details`}
-                  onClick={() => onSelect(e.id)}
+                  data-focus-key={`block-${e.id}`}
+                  aria-label={`${e.title}, ${range}${status ? `, ${status}` : ""}. Show details`}
+                  aria-expanded={openEvent?.id === e.id}
+                  onClick={() => toggleDetail("event", e.id)}
                 >
                   <b>
                     {provider ? <span className="rail-teams rail-provider">{provider}</span> : null}
@@ -655,15 +822,17 @@ function TodayRailContent({
             return (
               <div
                 key={s.id}
-                className="rail-slot"
+                className={`rail-slot${openSuggestion?.id === s.id ? " is-open" : ""}${barOff === s.id ? " bar-off" : ""}`}
+                onMouseLeave={() => setBarOff(b => (b === s.id ? null : b))}
                 style={{ top: top(s.startMin) + 1, height: height(s.startMin, s.endMin), ...across(s.id) }}
               >
                 <button
                   className={`rail-block suggestion ${s.type} ${s.state} ${focused?.id === s.id ? "focused" : ""}`}
                   title={`${s.title} · ${clock(s.startMin)}–${clock(s.endMin)}\n${s.reason}`}
                   aria-label={`${label}: ${s.title}, ${clock(s.startMin)} to ${clock(s.endMin)}`}
-                  aria-pressed={focused?.id === s.id}
-                  onClick={() => setFocusId(s.id)}
+                  data-focus-key={`block-${s.id}`}
+                  aria-expanded={openSuggestion?.id === s.id}
+                  onClick={() => { setFocusId(s.id); setBarOff(s.id); toggleDetail("suggestion", s.id); }}
                 >
                   <b>
                     {s.state === "done" ? "✓ " : ""}
@@ -689,6 +858,13 @@ function TodayRailContent({
           )}
         </div>
       </div>}
+      {detailCard ? createPortal(
+        <div ref={popRef} className="rail-pop" role="dialog" aria-modal="false"
+          aria-label={`Details: ${(openSuggestion ?? openEvent)!.title}`}
+          style={popPos ? { top: popPos.top, left: popPos.left } : { top: 0, left: 0, visibility: "hidden" }}
+          onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeDetail(); } }}>
+          {detailCard}
+        </div>, document.body) : null}
       <div className="rail-action-feedback" role={actionError ? "alert" : "status"}>
         {actionError || (pending ? `${pending}…` : "")}
       </div>
