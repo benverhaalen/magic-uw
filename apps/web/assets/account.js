@@ -47,13 +47,41 @@ async function start() {
     const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: back.href } });
     button.disabled = false;
     if (error) {
-      say(error.status === 429 ? "Too many sign-in emails. Wait a minute and try again." : "We couldn't send the email. Try again.");
+      say(error.status === 429 ? "Too many sign-in emails for now. Try again later." : "We couldn't send the email. Try again.");
       return;
     }
+    sentTo = email;
     bind("sent-to", email);
     show("sent");
+    codeForm.code.focus();
   });
+
+  // The code in the email works in any browser and on any device, unlike the link,
+  // and email security scanners that open links can't use it up.
+  let sentTo = "";
+  const codeForm = $('[data-form="code"]');
+  codeForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const token = codeForm.code.value.replace(/\s+/g, "");
+    if (!/^\d{6,10}$/.test(token)) {
+      say("Enter the code from the email: numbers only.");
+      codeForm.code.focus();
+      return;
+    }
+    const button = codeForm.querySelector("button");
+    button.disabled = true;
+    say("");
+    const { error } = await supabase.auth.verifyOtp({ email: sentTo, token, type: "email" });
+    button.disabled = false;
+    if (error) {
+      say(error.status === 429 ? "Too many tries. Wait a minute and try again." : "That code didn't work or has expired. Check it, or send a new email.");
+      return;
+    }
+    codeForm.reset(); // signing in re-renders the page through onAuthStateChange
+  });
+
   $('[data-action="restart"]').addEventListener("click", () => {
+    codeForm.reset();
     say("");
     show("signed-out");
     form.email.focus();

@@ -33,8 +33,15 @@
             </form>
 
             <div data-view="sent" hidden>
-              <p class="lede">Check your email. We sent a sign-in link to <b data-bind="sent-to"></b>.</p>
-              <p class="note">Open it on this device. It can take a minute to arrive; check spam if it doesn't.</p>
+              <p class="lede">Check your email. We sent a sign-in email to <b data-bind="sent-to"></b>.</p>
+              <p class="note">Open the link in this browser, or type the code from the email below. It can take a minute to arrive; check spam if it doesn't.</p>
+              <form class="account-form code-form" data-form="code" novalidate>
+                <label for="account-code">Code from the email</label>
+                <div class="field-row">
+                  <input id="account-code" name="code" inputmode="numeric" autocomplete="one-time-code" spellcheck="false" maxlength="12" placeholder="123456" />
+                  <button class="btn btn-blue" type="submit">Sign in</button>
+                </div>
+              </form>
               <button class="btn btn-white" type="button" data-action="restart">Use a different email</button>
             </div>
 

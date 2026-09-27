@@ -1445,6 +1445,9 @@ button {
   gap: 14px;
   align-items: flex-start;
 }
+.code-form {
+  align-self: stretch;
+}
 .account-form label {
   font-weight: 600;
   font-size: 15px;
