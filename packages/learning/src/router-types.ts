@@ -181,3 +181,247 @@ export interface PracticeOpData {
 
 /** Message of the honest empty-pool answer; the renderer offers the `pack` command beside it. */
 export const EMPTY_POOL_MESSAGE = "No practice items yet. Generate them from this course's materials.";
+
+// owner: analytics. Practice analytics (additive). Code-only rollups of the stored evidence along
+// item → topics → source materials → the assignments and exams those materials serve (0 tokens).
+// Direction and state only: no score, probability, percentage or grade prediction (spec H4/H8).
+
+/** Topics per state: counts of the four H4 states. */
+export interface StateDistribution {
+  solid: number;
+  getting_there: number;
+  iffy: number;
+  not_seen: number;
+}
+
+/** An upcoming exam or quiz, dated by code. */
+export interface ExamRef {
+  assessmentId: string;
+  title: string;
+  kind: "exam" | "midterm" | "final" | "quiz";
+  /** ISO date or instant. */
+  at: string;
+  daysAway: number;
+  /** Where the date came from: the course map's assessments, a Canvas assignment or quiz, or the calendar. */
+  dateSource: "assessment" | "assignment" | "calendar";
+}
+
+/** A topic in an analytics view: its state, reasons and evidence counts, plus the exam that makes it urgent. */
+export interface AnalyticsTopic {
+  conceptId: string;
+  label: string;
+  moduleId: string | null;
+  moduleLabel: string | null;
+  state: ConceptStateName;
+  stateLabel: string;
+  reasons: { text: string; clearsWhen: string }[];
+  counts: { answers: number; correct: number; cardReviews: number; selfRatings: number };
+  /** Checked practice items whose primary topic this is. */
+  practiceItems: number;
+  /** The course materials that tie this topic to the view (resource IDs). */
+  materialIds: string[];
+  nextExam: Omit<ExamRef, "dateSource"> | null;
+}
+
+/** "Study this next": ordered by weakness × exam proximity × scope share (the number stays internal). */
+export interface StudyNextRow {
+  conceptId: string;
+  label: string;
+  state: ConceptStateName;
+  stateLabel: string;
+  reason: string;
+  exam: Omit<ExamRef, "dateSource"> | null;
+  practiceItems: number;
+}
+
+/** Topics with any evidence out of the topics linked to the view. */
+export interface TopicCoverage {
+  withEvidence: number;
+  of: number;
+  text: string;
+}
+
+export type AnalyticsCalibration =
+  | { status: "not_enough"; rated: number; needed: number; text: string }
+  | { status: "ready"; rated: number; flags: { conceptId: string; label: string; wrong: number; total: number; text: string }[] };
+
+export interface EvidenceCounts {
+  answers: number;
+  correct: number;
+  cardReviews: number;
+  selfRatings: number;
+  sessions: number;
+}
+
+/** A material the view links to, with the reason code found the link. */
+export interface LinkedMaterial {
+  resourceId: string;
+  title: string;
+  reason: string;
+}
+
+/** `analytics.assignment`: readiness on the topics behind one assignment's references. */
+export interface AssignmentAnalyticsData {
+  courseId: string;
+  assignmentId: string;
+  title: string;
+  /** `linked`: materials and topics found. Otherwise `reason` says which link of the chain is missing. */
+  linkage: "linked" | "no_materials" | "no_topics";
+  reason: string;
+  materials: LinkedMaterial[];
+  topics: AnalyticsTopic[];
+  distribution: StateDistribution;
+  coverage: TopicCoverage;
+  calibration: AnalyticsCalibration;
+  /** At most three (Study & Learn ≤3). */
+  studyNext: StudyNextRow[];
+  evidence: EvidenceCounts;
+  note: string;
+}
+
+/** A module (a `unit` concept) rolled up. `moduleId: null`: the topics outside every module. */
+export interface ModuleRollup {
+  moduleId: string | null;
+  label: string;
+  topicIds: string[];
+  distribution: StateDistribution;
+  coverage: TopicCoverage;
+}
+
+/** An upcoming exam rolled up over its scope. `scope: "not_linked"` when no topic reaches it yet. */
+export interface ExamRollup extends ExamRef {
+  scope: "linked" | "not_linked";
+  topicIds: string[];
+  distribution: StateDistribution;
+  coverage: TopicCoverage;
+  studyNext: StudyNextRow[];
+}
+
+export interface TrendRow {
+  conceptId: string;
+  label: string;
+  day: string;
+  from: ConceptStateName;
+  to: ConceptStateName;
+  /** `new`: the topic's first evidence. */
+  direction: "up" | "down" | "new";
+  text: string;
+}
+
+/** `analytics.course`: per-module and per-upcoming-exam rollups, trend and the top priorities. */
+export interface CourseAnalyticsData {
+  courseId: string;
+  modules: ModuleRollup[];
+  exams: ExamRollup[];
+  /** Exams with no date are listed apart; they never get an invented one. */
+  undatedExams: { assessmentId: string; title: string }[];
+  distribution: StateDistribution;
+  coverage: TopicCoverage;
+  /** State transitions over the last `sessions` practice sessions. */
+  trend: { sessions: number; since: string | null; transitions: TrendRow[] };
+  studyNext: StudyNextRow[];
+  evidence: EvidenceCounts;
+  note: string;
+}
+
+/** One agenda hint: "Study X before <exam>", sized from the topic's practice items. */
+export interface AgendaHint {
+  conceptId: string;
+  label: string;
+  state: ConceptStateName;
+  exam: Omit<ExamRef, "dateSource">;
+  /** Practice items the hint's minutes are counted from (capped). */
+  items: number;
+  /** Null when the topic has no practice items yet: the hint says to generate them. */
+  minutes: number | null;
+  text: string;
+}
+
+/** `analytics.agendaHints`: at most three hints for the agenda. */
+export interface AgendaHintsData {
+  courseId: string;
+  hints: AgendaHint[];
+}
+
+/**
+ * The assignment → references graph behind practice analytics: the port the material pipeline's
+ * adapter implements (`feat/material-pipeline`: `references(assignmentId)` and `material_facts`).
+ * Today's adapter is `createCurrentReferences` in `analytics/references.ts`. The router takes a
+ * factory (`LearningRouterDependencies.analyticsReferences`) and builds one port per request, so an
+ * adapter may index eagerly and cache freely within that request. Every method is synchronous,
+ * code-only and reads only the student's own coursework store.
+ */
+export interface ReferencesPort {
+  /**
+   * The assignment or exam as captured: its resource ID, title and Canvas course ID. Null when the
+   * ID is unknown. The router answers `unavailable` when this is null or its `courseId` isn't
+   * the request's course, so the port must never resolve an ID into another course.
+   */
+  assignment(assignmentId: string): { id: string; title: string; courseId: string } | null;
+  /**
+   * The materials an assignment or exam references, each with the reason it was linked (shown
+   * to the student). IDs are resource IDs in the same course. An assignment's own resource may be
+   * included when its text can source topics. Unknown ID or no links: an empty list, never a guess.
+   * Exams are passed by their `ExamDate.resourceId` when they have one, else by `assessmentId`.
+   */
+  references(assignmentId: string): MaterialLink[];
+  /**
+   * The inverse: the assignments and exams that reference a material (`kind: "assignment"` for
+   * graded work that isn't an exam or quiz). It must agree with `references`: a material is
+   * listed under a subject iff `references(subject)` lists that material. Exam proximity and
+   * scope share in the priority come from this.
+   */
+  assessmentsFor(materialId: string): AssessmentLink[];
+  /**
+   * The course's exams and quizzes, dated where code can date them, with where the date came
+   * from. `at: null` when no date is known: never invented; such exams are listed apart as
+   * undated. Duplicates across sources (the same title and day) appear once. Sorted: dated first,
+   * by date. `courseId` is the Canvas course ID.
+   */
+  examDates(courseId: string): ExamDate[];
+}
+
+/** A material an assignment or exam references. */
+export interface MaterialLink {
+  resourceId: string;
+  title: string;
+  /** Why it is linked, shown to the student ("Linked in the description.", "In the same module: …"). */
+  reason: string;
+}
+
+/** An assignment or exam a material serves. */
+export interface AssessmentLink {
+  assessmentId: string;
+  title: string;
+  /** `assignment`: graded work that is not an exam or quiz. */
+  kind: ExamRef["kind"] | "assignment";
+}
+
+/** An exam or quiz with its date, when code can date it. */
+export interface ExamDate {
+  assessmentId: string;
+  title: string;
+  kind: ExamRef["kind"];
+  /** ISO date or instant. Null: no date is known; never invented. */
+  at: string | null;
+  dateSource: ExamRef["dateSource"];
+  /** The captured resource the exam is, when there is one. */
+  resourceId: string | null;
+}
+
+export type AnalyticsOp = "analytics.assignment" | "analytics.course" | "analytics.agendaHints";
+
+export interface AnalyticsOpData {
+  "analytics.assignment": AssignmentAnalyticsData;
+  "analytics.course": CourseAnalyticsData;
+  "analytics.agendaHints": AgendaHintsData;
+}
+
+/** The analytics answer, shaped like `LearningResult`. */
+export interface AnalyticsResult {
+  op: AnalyticsOp;
+  status: "ok" | "not_built" | "unavailable" | "failed";
+  message?: string;
+  data?: AnalyticsOpData[AnalyticsOp];
+}
+// end owner: analytics
