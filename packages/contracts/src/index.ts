@@ -191,6 +191,8 @@ export const moduleItemSchema = z
     position: z.number().int().optional(),
     externalUrl: evidenceUrlSchema.optional(),
     pageUrl: z.string().max(4000).optional(),
+    /** The containing module's Canvas id, so a course page can group items by module. */
+    moduleId: id.optional(),
     contentId: id.optional(),
     dueAt: optionalInstant,
     points: z.number().nullable().optional(),

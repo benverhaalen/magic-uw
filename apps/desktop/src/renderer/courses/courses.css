@@ -1,0 +1,198 @@
+/* Course overview and course page. Matches the running app's list/detail language. */
+.course-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+  padding: 0 36px 48px;
+  max-width: 1100px;
+}
+.course-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+}
+.course-card:hover {
+  background: #f8f8f5;
+}
+.course-card:focus-visible {
+  outline: 2px solid #4e514b;
+  outline-offset: 2px;
+}
+.course-card-name {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.course-card-code {
+  font-size: 11px;
+  color: var(--muted);
+}
+.course-card-cue {
+  font-size: 12px;
+  line-height: 1.45;
+  margin-top: 4px;
+}
+.course-card-note {
+  font-size: 11px;
+  color: var(--attention);
+}
+.course-back {
+  margin-bottom: 6px;
+  padding-left: 0;
+}
+.course-subline {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.course-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  border-top: 1px solid var(--border);
+}
+.course-layout.has-detail {
+  grid-template-columns: minmax(340px, 1fr) minmax(320px, 0.9fr);
+}
+.course-main {
+  padding: 8px 32px 48px;
+  min-width: 0;
+  max-width: 880px;
+}
+.course-section {
+  padding: 20px 0 8px;
+}
+.course-section + .course-section {
+  border-top: 1px solid var(--border);
+}
+.course-section h2 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.course-syllabus {
+  margin: 0 0 14px;
+  font-size: 12px;
+}
+.course-fact {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid #f1f1ed;
+}
+.course-fact h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #55554f;
+}
+.course-fact-body p {
+  margin: 0 0 6px;
+  line-height: 1.5;
+}
+.course-fact-text .badge {
+  margin-left: 8px;
+}
+.course-weights {
+  border-collapse: collapse;
+  margin: 0 0 6px;
+  font-size: 12px;
+}
+.course-weights th,
+.course-weights td {
+  text-align: left;
+  font-weight: 400;
+  padding: 3px 18px 3px 0;
+}
+.course-weights td:nth-child(2) {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.course-evidence summary,
+.course-past summary,
+.course-module summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: #6c6c65;
+  padding: 6px 0;
+}
+.course-evidence figure {
+  margin: 6px 0 10px;
+}
+.course-evidence blockquote {
+  margin: 0 0 4px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.link-button {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  font: inherit;
+}
+.course-group {
+  margin-bottom: 14px;
+}
+.course-group h3 {
+  font-size: 12px;
+  font-weight: 600;
+  color: #55554f;
+  margin: 10px 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.course-group ul,
+.course-module ul,
+.course-past ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.course-row button {
+  width: 100%;
+  border: 0;
+  background: none;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.course-row button:hover {
+  background: #f8f8f5;
+}
+.course-row.selected button {
+  background: #f2f2ef;
+}
+.course-row.is-complete .resource-title {
+  color: #8d8d84;
+}
+.course-module {
+  border-bottom: 1px solid #f1f1ed;
+  padding: 2px 0;
+}
+.course-module summary {
+  color: #262625;
+  font-weight: 500;
+}

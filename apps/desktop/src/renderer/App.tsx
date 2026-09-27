@@ -9,6 +9,8 @@ import type {
   SourceHealth,
 } from "@magic/contracts";
 import { MyUw, PlanningAlerts } from "./MyUw";
+import { CoursePageView, CoursesOverview } from "./courses/CoursePage";
+import { buildCourseCards, buildCoursePage } from "../../../../packages/domain/src/course-page";
 import { LocalAiPanel } from "./LocalAiPanel";
 import { LearningPanel } from "./LearningPanel";
 import { ProviderGuidance } from "./ProviderGuidance";
@@ -161,6 +163,17 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // owner: course page. The open course and its selected item; Back restores the originating card.
+  const [courseKey, setCourseKey] = useState<string | null>(null);
+  const [courseItemId, setCourseItemId] = useState<string | null>(null);
+  const returnCourse = useRef<string | null>(null);
+  useEffect(() => {
+    // Back from a course page returns focus to the card that opened it.
+    if (view !== "courses" || courseKey || !returnCourse.current) return;
+    const key = returnCourse.current;
+    returnCourse.current = null;
+    document.querySelector<HTMLElement>(`[data-course-key="${CSS.escape(key)}"]`)?.focus();
+  }, [view, courseKey]);
   const requestVersion = useRef(0);
   const busyRef = useRef(false);
   const mounted = useRef(true);
@@ -630,10 +643,51 @@ export function App() {
             refresh={() => void perform(async () => window.magic.syncPlanning?.())}
             signIn={(service) => uwConsented /* owner: T06 */ ? void perform(async () => { await window.magic.signInUW?.(service); return window.magic.syncPlanning?.(); }) : openConsent()} />
         ) : view === "courses" ? (
-          <><div className="page-heading"><h1>Courses</h1></div><div className="planning-content">
-            {courses.map((course) => <article className="planning-row" key={course.id}><h2>{course.courseName}</h2><button className="button" onClick={() => { setQuery(course.courseName); setSelectedId(null); setView("today"); }}>View coursework</button></article>)}
-            {!resources.length ? <p className="muted">Connect Canvas from Home to see your courses here.</p> : null}
-          </div></>
+          // owner: course page. Overview cards, then one course's page over the same saved evidence.
+          (() => {
+            const input = {
+              resources,
+              sources: snapshot.sources,
+              courseIntelligence: snapshot.courseIntelligence,
+              now: snapshot.generatedAt,
+            };
+            const page = courseKey ? buildCoursePage(input, courseKey) : null;
+            const item = page && courseItemId ? resources.find((r) => r.id === courseItemId) : undefined;
+            return page ? (
+              <CoursePageView
+                page={page}
+                selectedId={item ? item.id : null}
+                onSelect={setCourseItemId}
+                onBack={() => {
+                  returnCourse.current = page.key;
+                  setCourseKey(null);
+                  setCourseItemId(null);
+                }}
+                open={open}
+                detail={
+                  item ? (
+                    <ResourceDetail
+                      key={item.id}
+                      resource={item}
+                      snapshot={snapshot}
+                      busy={busy}
+                      run={run}
+                      open={open}
+                      onClose={() => setCourseItemId(null)}
+                    />
+                  ) : null
+                }
+              />
+            ) : (
+              <CoursesOverview
+                cards={buildCourseCards(input)}
+                onOpen={(key) => {
+                  setCourseKey(key);
+                  setCourseItemId(null);
+                }}
+              />
+            );
+          })()
         ) : view === "consent" ? (
           // owner: T06. Consent route: setup, a new recipient's consent, or Agreements.
           <ConsentSetup
