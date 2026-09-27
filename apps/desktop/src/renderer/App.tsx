@@ -23,6 +23,8 @@ import { TodayRail } from "./TodayRail";
 import { NotificationsMenu } from "./NotificationsMenu";
 import { AccountSection } from "./AccountSection"; // owner: accounts
 import { RememberSignIn } from "./RememberSignIn"; // owner: T05e
+import { CourseAnalyticsPage } from "./analytics/CourseAnalyticsPage"; // owner: course-analytics
+import type { CourseRef } from "./analytics/load"; // owner: course-analytics
 
 type View =
   | "today"
@@ -167,6 +169,7 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [analyticsCourse, setAnalyticsCourse] = useState<CourseRef | null>(null); // owner: course-analytics
   const requestVersion = useRef(0);
   const busyRef = useRef(false);
   const mounted = useRef(true);
@@ -663,9 +666,13 @@ export function App() {
           <MyUw snapshot={snapshot} busy={busy} run={run} open={open}
             refresh={() => void perform(async () => window.magic.syncPlanning?.())}
             signIn={(service) => uwConsented /* owner: T06 */ ? void perform(async () => { await window.magic.signInUW?.(service); return window.magic.syncPlanning?.(); }) : openConsent()} />
+        ) : view === "courses" && analyticsCourse /* owner: course-analytics */ ? (
+          <CourseAnalyticsPage snapshot={snapshot} course={analyticsCourse} onBack={() => setAnalyticsCourse(null)}
+            onCoursework={() => { setQuery(analyticsCourse.courseName); setSelectedId(null); setAnalyticsCourse(null); setView("today"); }}
+            onOpenItem={(id) => { setQuery(""); setSelectedId(id); setAnalyticsCourse(null); setView("today"); }} />
         ) : view === "courses" ? (
           <><div className="page-heading"><h1>Courses</h1></div><div className="planning-content">
-            {courses.map((course) => <article className="planning-row" key={course.id}><h2>{course.courseName}</h2><button className="button" onClick={() => { setQuery(course.courseName); setSelectedId(null); setView("today"); }}>View coursework</button></article>)}
+            {courses.map((course) => <article className="planning-row" key={course.id}><h2>{course.courseName}</h2><button className="button" onClick={() => { setQuery(course.courseName); setSelectedId(null); setView("today"); }}>View coursework</button> <button className="button" onClick={() => setAnalyticsCourse({ accountScope: accountBySource.get(course.sourceId) ?? course.sourceId, courseId: course.courseId, courseName: course.courseName })}>Analytics</button></article>)}
             {!resources.length ? <p className="muted">Connect Canvas from Home to see your courses here.</p> : null}
           </div></>
         ) : view === "consent" ? (
