@@ -1228,3 +1228,492 @@ select {
 .learning-start form { margin-top: 14px; }
 
 .learning-start form > .button { margin-right: 8px; margin-bottom: 8px; }
+/* Today rail: time context for Home. One line per item, one "next up" card, and the schedule.
+   Hidden on narrow windows so the list and detail keep their width. */
+.today-rail {
+  display: none;
+}
+@media (min-width: 1180px) {
+  .today-layout {
+    grid-template-columns: minmax(300px, 1fr) minmax(280px, 0.85fr) 268px;
+  }
+  .today-rail {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    border-left: 1px solid var(--border);
+    background: #fbfbf9;
+    padding: 20px 16px 12px;
+    position: sticky;
+    top: 0;
+    align-self: start;
+    height: calc(100vh - 188px);
+  }
+}
+@media (min-width: 1450px) {
+  .today-layout {
+    grid-template-columns: minmax(380px, 1fr) minmax(360px, 440px) 288px;
+  }
+}
+.rail-heading {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.75px;
+  color: #999990;
+  margin: 0 0 6px;
+}
+.rail-due {
+  list-style: none;
+  margin: 0 0 18px;
+  padding: 0;
+}
+.rail-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 5px 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  font-size: 12px;
+  color: inherit;
+  cursor: pointer;
+}
+.rail-row:hover .rail-row-title {
+  text-decoration: underline;
+}
+.rail-row:focus-visible,
+.rail-next-title:focus-visible,
+.rail-block.suggestion:focus-visible {
+  outline: 2px solid #4a6fd6;
+  outline-offset: 1px;
+}
+.rail-time {
+  flex: 0 0 58px;
+  font-weight: 600;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.rail-row-title {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.rail-flag {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #f6e3d6;
+  color: #a4521c;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 15px;
+}
+.rail-empty-line {
+  font-size: 11.5px;
+  color: var(--muted);
+  padding: 3px 0;
+}
+.rail-next {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 10px;
+  margin-bottom: 18px;
+  border-radius: 7px;
+  background: #fff;
+  border: 1px solid #ecece6;
+  border-left: 3px solid #c9a24a;
+}
+.rail-next.exam {
+  border-left-color: #c2553f;
+}
+.rail-next.prep {
+  border-left-color: #6b86cf;
+}
+.rail-next-title {
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: inherit;
+  cursor: pointer;
+}
+.rail-next-title:hover {
+  text-decoration: underline;
+}
+.rail-next-time {
+  font-size: 11px;
+  color: #73736b;
+}
+.rail-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 3px;
+}
+.rail-chip {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #f3f2ec;
+  color: #5f5e56;
+}
+.rail-allday {
+  font-size: 11px;
+  background: #eef1f7;
+  color: #3d4a66;
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin-bottom: 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.rail-grid {
+  position: relative;
+  flex: 1;
+  min-height: 140px;
+  overflow-y: auto;
+}
+.rail-grid-inner {
+  position: relative;
+  margin-top: 8px;
+}
+.rail-hour {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px solid #efefea;
+}
+.rail-hour span {
+  position: absolute;
+  top: -7px;
+  left: 0;
+  font-size: 10px;
+  color: #a5a59d;
+  background: #fbfbf9;
+  padding-right: 4px;
+}
+.rail-block {
+  position: absolute;
+  left: 34px;
+  right: 2px;
+  border-radius: 5px;
+  padding: 2px 7px;
+  font-size: 11px;
+  line-height: 1.35;
+  overflow: hidden;
+  border: 0;
+  border-left: 3px solid;
+  text-align: left;
+  color: inherit;
+}
+.rail-block b {
+  display: block;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rail-block span {
+  font-size: 10px;
+  color: #5b5b55;
+}
+.rail-block.event {
+  background: #e8eefb;
+  border-color: #4a6fd6;
+}
+.rail-block.event.start-only {
+  background: #f1f1ed;
+  border-color: #a0a098;
+}
+.rail-block.suggestion {
+  background: transparent;
+  border: 1px dashed #d6c9a6;
+  border-left: 3px solid #c9a24a;
+  color: #6b604a;
+  cursor: pointer;
+}
+.rail-block.suggestion b {
+  font-weight: 500;
+}
+.rail-block.suggestion.exam {
+  border-color: #e2bdb4;
+  border-left-color: #c2553f;
+}
+.rail-block.suggestion.prep {
+  border-color: #c6d2ee;
+  border-left-color: #6b86cf;
+}
+.rail-block.suggestion.focused {
+  background: #fff;
+  color: inherit;
+}
+.rail-block.suggestion.focused b {
+  font-weight: 600;
+}
+.rail-now {
+  position: absolute;
+  left: 28px;
+  right: 0;
+  border-top: 1.5px solid #d4412c;
+  pointer-events: none;
+}
+.rail-now::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: -4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #d4412c;
+}
+.rail-grid-empty {
+  position: absolute;
+  left: 34px;
+  right: 0;
+  top: 120px;
+  margin: 0;
+  padding: 6px 4px;
+  background: #fbfbf9;
+  text-align: center;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.rail-foot {
+  font-size: 10px;
+  color: #a5a59d;
+  padding-top: 8px;
+  margin: 6px 0 0;
+}
+
+/* Day-plan controls on suggested blocks: appear on hover or keyboard focus. */
+.rail-slot {
+  position: absolute;
+  left: 34px;
+  right: 2px;
+}
+.rail-slot .rail-block {
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+}
+.rail-slot:hover,
+.rail-slot:focus-within {
+  z-index: 4;
+}
+.rail-tools {
+  display: none;
+  position: absolute;
+  z-index: 3;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  gap: 1px;
+  padding: 2px;
+  background: #fff;
+  border: 1px solid #e0ddd4;
+  border-radius: 7px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+}
+.rail-slot:hover .rail-tools,
+.rail-slot:focus-within .rail-tools {
+  display: flex;
+}
+.rail-tools:empty {
+  display: none !important;
+}
+.rail-tool {
+  width: 24px;
+  height: 22px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  font-size: 12px;
+  color: #5e5a52;
+  cursor: pointer;
+}
+.rail-tool:hover {
+  background: #f1f0eb;
+}
+.rail-tool.ok:hover {
+  background: #e4efdc;
+  color: #3f6a2d;
+}
+.rail-tool.no:hover {
+  background: #f6e3d9;
+  color: #9c4a24;
+}
+.rail-tool:focus-visible {
+  outline: 2px solid #4a6fd6;
+  outline-offset: 0;
+}
+.rail-block.suggestion.planned {
+  background: #fff;
+  border-style: solid;
+  border-color: #dcd6c8;
+  color: inherit;
+}
+.rail-block.suggestion.planned b {
+  font-weight: 600;
+}
+.rail-block.suggestion.done {
+  background: #f3f2ee;
+  border-style: solid;
+  border-color: #e4e1d8;
+  color: #9a978f;
+}
+.rail-block.suggestion.done b {
+  text-decoration: line-through;
+  font-weight: 500;
+}
+.rail-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  margin-bottom: 18px;
+  border: 1px solid #ecece6;
+  border-radius: 7px;
+  background: #fff;
+}
+.rail-edit label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.rail-edit input {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  font-size: 12.5px;
+  color: #292926;
+  padding: 6px 8px;
+  border: 1px solid #dcd9d0;
+  border-radius: 6px;
+  background: #fff;
+}
+.rail-edit-times {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+.rail-edit-msg {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.rail-warn-text {
+  color: #a4521c;
+}
+.rail-edit-actions {
+  display: flex;
+  gap: 6px;
+}
+.rail-edit-actions .button {
+  font-size: 11.5px;
+  padding: 6px 10px;
+}
+.rail-undo {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  background: #2a2926;
+  color: #fff;
+  font-size: 11.5px;
+}
+.rail-undo button {
+  border: 0;
+  background: none;
+  color: #f2c9a8;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Suggestions on request, and clickable class blocks. */
+.rail-suggest-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 14px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.rail-suggest-bar button {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 11.5px;
+  color: #3558b5;
+  cursor: pointer;
+}
+.rail-suggest-bar button:focus-visible,
+.rail-block.event:focus-visible {
+  outline: 2px solid #4a6fd6;
+  outline-offset: 1px;
+}
+.rail-block.event {
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+}
+.rail-block.event:hover b {
+  text-decoration: underline;
+}
+
+/* Outlook meetings in the rail, and the Outlook link field in Sources. */
+.rail-teams {
+  display: inline-block;
+  margin-right: 5px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: #e7e6f7;
+  color: #4b4a9c;
+  font-size: 9.5px;
+  font-weight: 600;
+  vertical-align: 1px;
+}
+.text-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 12px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+}
+/* Today rail: what a source changed on a due item */
+.rail-row-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.rail-change {
+  font-size: 11px;
+  color: #9a5b1e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

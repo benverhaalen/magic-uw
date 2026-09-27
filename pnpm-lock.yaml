@@ -81,6 +81,9 @@ importers:
       '@magic/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@magic/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@magic/storage':
         specifier: workspace:*
         version: link:../../packages/storage

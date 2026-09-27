@@ -37,15 +37,15 @@ const result = {
   questionVersion: "assignment.kind.v1" as const,
 };
 test("local default ingests immediately, blocks egress, and compiles exactly the allowed fields", async () => {
-  let calls = 0,
-    payload: unknown;
+  let calls = 0;
+  const payloads = new Map<string, unknown>();
   const store = createStore(":memory:");
   const core = createCore(store, {
     fixture: batch,
     gateway: {
       async evaluate(p) {
         calls++;
-        payload = p;
+        payloads.set(p.title, p);
         return result;
       },
     },
@@ -68,8 +68,12 @@ test("local default ingests immediately, blocks egress, and compiles exactly the
   await core.execute(jevConsent);
   await core.execute({ type: "privacy", value: enabled });
   await core.settled();
-  assert.equal(calls, 1);
-  assert.deepEqual(payload, expected);
+  // One judgment per queued sample assignment.
+  assert.equal(
+    calls,
+    batch.resources.filter((x) => x.kind === "assignment").length,
+  );
+  assert.deepEqual(payloads.get(r.title), expected);
   assert.equal(
     core.snapshot().resources.find((x) => x.id === r.id)?.kindLabel,
     "essay",

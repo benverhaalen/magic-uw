@@ -1,4 +1,4 @@
-import type { McpCategory, Resource, Store } from "@magic/contracts";
+import { OUTLOOK_CALENDAR_COURSE_ID, type McpCategory, type Resource, type Store } from "@magic/contracts";
 
 /** Inclusion is checked at use time, not only when the connector first sees a course. */
 export function courseIncluded(store: Store, resource: Resource): boolean {
@@ -56,6 +56,8 @@ export function courseInclusion(store: Store): (resource: Resource) => boolean {
 export function contentCategories(resource: Resource): McpCategory[] {
   // Messages and GitLab student-authored work cannot inherit the less restrictive course-text gate.
   if (resource.kind === "message") return ["communications"];
+  // A personal calendar is the student's own schedule, not course text.
+  if (resource.courseId === OUTLOOK_CALENDAR_COURSE_ID) return ["communications"];
   if (resource.gitlab) return ["student_work"];
   return ["course_text"];
 }

@@ -20,9 +20,13 @@ import {
   UwPlanningHttp,
 } from "../../../packages/connectors/src/uw-planning-http";
 import { syncUwPlanning } from "../../../packages/connectors/src/uw-planning-sync";
-import { readBounded } from "../../../packages/connectors/src/network";
+import {
+  isOutlookPublishedCalendar,
+  readBounded,
+} from "../../../packages/connectors/src/network";
 import { checkedSpaceProbeUrl } from "../../../packages/connectors/src/space-hosts"; // owner: T05b
-import { createSecretVault } from "./secrets";
+import { clearSignOutSecrets, createSecretVault } from "./secrets";
+import sampleFixture from "../../../fixtures/course.json";
 // owner: T05c
 import { Tray, Menu, nativeImage } from "electron";
 import {
@@ -271,7 +275,8 @@ app
             key.startsWith("calendar:") &&
             key.length < 1000 &&
             typeof value === "string" &&
-            value.length < 4000
+            value.length < 4000 &&
+            key !== "calendar:outlook"
           ) {
             const u = new URL(value);
             if (
@@ -1166,6 +1171,21 @@ app
       }
     }
     // end owner: T05c
+    ipcMain.handle("magic:outlook-calendar", async (event, value: unknown) => {
+      validateSender(event);
+      if (value !== null && (typeof value !== "string" || !isOutlookPublishedCalendar(value.trim())))
+        throw new Error(
+          "That isn't a published Outlook calendar link. In Outlook: Settings → Calendar → Shared calendars → Publish a calendar, then copy the ICS link.",
+        );
+      await vault.set("calendar:outlook", value === null ? "" : value.trim());
+      // Disconnecting removes the meetings now, not at the next refresh.
+      if (value === null) await execute({ type: "outlook-disconnect" });
+      return { connected: value !== null };
+    });
+    ipcMain.handle("magic:outlook-calendar-status", async (event) => {
+      validateSender(event);
+      return { connected: Boolean(await vault.get("calendar:outlook")) };
+    });
     ipcMain.handle("magic:sync", async (event) => {
       validateSender(event);
       if (!(await consentGate("magic:sync"))) throw new Error(consentRefused);
@@ -1225,7 +1245,9 @@ app
         await studentSession.clearCache();
         await gitlabSession.clearStorageData();
         await gitlabSession.clearCache();
-        await vault.deletePrefix("calendar:");
+        // Every saved calendar link goes, Outlook's included; its meetings are removed too.
+        await clearSignOutSecrets(vault);
+        await execute({ type: "outlook-disconnect" });
         await resetPlanningScope();
         if (signOutEpoch !== planningEpoch) return;
         const result = await execute({ type: "snapshot" });
@@ -1374,7 +1396,7 @@ app
           "window.magic.execute({type:'fixture'})",
         );
         if (
-          imported.snapshot.resources.length !== 2 ||
+          imported.snapshot.resources.length !== sampleFixture.resources.length ||
           !imported.snapshot.fixtureMode
         )
           throw new Error("Fixture import failed");

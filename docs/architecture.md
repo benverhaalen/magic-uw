@@ -1,8 +1,10 @@
 # Technical direction
 
-Status: architecture direction with a working implementation foundation. Electron, a local SQLite worker, expanded Canvas/material connectors, background refresh, local MCP grants, privacy gates, and a narrow Jev gateway are implemented. See [implementation status](implementation-status.md) for capability and validation boundaries, and [development](development.md) to run them. The broader mechanisms below remain direction unless identified as implemented. Tool choices follow [engineering principles](engineering-principles.md).
+## The app's backend
 
-The course backend lane (branch `feat/course-backend`, not yet merged) documents its updated design and status in [course backend architecture](course-backend-architecture.md) and [Magic Canvas direction](magic-canvas-direction.md).
+The course backend described in [course backend architecture](course-backend-architecture.md) is the app's backend: one local SQLite store (schema v7) with passages, the course map, course spaces and learning tables; passage retrieval; scoped queries; the job drain; the runner for the student's own AI client; prompt packs; and the learning engines. Status as of 2026-09-26 late (branch `feat/course-backend` at `33b1827`, 540/540 tests): storage, sync, consent, sign-in and onboarding are integrated; retrieval, the drain, the runner, packs and the learning engines are tested in isolation; the open platform contract (D42) is proposed. The canonical status per piece is [its §2](course-backend-architecture.md#2-where-we-are); the developer view and the scorecard are in [academic data platform](academic-data-platform.md). The sections below are the earlier direction and remain as written.
+
+Status: architecture direction with a working implementation foundation. Electron, a local SQLite worker, expanded Canvas/material connectors, background refresh, local MCP grants, privacy gates, and a narrow Jev gateway are implemented. See [implementation status](implementation-status.md) for capability and validation boundaries, and [development](development.md) to run them. The broader mechanisms below remain direction unless identified as implemented. Tool choices follow [engineering principles](engineering-principles.md).
 
 ## System shape
 

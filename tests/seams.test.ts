@@ -192,14 +192,16 @@ test("the workspace command resolves due items and open links by code; https onl
   const core = createCore(store, {
     fixture: batch,
     now: () => new Date("2026-09-20T12:00:00Z"),
+    // The sample is rebased to the local today (main's fixture-dates); pin the zone.
+    timeZone: "America/Chicago",
   });
   await core.execute({ type: "fixture" });
   const assignments = store.resources().filter((r) => r.kind === "assignment");
   assert.ok(assignments.length > 0);
   const due = await core.execute({ type: "workspace", value: { verb: "due", days: 60 } });
   assert.equal(due.workspace?.status, "ok");
-  assert.equal(due.workspace?.items?.length, 1);
-  assert.equal(due.workspace?.items?.[0]?.dueAt, "2026-09-29T04:59:00.000Z");
+  assert.equal(due.workspace?.items?.length, 4);
+  assert.equal(due.workspace?.items?.[0]?.dueAt, "2026-09-21T04:59:00.000Z");
   for (const item of due.workspace?.items ?? []) {
     assert.ok(item.dueAt >= "2026-09-20T12:00:00Z");
     assert.ok(Date.parse(item.dueAt) <= Date.parse("2026-11-19T12:00:00Z"));

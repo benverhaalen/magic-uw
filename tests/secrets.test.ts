@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createSecretVault } from "../apps/desktop/src/secrets";
+import { clearSignOutSecrets, createSecretVault } from "../apps/desktop/src/secrets";
 
 test("vault persists only encrypted bytes, serializes concurrent updates and fails closed without OS encryption", async () => {
   const dir = await mkdtemp(join(tmpdir(), "magic-vault-test-"));
@@ -38,6 +38,26 @@ test("vault persists only encrypted bytes, serializes concurrent updates and fai
     );
     await vault.clear();
     assert.deepEqual(await vault.list("feed:"), []);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("signing out clears every saved calendar link, the Outlook link included", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "magic-vault-test-"));
+  try {
+    const encryption = {
+      available: () => true,
+      encrypt: (s: string) => Buffer.from(s).map((b) => b ^ 0x55),
+      decrypt: (b: Uint8Array) => Buffer.from(b).map((v) => v ^ 0x55).toString(),
+    };
+    const vault = createSecretVault(join(dir, "secrets.enc"), encryption);
+    await vault.set("calendar:acct:101", "canvas-feed-101");
+    await vault.set("calendar:outlook", "outlook-published-link");
+    await vault.set("unrelated", "kept");
+    await clearSignOutSecrets(vault);
+    assert.deepEqual(await vault.list("calendar:"), []);
+    assert.equal(await vault.get("unrelated"), "kept");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

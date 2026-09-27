@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import {
   commandSchema,
   courseExtractionBatchSchema,
+  OUTLOOK_CALENDAR_COURSE_ID,
   type Store,
   type ContextManifest,
   type CommandResult,
@@ -23,6 +24,8 @@ import { maySend, resolveDeadline } from "@magic/domain";
 import { judgmentResultSchema, type JudgmentGateway } from "@magic/ai";
 import { contentCategories, courseIncluded } from "./access";
 import { evidenceFor } from "./evidence";
+import { rebaseFixture } from "./fixture-dates";
+export { rebaseFixture } from "./fixture-dates";
 import { pullGuideForSubject } from "../../connectors/src/planning-public";
 import {
   createPublicClient,
@@ -90,6 +93,8 @@ export interface CoreOptions {
   };
   gateway?: JudgmentGateway;
   now?: () => Date;
+  /** Local time zone used to place the sample course on today. Defaults to the system zone. */
+  timeZone?: string;
   planningPublicClient?: PublicClient;
   planningHttp?: Pick<UwPlanningHttp, "read">;
   // owner: T05b
@@ -171,6 +176,7 @@ export function createCore(store: Store, options: CoreOptions) {
         .map(({ tokenHash: _secretHash, ...grant }) => grant),
       // owner: T06: the renderer routes on these and main's consent gate mirrors them.
       consents: store.consents?.() ?? [],
+      dayPlan: store.dayPlan(),
     };
   }
   function context(
@@ -747,7 +753,12 @@ export function createCore(store: Store, options: CoreOptions) {
           throw new Error(
             "Use a separate workspace for sample data. Your real sources are already connected.",
           );
-        store.ingest({ ...options.fixture, observedAt: now() });
+        const moved = rebaseFixture(
+          options.fixture,
+          options.now?.() ?? new Date(),
+          options.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+        );
+        store.ingest({ ...moved, observedAt: now() });
         saved(options.fixture.source.id); // owner: T05b
         wake();
         message = "Loaded a synthetic sample course.";
@@ -816,6 +827,26 @@ export function createCore(store: Store, options: CoreOptions) {
       case "link":
         store.decideLink(command.id, command.status);
         break;
+      case "day-plan": {
+        // A self-report cannot stand in for a Canvas submission.
+        if (command.entry.block.type === "work" && command.entry.doneAt)
+          throw new Error(
+            "Assignment blocks are completed by a Canvas submission, not marked done here.",
+          );
+        store.setDayPlanEntry(command.entry);
+        break;
+      }
+      case "day-plan-remove":
+        store.removeDayPlanEntry(command.key, command.date);
+        break;
+      case "outlook-disconnect": {
+        // Only the student's Outlook calendar; coursework and other feeds are never touched here.
+        for (const s of store.sources())
+          if (s.kind === "calendar" && s.courseId === OUTLOOK_CALENDAR_COURSE_ID)
+            store.removeSource(s.id);
+        message = "Outlook calendar disconnected; its meetings were removed from this device.";
+        break;
+      }
       case "purge":
         interrupt();
         store.purge();

@@ -82,5 +82,7 @@ const bridge: AppBridge = {
   exportMcp: (id) => ipcRenderer.invoke("magic:mcp-export", id),
   keepSignedIn: (value) => ipcRenderer.invoke("magic:keep-signed-in", value),
   clients,
+  setOutlookCalendar: (url) => ipcRenderer.invoke("magic:outlook-calendar", url),
+  outlookCalendarStatus: () => ipcRenderer.invoke("magic:outlook-calendar-status"),
 };
 contextBridge.exposeInMainWorld("magic", bridge);

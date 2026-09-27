@@ -29,72 +29,69 @@ The course backend is the local system behind every Magic Canvas feature:
 
 ## 2. Where we are
 
-*This section is updated at each piece boundary. Last update: 2026-09-26 late, `b496d0a`. The whole suite passes 359/359 on this branch at that commit (Windows 11).*
+*This section is updated at each piece boundary. Last update: 2026-09-26 late, `33b1827`. The whole suite passes 540/540 on this branch at that commit (Windows 11), across 67 test files. Full detail, per-file test counts, measurements and the live-trial record are in [the build record](course-backend-build-record.md); this section states only statuses.*
 
 ### 2.1 Stage: pieces and lanes
 
-The build runs piece by piece (P0–P14, [execution.md](plans/2026-09-26-course-backend/execution.md)). Since about 22:00 CT it runs as long-lived lanes, each owning one part of the system.
+The build ran piece by piece (P0–P14, [execution.md](plans/2026-09-26-course-backend/execution.md)), then as long-lived lanes from about 22:00 CT on 2026-09-26. Every wave-A and wave-B lane named below has since merged into `feat/course-backend`.
 
 | Piece or lane | Scope | Status | Evidence | Next step |
 |---|---|---|---|---|
-| P0 test harness | T05a: Windows-safe suite, per-test-file checks | **done**, integrated | `6199250`; `tests/harness.test.ts` 8/8 | none |
-| P1 sign-in, session, consent | T05d seams, T05c session state and "Keep me signed in", T06 one-checkbox consent and egress | **integrated**; live trial started | `e5430e0`, `d63a515`, `b7fb439`, `b67ab04`, `08af173`, `cb70b7a`; tests 8 + 16 + 13 | finish the live trial with the operator's NetID sign-in; T05e "Remember my sign-in" waits on H2 |
-| P2 local database | MT1 baseline; T11a, T10 (schema v6), T10L (v7), T11b; then T14 | MT1 **done**; T10–T11b **built** (data lane, `wave-a/T10`) | MT1 `25cfefa`; lane commits `55204ae`, `28b40dd`, `1acf88a`, `ebfb00d` | review (R1), merge, then MT1 "after" against the thresholds in §8.1 |
-| P3 Canvas sync and freshness | T05b seams, D32 inventory, D41 access check, D37/T33 per-course freshness, then T15 scoped queries | **built** on the seams and sync lane (`wave-a/T05b`) | `e09ab8f`, `1bfb83e`, `a20b160` | T15 on the same lane; then review and merge |
-| P4 extraction and passages | T11a/T11b (on the data lane), T16 extraction cache, T32 Kaltura | T11a/T11b built; T16, T32 **not started** | see P2 | T16 after the data lane merges; T32 waits on probe K1 |
-| P5 jobs, Jev, organising | T20 batched item cards, T20b gateway endpoints | **not started** (the drain's job subjects are built on the data lane) | none | wave B, after the data lane merges |
+| P0 test harness | T05a: Windows-safe suite, per-test-file checks | **integrated (tested in the suite)** | `6199250`; `tests/harness.test.ts` 8/8 | none |
+| P1 sign-in, session, consent | T05d seams, T05c session state and "Keep me signed in", T06 one-checkbox consent and egress | **integrated (tested in the suite)**; one live trial run | `e5430e0`, `d63a515`, `b7fb439`, `b67ab04`, `08af173`, `cb70b7a`, `eb2a033`; tests 8 + 16 + 13 | T05e "Remember my sign-in" waits on H2; re-measure the live trial's sync-efficiency fixes |
+| P2 local database | MT1 baseline; T11a, T10 (schema v6), T10L (v7), T11b; T14 | **merged and tested**: schema v7 migrations run in the app; passage search is not yet called by the app; MT1 "after" measured and thresholds met | merge `39bb062`; `f365af7` (T14); build-record §5.1 | none for the primary thresholds; two secondary MT1 rows (zero-change re-sync growth, ingest slope) still miss their target |
+| P3 Canvas sync and freshness | T05b seams, D32 inventory, D41 access check, D37/T33 per-course freshness, T15 scoped queries | **integrated (tested in the suite)** | merge `bb80f53`; `ec2d61b` (T15) | live-sync efficiency fixes found in the trial (build record §6) |
+| P4 extraction and passages | T11a/T11b (merged); T16 extraction cache, T32 Kaltura, T65 summary tier | T11a/T11b **integrated**; T16, T32, T65 **not started** | see P2 | T16, T32, T65 remain proposed |
+| P5 jobs, Jev, organising | T20 batched item cards, T20b gateway endpoints | **not started** (the drain's job subjects and the pack job's cache/ledger wiring are integrated) | build record §3.4, §7 | T20/T20b after T10 (done) |
 | P6 other sources | T00 probes, T01, T30/T35 Outlook, T36, T31, T34 | **not started**; probes E1 and K1 not run | none | T34 (teachers and TAs); the probes need the operator present |
-| P7 typed academic API | T50a in-process handlers | **not started** | none | after T10 merges |
-| P8 backend benchmark | MT2, MT7a | **not started** | none | after P2–P4 merge |
-| P9 model runtime and packs | T12 runner, D38 session pool, T40 onboarding detection, T13 pack core | **tested in isolation**: merged into the branch, not yet called by the worker | `e65a8aa`, `838f6c7`, `4828224`, `e5ba635`, merge `efc6604`; tests 15 + 7 + 7 + 10 | wire the pack job and the ledger into the worker once v6's `ledger` table merges; D45 onboarding (§2.3) |
-| AI runtime lane | T12 → D38 → T40 → T13 | **done** (merged) | as P9 | the lane moves to D45 onboarding (wave B: `wave-b/T80`, `wave-b/T81`, just started) |
-| Learning engines lane | N00, N05–N12, N14, N29, P01, P05, P07, P08, P11, P14, P16 | **built** (`wave-a/LRN`, 18 commits through `90e8f35`) | lane commits; not re-run by the lead | continue the P-tasks; merge after the data lane's v7 lands |
-| P10 course pass and mapping | T21, T22 | **not started** | none | wave B: needs T11b, T13, T20 |
-| P11 generation | T57, T58, T64, T45, T53, T41, T44, T46, T42, T48, T52 | **not started** (engines N05, N06, N12 are built on the learning lane) | none | after P10 |
-| P12 study system | engines, then T54, T47, T59, T43, P17 | engines **built**; UI **not started** | learning lane | after P11's first packs |
+| P7 typed academic API | T50a in-process handlers | **not started** | none | after T10 (done) |
+| P8 backend benchmark | MT2, MT7a | **not started** | MT1 done (P2) | after P2–P4 |
+| P9 model runtime and packs | T12 runner, D38 session pool, T40 onboarding detection, T13 pack core, T80 client manager, T81 onboarding screens | **merged and tested (client manager and onboarding screens are wired into the app; runner, session pool and pack core are not yet wired into the worker) (tested in the suite)**; not demonstrated on a real pack run | merges `efc6604`, `9a08a6b`, `a826f41`; build record §3.5, §4 | wire a real, non-synthetic pack run through the worker; D38's pool spikes S1–S10 before it's the default |
+| Learning engines lane | N00, N05–N12, N14, N29, P01, P05, P07, P08, P11, P13, P14, P16 | **merged, tested in isolation** (the app's learning router still answers "not built") | merge `e161b13`; build record §8 | study UI surfaces (P12/P10) |
+| P10 course pass and mapping | T21, T22 | **not started** | none | needs T11b (done), T13 (done), T20 |
+| P11 generation | T57, T58, T64, T45, T53, T41, T44, T46, T42, T48, T52 | **not started** (engines N05, N06, N12 are integrated) | none | after P10 |
+| P12 study system | engines, then T54, T47, T59, T43, P17 | engines **merged, tested in isolation**; UI **not started** | build record §8 | after P11's first packs |
 | P13 platform and secondary | T50b, T55, T51, T38, T56, T62, T63 | **not started** | none | after P7 |
 | P14 close | T60 legal, T61 acceptance | **not started** | none | last (plan §8) |
 
-**Gates:** T02 (the operator signs off the AI boundary, spec §2) is still open. G0 (nothing is pushed until the team's release cleanup is done) holds.
+**Gates:** T02 (the operator signs off the AI boundary, spec §2) is still open. G0 (nothing is pushed until the team's release cleanup is done) holds; no push to `main` has happened.
 
 ### 2.2 Progress by area
 
 | Area | Status |
 |---|---|
-| Sign-in and session | **integrated**; not demonstrated (no NetID sign-in completed in the live trial yet). "Remember my sign-in": proposed (H2) |
-| Consent and egress | **integrated** (T06); the per-provider screen in onboarding is proposed (T81) |
-| Storage and retrieval | baseline measured; v6/v7, passages and passage search **built** on a lane |
-| Sync and freshness | presence-gated background reads **integrated**; per-course change detection **built** on a lane |
-| Course map and inventory | inventory and access check **built** on a lane; course pass and mapping **proposed** |
-| AI runtime and onboarding | runner, session pool, pack core, client detection **tested in isolation**; isolated client profiles and the built-in terminal **proposed**, building now (D45) |
-| Generation | **proposed** (verifier and guide engines built on the learning lane) |
-| Study and analytics | engines **built** on a lane; surfaces **proposed** |
+| Sign-in and session | **integrated (tested in the suite); demonstrated** in one live trial on the operator's account (sign-in, Duo remember-me, a live bug found and fixed). "Remember my sign-in": proposed (H2) |
+| Consent and egress | **integrated (tested in the suite)** (T06); zero requests before the checkbox held in the live trial; the per-provider onboarding screen is integrated (T81) |
+| Storage and retrieval | **merged and tested**; v7 migrations run in the app, passage search not yet called by the app; MT1 "after" measured, every primary threshold met (build record §5.1) |
+| Sync and freshness | **integrated (tested in the suite)**; live-trial sync ran 65 s / 125 requests for the first sync; efficiency fixes identified, not yet re-measured |
+| Course map and inventory | inventory and access check **integrated (tested in the suite)**; course pass and mapping **proposed** |
+| AI runtime and onboarding | runner, session pool, pack core, client detection, isolated client profiles and the built-in terminal **merged and tested**; client profiles, terminal and onboarding are wired into the app, while runner, pool and packs are not yet wired into the worker (tested in the suite)**; not demonstrated on a real pack run |
+| Generation | **proposed** (verifier and guide engines integrated on the learning lane) |
+| Study and analytics | engines **merged, tested in isolation**; surfaces **proposed** |
 | Platform (D42) | **proposed** |
 | Dictation (D43) | **proposed** |
 | Outlook (D44) | **researched and proposed**; probe E1 not run |
 
 ### 2.3 What's left, in build order
 
-**Next** (as the running lanes land):
+**Next:**
 
 | Item | Depends on | Finishing it enables |
 |---|---|---|
-| Review (R1) and merge of the data lane (T10, T10L, T11a, T11b) | lane done; R1 | every table the map, packs and study need; the MT1 "after" run |
-| Review and merge of the seams and sync lane (T05b, D32/D41, D37/T33), then T15 scoped queries | T05b first; T15 after | only changed courses re-read; UI payloads that stop growing with data |
-| **D45 onboarding:** client detection (built, T40) → an isolated client profile per client (T80) → the built-in terminal session where the student signs in to their own client (T80) → the onboarding flow Welcome → Your AI → Connect → UW → Populating (T81) | T40 (done); the node-pty and xterm.js checks; H5 for the subscription wording | a student with Claude Code or Codex gets from install to a populated course with no key; the app's runs use a profile separate from the student's own |
-| Wire the pack job, ledger and artifacts into the worker | data lane merged (`ledger`, `learning_artifacts`) | the first real prompt-pack run, recorded in the ledger |
-| Finish the P1 live trial | the operator present | the first "demonstrated" rows: sign-in, session lifetime, time to first assignment |
+| Wire a real pack run (non-synthetic content) through the worker into the ledger and artifact store | pack job integrated; data lane merged | the first real prompt-pack run, recorded in the ledger |
+| Canvas sync efficiency fixes (`include[]=items`, request pacing, one sync on sign-in) | found live (build record §6) | first full sync in ≤10 s (currently 65 s) |
+| T05e "Remember my sign-in" | H2 | the opt-in encrypted NetID save |
 
 **After:**
 
 | Item | Depends on | Finishing it enables |
 |---|---|---|
-| T20 item cards and T20b gateway endpoints (a PR; the deploy is the operator's say) | T10 | code-first classification with one Jev request per item |
-| T21 course pass, T22 mapping | T11b, T13, T20, N05 | settled assessment scopes and the dossier |
-| T57 analyzers, T58 planner, T64 verifiers, then T45, T53, T41, T44, T42 | T21/T22, T13 | quizzes, flashcards, guides and chat, all checked by code |
-| T50a typed academic API | T10 | in-app handlers with caps; the base for the course bank and the platform |
+| T20 item cards and T20b gateway endpoints (a PR; the deploy is the operator's say) | T10 (done) | code-first classification with one Jev request per item |
+| T21 course pass, T22 mapping | T11b (done), T13 (done), T20, N05 (done) | settled assessment scopes and the dossier |
+| T57 analyzers, T58 planner, T64 verifiers, then T45, T53, T41, T44, T42 | T21/T22, T13 (done) | quizzes, flashcards, guides and chat, all checked by code |
+| T50a typed academic API | T10 (done) | in-app handlers with caps; the base for the course bank and the platform |
 | T34, T31, T36, T32, then T30 or T35 | probes E1 and K1 | teachers and TAs, feeds, calendar, Kaltura, Outlook |
-| T14, T16, T17 optimizations; MT2 and MT7a | MT1; the merged data layer | before-and-after numbers; the first public comparison rows |
+| T16, T65, T17 optimizations; MT2 and MT7a | the merged data layer | before-and-after numbers; the first public comparison rows |
 
 **Later:** the study surfaces (T54 levels and the mastery display, T47 "Quiz me on", T59 notes, T43 notebook UI, P17 journey), offline validation (P18–P21), dictation (D43), the course bank and platform (T50b, T55), licence and signed installers (T62, T63), then legal and acceptance (T60, T61).
 

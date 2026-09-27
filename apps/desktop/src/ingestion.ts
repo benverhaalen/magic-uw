@@ -12,7 +12,11 @@ import {
   fetchCanvasActivitySummary,
 } from "../../../packages/connectors/src/canvas";
 import { CanvasHttp } from "../../../packages/connectors/src/canvas-http";
-import { calendarConnector } from "../../../packages/connectors/src/calendar";
+import {
+  calendarConnector,
+  outlookCalendarConnector,
+} from "../../../packages/connectors/src/calendar";
+import { OUTLOOK_CALENDAR_COURSE_ID } from "@magic/contracts";
 import {
   externalCourseConnector,
   contentHash,
@@ -180,6 +184,30 @@ export function createIngestion(store: Store, host: IngestionHost) {
         .join(":");
       changed ||= before !== after;
     }
+    // The student's published Outlook calendar, if they connected one.
+    const outlookHashes = () =>
+      store
+        .resources()
+        .filter((r) => r.courseId === OUTLOOK_CALENDAR_COURSE_ID && !r.deleted)
+        .map((r) => r.contentHash)
+        .sort()
+        .join(":");
+    const outlookBefore = outlookHashes();
+    const outlookUrl = secrets["calendar:outlook"];
+    const outlook = outlookCalendarConnector({
+      feedUrl: outlookUrl ?? "",
+      accountScope: "local",
+      client,
+      now,
+    });
+    if (outlookUrl) {
+      for await (const batch of outlook.pull(signal)) save(batch);
+    } else if (store.sources().some((s) => s.id === outlook.id)) {
+      // Disconnected by the student: delete the meetings outright. An empty "read" would be
+      // treated as a suspicious drop by the drift guard and keep them on screen.
+      store.removeSource(outlook.id);
+    }
+    changed ||= outlookBefore !== outlookHashes();
     return { changed };
   }
   async function documents(signal: AbortSignal) {

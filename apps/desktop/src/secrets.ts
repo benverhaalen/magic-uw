@@ -85,3 +85,12 @@ export function createSecretVault(path: string, encryption: SecretEncryption) {
     },
   };
 }
+
+/**
+ * What signing out removes from the vault: every saved calendar link, Canvas course feeds and the
+ * published Outlook link alike. A saved link keeps reading the calendar for whoever uses this
+ * computer next, so sign-out never leaves one behind. Saved records stay until Delete local data.
+ */
+export function clearSignOutSecrets(vault: { deletePrefix(prefix: string): Promise<void> }) {
+  return vault.deletePrefix("calendar:");
+}

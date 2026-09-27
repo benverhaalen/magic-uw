@@ -118,3 +118,21 @@ Ben resolved the pricing/provider disagreement with: "nathaniels is the way" (th
 ## Design foundation and handoff — September 26
 
 Ben selected foundation/handoff before Electron implementation and described the cohesive Home as approximately 95% desired. Preserve it through the [portable constitution](design-handoff.md). His latest Calendar decision accepts week/month views, current-week default, and suggestions on request; detailed interaction and implementation remain pending. Original quotes, scoped inferences and open refinements live in the [decision record](design/decision-record.md). The repo skill routes by task and uses independent reviews with original constraints; neither a pull nor a passing critic proves adoption or product integration.
+
+## 2026-09-26 — Today rail suggestions and day plan
+
+Implemented on `sean/today-calendar-rail`. **Aligned with Ben's accepted Today/Calendar contract** ([component contracts](design/component-contracts.md)): normal content is commitments and accepted study blocks, with suggestions on request; proposed and accepted minutes stay separate; one work projection (`projectWork`) feeds both Home's Upcoming and the rail. Sean confirmed on September 26: “build based on bens design docs, agree to what he has.” The ranking details below remain proposals for Ben's review. Source: Sean, this project conversation, September 26 (original timestamps unavailable). Exact requests include:
+
+> i dont want the calendar to feel crowded … look at priority of assignments and things to get a deeper understing on how to suggest ways to fill your day
+
+> these tasks should cross out if submitted on canvas, as it pulls this data or be manually done if it is a task like studying or going over notes
+
+Implementation choices, in code at `packages/domain/src/today-rail.ts`:
+
+- **Priority order:** overdue work Canvas still accepts before its lock date; due within 24 hours; tight for its estimated effort; spaced exam review; then other work due this week. Soonest due date breaks ties. Grade share orders only the last group, and only when that course's assignment-group weights total 100%. Raw points are never compared across courses.
+- **Effort** is a typical range by item type, labeled an estimate; unknown types say so. **Exam review** is split into sessions (up to three) because spaced practice outperforms cramming.
+- **Breathing room:** at most 3 hours of suggested work, 3 work blocks, 15-minute breaks after blocks and classes, nothing within 15 minutes of now or after 10 PM, and prep only before titled class sessions.
+- **Completion:** assignment blocks cross out only on a Canvas-reported submission; study blocks (prep, exam review) are marked done by the student as a self-report. Skipped blocks do not return that day; edited blocks keep the student's time and title.
+- **Storage:** decisions are one local `preferences` entry (`dayPlan`), chosen over a new table to avoid changing the shared schema version during the event. Revisit with a dedicated table if the plan grows beyond a day view.
+
+Open for Ben: styling within the Home visual direction, whether the cap/cutoff should become settings, and multi-day planning.
