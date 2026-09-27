@@ -125,6 +125,22 @@ Response:
 
 The upstream answer map must contain exactly the requested questions with the right types; the pinned model, all seven kind probabilities (sum within 0.001), the selected argmax, Noul values in [0, 1], and `affects` covering exactly the offered keys are checked. `confidence` is never forwarded. Anything else is a generic `502 upstream_error`. These answers may only raise a notification's level in the app; code decides every level. Tests: `tests/message-triage.test.ts` (offline fakes only).
 
+### `POST /v1/judgments/mail.triage.v1`
+
+Email triage, with the same device token, limits, shared request budget, upstream-429 refund and fail-closed start as the other judgment routes. The question shape matches `message.triage.v1`; only the state, the kinds and the wording differ.
+
+Request (`mailTriageStateSchema` in `packages/contracts/src/notifications.ts`, strict). **This is everything the gateway and TypeSafe receive about an email:**
+
+```json
+{ "state": { "role": "course staff", "subject": "...", "preview": "...", "course": "...", "upcoming": [ { "key": "a0", "title": "...", "due": "..." } ] } }
+```
+
+- `role`: the sender's category as decided by code on the device, one of `course staff`, `academic advisor`, `university office`, `student organization or mailing list`, `meeting invitation`, `unknown sender`. It is not the sender's name or address.
+- `subject` (1–500 chars) and `preview` (≤255 chars, the opening text only, not the full body).
+- `course` (optional, ≤200 chars), and at most 10 `upcoming` course tasks (title and due text) with unique keys `a0`..`a9`.
+
+Unknown keys are rejected, so no sender name, address, message id, recipients, thread or full body can be sent. The questions are: `kind` (a Choice over the nine `MAIL_KINDS`: `interview_or_job`, `deadline_or_action_required`, `schedule_change_or_cancellation`, `advisor_or_academic_standing`, `campus_event`, `club_or_org_update`, `course_related`, `newsletter_or_promotion` and `other`, with the option order rotated deterministically by a hash of the state), `action_required` (a Noul), and one `affects_<key>` Noul per offered key. Instructions refer to the fields only by path and state that they are untrusted data copied from an email. The response has the same shape and checks as `message.triage.v1`, with nine kind probabilities and `"questionVersion": "mail.triage.v1"`. Tests: `tests/mail-triage.test.ts` (offline fakes only).
+
 ### Errors
 
 Structured JSON: `{"error": "<code>", "message": "..."}`. Rate-limit and
@@ -168,8 +184,8 @@ Recipients of student-submitted data through this gateway:
 
 | Recipient | What it receives |
 | --- | --- |
-| This gateway process | The submitted `state` (`course`/`title`/`text`/`policy`, or a message's `course`/`title`/`text` plus upcoming task titles and due text) in memory only, for the duration of the request; not persisted |
-| TypeSafe (Jev), via HTTPS | The same `state` fields, plus the fixed questions/criteria for `assignment.kind.v1` or `message.triage.v1`, to produce the judgment. See TypeSafe's [Data handling](https://docs.typesafe.ai/models.md) and [Legal](https://docs.typesafe.ai/legal.md) pages for their retention/training policy |
+| This gateway process | The submitted `state` (`course`/`title`/`text`/`policy`; a message's `course`/`title`/`text`; or an email's sender `role`, `subject`, 255-char `preview` and optional `course`; triage states also carry upcoming task titles and due text) in memory only, for the duration of the request; not persisted |
+| TypeSafe (Jev), via HTTPS | The same `state` fields, plus the fixed questions/criteria for `assignment.kind.v1`, `message.triage.v1` or `mail.triage.v1`, to produce the judgment. See TypeSafe's [Data handling](https://docs.typesafe.ai/models.md) and [Legal](https://docs.typesafe.ai/legal.md) pages for their retention/training policy |
 | SQLite on the gateway's disk | Device id, hashed token, enrolling IP, enrollment/request timestamps, and request counters — never the submitted course text |
 
 This gateway is one processing hop described in
@@ -217,6 +233,6 @@ If/when this is actually hosted:
 
 - The workspace has the `pnpm gateway` script and the `zod` dependency this app uses. No SDK or extra service is required.
 - The desktop client should call this gateway's `/v1/devices` once (caching
-  the returned token locally) and then `/v1/judgments/assignment.kind.v1`
-  or `/v1/judgments/message.triage.v1` with that bearer token — never bundle a TypeSafe key into the desktop
+  the returned token locally) and then `/v1/judgments/assignment.kind.v1`,
+  `/v1/judgments/message.triage.v1` or `/v1/judgments/mail.triage.v1` with that bearer token — never bundle a TypeSafe key into the desktop
   build.

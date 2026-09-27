@@ -644,9 +644,13 @@ app
         evaluations.get(message.id)?.abort();
         return;
       }
-      // Both Jev judgments (assignment kind, message triage) share Jev's consent gate,
-      // abort map and reply shape; the worker never reaches the network itself.
-      if (message.kind === "evaluate" || message.kind === "triage") {
+      // Every Jev judgment (assignment kind, message triage, mail triage) shares Jev's consent
+      // gate, abort map and reply shape; the worker never reaches the network itself.
+      if (
+        message.kind === "evaluate" ||
+        message.kind === "triage" ||
+        message.kind === "mailTriage"
+      ) {
         if (!(await consentGate("evaluate"))) {
           worker.postMessage({ kind: "evaluation", id: message.id, error: true });
           return;
@@ -658,9 +662,12 @@ app
           let result: unknown;
           if (message.kind === "evaluate") {
             result = await gateway.evaluate(message.payload, controller.signal);
-          } else {
+          } else if (message.kind === "triage") {
             if (!gateway.triage) throw new Error("Gateway unavailable");
             result = await gateway.triage(message.state, controller.signal);
+          } else {
+            if (!gateway.mailTriage) throw new Error("Gateway unavailable");
+            result = await gateway.mailTriage(message.state, controller.signal);
           }
           worker.postMessage({ kind: "evaluation", id: message.id, result });
         } catch (error) {

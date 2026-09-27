@@ -1,6 +1,8 @@
 import type {
   AppNotification,
   DeadlineClaim,
+  MailKind,
+  MailTriageJudgment,
   MessageKind,
   MessageTriageJudgment,
   NotificationFeed,
@@ -65,6 +67,58 @@ export const NOTIFICATION_RULES = {
     "extended",
     "extension",
   ],
+  // ── email (Outlook mail: kind "message" with `mail`) ──
+  /** Link rel and category-reason prefix that mark Canvas's own notification mail (the Canvas change notifies instead). */
+  canvasMailRel: "canvas-item",
+  canvasMailReasonPrefix: "Canvas notification",
+  /** University-office phrases that make an admin email important. Same matching as messageKeywords. */
+  mailOfficeKeywords: [
+    "holds?",
+    "registration",
+    "register",
+    "enroll(?:ment|ed)?",
+    "deadlines?",
+    "due",
+    "action required",
+    "financial aid",
+    "fafsa",
+    "tuition",
+    "bills?",
+    "payments?",
+    "verify",
+  ],
+  /** An interview invitation: "interview" plus one of these context words anywhere in subject or preview. */
+  mailInterviewWord: "interviews?",
+  mailInterviewContext: [
+    "invite",
+    "invited",
+    "invitation",
+    "schedul(?:e|ed|ing)",
+    "availability",
+    "next steps?",
+    "round",
+  ],
+  /** Never an invitation: practice interviews are campus events. */
+  mailInterviewExclude: ["mock interviews?"],
+  /** Job offers count like interview invitations. */
+  mailOfferKeywords: ["job offer", "offer letter", "internship offer", "offer of employment"],
+  /** Campus-event words for org, general and admin mail; such mail is info. */
+  mailEventKeywords: [
+    "events?",
+    "workshops?",
+    "talks?",
+    "seminars?",
+    "fairs?",
+    "info sessions?",
+    "panels?",
+    "open house",
+    "career fair",
+    "speakers?",
+  ],
+  /** Graph meetingMessageType values that are replies to the student's own invite: never notified (Graph spells one "meetingTenativelyAccepted"). */
+  meetingResponsePattern: "^meeting(?:Accepted|Declined|Tent?ativelyAccepted)$",
+  /** This many info-level club and list emails from one read become a single grouped item. */
+  groupListEmailsAt: 3,
 } as const;
 
 /**
@@ -80,6 +134,20 @@ export const JEV_RAISING_KINDS: readonly MessageKind[] = [
   "grade_or_feedback_released",
 ];
 
+/** Mail kinds that may raise an email to important (urgent when an affected task is due soon). */
+export const JEV_MAIL_RAISING_KINDS: readonly MailKind[] = [
+  "interview_or_job",
+  "deadline_or_action_required",
+  "schedule_change_or_cancellation",
+  "advisor_or_academic_standing",
+];
+/** Mail kinds that may at most surface an email as info. newsletter_or_promotion and other never raise. */
+export const JEV_MAIL_INFO_KINDS: readonly MailKind[] = [
+  "campus_event",
+  "club_or_org_update",
+  "course_related",
+];
+
 export interface NotificationInput {
   /** Stored changes, newest first as storage returns them; already limited by core to ~7 days. */
   changes: ResourceChange[];
@@ -92,6 +160,8 @@ export interface NotificationInput {
   included(resource: ResourceView): boolean;
   /** resourceId → cached judgment for the current content. */
   triage: Record<string, MessageTriageJudgment>;
+  /** resourceId → cached email judgment for the current content. */
+  mailTriage: Record<string, MailTriageJudgment>;
   triageStatus: NotificationFeed["triage"];
   state: NotificationState;
   now: string;
@@ -101,10 +171,16 @@ export interface NotificationInput {
 const HOUR = 3600000;
 const RANK: Record<NotificationLevel, number> = { urgent: 0, important: 1, info: 2 };
 const higher = (a: NotificationLevel, b: NotificationLevel) => (RANK[a] <= RANK[b] ? a : b);
-const KEYWORD = new RegExp(
-  `\\b(?:${NOTIFICATION_RULES.messageKeywords.map((k) => k.replaceAll(" ", "\\s+")).join("|")})\\b`,
-  "i",
-);
+const words = (list: readonly string[]) =>
+  new RegExp(`\\b(?:${list.map((k) => k.replaceAll(" ", "\\s+")).join("|")})\\b`, "i");
+const KEYWORD = words(NOTIFICATION_RULES.messageKeywords);
+const OFFICE = words(NOTIFICATION_RULES.mailOfficeKeywords);
+const INTERVIEW = words([NOTIFICATION_RULES.mailInterviewWord]);
+const INTERVIEW_CONTEXT = words(NOTIFICATION_RULES.mailInterviewContext);
+const INTERVIEW_EXCLUDE = words(NOTIFICATION_RULES.mailInterviewExclude);
+const OFFER = words(NOTIFICATION_RULES.mailOfferKeywords);
+const EVENT = words(NOTIFICATION_RULES.mailEventKeywords);
+const MEETING_RESPONSE = new RegExp(NOTIFICATION_RULES.meetingResponsePattern);
 
 interface Part {
   level: NotificationLevel;
@@ -189,16 +265,27 @@ function scoreText(s: Submission | null, points: number | null) {
   if (s?.score != null) return `${num(s.score)} points`;
   return "Grade posted";
 }
-function quoteFor(title: string, text: string): string | null {
+function quoteFor(title: string, text: string, pattern: RegExp = KEYWORD): string | null {
   const max = NOTIFICATION_RULES.quoteMaxChars;
   const cut = (s: string) => (s.length <= max ? s : `${s.slice(0, max - 1).trimEnd()}…`);
   // Prefer the sentence that says what changed; the title is already shown as the row title.
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     const clean = sentence.replace(/\s+/g, " ").trim();
-    if (clean && KEYWORD.test(clean)) return cut(clean);
+    if (clean && pattern.test(clean)) return cut(clean);
   }
-  return KEYWORD.test(title) ? cut(title.trim()) : null;
+  return pattern.test(title) ? cut(title.trim()) : null;
 }
+/** Top kind, its probability and its margin over the runner-up; ties favour the reported kind. */
+function topKind<K extends string>(kind: K, probabilities: Record<string, number>) {
+  const ranked = (Object.entries(probabilities) as [K, number][]).sort(
+    (a, b) => b[1] - a[1] || (a[0] === kind ? -1 : b[0] === kind ? 1 : a[0].localeCompare(b[0])),
+  );
+  const [top, p] = ranked[0] ?? [kind, 0];
+  return { top, p, margin: p - (ranked[1]?.[1] ?? 0) };
+}
+const gated = (p: number, margin: number, actionRequired: number) =>
+  (p >= JEV_THRESHOLDS.kindMinP && margin >= JEV_THRESHOLDS.kindMinMargin) ||
+  actionRequired >= JEV_THRESHOLDS.yes;
 /** Short deterministic hash for ids built from a set of keys. */
 function hash(text: string) {
   let h = 0x811c9dc5;
@@ -257,12 +344,18 @@ export function buildNotifications(input: NotificationInput): NotificationFeed {
   const newAssignments = new Map<string, { r: ResourceView; c: ResourceChange }[]>();
   const newMaterials = new Map<string, { r: ResourceView; c: ResourceChange }[]>();
   const groupKey = (r: ResourceView, c: ResourceChange) => `${r.courseId}:${c.readId}`;
+  const mails: { item: AppNotification & { list: boolean }; readId: string; change: ResourceChange }[] = [];
 
   for (const [id, list] of byResource) {
     const r = byId.get(id)!;
     const of = (...types: ResourceChange["type"][]) => list.filter((c) => types.includes(c.type));
     if (r.kind === "assignment") assignmentParts(r, list);
-    else if (r.kind === "message") {
+    else if (r.kind === "message" && r.mail) {
+      // Email: only a new message notifies; current state (e.g. read) decides the level.
+      const created = of("new").at(-1);
+      const item = created && !r.deleted ? mailItem(r, created) : null;
+      if (item) mails.push({ item, readId: created!.readId, change: created! });
+    } else if (r.kind === "message") {
       const created = of("new").at(-1);
       if (created && !r.deleted) add(id, messagePart(r, created));
     } else if (r.kind === "material") {
@@ -393,24 +486,123 @@ export function buildNotifications(input: NotificationInput): NotificationFeed {
   }
 
   function jevLevel(j: MessageTriageJudgment) {
-    const t = JEV_THRESHOLDS;
-    const probs = Object.entries(j.result.kindProbabilities) as [MessageKind, number][];
-    const ranked = [...probs].sort((a, b) => b[1] - a[1] || (a[0] === j.result.kind ? -1 : b[0] === j.result.kind ? 1 : a[0].localeCompare(b[0])));
-    const [top, topP] = ranked[0] ?? [j.result.kind, 0];
-    const margin = topP - (ranked[1]?.[1] ?? 0);
+    const { top, p, margin } = topKind(j.result.kind, j.result.kindProbabilities);
     // A message the model reads as general information, new material or other never raises.
-    if (!JEV_RAISING_KINDS.includes(top)) return null;
-    const gated = topP >= t.kindMinP && margin >= t.kindMinMargin;
-    if (!gated && j.result.actionRequired < t.yes) return null;
+    if (!JEV_RAISING_KINDS.includes(top) || !gated(p, margin, j.result.actionRequired)) return null;
+    return { kind: top, ...affectedLevel(j) };
+  }
+  /** Important, or urgent when an affected task (affects ≥ yes) is live and due within soonHours. */
+  function affectedLevel(j: { result: { affects: Record<string, number> }; upcoming: { key: string; resourceId: string }[] }) {
     const affected = j.upcoming
-      .filter((u) => (j.result.affects[u.key] ?? 0) >= t.yes)
-      .map((u) => ({ u, r: live(u.resourceId) }))
-      .filter((x) => x.r);
-    const soon = affected.some((x) => within(x.r!.deadline.planningAt, NOTIFICATION_RULES.soonHours));
+      .filter((u) => (j.result.affects[u.key] ?? 0) >= JEV_THRESHOLDS.yes)
+      .map((u) => live(u.resourceId))
+      .filter((r): r is ResourceView => Boolean(r));
+    const soon = affected.some((r) => within(r.deadline.planningAt, NOTIFICATION_RULES.soonHours));
+    return { level: (soon ? "urgent" : "important") as NotificationLevel, affects: affected.map((r) => r.title) };
+  }
+
+  /**
+   * One new email. Code decides from the sender category and fixed phrases; Jev may raise
+   * (never lower); mail the student has already read is capped at info. null = not notified.
+   */
+  function mailItem(r: ResourceView, created: ResourceChange): (AppNotification & { list: boolean }) | null {
+    const mail = r.mail!;
+    const rules = NOTIFICATION_RULES;
+    if (
+      (r.links ?? []).some((l) => typeof l === "object" && l.rel === rules.canvasMailRel) ||
+      mail.categoryReason.startsWith(rules.canvasMailReasonPrefix)
+    )
+      return null;
+    if (mail.meetingMessageType && MEETING_RESPONSE.test(mail.meetingMessageType)) return null;
+    const subject = r.title;
+    const preview = mail.preview ?? "";
+    const text = `${subject}\n${preview}`;
+    const quote = (pattern: RegExp) => quoteFor(subject, preview, pattern) ?? undefined;
+    // The Canvas course code matched this mail to; mail about an excluded course is suppressed.
+    const course = mail.courseId
+      ? [...input.resources].sort((x, y) => x.id.localeCompare(y.id)).find((x) => x.courseId === mail.courseId && !x.mail)
+      : undefined;
+    if (course && !input.included(course)) return null;
+    type Decision = { level: NotificationLevel | null; label: string; quote?: string };
+    let decision: Decision;
+    switch (mail.category) {
+      case "advisor":
+        decision = { level: "important", label: "Advisor" };
+        break;
+      case "course": {
+        const label = course ? `Course staff · ${course.courseName}` : "Course staff";
+        decision = KEYWORD.test(text) ? { level: "urgent", label, quote: quote(KEYWORD) } : { level: "important", label };
+        break;
+      }
+      case "admin":
+        decision =
+          mail.importance === "high"
+            ? { level: "important", label: "University office", quote: OFFICE.test(text) ? quote(OFFICE) : undefined }
+            : OFFICE.test(text)
+              ? { level: "important", label: "University office", quote: quote(OFFICE) }
+              : EVENT.test(text)
+                ? { level: "info", label: "Campus event", quote: quote(EVENT) }
+                : { level: "info", label: "University office" };
+        break;
+      case "meeting":
+        decision =
+          mail.meetingMessageType === "meetingCancelled"
+            ? { level: "important", label: "Meeting cancelled" }
+            : { level: "info", label: mail.meetingMessageType === "meetingRequest" ? "Meeting invitation" : "Meeting" };
+        break;
+      case "org":
+        decision = EVENT.test(text)
+          ? { level: "info", label: "Campus event", quote: quote(EVENT) }
+          : { level: "info", label: "Club or list" };
+        break;
+      default:
+        decision = EVENT.test(text)
+          ? { level: "info", label: "Campus event", quote: quote(EVENT) }
+          : { level: null, label: "Email" };
+    }
+    // A job interview invitation or offer is important from any sender.
+    const interview = !INTERVIEW_EXCLUDE.test(text) && INTERVIEW.test(text) && INTERVIEW_CONTEXT.test(text);
+    if ((interview || OFFER.test(text)) && (decision.level === null || RANK[decision.level] > RANK.important))
+      decision = { level: "important", label: "Job interview", quote: quote(interview ? INTERVIEW : OFFER) };
+
+    let level = decision.level;
+    let raisedBy: AppNotification["raisedBy"];
+    const j = input.mailTriage[r.id];
+    if (j) {
+      const { top, p, margin } = topKind(j.result.kind, j.result.kindProbabilities);
+      const strong = JEV_MAIL_RAISING_KINDS.includes(top);
+      if ((strong || JEV_MAIL_INFO_KINDS.includes(top)) && gated(p, margin, j.result.actionRequired)) {
+        const jev = strong ? affectedLevel(j) : { level: "info" as NotificationLevel, affects: [] };
+        if (level === null || RANK[jev.level] < RANK[level]) {
+          raisedBy = { by: "jev", from: level ?? "info", kind: top, affects: jev.affects, model: j.result.model };
+          level = jev.level;
+        }
+      }
+    }
+    if (level === null) return null;
+    // Already-read mail is listed but never counts toward the badge.
+    if (mail.isRead === true && level !== "info") {
+      level = "info";
+      if (raisedBy && decision.level !== null) raisedBy = undefined;
+    }
+    const from = mail.fromName?.trim() || mail.fromAddress?.split("@")[0] || undefined;
     return {
-      level: (soon ? "urgent" : "important") as NotificationLevel,
-      kind: top,
-      affects: affected.map((x) => x.r!.title),
+      id: `email:${r.id}:${created.id}`,
+      level,
+      reason: "email",
+      title: subject,
+      detail: decision.level === null && raisedBy ? "Email" : decision.label,
+      courseName: course?.courseName ?? "Outlook mail",
+      resourceId: r.id,
+      sourceId: r.sourceId,
+      observedAt: created.observedAt,
+      changeIds: [created.id],
+      read: false,
+      ...(from ? { from } : {}),
+      senderReason: mail.categoryReason,
+      ...(decision.quote ? { evidence: { quote: decision.quote } } : {}),
+      ...(raisedBy ? { raisedBy } : {}),
+      list: level === "info" && !raisedBy && (mail.category === "org" || Boolean(mail.listId)),
     };
   }
 
@@ -493,6 +685,36 @@ export function buildNotifications(input: NotificationInput): NotificationFeed {
       for (const { r, c } of group)
         add(r.id, { level: "info", reason: "new_material", text: "New file or page", changes: [c] });
   }
+
+  // Email: several info-level club and list emails from one read become one grouped row.
+  const lists = new Map<string, typeof mails>();
+  for (const m of mails) if (m.item.list) lists.set(m.readId, [...(lists.get(m.readId) ?? []), m]);
+  const grouped = new Set<string>();
+  for (const [readId, group] of [...lists].sort((a, b) => a[0].localeCompare(b[0]))) {
+    if (group.length < NOTIFICATION_RULES.groupListEmailsAt) continue;
+    const changes = chronological(group.map((g) => g.change));
+    const senders = [...new Set(group.map((g) => g.item.from).filter((f): f is string => Boolean(f)))].sort();
+    for (const g of group) grouped.add(g.item.id);
+    items.push({
+      id: idOf("email", `lists:${readId}`, changes),
+      level: "info",
+      reason: "email",
+      title: `${group.length} club and list emails`,
+      ...(senders.length
+        ? { detail: `From ${senders.slice(0, 3).join(", ")}${senders.length > 3 ? ` and ${senders.length - 3} more` : ""}` }
+        : {}),
+      courseName: "Outlook mail",
+      observedAt: changes.at(-1)!.observedAt,
+      changeIds: changes.map((c) => c.id),
+      read: false,
+      count: group.length,
+    });
+  }
+  for (const { item } of mails)
+    if (!grouped.has(item.id)) {
+      const { list: _list, ...rest } = item;
+      items.push(rest);
+    }
 
   // One notification per item: highest level wins, details join, every change id is kept.
   for (const [id, list] of [...parts].sort((a, b) => a[0].localeCompare(b[0]))) {

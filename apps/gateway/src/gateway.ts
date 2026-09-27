@@ -24,9 +24,13 @@ import {
   type Evaluate,
 } from "./typesafe";
 import {
+  createTypeSafeMailTriage,
   createTypeSafeTriage,
+  mailTriageRequestSchema,
   triageRequestSchema,
+  validateMailTriageResult,
   validateMessageTriageResult,
+  type MailTriage,
   type Triage,
 } from "./triage";
 
@@ -77,6 +81,8 @@ export interface GatewayOptions {
   evaluate?: Evaluate;
   /** Test-only injection point for message.triage.v1; same fail-closed rule as `evaluate`. */
   triage?: Triage;
+  /** Test-only injection point for mail.triage.v1; same fail-closed rule as `triage`. */
+  mailTriage?: MailTriage;
   limits?: Partial<GatewayLimits>;
   log?: (event: LogEvent) => void;
   now?: () => Date;
@@ -122,6 +128,14 @@ export function createGateway(options: GatewayOptions = {}): GatewayHandle {
           throw new UpstreamError("Judgment upstream is not configured.");
         }
       : createDefaultTriage(options.apiKey, limits.requestTimeoutMs));
+  const mailTriage: MailTriage =
+    options.mailTriage ??
+    (options.evaluate && !options.apiKey?.trim()
+      ? // Same per-call closed behaviour as triage for an evaluate-only test gateway.
+        async () => {
+          throw new UpstreamError("Judgment upstream is not configured.");
+        }
+      : createDefaultMailTriage(options.apiKey, limits.requestTimeoutMs));
 
   const store: Store = openStore(dbPath);
   const activeByDevice = new Map<string, number>();
@@ -153,6 +167,7 @@ export function createGateway(options: GatewayOptions = {}): GatewayHandle {
       "/v1/devices",
       "/v1/judgments/assignment.kind.v1",
       "/v1/judgments/message.triage.v1",
+      "/v1/judgments/mail.triage.v1",
     ].includes(path)
       ? path
       : "/unrecognized";
@@ -208,6 +223,34 @@ export function createGateway(options: GatewayOptions = {}): GatewayHandle {
           async (state, signal) => {
             const result = validateMessageTriageResult(
               await triage(state, signal),
+              state,
+            );
+            return {
+              kind: result.kind,
+              kindProbabilities: result.kindProbabilities,
+              actionRequired: result.actionRequired,
+              affects: result.affects,
+              model: result.model,
+              questionVersion: result.questionVersion,
+            };
+          },
+        );
+        status = result.status;
+        deviceId = result.deviceId;
+        return;
+      }
+
+      if (method === "POST" && path === "/v1/judgments/mail.triage.v1") {
+        const result = await handleJudgment(
+          req,
+          res,
+          (value) => {
+            const parsed = mailTriageRequestSchema.safeParse(value);
+            return parsed.success ? parsed.data.state : undefined;
+          },
+          async (state, signal) => {
+            const result = validateMailTriageResult(
+              await mailTriage(state, signal),
               state,
             );
             return {
@@ -499,4 +542,16 @@ function createDefaultTriage(
     );
   }
   return createTypeSafeTriage(apiKey, timeoutMs);
+}
+
+function createDefaultMailTriage(
+  apiKey: string | undefined,
+  timeoutMs: number,
+): MailTriage {
+  if (!apiKey?.trim()) {
+    throw new Error(
+      "TYPESAFE_API_KEY is required to start the gateway (no mailTriage() override was provided). See apps/gateway/README.md.",
+    );
+  }
+  return createTypeSafeMailTriage(apiKey, timeoutMs);
 }

@@ -288,7 +288,22 @@ function NotificationRow({
     evidence.quote && evidence.quote.trim() !== item.title.trim()
       ? evidence.quote
       : undefined;
-  const meta = [item.courseName, relativeTime(item.observedAt)]
+  // Email rows name the sender; the code's category reason is available on hover and to
+  // assistive technology through the row's description.
+  const meta = (
+    item.reason === "email"
+      ? [
+          item.from ? `From ${item.from}` : null,
+          // The role label may already name the course ("Course staff · CS 220").
+          item.courseName && item.courseName !== "Outlook mail"
+            ? item.detail?.includes(item.courseName)
+              ? null
+              : item.courseName
+            : "Email",
+          relativeTime(item.observedAt),
+        ]
+      : [item.courseName, relativeTime(item.observedAt)]
+  )
     .filter(Boolean)
     .join(" · ");
   const affects = item.raisedBy?.affects.filter(Boolean) ?? [];
@@ -342,7 +357,14 @@ function NotificationRow({
             {affects.length ? ` · May affect ${affects.join(", ")}` : ""}
           </span>
         ) : null}
-        {meta ? <span className="notif-meta">{meta}</span> : null}
+        {meta ? (
+          <span
+            className="notif-meta"
+            title={item.senderReason ? `Sorted by code: ${item.senderReason}` : undefined}
+          >
+            {meta}
+          </span>
+        ) : null}
         {opens === "sources" ? (
           <span className="notif-hidden">. Opens Sources.</span>
         ) : null}

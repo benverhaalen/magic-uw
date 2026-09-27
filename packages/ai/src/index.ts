@@ -1,7 +1,10 @@
 import { z } from "zod";
 import {
+  mailTriageResultSchema,
   messageTriageResultSchema,
   type ContextManifest,
+  type MailTriageResult,
+  type MailTriageState,
   type MessageTriageResult,
   type MessageTriageState,
 } from "@magic/contracts";
@@ -36,6 +39,11 @@ export interface JudgmentGateway {
     state: MessageTriageState,
     signal: AbortSignal,
   ): Promise<MessageTriageResult>;
+  /** Email importance (mail.triage.v1). Absent when the gateway predates it. */
+  mailTriage?(
+    state: MailTriageState,
+    signal: AbortSignal,
+  ): Promise<MailTriageResult>;
 }
 /** An upstream refusal is a wait, not a failed judgment attempt. */
 export class JudgmentBudgetError extends Error {
@@ -157,6 +165,16 @@ export function gatewayClient(
       const offered = new Set(state.upcoming.map((item) => item.key));
       if (Object.keys(result.affects).some((key) => !offered.has(key)))
         throw new Error("Invalid message triage result.");
+      return result;
+    },
+    async mailTriage(state, signal) {
+      const result = mailTriageResultSchema.parse(
+        await judge("/v1/judgments/mail.triage.v1", state, signal),
+      );
+      // Same rule as message triage: `affects` may only name tasks that were offered.
+      const offered = new Set(state.upcoming.map((item) => item.key));
+      if (Object.keys(result.affects).some((key) => !offered.has(key)))
+        throw new Error("Invalid mail triage result.");
       return result;
     },
   };

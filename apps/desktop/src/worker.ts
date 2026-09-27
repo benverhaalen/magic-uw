@@ -4,7 +4,7 @@ import { createStore } from "@magic/storage";
 import { createCore } from "@magic/core";
 import { captureBatchSchema, planningCaptureSchema, type PlanningCapture } from "@magic/contracts";
 import { queryRequestSchema } from "@magic/contracts"; // owner: T15
-import type { MessageTriageState } from "@magic/contracts"; // owner: notifications gateway relay
+import type { MailTriageState, MessageTriageState } from "@magic/contracts"; // owner: notifications gateway relay
 import fixture from "../../../fixtures/course.json";
 import { randomUUID } from "node:crypto";
 import { createLocalService } from "./local-service";
@@ -68,7 +68,8 @@ const generation = createPackHandler({ store, runner: generationRunner });
 function relayJudgment(
   message:
     | { kind: "evaluate"; payload: unknown }
-    | { kind: "triage"; state: MessageTriageState },
+    | { kind: "triage"; state: MessageTriageState }
+    | { kind: "mailTriage"; state: MailTriageState },
   signal: AbortSignal,
 ): Promise<any> {
   const id = randomUUID();
@@ -152,6 +153,9 @@ const core = createCore(store, {
           },
           triage(state: MessageTriageState, signal: AbortSignal) {
             return relayJudgment({ kind: "triage", state }, signal);
+          },
+          mailTriage(state: MailTriageState, signal: AbortSignal) {
+            return relayJudgment({ kind: "mailTriage", state }, signal);
           },
         },
       }

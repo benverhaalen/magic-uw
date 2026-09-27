@@ -8,6 +8,9 @@ import {
 } from "@magic/domain";
 import type {
   DeadlineClaim,
+  MailKind,
+  MailMetadata,
+  MailTriageJudgment,
   MessageKind,
   MessageTriageJudgment,
   ResourceChange,
@@ -108,6 +111,7 @@ function build(over: Partial<NotificationInput> = {}) {
     baselineReadIds: ["read-1"],
     included: () => true,
     triage: {},
+    mailTriage: {},
     triageStatus: { status: "on", reason: "Ready." },
     state: { readIds: [], dismissedIds: [] },
     now: NOW,
@@ -703,4 +707,231 @@ test("determinism: same input gives deep-equal output", () => {
   const input = { resources: rs, changes, sources: [source(), source({ id: "s9", status: "needs_sign_in" })] };
   assert.deepEqual(build(input), build(input));
   assert.deepEqual(build(input), build({ ...input, resources: [...rs].reverse() }));
+});
+
+// ── email ──────────────────────────────────────────────────────────────────────────────────
+
+type MailOver = Partial<MailMetadata> & { subject?: string; links?: ResourceView["links"] };
+function email(id: string, over: MailOver = {}): ResourceView {
+  const { subject, links, ...mail } = over;
+  return resource(id, {
+    kind: "message",
+    courseId: "outlook-mail",
+    courseName: "Outlook mail",
+    sourceId: "src-mail",
+    title: subject ?? "Hello",
+    text: mail.preview ?? "",
+    createdAt: at(-3),
+    ...(links ? { links } : {}),
+    mail: {
+      messageId: `msg-${id}`,
+      folder: "inbox",
+      fromName: "Pat Lee",
+      fromAddress: "plee@uw.edu",
+      receivedAt: at(-3),
+      preview: "",
+      category: "general",
+      categoryReason: "No rule matched",
+      ...mail,
+    },
+  });
+}
+const cs220 = resource("cs-a1", { courseId: "cs220", courseName: "CS 220", title: "Project 2", due: at(40) });
+const mailFeed = (mails: ResourceView[], over: Partial<NotificationInput> = {}) =>
+  build({
+    resources: [...mails, cs220],
+    changes: mails.map((m) => change(m.id, "new", {}, {}, { sourceId: "src-mail" })),
+    ...over,
+  });
+const mailOnly = (mails: ResourceView[], over: Partial<NotificationInput> = {}) =>
+  mailFeed(mails, over).items.filter((n) => n.reason === "email");
+
+const mailTable: { name: string; mail: MailOver; expect: null | { level: string; detail: string; quote?: string; courseName?: string } }[] = [
+  { name: "advisor is important", mail: { category: "advisor", subject: "Checking in", categoryReason: "Sender's name matches your assigned advisor" }, expect: { level: "important", detail: "Advisor" } },
+  {
+    name: "course staff is important with the matched course",
+    mail: { category: "course", courseId: "cs220", subject: "Office hours notes", preview: "Thanks for coming by today." },
+    expect: { level: "important", detail: "Course staff · CS 220", courseName: "CS 220" },
+  },
+  {
+    name: "course staff with a keyword is urgent",
+    mail: { category: "course", courseId: "cs220", subject: "Section update", preview: "Hi all. Friday's quiz is postponed to Monday. Thanks." },
+    expect: { level: "urgent", detail: "Course staff · CS 220", quote: "Friday's quiz is postponed to Monday.", courseName: "CS 220" },
+  },
+  { name: "admin with high importance is important", mail: { category: "admin", importance: "high", subject: "Message from the Registrar", preview: "Please read." }, expect: { level: "important", detail: "University office" } },
+  {
+    name: "admin with an office keyword is important",
+    mail: { category: "admin", subject: "Your account", preview: "You have a hold on your account. Contact us soon." },
+    expect: { level: "important", detail: "University office", quote: "You have a hold on your account." },
+  },
+  { name: "plain admin is info", mail: { category: "admin", subject: "Campus newsletter", preview: "Stories from around campus." }, expect: { level: "info", detail: "University office" } },
+  { name: "meeting cancelled is important", mail: { category: "meeting", meetingMessageType: "meetingCancelled", subject: "Canceled: Study group" }, expect: { level: "important", detail: "Meeting cancelled" } },
+  { name: "meeting request is info", mail: { category: "meeting", meetingMessageType: "meetingRequest", subject: "Study group" }, expect: { level: "info", detail: "Meeting invitation" } },
+  { name: "meeting accepted is suppressed", mail: { category: "meeting", meetingMessageType: "meetingAccepted", subject: "Accepted: Study group" }, expect: null },
+  { name: "meeting declined is suppressed", mail: { category: "meeting", meetingMessageType: "meetingDeclined", subject: "Declined: Study group" }, expect: null },
+  { name: "meeting tentative is suppressed", mail: { category: "meeting", meetingMessageType: "meetingTenativelyAccepted", subject: "Tentative: Study group" }, expect: null },
+  { name: "meeting tentative (correct spelling) is suppressed", mail: { category: "meeting", meetingMessageType: "meetingTentativelyAccepted", subject: "Tentative: Study group" }, expect: null },
+  { name: "org is info", mail: { category: "org", subject: "Weekly club update", preview: "Dues reminder." }, expect: { level: "info", detail: "Club or list" } },
+  {
+    name: "org campus event is info with a quote",
+    mail: { category: "org", subject: "This week", preview: "Join our resume workshop Thursday. Pizza provided." },
+    expect: { level: "info", detail: "Campus event", quote: "Join our resume workshop Thursday." },
+  },
+  { name: "general is suppressed", mail: { category: "general", subject: "Hey", preview: "Long time no see." }, expect: null },
+  {
+    name: "general campus event is info",
+    mail: { category: "general", subject: "Career fair next week", preview: "Bring copies of your resume." },
+    expect: { level: "info", detail: "Campus event", quote: "Career fair next week" },
+  },
+  {
+    name: "interview invitation in general mail is important",
+    mail: { category: "general", subject: "Next steps", preview: "Thanks for applying. We'd like to invite you to an interview. Please share your availability." },
+    expect: { level: "important", detail: "Job interview", quote: "We'd like to invite you to an interview." },
+  },
+  { name: "internship offer is important", mail: { category: "org", subject: "Your internship offer", preview: "Congratulations!" }, expect: { level: "important", detail: "Job interview", quote: "Your internship offer" } },
+  { name: "mock interview workshop is not an invitation", mail: { category: "general", subject: "Mock interview workshop schedule", preview: "Sign up." }, expect: { level: "info", detail: "Campus event", quote: "Mock interview workshop schedule" } },
+  {
+    name: "Canvas notification mail (link) is suppressed",
+    mail: { category: "course", courseId: "cs220", subject: "Assignment graded", links: [{ url: "https://canvas.example.edu/courses/220/assignments/1", rel: "canvas-item" }] },
+    expect: null,
+  },
+  {
+    name: "Canvas notification mail (reason) is suppressed",
+    mail: { category: "course", courseId: "cs220", subject: "Exam moved", categoryReason: "Canvas notification links CS 220" },
+    expect: null,
+  },
+];
+for (const row of mailTable)
+  test(`email: ${row.name}`, () => {
+    const items = mailOnly([email("e1", row.mail)]);
+    if (!row.expect) return assert.deepEqual(items, []);
+    assert.equal(items.length, 1);
+    const n = items[0]!;
+    assert.equal(n.reason, "email");
+    assert.equal(n.level, row.expect.level);
+    assert.equal(n.detail, row.expect.detail);
+    assert.equal(n.evidence?.quote, row.expect.quote);
+    assert.equal(n.courseName, row.expect.courseName ?? "Outlook mail");
+    assert.equal(n.title, row.mail.subject);
+    assert.equal(n.from, "Pat Lee");
+    assert.equal(n.senderReason, row.mail.categoryReason ?? "No rule matched");
+    assert.match(n.id, /^email:e1:c\d+$/);
+  });
+
+test("email: sender falls back to the address local part", () => {
+  const [n] = mailOnly([email("e1", { category: "advisor", fromName: undefined, fromAddress: "advising@uw.edu" })]);
+  assert.equal(n!.from, "advising");
+});
+
+test("email: baseline, backfill and non-new changes are not notified", () => {
+  const e = email("e1", { category: "advisor" });
+  assert.deepEqual(mailOnly([e], { changes: [change("e1", "new", {}, {}, { readId: "read-1" })] }), []);
+  const old = email("e2", { category: "advisor", receivedAt: at(-24 * 20) });
+  assert.deepEqual(mailOnly([{ ...old, createdAt: at(-24 * 20) }]), []);
+  assert.deepEqual(mailOnly([e], { changes: [change("e1", "updated"), change("e1", "requirements_changed")] }), []);
+});
+
+test("email: mail about an excluded course is suppressed", () => {
+  const e = email("e1", { category: "course", courseId: "cs220", subject: "Hi" });
+  assert.deepEqual(mailOnly([e], { included: (r) => r.courseId !== "cs220" }), []);
+});
+
+test("email: already-read mail is capped at info and does not count", () => {
+  const feed = mailFeed([email("e1", { category: "advisor", isRead: true }), email("e2", { category: "advisor" })]);
+  const byId = Object.fromEntries(feed.items.map((n) => [n.resourceId, n]));
+  assert.equal(byId.e1!.level, "info");
+  assert.equal(byId.e2!.level, "important");
+  assert.equal(feed.unread, 1);
+});
+
+test("email: three or more info club and list emails from one read group", () => {
+  const orgs = ["o1", "o2", "o3"].map((id, i) => email(id, { category: "org", fromName: `Club ${i}`, subject: `News ${i}` }));
+  const advisor = email("a1", { category: "advisor" });
+  const items = mailOnly([...orgs, advisor]);
+  assert.equal(items.length, 2);
+  const group = items.find((n) => n.count)!;
+  assert.equal(group.title, "3 club and list emails");
+  assert.equal(group.level, "info");
+  assert.equal(group.changeIds.length, 3);
+  assert.equal(group.detail, "From Club 0, Club 1, Club 2");
+  assert.equal(mailOnly(orgs.slice(0, 2)).length, 2);
+});
+
+function mailJudgment(kind: MailKind, p: number, extra: { actionRequired?: number; affects?: Record<string, number>; upcoming?: MailTriageJudgment["upcoming"] } = {}): MailTriageJudgment {
+  const kinds: MailKind[] = [
+    "interview_or_job",
+    "deadline_or_action_required",
+    "schedule_change_or_cancellation",
+    "advisor_or_academic_standing",
+    "campus_event",
+    "club_or_org_update",
+    "course_related",
+    "newsletter_or_promotion",
+    "other",
+  ];
+  const rest = (1 - p) / (kinds.length - 1);
+  return {
+    result: {
+      kind,
+      kindProbabilities: Object.fromEntries(kinds.map((k) => [k, k === kind ? p : rest])) as Record<MailKind, number>,
+      actionRequired: extra.actionRequired ?? 0.1,
+      affects: extra.affects ?? {},
+      model: "jev-mail-test",
+      questionVersion: "mail.triage.v1",
+    },
+    upcoming: extra.upcoming ?? [],
+  };
+}
+const mailJevTable: { name: string; mail: MailOver; judgment: MailTriageJudgment; level: string | null; raised: boolean; kind?: MailKind }[] = [
+  { name: "interview kind raises general mail to important", mail: { category: "general", subject: "Quick question" }, judgment: mailJudgment("interview_or_job", 0.9), level: "important", raised: true, kind: "interview_or_job" },
+  {
+    name: "deadline kind affecting a task due soon is urgent",
+    mail: { category: "org", subject: "Heads up" },
+    judgment: mailJudgment("deadline_or_action_required", 0.85, { affects: { a0: 0.9 }, upcoming: [{ key: "a0", resourceId: "cs-a1", title: "Project 2" }] }),
+    level: "urgent",
+    raised: true,
+  },
+  { name: "action required alone raises a strong kind", mail: { category: "admin", subject: "Notice" }, judgment: mailJudgment("advisor_or_academic_standing", 0.5, { actionRequired: 0.9 }), level: "important", raised: true },
+  { name: "below threshold does nothing", mail: { category: "general", subject: "Quick question" }, judgment: mailJudgment("interview_or_job", 0.6), level: null, raised: false },
+  { name: "campus event surfaces suppressed general mail as info", mail: { category: "general", subject: "Saturday" }, judgment: mailJudgment("campus_event", 0.9), level: "info", raised: true, kind: "campus_event" },
+  { name: "course related never goes above info", mail: { category: "admin", subject: "Notice" }, judgment: mailJudgment("course_related", 0.95, { actionRequired: 0.95 }), level: "info", raised: false },
+  { name: "newsletter never raises", mail: { category: "general", subject: "Deals" }, judgment: mailJudgment("newsletter_or_promotion", 0.99, { actionRequired: 0.99 }), level: null, raised: false },
+  { name: "other never raises", mail: { category: "general", subject: "Hi" }, judgment: mailJudgment("other", 0.99), level: null, raised: false },
+  { name: "never lowers an important advisor email", mail: { category: "advisor", subject: "Hi" }, judgment: mailJudgment("newsletter_or_promotion", 0.99), level: "important", raised: false },
+  { name: "never lowers urgent course mail", mail: { category: "course", courseId: "cs220", subject: "Exam moved" }, judgment: mailJudgment("campus_event", 0.99), level: "urgent", raised: false },
+  { name: "a Jev-raised read email stays info", mail: { category: "general", subject: "Next week", isRead: true }, judgment: mailJudgment("interview_or_job", 0.9), level: "info", raised: true },
+  { name: "read cap drops a raise that no longer changes anything", mail: { category: "admin", subject: "Notice", isRead: true }, judgment: mailJudgment("deadline_or_action_required", 0.9), level: "info", raised: false },
+];
+for (const row of mailJevTable)
+  test(`email Jev: ${row.name}`, () => {
+    const items = mailOnly([email("e1", row.mail)], { mailTriage: { e1: row.judgment } });
+    if (row.level === null) return assert.deepEqual(items, []);
+    const n = items[0]!;
+    assert.equal(n.level, row.level);
+    assert.equal(Boolean(n.raisedBy), row.raised);
+    if (row.raised) {
+      assert.equal(n.raisedBy!.model, "jev-mail-test");
+      if (row.kind) assert.equal(n.raisedBy!.kind, row.kind);
+    }
+  });
+
+test("email: message triage and mail triage do not cross", () => {
+  const items = mailOnly([email("e1", { category: "general", subject: "Hi" })], {
+    triage: { e1: judgment("deadline_or_schedule_change", 0.95) },
+  });
+  assert.deepEqual(items, []);
+});
+
+test("email: determinism", () => {
+  const mails = [
+    email("e1", { category: "course", courseId: "cs220", subject: "Exam room change", preview: "New room is 101." }),
+    email("e2", { category: "org" }),
+    email("e3", { category: "org" }),
+    email("e4", { category: "org" }),
+    email("e5", { category: "general", subject: "Interview invitation" }),
+  ];
+  const changes = mails.map((m) => change(m.id, "new", {}, {}, { sourceId: "src-mail" }));
+  const input = { resources: [...mails, cs220], changes, mailTriage: { e2: mailJudgment("campus_event", 0.9) } };
+  assert.deepEqual(build(input), build(input));
+  assert.deepEqual(build(input), build({ ...input, resources: [...input.resources].reverse() }));
 });
