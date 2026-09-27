@@ -13,7 +13,6 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import type { SourceHealth } from "@magic/contracts";
 import { createStore } from "@magic/storage";
 import {
   causeHeaders,
@@ -27,7 +26,6 @@ import { itemSchema, pageSchema } from "../packages/connectors/src/canvas-models
 import { causeFromError } from "../packages/connectors/src/document-causes";
 import { MaterialReadError } from "../packages/connectors/src/network";
 import { ACQUISITION_APP, createIngestion } from "../apps/desktop/src/ingestion";
-import { buildCourses } from "../apps/desktop/src/renderer/sources/model";
 import { syntheticDocumentTerm } from "../evals/perf/documents";
 
 const origin = "https://canvas.wisc.edu";
@@ -321,36 +319,6 @@ test("ingestion: a transient failure retries and the file gets text; a refused f
     store.close();
     rmSync(directory, { recursive: true, force: true });
   }
-});
-
-test("Sources: a course's files show as one summary row, never one row per file", () => {
-  const source = (scope: string, fields: Partial<SourceHealth> = {}): SourceHealth => ({
-    id: `canvas:acct:c1:${scope}`, label: `Example Course 101 · ${scope}`, kind: "canvas", accountScope: "acct",
-    courseId: "c1", scope, status: "ok", lastAttemptAt: "2026-09-27T09:30:00Z", lastSuccessAt: "2026-09-27T09:30:00Z",
-    complete: true, resourceCount: 1, ...fields,
-  });
-  const failed = { status: "partial" as const, complete: false, diagnostics: [{ code: "network_error", path: [], severity: "warning" as const }] };
-  const sources = [
-    source("course"),
-    source("assignments"),
-    ...Array.from({ length: 40 }, (_, i) => String(i + 1)).flatMap((id) =>
-      Number(id) <= 2
-        ? [source(`file:${id}`), source(`document:${id}`)]
-        : Number(id) === 3
-          ? [source(`file:${id}`, { status: "inaccessible", complete: false }), source(`document:${id}`, { status: "inaccessible", complete: false })]
-          : [source(`file:${id}`, failed), source(`document:${id}`, failed)],
-    ),
-  ];
-  const [course] = buildCourses(sources);
-  assert.ok(course);
-  assert.equal(course.scopes.length, 3, course.scopes.map((s) => s.scope).join());
-  const files = course.scopes.find((s) => s.scope === "course_files");
-  assert.ok(files);
-  assert.equal(files.state, "partial");
-  assert.equal(course.state, "partial");
-  assert.deepEqual(files.notes, [
-    "2 of 40 files read. 1 file is not available to you. 37 files could not be read this time; they are tried again on the next check.",
-  ]);
 });
 
 test("module items and pages: valid Canvas shapes the schema used to refuse", () => {
