@@ -17,7 +17,7 @@ A missed target is reported as missed, in the same table as the met ones. Nothin
 
 ### 1.1 Hardware and software
 
-Every measured figure below comes from one machine unless it says otherwise: Windows 11 Home (10.0.26200), Intel Core Ultra 9 275HX (24 cores), 31.4 GiB RAM, Node 24.14.1, SQLite 3.51.2 (`docs/course-backend-architecture.md` §8.1; the item-eval reports record the same CPU and Node). CI runs on GitHub's `ubuntu-latest` (`.github/workflows/verify.yml`). No figure has been reproduced on a second machine.
+Every measured figure below comes from one machine unless it says otherwise: Windows 11 Home (10.0.26200), Intel Core Ultra 9 275HX (24 cores), 31.4 GiB RAM, Node 24.14.1, SQLite 3.51.2 (`docs/course-backend-architecture.md` at `699e386` §8.1; the item-eval reports record the same CPU and Node). CI runs on GitHub's `ubuntu-latest` (`.github/workflows/verify.yml`). No figure has been reproduced on a second machine.
 
 ### 1.2 Harnesses
 
@@ -36,7 +36,7 @@ No harness touches the network or a real account. The replay transport serves re
 - **Warm-up:** each timed perf series discards one warm-up run, so module JIT and schema compilation aren't billed to run 1 (`evals/perf/baseline.ts`).
 - **Runs:** sync 5 runs, query 5 runs over 24 queries (120 samples), snapshot 5, database open 5, ingest 3 repeats; T17's first sync 3 paced runs (`baseline.ts` constants `SYNC_RUNS`, `QUERY_RUNS`, `SNAPSHOT_RUNS`, `OPEN_RUNS`, `INGEST_REPEATS`, `FIRST_SYNC_RUNS`).
 - **Percentiles:** nearest-rank over the raw samples (`evals/perf/stats.ts`). **With fewer than 20 samples, a "p95" is the maximum of the runs**, not an estimate of the 95th percentile; the tables below say so wherever it applies.
-- **Noise:** across repeated MT1 runs, throughput varied about ±20% and p95 up to 2.6×. So MT1's adopt thresholds ask for an effect of 3× or more, or for a structural change (`docs/course-backend-architecture.md` §8.1).
+- **Noise:** across repeated MT1 runs, throughput varied about ±20% and p95 up to 2.6×. So MT1's adopt thresholds ask for an effect of 3× or more, or for a structural change (`docs/course-backend-architecture.md` at `699e386` §8.1; the thresholds as applied are in `docs/course-backend-build-record.md` §5.1).
 - **Rates** are reported as k/n with a Wilson 95% interval, which keeps its coverage near 0 and 1 where the normal approximation fails. Intervals marked *computed here* were computed for this document from the published k and n; the item-eval intervals come from its own reports.
 - **Deterministic fixtures:** a synthetic fixture gives the same count on every run, so a count such as 285/300 is a property of the fixture, not a sample; no interval is attached to it.
 
@@ -55,7 +55,7 @@ Thresholds are fixed before the run they judge, and changing one after a run is 
 
 | Suite | Where the thresholds are fixed | When |
 |---|---|---|
-| MT1 storage and IPC | the "Adopt at" column of `docs/course-backend-architecture.md` §8.1 | with the baseline at `91e39fa`, before the storage lane's changes |
+| MT1 storage and IPC | the "Threshold" column of `docs/course-backend-build-record.md` §5.1 (the "Adopt at" column of `docs/course-backend-architecture.md` at `699e386` §8.1) | with the baseline at `91e39fa`, before the storage lane's changes |
 | Public comparisons | the comparative rows of spec B6 (`docs/plans/2026-09-26-course-backend/spec.md`) | 2026-09-26, before any competitor run |
 | Item quality | `evals/items/thresholds.json` on `feat/item-eval` (sha256 prefix `4185ebf297afda52`) | 2026-09-27, "before the first scored run"; a met threshold whose interval crosses it is reported as "met, not established at 95%" |
 | Case files | `evals/freeze.ts` hashes every case file (SHA-256, LF-normalised); `--verify` fails on any changed, missing or extra file | the smoke cases on main (`evals/cases/smoke/FROZEN.sha256`); the item cases on `feat/item-eval` (`evals/items/cases/FROZEN.sha256`) |
@@ -98,7 +98,7 @@ The rules behind it are in [benchmarking](notes/benchmarking.md): freeze the gol
 
 ### 2.1 MT1: storage, search and IPC at 5,000 synthetic resources
 
-Before `91e39fa`, after `f365af7` (T14); both synthetic, this laptop. Sources: `docs/course-backend-build-record.md` §5.1 and `docs/course-backend-architecture.md` §8.1. **Status: on main.**
+Before `91e39fa`, after `f365af7` (T14); both synthetic, this laptop. Sources: `docs/course-backend-build-record.md` §5.1 and `docs/course-backend-architecture.md` at `699e386` §8.1. **Status: on main.**
 
 | Metric | Before | After | Threshold | Result |
 |---|---|---|---|---|
@@ -115,7 +115,7 @@ Before `91e39fa`, after `f365af7` (T14); both synthetic, this laptop. Sources: `
 
 **What this cannot show:** real UW timing. Synthetic text compresses about 2.6×, better than real course text will. The planted questions were written by the builder, not independently. MT1's sync p95 (n=5) is the maximum of 5 runs.
 
-**IPC payload (T15 scoped queries, 5,000 resources; build record §5.3):** the full snapshot every command used to return was 30.6 MB; a summary query is 17.5 KB, a 50-row course page 78 KB, one resource 2.5 KB. The MT1 baseline also recorded 28.8 MB and a 480 ms execute p50 for the snapshot (architecture §8.1). **Status: on main (backend); the renderer switch is documented in architecture §5.**
+**IPC payload (T15 scoped queries, 5,000 resources; build record §5.3):** the full snapshot every command used to return was 30.6 MB; a summary query is 17.5 KB, a 50-row course page 78 KB, one resource 2.5 KB. The MT1 baseline also recorded 28.8 MB and a 480 ms execute p50 for the snapshot (`docs/course-backend-architecture.md` at `699e386` §8.1). **Status: on main (backend); the renderer switch is documented in architecture §11.**
 
 ### 2.2 Canvas sync (T17)
 
@@ -161,7 +161,7 @@ PR #23 (merged as `1f9e5b1`) removed core's second, inline drain, which leased t
 
 ### 2.5 Intent router: the code path and the zero-latency fallback
 
-Source: `docs/course-backend-architecture.md` §12 and `tests/intent-latency.test.ts` (PR #24, merged as `ae66b91`). **Status: on main.**
+Source: `docs/course-backend-architecture.md` §11.1, the measurements in `docs/course-backend-architecture.md` at `699e386` §12, and `tests/intent-latency.test.ts` (PR #24, merged as `ae66b91`). **Status: on main.**
 
 | Path | Measured | n |
 |---|---|---|
@@ -176,7 +176,7 @@ The AI branch prepares while code resolves and sends only on a miss, so a miss c
 
 ### 2.6 Agenda
 
-The `due` verb rebuilt the course-inclusion check once per assignment: O(n²), **25–41 s** on 306 assignments. Computed once, the `due` verb takes p50/p95 **576/580 ms** and the agenda command (now the pipeline's agenda) **216/264 ms** on a live-shaped copy (architecture §12; PR #24). n not stated. **Status: on main.**
+The `due` verb rebuilt the course-inclusion check once per assignment: O(n²), **25–41 s** on 306 assignments. Computed once, the `due` verb takes p50/p95 **576/580 ms** and the agenda command (now the pipeline's agenda) **216/264 ms** on a live-shaped copy (architecture at `699e386` §12; PR #24). n not stated. **Status: on main.**
 
 ### 2.7 MCP search
 
@@ -188,9 +188,9 @@ At 5,000 resources, MCP search went from p50 **6.3 s** to about **0.28 s** by se
 
 | Measurement | Result | Source |
 |---|---|---|
-| Before the storage lane | 8.7 s at 5,000 | architecture §8.2 (P2 spike) |
+| Before the storage lane | 8.7 s at 5,000 | build record §5.4 (P2 spike); architecture at `699e386` §8.2 |
 | T14 (MT1 after) | 0.48 s, 0 rows left | build record §5.1 |
-| At `fc43f7a` → foreign keys off for the purge transaction | 0.66 s → 0.35 s, one run each | architecture §6 table; PR #19 |
+| At `fc43f7a` → foreign keys off for the purge transaction | 0.66 s → 0.35 s, one run each | architecture at `699e386` §6 table; PR #19 |
 
 Target ≤1 s: met. The 0.48 s and 0.66 s figures come from different commits and schemas; each is a single run. **Status: on main.**
 
@@ -259,7 +259,7 @@ The smoke suite (2 synthetic courses) runs inside `pnpm test` on that branch (`t
 
 - **Passage search on MT1:** recall@5 1.00 on 52 planted questions; correct "not found" 0.96 on 26 unanswerable questions (§2.1). Builder-written questions on synthetic text.
 - **P2 spike, synthetic:** OR + BM25 found 10/10 planted answers where the old prefix-AND query found 0/10 (build record §5.4).
-- **Grounded ask, live (private aggregate):** the coverage gate retrieved passages for 9 of 10 real questions and answered "Not in your materials" for 1 with no model call (architecture §12). Citation pass rates need a signed-in client and have not been measured.
+- **Grounded ask, live (private aggregate):** the coverage gate retrieved passages for 9 of 10 real questions and answered "Not in your materials" for 1 with no model call (architecture at `699e386` §12). Citation pass rates need a signed-in client and have not been measured.
 
 ### 3.3 Material pipeline on live data (private aggregate)
 
@@ -309,12 +309,12 @@ What exists today is test coverage, not a benchmark: adversarial course-intellig
 
 | Figure | Source |
 |---|---|
-| MT1 before and after, IPC payloads, freshness, live trial, warm sessions | `docs/course-backend-build-record.md` §5, §6; `docs/course-backend-architecture.md` §8 |
+| MT1 before and after, IPC payloads, freshness, live trial, warm sessions | `docs/course-backend-build-record.md` §5, §6; `docs/course-backend-architecture.md` at `699e386` §8 |
 | T17 | PR #8 (`274f738`); `evals/perf/baseline.ts`; `docs/sync-resilience-review.md` |
 | File acquisition | PR #22 (`355602c`); `evals/perf/documents.ts` |
 | One drain; live drain throughput | PR #23 (`1f9e5b1`); PR #13 |
-| Intent router; agenda | PR #24 (`ae66b91`); `docs/course-backend-architecture.md` §12; `tests/intent-latency.test.ts` |
-| MCP search; purge | PR #19 (`05df710`); `docs/course-backend-architecture.md` §6 |
+| Intent router; agenda | PR #24 (`ae66b91`); `docs/course-backend-architecture.md` §11.1; `docs/course-backend-architecture.md` at `699e386` §12; `tests/intent-latency.test.ts` |
+| MCP search; purge | PR #19 (`05df710`); `docs/course-backend-architecture.md` at `699e386` §6 |
 | Jev calls 100 → 50 | PR #14 (`0497b73`) |
 | Privacy retention | PR #25, branch `feat/privacy-hardening` at `079a865` (tested in isolation) |
 | Item quality | branch `feat/item-eval` at `b9f09de` and `3172c2a` (tested in isolation); run reports kept locally, not committed, because their item files quote OCW text |

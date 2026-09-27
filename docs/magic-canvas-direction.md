@@ -30,7 +30,7 @@ My Magic UW is a desktop study app for UW–Madison students. The student signs 
 
 ## 3. Frontend: everything we're building
 
-Every surface follows [DESIGN.md](../DESIGN.md) and the near-approved Home. A new visual family or consequential workflow change goes to Ben as a concrete comparison first. The exact channels and commands each surface calls are in [architecture §5](course-backend-architecture.md#5-frontend-surfaces-the-backend-serves).
+Every surface follows [DESIGN.md](../DESIGN.md) and the near-approved Home. A new visual family or consequential workflow change goes to Ben as a concrete comparison first. The exact channels and commands each surface calls are in [architecture §11](course-backend-architecture.md#11-frontend-surfaces-the-backend-serves).
 
 | Surface | What it does | Backend it uses | Status | Design note |
 |---|---|---|---|---|
