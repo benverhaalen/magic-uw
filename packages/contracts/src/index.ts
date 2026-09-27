@@ -2503,8 +2503,18 @@ export interface AppBridge {
   keepSignedIn?(value?: boolean): Promise<boolean>;
   /** T05e: Remember my sign-in's status, or forget it. The NetID and password never cross. */
   rememberSignIn?(op: "status" | "forget"): Promise<RememberSignInStatus>;
+  /**
+   * owner: data-ai. "Your data on this computer": the space the app's saved data takes, showing its
+   * folder, and exporting what the app shows as a JSON file the student places (a save dialog).
+   */
+  localData?(op: "status" | "show" | "export"): Promise<LocalDataStatus>;
   /** T80: the student's AI command-line clients, each in an app-owned profile. */
   clients?: ClientsBridge;
+}
+/** owner: data-ai. Sizes only; the folder path stays in main. `exported` is set after an export. */
+export interface LocalDataStatus {
+  bytes: number;
+  exported?: "saved" | "cancelled";
 }
 /**
  * T05e (plan D39). `offered: false` in a build with the feature switched off (a UW licence).
@@ -2543,6 +2553,8 @@ export interface ClientsBridge {
   prepare(id: ClientId): Promise<ClientStatus>;
   authStatus(id: ClientId): Promise<ClientStatus>;
   choose(id: ClientId): Promise<void>;
+  /** owner: reconfigure. Removes the app's client setup (chosen client, modes, separate profiles) so setup starts fresh. */
+  reset?(): Promise<void>;
   // owner: client-health (D50). Optional so an older main still satisfies the bridge.
   /** Checks the client in the given mode (default: its saved mode), before offering or running it. */
   health?(id: ClientId, mode?: ClientMode): Promise<ClientHealth>;

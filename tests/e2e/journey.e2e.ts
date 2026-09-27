@@ -2,7 +2,7 @@
  * Tier 1: a fresh student's first run, driven through the real Electron UI with fake clients.
  * Agreement → UW sign-in (headless: refused, never automated) → Your AI (Codex, Advanced, then
  * Claude Code in instant mode) → Appearance → Connections → Open workspace → the sample course
- * from Home → a plain-language command → Data & AI (radio, select, switch) → cards from Claude
+ * from Home → a plain-language command → Data & AI (radio, switch) → cards from Claude
  * Code while the UI is used → Codex. Every step reads back the fields and text it set.
  *
  * The command bar and card generation have no UI on any branch yet (App.tsx renders a null
@@ -28,7 +28,7 @@ const RESPONSIVE_BUDGET_MS = 1500;
 
 /** Every client call the journey made, for the checks below that are known to fail today. */
 let journeyCalls: FakeCall[] | null = null;
-/** The options of Data & AI's "Preferred AI" select, as rendered. */
+/** The choices in Data & AI's "Your AI" row, as rendered. */
 let preferredOptions: string[] | null = null;
 
 test("Tier 1 journey: fresh system, fake clients, the real UI", { timeout: 150_000 }, async () => {
@@ -149,26 +149,22 @@ test("Tier 1 journey: fresh system, fake clients, the real UI", { timeout: 150_0
       assert.equal(runsAfter, runsBefore, "no model call for a code-resolved command");
     });
 
-    await steps.step("Data & AI: share course text with Claude (radio, select, switch)", async () => {
+    await steps.step("Data & AI: share course materials with Claude Code (radio, switch)", async () => {
       await page.getByRole("button", { name: "Data & AI", exact: true }).first().click();
       await heading(page, "Data & AI").waitFor();
-      const badge = () => page.locator(".settings-page .badge").first().innerText();
-      assert.equal(await badge(), "Cloud access off", "a fresh workspace keeps AI context local");
       // Controlled inputs: each change saves through the workspace, then the field reflects it.
-      const selective = page.getByRole("radio", { name: /Choose what can be shared/ });
-      await selective.click();
-      await page.waitForFunction(() => document.querySelector(".settings-page .badge")?.textContent === "Selective cloud access");
-      assert.equal(await selective.isChecked(), true);
-      const preferred = page.getByLabel("Preferred AI");
-      assert.equal(await preferred.isEnabled(), true, "the select opens once sharing is selective");
-      preferredOptions = await preferred.locator("option").evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
-      await preferred.selectOption("claude");
-      await page.waitForFunction(() => (document.getElementById("provider") as HTMLSelectElement | null)?.value === "claude");
+      const materials = page.getByRole("switch", { name: /Course materials/ });
+      assert.equal(await materials.isChecked(), false, "a fresh workspace shares no course materials");
+      const choices = page.locator("fieldset.your-ai-choices input[type=radio]");
+      await choices.first().waitFor();
+      preferredOptions = await page.locator("fieldset.your-ai-choices strong").allInnerTexts();
+      const claude = page.getByRole("radio", { name: /Claude Code/ });
+      if (!(await claude.isChecked())) await claude.click();
       await page.waitForFunction(() => !document.body.innerText.includes("Working…"));
-      const courseText = page.getByRole("switch", { name: /Course text/ });
-      if (!(await courseText.isChecked())) await courseText.click();
+      assert.equal(await claude.isChecked(), true);
+      if (!(await materials.isChecked())) await materials.click();
       await page.waitForFunction(() =>
-        Array.from(document.querySelectorAll<HTMLInputElement>("input[role=switch]")).some((i) => i.closest("label")?.textContent?.startsWith("Course text") && i.checked),
+        Array.from(document.querySelectorAll<HTMLInputElement>("input[role=switch]")).some((i) => i.closest("label")?.textContent?.startsWith("Course materials") && i.checked),
       );
       const privacy = (await execute(page, { type: "snapshot" })).snapshot.privacy;
       assert.deepEqual(
@@ -298,18 +294,12 @@ async function allowProvider(page: import("playwright").Page, hostedProvider: st
   await execute(page, { type: "privacy", value: { ...privacy, hostedProvider } });
 }
 
-// Known failing today: a Codex run is sent to the "codex" recipient (packages/core/src/jobs/pack.ts
-// recipientOf), which maySend() allows only when privacy.hostedProvider is "codex"; the select in
-// Data & AI (App.tsx) offers none, chatgpt, claude and gemini, so a student who chose Codex can't
-// allow it from the UI. Drop `todo` once the select offers the chosen client.
-test(
-  "Data & AI: 'Preferred AI' offers Codex, the client a student can choose in onboarding",
-  { todo: "known gap: App.tsx Preferred AI select has no 'codex' option; Codex runs are blocked for UI users" },
-  () => {
-    assert.ok(preferredOptions, "the journey reached Data & AI");
-    assert.ok(preferredOptions!.includes("codex"), `options: ${preferredOptions!.join(", ")}`);
-  },
-);
+// A Codex run is sent to the "codex" recipient (packages/core/src/jobs/pack.ts recipientOf), which
+// maySend() allows only when privacy.hostedProvider is "codex"; Data & AI's "Your AI" row offers it.
+test("Data & AI: 'Your AI' offers Codex, the client a student can choose in onboarding", () => {
+  assert.ok(preferredOptions, "the journey reached Data & AI");
+  assert.ok(preferredOptions!.includes("Codex"), `choices: ${preferredOptions!.join(", ")}`);
+});
 
 // Known failing today: the runner builds a client's environment as `cliEnvironment(options.env)`
 // (packages/runner/src/process.ts), which spreads the worker's whole process.env under the
