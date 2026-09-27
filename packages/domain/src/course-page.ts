@@ -144,7 +144,12 @@ export function buildCoursePage(input: CoursePageInput, key: string): CoursePage
     (p) => p.accountScope === accountScope && p.courseId === courseId,
   );
   const settled = (s: SourceHealth) => s.status === "inaccessible" || s.status === "not_published";
-  const checkedAt = (s: SourceHealth) => (settled(s) ? s.lastAttemptAt : s.lastSuccessAt);
+  // A partial read was still an attempt: it makes the course "partly checked", not "not checked".
+  // Only sign-in or error failures fall back to the last full success.
+  const checkedAt = (s: SourceHealth) =>
+    settled(s) || s.status === "partial" || s.status === "needs_attention"
+      ? (s.lastAttemptAt ?? s.lastSuccessAt)
+      : s.lastSuccessAt;
   const lastSuccessAt =
     courseSources
       .map(checkedAt)

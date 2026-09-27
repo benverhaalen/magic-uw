@@ -119,5 +119,8 @@ test("a closed or unpublished course area is checked, not stale; sign-in failure
     "acct:101",
   )!;
   assert.equal(expired.freshness, "stale");
+  // Attempted but only partly read, never fully successful: partly checked, not "not checked".
+  const partial = source("p", "acct", "101", { status: "partial", lastSuccessAt: null, complete: false });
+  assert.equal(buildCoursePage({ resources: [a], sources: [source("s1"), partial], now }, "acct:101")!.freshness, "partial");
   assert.equal(expired.needsSignIn, true);
 });
