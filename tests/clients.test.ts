@@ -228,7 +228,7 @@ test("the renderer cannot choose the command or inject arguments", async () => {
   void second;
 });
 
-test("sessions are killed on close (real PTY running the fake client)", async () => {
+test("sessions are killed on close (real PTY running the fake client)", { skip: process.platform === "linux" && "node-pty ships prebuilt binaries for Windows and macOS only (the app's targets)" }, async () => {
   const { userData, env } = await setup();
   const exits: Array<[string, number | null]> = [];
   const data: string[] = [];
