@@ -1,0 +1,4 @@
+interface:
+  display_name: "Magic Feature Planning"
+  short_description: "Choose and build complete Magic Canvas capabilities"
+  default_prompt: "Use $magic-feature-planning to inspect existing capabilities and recommend the next Magic Canvas feature, then develop a bounded plan."

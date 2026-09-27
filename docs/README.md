@@ -31,6 +31,7 @@ We are entering Applied AI & Automation, DoIT's Badgers Building for Badgers, an
 | [Organizing concepts](product-directions.md)          | Earlier organizing alternatives; current Home decisions supersede their unresolved entry/navigation status |
 | [Reference-driven design](reference-driven-design.md) | Reference roles, architecture analogies, images, demo inspection, and product verification               |
 | [Agent work principles](agent-work-principles.md)     | Intent, discovery, expert methods, delegation, context/cost, and complete delivery                       |
+| [Feature planning skill](../.agents/skills/magic-feature-planning/SKILL.md) | Inspect unfinished capabilities, choose useful next features, and carry bounded plans into authorized implementation and review |
 | [AI and privacy](ai-and-privacy.md)                   | Paid AI direction, existing local adapter, sign-in, and data disclosures                                |
 | [Technical direction](architecture.md)                | Access, connectors, records, deadlines, Jev, models, stack proposals                                     |
 | [Pipeline details](pipeline-details.md)               | Actual endpoints and limits; proposed reconnect, scrubbing, citation checks, and link thresholds         |
