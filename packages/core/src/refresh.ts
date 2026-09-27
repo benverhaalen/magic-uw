@@ -10,6 +10,8 @@ export interface RefreshOutcome {
   needsSignIn: boolean;
   signature?: string;
   complete?: boolean;
+  /** Coverage may be incomplete solely because a stable scope is restricted. */
+  retryNeeded?: boolean;
 }
 export interface RefreshRun {
   startedAt: string;
@@ -24,6 +26,7 @@ export interface RefreshRun {
 }
 /** owner: T33. A per-course probe: courseId → signature (D37). */
 export interface CourseProbe {
+  components?: Record<string, Record<string, string>>;
   needsSignIn: boolean;
   courses: Record<string, string>;
   /** false: some part failed; unmoved courses keep their baseline, moved ones are still read. */
@@ -146,6 +149,20 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
     focusAt = 0,
     focusRequested = false;
   const retryAt = new Map<string, number>();
+  const componentBaseline: Record<string, Record<string, string>> = {};
+  function comparableContent(probe: CourseProbe): CourseProbe {
+    if (!probe.components) return probe;
+    const courses: Record<string, string> = {};
+    for (const [course, observed] of Object.entries(probe.components)) {
+      if (!Object.keys(observed).length) continue;
+      const merged = { ...componentBaseline[course], ...observed };
+      componentBaseline[course] = merged;
+      courses[course] = JSON.stringify(
+        Object.entries(merged).sort(([a], [b]) => a.localeCompare(b)),
+      );
+    }
+    return { ...probe, courses };
+  }
   function interval(s: RefreshSettings) {
     return perCourse
       ? Math.min(s.intervalMinutes, cadenceMinutes.hot)
@@ -197,7 +214,7 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
     if (contentDue) {
       probes.push("content");
       focusRequested = false;
-      content = await deps.content!(signal);
+      content = comparableContent(await deps.content!(signal));
       if (content.needsSignIn) {
         result.action = "feeds_only";
         result.needsSignIn = true;
@@ -215,14 +232,18 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
         // The first connect knows no course before its read: probe once after it instead, so the
         // first background run doesn't warm-read every course again.
         if (!Object.keys(contentBaseline).length) {
-          const after = await deps.content!(signal);
+          const after = comparableContent(await deps.content!(signal));
           if (!after.needsSignIn) contentBaseline = after.courses;
+          else {
+            result.needsSignIn = true;
+            return;
+          }
           contentAt = now().getTime();
         }
         // An incomplete read (a file that won't download, a list the student can't see) is
         // retried after a delay, not on every tick; a failed read never erases coursework.
         fullAt =
-          full.complete !== false
+          full.retryNeeded === false || full.complete !== false
             ? date.getTime()
             : date.getTime() -
               (cadenceMinutes.backstop - cadenceMinutes.retry) * 60_000;
@@ -265,7 +286,7 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
     if (warm.needsSignIn) return;
     // The watermark advances; an incomplete warm read is retried after a delay, not every tick.
     for (const course of courses)
-      if (warm.complete === false)
+      if (warm.complete === false && warm.retryNeeded !== false)
         retryAt.set(course, now().getTime() + cadenceMinutes.retry * 60_000);
       else retryAt.delete(course);
     advance();
@@ -353,7 +374,8 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
           result.needsSignIn = full.needsSignIn;
           result.action = "refreshed";
           signature =
-            !full.needsSignIn && full.complete !== false
+            !full.needsSignIn &&
+            (full.retryNeeded === false || full.complete !== false)
               ? (full.signature ?? probe?.signature)
               : undefined;
         } else result.action = "unchanged";
@@ -362,7 +384,8 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
         retryCanvasAt = now().getTime() + settings.intervalMinutes * 60_000 * 3;
       else if (result.action === "refreshed") retryCanvasAt = 0;
       // Public sources have their own six-hour TTL even when Canvas hasn't changed.
-      if (allowed("external")) await deps.external(signal, trigger === "manual");
+      if (allowed("external"))
+        await deps.external(signal, trigger === "manual");
       else heldWhileAway = true;
     } catch {
       // Errors and cancellation never become a successful empty read.
@@ -403,7 +426,8 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
     /** owner: T33. App focus: the content probe runs on the next tick (at most once a minute). */
     focus() {
       const t = now().getTime();
-      if (!perCourse || t - focusAt < cadenceMinutes.focusFloor * 60_000) return;
+      if (!perCourse || t - focusAt < cadenceMinutes.focusFloor * 60_000)
+        return;
       focusAt = t;
       focusRequested = true;
       nextAt = 0;
@@ -414,11 +438,17 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
       // owner: T33: a new session re-baselines with a full read.
       hotBaseline = undefined;
       contentBaseline = undefined;
+      for (const course of Object.keys(componentBaseline))
+        delete componentBaseline[course];
       retryAt.clear();
       nextAt = 0;
     },
     cancel() {
       controller?.abort();
+    },
+    async cancelAndWait() {
+      controller?.abort();
+      await running;
     },
     async stop() {
       stopped = true;
