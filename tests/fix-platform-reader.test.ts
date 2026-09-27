@@ -12,6 +12,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { createStore, readerReceiptLogPath, ReaderSchemaError, SCHEMA_VERSION } from "@magic/storage";
 import { defaultPrivacy, type ResourceInput } from "@magic/contracts";
 import { createMcpService } from "../packages/core/src/mcp";
+import { restrictToCurrentUser } from "../apps/desktop/src/mcp-connection-acl";
 
 const at = "2099-01-01T12:00:00.000Z";
 const item = (externalId: string, text: string): ResourceInput => ({
@@ -148,6 +149,7 @@ test(
     mkdirSync(join(dir, "mcp"));
     const connection = join(dir, "mcp", "client.json");
     writeFileSync(connection, JSON.stringify({ clientId: "client", token }), { mode: 0o600 });
+    await restrictToCurrentUser(connection);
     assert.equal(readFileSync(connection, "utf8").includes("sqlite"), false);
     const client = new Client({ name: "reader test", version: "1.0.0" });
     const transport = new StdioClientTransport({
