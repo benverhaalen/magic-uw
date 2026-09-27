@@ -1,7 +1,7 @@
-# Magic Canvas Jev gateway
+# My Magic UW Jev gateway
 
 A small HTTP proxy in front of TypeSafe's Jev so the desktop app (and
-teammates) never see the TypeSafe API key. One key, owned by Magic Canvas,
+teammates) never see the TypeSafe API key. One key, owned by My Magic UW,
 pays for every request handled by this gateway. Students and teammates call this gateway's URL with
 an anonymous device token instead.
 

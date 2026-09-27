@@ -1,6 +1,6 @@
-# Magic Canvas vs Gemini Notebook (NotebookLM), Quizlet and Duolingo
+# My Magic UW vs Gemini Notebook (NotebookLM), Quizlet and Duolingo
 
-**Status:** researched facts about the competitors (sources below, checked 2026-09-26). Our side is **decided design, not yet measured.** Every speed or cost claim about Magic Canvas is a *target* until the [measurement plan](../plans/2026-09-26-measurement/plan.md) produces a number.
+**Status:** researched facts about the competitors (sources below, checked 2026-09-26). Our side is **decided design, not yet measured.** Every speed or cost claim about My Magic UW is a *target* until the [measurement plan](../plans/2026-09-26-measurement/plan.md) produces a number.
 
 ## Cost to the student
 | Product | What the student pays | Limits that bite during study |
@@ -8,10 +8,10 @@
 | **Gemini Notebook** (NotebookLM was renamed; its Help Center is now "Gemini Notebook Help") | Free; Google AI Plus $4.99/mo; AI Pro $19.99/mo; AI Ultra $100 or $200/mo | Free: 50 sources/notebook, 50 chats/day, 10 quizzes/day, 10 flashcard sets/day, 3 audio overviews/day. Pro: 300 sources, 500 chats/day, 100 quizzes/day. **Consumer tiers moved to compute-based usage limits (quota refreshes every 5 hours) from 2026-09-02, so these fixed daily counts may be outdated (corrected 2026-09-26; support.google.com/gemininotebook/answer/17670842)** |
 | **Quizlet** | Plus $35.99/yr; Plus Unlimited $44.99/yr (annual billing shown) | Plus: 3 practice tests, 20 Learn rounds, 3 textbook solutions **per month**. Unlimited removes those caps and adds study paths, progress and smart grading |
 | **Duolingo** | not a course-material tool; used here for engagement mechanics only | — |
-| **Magic Canvas** | **$5 once** (covers Jev and the service), plus **the student's own paid AI**: Claude Pro or higher, a paid ChatGPT plan, a paid Gemini API key, or an OpenRouter key | No app-side daily quotas. The student's provider limits apply. The app caches and precomputes, so repeated views don't spend the student's quota again |
+| **My Magic UW** | **$5 once** (covers Jev and the service), plus **the student's own paid AI**: Claude Pro or higher, a paid ChatGPT plan, a paid Gemini API key, or an OpenRouter key | No app-side daily quotas. The student's provider limits apply. The app caches and precomputes, so repeated views don't spend the student's quota again |
 
 **Honest reading:**
-- **Gemini Notebook's free tier costs less than Magic Canvas** for a student with no paid AI plan. Magic Canvas requires one.
+- **Gemini Notebook's free tier costs less than My Magic UW** for a student with no paid AI plan. My Magic UW requires one.
 - **For a student who already pays for Claude, ChatGPT or Gemini,** the marginal cost is $5 once, against Quizlet's annual fee or Gemini Notebook's quotas.
 
 **Our side of the cost** (targets, measured by the ledger in the [backend plan](../plans/2026-09-26-backend-optimization/plan.md)):
@@ -19,7 +19,7 @@
 - No hosted model spend, because the student's own plan or key pays.
 
 ## Efficiency: what the student spends in time and effort
-| Measure | Gemini Notebook | Quizlet | Magic Canvas (target, to measure) |
+| Measure | Gemini Notebook | Quizlet | My Magic UW (target, to measure) |
 |---|---|---|---|
 | **Getting course material in** | manual: upload or link each source (PDF, Docs, Slides, web, YouTube, audio; up to 500k words or 200 MB per source); Drive files re-sync | manual: make sets, import, or AI-generate from notes and slides | **automatic after one UW sign-in:** Canvas syllabus and assignments today; modules, files and pages next |
 | **Knows dates, assessments and course policy** | no in practice for a student: Google's Gemini LTI imports Canvas files as notebook sources, but only after an institution's Workspace for Education admin sets it up; an individual student can't connect it (corrected 2026-09-26; support.google.com/edu/assignments/answer/15672329) | no | yes: deadlines with evidence; course AI policy from the syllabus |
@@ -27,7 +27,7 @@
 | **Repeated artifacts** (guide, quiz, flashcards) | regenerated on request, within the daily quotas | Learn and Test rounds capped on Plus | precomputed when idle and cached by content hash; a revisit costs nothing |
 
 ## Capabilities
-| Capability | Gemini Notebook | Quizlet | Duolingo | Magic Canvas |
+| Capability | Gemini Notebook | Quizlet | Duolingo | My Magic UW |
 |---|---|---|---|---|
 | Grounded chat with citations | ✅ inline citations to sources | — | — | ✅ quotes **checked by code** against the exact source version; "couldn't find support" when unsupported |
 | Study artifacts | ✅ reports, mind maps, infographics, slide decks, audio and video overviews (incl. "cinematic"), Deep Research | AI study guides, summaries | — | study guide, briefing, FAQ, glossary, timeline, mind map, **exam coverage map**. Audio overview later |

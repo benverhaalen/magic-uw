@@ -1,6 +1,6 @@
 # Outlook, OneNote and OneDrive: setup and the E1 test
 
-Magic Canvas reads a student's UW Outlook mail and calendar, OneNote pages and linked OneDrive files through **its own Microsoft sign-in**. It never reuses Outlook on the web's session, cookies or tokens, and it never uses a Microsoft first-party client ID. It uses one app registration of ours, a public client with no secret.
+My Magic UW reads a student's UW Outlook mail and calendar, OneNote pages and linked OneDrive files through **its own Microsoft sign-in**. It never reuses Outlook on the web's session, cookies or tokens, and it never uses a Microsoft first-party client ID. It uses one app registration of ours, a public client with no secret.
 
 Status: built and tested in isolation against fakes (`tests/graph.test.ts`, `tests/outlook-oauth.test.ts`). It has not yet run against Microsoft or UW. E1 below is that test.
 
@@ -9,7 +9,7 @@ Status: built and tested in isolation against fakes (`tests/graph.test.ts`, `tes
 Portal steps were checked against learn.microsoft.com on 2026-09-26. The portal's labels change over time; the cited pages are the reference.
 
 1. **Microsoft Entra admin center → Entra ID → App registrations → New registration.** ([Register an application](https://learn.microsoft.com/entra/identity-platform/quickstart-register-app))
-   - **Name:** "Magic Canvas". Students see this name on Microsoft's consent screen.
+   - **Name:** "My Magic UW". Students see this name on Microsoft's consent screen.
    - **Supported account types:** choose the multitenant option for organizational directories. Current label: "Multiple Entra ID tenants"; older label: "Accounts in any organizational directory". Do not include personal Microsoft accounts. UW students sign in with their UW work-or-school account.
    - Leave the redirect URI empty here and select **Register**.
    - On the **Overview** page, copy the **Application (client) ID**.
@@ -42,7 +42,7 @@ Deliberately never requested or called:
 - no meeting accept, decline or respond endpoints
 - no `Files.Read.All` or `Sites.*`
 
-Magic Canvas never sends, replies to, moves or deletes mail, and never answers invitations. The only writes it makes are to the app's own OneDrive folder, and one calendar event per proposal the student clicked to confirm.
+My Magic UW never sends, replies to, moves or deletes mail, and never answers invitations. The only writes it makes are to the app's own OneDrive folder, and one calendar event per proposal the student clicked to confirm.
 
 ## 2. Where the client ID goes
 
