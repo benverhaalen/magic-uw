@@ -121,3 +121,10 @@
   .mc-calendar { padding:10px 16px 6px; }
   .mc-calendar-meta { margin:8px 0; }
 }
+
+/* The review's existing action area reserves its pending/recovery line.
+   Hidden sizing copy wraps at the same font/width and is excluded from accessibility. */
+.mc-calendar-action-feedback { display:grid; margin-top:8px; font:inherit; font-size:var(--magic-type-meta); line-height:1.5; }
+.mc-calendar-action-feedback > * { grid-area:1 / 1; min-width:0; }
+.mc-calendar-feedback-reserve { visibility:hidden; pointer-events:none; user-select:none; }
+.mc-calendar-action-feedback [role=alert] { color:var(--magic-ink-error); }

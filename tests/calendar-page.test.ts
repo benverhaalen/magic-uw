@@ -36,7 +36,7 @@ test('month commitments are not limited by proposal window, cancellation and exa
   const deadline = resolveDeadline([{ value: '2027-03-20T18:00:00Z', kind: 'due', quote: 'due', authority: 'structured', scopeConfirmed: true }]);
   const assignment = item('work', { kind: 'assignment', externalId: '55', deadline, submitted: true });
   const cancelled = item('cancelled', { workflowState: 'CANCELLED', calendar: { uid: 'cancel', allDay: true, start: '2027-03-20' } });
-  const duplicate = item('icswork', { calendar: { uid: 'a', allDay: false, start: '2027-03-20T18:00:00Z', assignmentExternalId: '55' } });
+  const duplicate = item('icswork', { sourceScope: 'calendar_feed', calendar: { uid: 'a', allDay: false, start: '2027-03-20T18:00:00Z', assignmentExternalId: '55' } });
   const entries = calendarItems([assignment, cancelled, duplicate], [], '2027-03-20', TZ);
   assert.equal(entries.length, 1); assert.equal(entries[0].resourceId, 'work'); assert.equal(entries[0].submitted, true);
   assert.match(requestedSuggestions([assignment], [], '2027-03-20', '2026-09-27T12:00:00Z', TZ).unavailable!, /two weeks/);
@@ -71,7 +71,8 @@ test('duplicate source records navigate to direct assignment and retain conflict
   const feed = item('feed', { sourceScope: 'calendar_feed', calendar: { uid: 'event-assignment-55', allDay: false, start: '2026-09-27T18:00:00Z' } });
   assert.equal(calendarItems([direct, feed], [], '2026-09-27', TZ).length, 1);
   feed.calendar!.start = '2026-09-28T18:00:00Z';
-  assert.equal(calendarItems([direct, feed], [], '2026-09-28', TZ).length, 1);
+  assert.equal(calendarItems([direct, feed], [], '2026-09-28', TZ).length, 0);
+  assert.equal(calendarItems([direct, feed], [], '2026-09-27', TZ)[0].conflict, true);
 });
 test('fall-back repeated clock hour retains positive actual duration with explicit clock-change detail', () => {
   const event = item('fold', { calendar: { uid: 'fold', allDay: false, start: '2026-11-01T06:30:00Z', end: '2026-11-01T07:15:00Z' } });

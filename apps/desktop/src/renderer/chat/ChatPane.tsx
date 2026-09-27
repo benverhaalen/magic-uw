@@ -285,32 +285,52 @@ function Answer({ x, r, runtime, Info }: { x: Exchange; r: ResultOf<"answer">; r
         {opened !== null ? <p className="magic-chat-meta" role="status">{opened || "Opened in your browser. This does not mark anything done."}</p> : null}
       </div>
     </div>
-    <Read item={r.item} bridge={runtime.bridge} />
+    <Read key={`${r.item.id}:${r.item.contentHash}:${r.item.courseKey}`} item={r.item} bridge={runtime.bridge} />
   </div>;
 }
 
-/** The exact local input, fetched only when the student opens it. Transient, inline. */
+/** The exact local input, fetched only when requested. Closing remains native and reversible.
+ * Failed/missing replies can retry; old bridge or unmounted requests cannot restore stale evidence.
+ */
 function Read({ item, bridge }: { item: ChatItem; bridge: ChatBridge }) {
   const [manifest, setManifest] = useState<ContextManifest | null>(null);
   const [error, setError] = useState("");
-  const loaded = useRef(false);
+  const [pending, setPending] = useState(false);
+  const loaded = useRef(false), inFlight = useRef(false), generation = useRef(0);
+  const details = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    generation.current++;
+    loaded.current = false;
+    inFlight.current = false;
+    setManifest(null); setError(""); setPending(false);
+    if (details.current) details.current.open = false;
+    return () => { generation.current++; };
+  }, [bridge.execute]);
   async function load() {
-    if (loaded.current || !bridge.execute) return;
-    loaded.current = true;
+    if (loaded.current || inFlight.current || !bridge.execute) return;
+    const current = generation.current;
+    inFlight.current = true;
+    setPending(true); setError("");
     try {
       const result = await bridge.execute({ type: "context", id: item.id, recipient: "local" });
-      setManifest(result.manifest ?? null);
-      if (!result.manifest) setError("The app did not return the input for this item.");
-    } catch (cause) {
-      loaded.current = false;
-      setError(cause instanceof Error && cause.message ? cause.message : "The input could not be prepared.");
+      if (generation.current !== current) return;
+      if (!result.manifest) {
+        setError("The saved input is unavailable. Try again.");
+        return;
+      }
+      loaded.current = true;
+      setManifest(result.manifest);
+    } catch {
+      if (generation.current === current) setError("Couldn’t load the saved input. Try again.");
+    } finally {
+      if (generation.current === current) { inFlight.current = false; setPending(false); }
     }
   }
   if (!bridge.execute) return null;
   const payload = manifest ? localContextPayload(manifest.payload) : null;
-  return <details className="magic-chat-read" onToggle={(e) => { if (e.currentTarget.open) void load(); }}>
+  return <details ref={details} className="magic-chat-read" onToggle={(e) => { if (e.currentTarget.open) void load(); }}>
     <summary>What Magic read</summary>
-    {error ? <p className="magic-chat-warning">{error}</p> : !manifest ? <p className="magic-chat-meta">Preparing the exact local input…</p> : <>
+    {error ? <div className="magic-chat-row"><p className="magic-chat-warning" role="status">{error}</p><Action tone="quiet" onClick={() => void load()} pending={pending}>Retry</Action></div> : !manifest ? <p className="magic-chat-meta" role="status">Preparing the saved input…</p> : <>
       {!manifest.allowed ? <p className="magic-chat-warning">{manifest.reason}</p> : null}
       {payload ? <pre>{`${payload.course}\n${payload.title}\n\n${payload.text}${payload.policy ? `\n\nPolicy evidence:\n${payload.policy}` : ""}`}</pre> : null}
     </>}

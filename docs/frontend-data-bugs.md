@@ -15,7 +15,7 @@ Follow-up:
 | ID | Finding | Status |
 | --- | --- | --- |
 | [FDB-001](#fdb-001-assignment-grade-share-lacks-account-and-capture-coverage-boundaries) | Assignment grade share lacks account and capture-coverage boundaries | Reproduced with synthetic inputs |
-| [FDB-002](#fdb-002-sign-in-bridge-discards-the-cancelled-outcome) | Sign-in bridge discards the cancelled outcome | Backend outcome built and tested in isolation (`feat/client-health`); App.tsx consumer open |
+| [FDB-002](#fdb-002-sign-in-bridge-discards-the-cancelled-outcome) | Sign-in bridge discards the cancelled outcome | Typed backend outcome and App consumer integrated; live authentication remains separately verified |
 | [FDB-003](#fdb-003-generation-pack-scope-cannot-select-the-requesting-account) | Generation pack scope cannot select the requesting account | Code-inspected; generation not run |
 | [FDB-004](#fdb-004-student-record-freshness-uses-a-term-length-horizon) | Student-record freshness uses a term-length horizon | Code-inspected; live hold changes not reproduced |
 
@@ -118,3 +118,21 @@ Private coursework, account identifiers, captures, logs, credentials, and sessio
 **Frontend boundary:** the pending Study output candidate keeps Notes generation unavailable. Display filtering or a disabled control does not repair the backend service. Existing LearningPanel generation also needs the requesting-account preflight described in FDB-003.
 
 **Proposed backend owner:** Nate/Nathaniel, pending acceptance. Reuse the canonical outgoing-content scrubber, before-call authorization and post-call validation against current consent/account/policy state. Acceptance must show synthetic identity handling, revocation during an in-flight call, no stale persistence and accurate receipts before enabling Notes generation.
+
+### FDB-005 follow-up: original-profile persistence and background read pressure
+
+The controlled September 27 promotion of published `df0ab25` to the original workspace preserved its database and state and captured no renderer exception. It still recorded two 30-second `magic:execute` timeouts; Chat reached its conversation but remained Starting. A later private page check restored exact material focus and scroll, which does not resolve the original-profile latency. Do not describe the earlier unknown JavaScript error as diagnosed or fixed.
+
+A separate renderer cause of sustained read pressure was identified: the two-second interval queued a follow-up while a slow snapshot was running, then drained that follow-up immediately at completion. The frontend now waits two seconds **after** a background read finishes, pauses hidden windows, and skips busy polls without queuing another read. Explicit refreshes and snapshot-less mutation refreshes retain their coalescing behavior. Focused scheduler/gate tests and typecheck pass; current original-profile performance after this change remains unverified. Full snapshot construction and queued command cancellation/priority remain backend work.
+
+## FDB-007: A prerequisite reference is promoted to the current assignment's due claim
+
+**Status:** reproduced through current domain extraction and core evidence resolution, using a synthetic equivalent and a private captured-target control. No backend fix or source mutation was performed.
+
+**Cause and impact:** the due-word matcher accepts “submitted/submission”; core `proseDeadlines` confirms a single own-description due mention without establishing which obligation it describes. A sentence saying that an earlier design submission must already be complete, with a date pointer to that earlier assignment, becomes a confirmed due date for the current assignment. This creates a false conflict and advances the conservative planning date. A control containing a genuine current-project due sentence remains conflicting.
+
+**Qualified captured evidence:** the target's structured due and day-precision title agree. Its separately captured availability-close date is a lock claim and is excluded from the due resolver. Removing only the suspect prerequisite sentence span from a private diagnostic rerun eliminates this target's fresh core conflict while preserving structured due, lock and title. This does not establish that all conflicting assignments are false, that previously saved projections were refreshed, or that every related copy has identical evidence.
+
+**Requested producer repair:** retain prerequisite/reference dates as inspectable evidence without confirming them as the current obligation. Test prerequisite pointers, genuine disagreements, current obligations in the same paragraph, multiple steps and explicit announced changes; preserve the exact raw span and account/course boundary. Regenerate evidence versions when eligible claims change so stale personal choices reopen. Do not hardcode dates or suppress description conflicts in the frontend.
+
+**Related persistence boundary:** canonical renderer families may include a trusted UID-only calendar contributor absent from backend option fingerprints. Keep personal choice saving unavailable when contributor coverage differs until backend and renderer use the same scoped, current relation evidence. Proposed backend owner: Nate/Nathaniel, pending acceptance.

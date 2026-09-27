@@ -86,3 +86,7 @@ Pinned main integration includes canonical learning and prepared Start Work. Rea
 
 
 Calendar week/month is now connected to the normal sidebar and per-entry history. Native real-copy checks verify full resource detail/return, expanded-day state/focus, explicitly accepted study blocks after restart and removal/Undo. Shared label projection is connected to course cards/page/sidebar and Calendar, while Home adopts it in its separate leaf. Full course visual calibration remains pending: missing-fact density and duplicate assignments still weaken the experience. No paper compliance replaces rendered comparison with the original Home anchor.
+
+### Chrome correction adoption gate · 2026-09-27
+
+For changes to shell/control consumers, follow the [latest correction](../../DESIGN.md#september-27-2026--chrome-and-control-correction). Record native-size before/after, normal/hover/keyboard-focus, pending/cancel/error and secondary text readability. Check actual computed glyph size/stroke, stable hit target and shell recovery width, and Geist400/normal with unchanged Lora500. Keep any unrendered consumer explicitly pending; a token update alone does not establish its adoption.

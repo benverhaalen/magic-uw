@@ -65,6 +65,7 @@
 .source-course-name { display: grid; min-width: 0; }
 .source-course-name strong { font-weight: inherit; overflow-wrap: anywhere; }
 .source-course-name .sources-fine { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-course details[open] .source-course-name .sources-fine { white-space: normal; overflow-wrap: anywhere; }
 .source-course-state, .source-scopes .tone-ok, .source-scopes .tone-quiet, .source-scopes .tone-attention { font-size: 12.5px; white-space: nowrap; }
 .tone-ok { color: var(--magic-ink-muted-strong); }
 .tone-quiet { color: var(--magic-ink-muted); }

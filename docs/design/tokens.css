@@ -30,8 +30,8 @@
   --magic-ink-on-shell: #fff4ed;
   --magic-ink-on-shell-secondary: #ffe9dd;
   --magic-fill-shell:
-    radial-gradient(ellipse 95% 78% at 8% 10%, #b1573d 0%, transparent 57%),
-    linear-gradient(155deg, #a14e38 0%, #873a2f 45%, #78332d 100%);
+    radial-gradient(ellipse 95% 78% at 8% 10%, #a44337 0%, transparent 57%),
+    linear-gradient(155deg, #91372f 0%, #792a2b 45%, #632329 100%);
   --magic-fill-shell-selected: #6f251d73;
   --magic-fill-shell-hover: #6f251d66;
 
@@ -62,14 +62,14 @@
   --magic-accent-current-time: #c15842;
 
   --magic-radius-workspace: 13px;
-  --magic-radius-control: 8px;
+  --magic-radius-control: 10px;
   --magic-radius-card: 8px;
   --magic-line-quiet: #dfd7ce;
   /* Use a 2px offset onto the ivory surface for filled-control focus;
      this blue against the darkest review fill alone is below 3:1. */
   --magic-focus: #3c70ac;
   --magic-focus-on-shell: #fff0df;
-  --magic-icon-stroke-seed: 1.65;
+  --magic-icon-stroke-seed: 1.35;
 
   /* Candidate status pairs: distinct text/symbol required, not hue alone.
      Not demonstrated by the historical Home reference. */
@@ -99,10 +99,13 @@
   --magic-type-compact-control: 0.8125rem;
   --magic-type-label: 0.6875rem;
   --magic-type-meta: 0.75rem;
-  --magic-glyph-control: 16px;
-  --magic-glyph-navigation: 16px;
-  --magic-glyph-trailing: 14px;
+  --magic-glyph-control: 18px;
+  --magic-glyph-navigation: 18px;
+  --magic-glyph-trailing: 16px;
   --magic-glyph-inline: 12px;
+  --magic-shell-perimeter: 6px;
+  --magic-shadow-action: 0 1px 2px #29231f12, 0 3px 8px -4px #29231f24;
+  --magic-ink-shell-action: #792a2b;
   --magic-shadow-overlay: 0 20px 70px #29231f28;
   --magic-shadow-popover: 0 8px 30px #29231f20;
 

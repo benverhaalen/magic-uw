@@ -1,3 +1,4 @@
+import { schedulePlanning, scheduleRailResources } from './schedule-projection';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { createOperationScope } from "../../../../packages/ui/src/operation-scope";
 import { requirePlanSave } from "./today-plan-save";
@@ -111,10 +112,10 @@ function TodayRailContent({
   const now = suppliedNow ?? clockNow;
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const rail = useMemo(
-    () => buildTodayRail(resources, now, timeZone, plan),
+    () => buildTodayRail(scheduleRailResources(resources), now, timeZone, plan),
     [resources, now, timeZone, plan],
   );
-  const due = homeDueItems ? homeDueItems.map(r => ({id:r.id,title:r.title,courseName:r.courseName,dueMin:localTime(r.deadline.planningAt!,timeZone).min,conflict:r.deadline.conflict})) : rail.due;
+  const due = homeDueItems ? homeDueItems.map(r => { const date=schedulePlanning(r,timeZone)!; return {id:r.id,title:r.title,courseName:r.courseName,dueMin:date.minute,conflict:date.conflict,personal:date.personal,needsReview:date.needsReview}; }) : rail.due.map(d=>({...d,personal:false,needsReview:false}));
   const notes = useMemo(() => changeNotes(changes, now, timeZone), [changes, now, timeZone]);
   // Home keeps crowded days scannable without hiding a lone item behind a control.
   const dueShown = homeDueItems ? Math.min(homeDueCount, due.length) : due.length;
@@ -124,19 +125,19 @@ function TodayRailContent({
       <button
         className="rail-row"
         data-focus-key={`today-${d.id}`}
-        title={`${d.title} · ${d.courseName}${d.conflict ? " · dates disagree, planning for the earlier one" : ""}${notes.get(d.id) ? ` · ${notes.get(d.id)!.join(" · ")}` : ""}`}
+        title={`${d.title} · ${d.courseName}${d.needsReview ? " · saved date evidence changed; review your planning date" : d.conflict ? " · dates disagree, planning for the earlier one" : ""}${notes.get(d.id) ? ` · ${notes.get(d.id)!.join(" · ")}` : ""}`}
         onClick={() => onSelect(d.id)}
       >
-        <span className="rail-time">{clock(d.dueMin)}</span>
+        <span className="rail-time">{d.needsReview ? "Review date" : d.conflict ? "Check date" : d.dueMin === null ? "Time not provided" : clock(d.dueMin)}</span>
         <span className="rail-row-main">
-          <span className="rail-row-title">{d.title}</span>
+          <span className="rail-row-title">{d.title}</span>{d.personal && <span className="rail-course">Your planning date</span>}
           {homeDueItems && courseLabel && <span className="rail-course">{courseLabel(homeDueItems.find(r=>r.id===d.id)!)}</span>}
           {(notes.get(d.id) ?? []).map((n) => (
             <span key={n} className="rail-change">{n}</span>
           ))}
         </span>
-        {d.conflict ? (
-          <span className="rail-flag" aria-label="Dates disagree">
+        {d.conflict || d.needsReview ? (
+          <span className="rail-flag" aria-label={d.needsReview ? "Review date" : "Dates disagree"}>
             !
           </span>
         ) : null}

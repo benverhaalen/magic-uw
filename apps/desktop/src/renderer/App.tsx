@@ -1,3 +1,6 @@
+import { CoursesViewHeader } from './courses/CoursesViewToggle';
+import { CoursesWorkList, type WorkReportResult } from './courses/CoursesWorkView';
+import { projectCourseWork, isCourseWorkActionCurrent, type CourseWorkRow } from './courses/course-work-model';
 import { ConversationLauncher } from "./conversation-launcher";
 import { ChatPane, chatCourse, chatScopeForPage, chatPromptError, startChat, continueChat, getChat, type ChatOrigin } from "./chat";
 import { resetChats } from "./chat/store";
@@ -30,9 +33,12 @@ import { ConsentSetup, hasUwConsent, missingConsents } from "./consent/ConsentSe
 import { Onboarding, needsFirstRunSetup } from "./onboarding";
 import { signInMessage } from "./sign-in";
 import { CalendarPage } from "./CalendarPage";
+import { canonicalHomeResources } from "./home/projection";
 import { DesktopShell, Glyph } from "./DesktopShell";
+import { CanvasMark } from "./prepared-work/canvas-mark";
 import { Home, ObjectLink } from "./Home";
 import { SnapshotGate } from "./snapshot-gate";
+import { startSnapshotPolling } from "./snapshot-poll";
 import { StartWork, preparedWorkRevision } from "./StartWork";
 import { WORKSPACE_FAILURE, workspaceFailureMessage } from "./workspace-feedback";
 import { PersonalReport } from "./PersonalReport";
@@ -40,6 +46,42 @@ import { Action, Disclosure } from "../../../../packages/ui/src";
 import { useDesktopNavigation, type DesktopView } from "./navigation";
 import { CourseSpaceDetails } from "./CourseSpaceDetails";
 import { NotificationsMenu, notificationDestination, type NotificationDestination } from "./notifications";
+
+function ShellFeedback({ error, notice, view, onDismiss }: { error: string; notice: string; view: DesktopView; onDismiss: () => void }) {
+  const details = useRef<HTMLDetailsElement>(null);
+  const [open, setOpen] = useState(false);
+  const close = () => { if (details.current) details.current.open = false; };
+  useEffect(() => { close(); }, [view]);
+  useEffect(() => {
+    if (!open) return;
+    const outside = (event: PointerEvent) => { if (!details.current?.contains(event.target as Node)) close(); };
+    document.addEventListener("pointerdown", outside);
+    return () => document.removeEventListener("pointerdown", outside);
+  }, [open]);
+  if (!error && !notice) return null;
+  const message = error ? workspaceFailureMessage(error) : notice;
+  const summary = error ? message.split(". ")[0]
+    : notice === signInMessage({ status: "cancelled", service: "canvas" }) ? "Sign-in cancelled · nothing read"
+    : notice;
+  return <div className={`desktop-feedback ${error ? "is-error" : ""}`} role={error ? "alert" : "status"}>
+    <details ref={details} onToggle={event => setOpen(event.currentTarget.open)}
+      onBlur={event => { if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) close(); }}
+      onKeyDown={event => { if (event.key === "Escape" && event.currentTarget.open) { event.preventDefault(); close(); event.currentTarget.querySelector("summary")?.focus(); } }}>
+      <summary title={message}>{summary}</summary>
+      <div className="desktop-feedback-content"><span>{message}</span>{error && <details><summary>Error details</summary><p>{error}</p></details>}</div>
+    </details>
+    <button aria-label={error ? "Dismiss error" : "Dismiss notice"} onClick={event => {
+      const shell = event.currentTarget.closest(".desktop-chrome");
+      const target = shell?.querySelector<HTMLButtonElement>(".desktop-source-action") ?? shell?.querySelector<HTMLButtonElement>("button");
+      onDismiss();
+      target?.focus();
+    }}>×</button>
+  </div>;
+}
+import { ResourceDetailHeader, ResourceProvenance } from "./ResourceDetailHeader";
+import { effectiveCoursePolicy } from "../../../../packages/domain/src/course-policy";
+import { ResourceAssignment } from "./ResourceAssignment";
+import { DeadlineReview } from "./DeadlineReview";
 
 type View = DesktopView;
 // owner: T05b. Route slots, each rendering nothing until its task fills it: the notebook (T43),
@@ -195,8 +237,8 @@ export function App() {
     return () => document.removeEventListener("magic-resource-open", handle);
   }, [navigation]);
 
-  const refresh = useCallback(async () => {
-    const version = snapshotGate.current.beginRead();
+  const refresh = useCallback(async (queueIfBusy = true) => {
+    const version = snapshotGate.current.beginRead(queueIfBusy);
     if (version === null) return;
     try {
       if (!window.magic)
@@ -223,14 +265,19 @@ export function App() {
 
   useEffect(() => {
     mounted.current = true;
-    void refresh();
-    const timer = window.setInterval(() => {
-      if (!document.hidden) void refresh();
-    }, 2000);
+    const stopPolling = startSnapshotPolling(() => refresh(false), {
+      hidden: () => document.hidden,
+      schedule: callback => window.setTimeout(callback, 2000),
+      cancel: timer => window.clearTimeout(timer),
+      onVisibility: callback => {
+        document.addEventListener('visibilitychange', callback);
+        return () => document.removeEventListener('visibilitychange', callback);
+      },
+    });
     return () => {
       mounted.current = false;
       snapshotGate.current.invalidate();
-      window.clearInterval(timer);
+      stopPolling();
     };
   }, [refresh]);
 
@@ -383,6 +430,24 @@ export function App() {
   const courseInput = { resources, sources: snapshot?.sources ?? [], courseIntelligence: snapshot?.courseIntelligence, now: snapshot?.generatedAt ?? new Date().toISOString() };
   const typeHueOf = createAssignmentTypeHues(snapshot?.resources ?? [], snapshot?.sources ?? []);
   const courseCards = buildCourseCards(courseInput);
+  const courseWorkModel = snapshot?.courseWorkAdmission ? projectCourseWork({resources, sources:snapshot.sources, admission:snapshot.courseWorkAdmission, links:snapshot.links, personalWorkReports:snapshot.personalWorkReports, generatedAt:snapshot.generatedAt, timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone}) : null;
+  const currentWorkModel=useRef(courseWorkModel);currentWorkModel.current=courseWorkModel;
+  async function reportCourseWork(row:CourseWorkRow, checked:boolean, operationId:string):Promise<WorkReportResult> {
+    const current=currentWorkModel.current?.rows.find(item=>item.key===row.key);
+    if (!current?.report || !row.report || current.scopeKey!==row.scopeKey) return {status:'conflict',reason:'scope-changed'};
+    if (current.report.obligationVersion!==row.report.obligationVersion) return {status:'conflict',reason:'obligation-changed'};
+    const result=await run({type:'personal-work',value:{...row.report.descriptor,checked,operationId,expectedRevision:row.report.revision}});
+    const fresh=result ?? await run({type:'snapshot'});
+    const saved=fresh?.snapshot.personalWorkReports?.find(item=>item.issueId===row.report!.issueId);
+    if(saved && saved.sourceVersion===row.report.obligationVersion && saved.checked===checked && saved.revision>row.report.revision)
+      return {status:'saved',issueId:saved.issueId,revision:saved.revision,checked:saved.checked,reportedAt:saved.reportedAt};
+    return saved && saved.revision!==row.report.revision ? {status:'conflict',reason:'revision'} : {status:'unavailable',reason:'storage'};
+  }
+  function openCourseWork(row:CourseWorkRow) {
+    const model=currentWorkModel.current;
+    if(!model || !isCourseWorkActionCurrent(row,model) || !row.resourceId) throw new Error('This item is no longer available.');
+    setSelectedId(row.resourceId);
+  }
   const coursePage = navigation.courseKey ? buildCoursePage(courseInput, navigation.courseKey) : null;
   // Notification rows route by stable IDs: the saved item, its course page, Outlook or Sources.
   const notificationTarget = (item: AppNotification) => notificationDestination(item, {
@@ -399,6 +464,7 @@ export function App() {
     else open(target.url);
   };
   const selected =
+    canonicalHomeResources(resources, snapshot?.sources ?? [], snapshot?.links ?? [], snapshot?.courseWorkAdmission?.aliases).find((resource) => resource.id === selectedId) ??
     resources.find((resource) => resource.id === selectedId) ?? null;
   const unavailableSources =
     snapshot?.sources.filter(
@@ -407,7 +473,7 @@ export function App() {
   const needsSignIn = unavailableSources.some(
     (source) => source.status === "needs_sign_in",
   );
-  const pageTitle = view === "chat" ? "Chat" : view === "resource" ? selected?.title ?? "Saved item" : view === "courses" && coursePage ? coursePage.code || coursePage.courseName : ({today:"Home", courses:"Courses", myuw:"My UW", calendar:"Calendar", sources:"Connected sources", privacy:"Data & AI", consent:"Agreements"} as Partial<Record<View,string>>)[view] ?? "Workspace";
+  const pageTitle = view === "chat" ? "Chat" : view === "resource" ? selected?.kind === "assignment" ? "Assignment" : selected?.kind === "material" ? "Saved material" : "Saved item" : view === "courses" && coursePage ? coursePage.code || coursePage.courseName : ({today:"Home", courses:"Courses", myuw:"My UW", calendar:"Calendar", sources:"Connected sources", privacy:"Data & AI", consent:"Agreements"} as Partial<Record<View,string>>)[view] ?? "Workspace";
   const captureChatOrigin = (): ChatOrigin => {
     const place = navigation.capturePlace();
     return { view, resourceId: selectedId, courseKey: navigation.courseKey, label: pageTitle, focusKey: place.focus, anchor: place.anchor, offset: place.offset, scroll: place.scroll,
@@ -442,12 +508,10 @@ export function App() {
       onNavigate={setView} onCourse={key => navigation.navigate("courses", null, key)}
       status={<>
         {snapshot?.sources.some(source => source.kind === "canvas" && source.status === "needs_sign_in") && window.magic.signInUW ?
-          <button className="desktop-source-action" aria-label="Canvas needs sign-in. Sign in to check saved coursework for updates." aria-busy={signInStage !== "idle" || undefined} aria-disabled={busy || undefined} onClick={() => { if (!busy) void signIn(); }}>
-            <Glyph name="school"/><span>{signInStage === "signin" ? "Opening sign-in…" : signInStage === "checking" ? "Checking Canvas…" : "Canvas · Sign in"}</span>
+          <button className="desktop-source-action desktop-canvas-action" aria-label="Sign in to Canvas" aria-busy={signInStage !== "idle" || undefined} aria-disabled={busy || undefined} onClick={() => { if (!busy) void signIn(); }}>
+            <span>{signInStage === "signin" ? "Opening…" : signInStage === "checking" ? "Checking…" : "Sign in to"}</span><CanvasMark/>
           </button> : needsSignIn ? <button className="desktop-source-action" onClick={() => setView("sources")}><Glyph name="settings"/><span>Review sign-in</span></button> : null}
-        {(error || notice) && <div className={`desktop-feedback ${error ? "is-error" : ""}`} role={error ? "alert" : "status"}>
-          <div><span>{error ? workspaceFailureMessage(error) : notice}</span>{error && <details><summary>Error details</summary><p>{error}</p></details>}</div><button aria-label={error ? "Dismiss error" : "Dismiss notice"} onClick={() => { setError(""); setNotice(""); }}>×</button>
-        </div>}
+        <ShellFeedback error={error} notice={notice} view={view} onDismiss={() => { setError(""); setNotice(""); }}/>
       </>}
       trailing={<NotificationsMenu feed={snapshot?.notifications} busy={busy} run={run} destinationOf={notificationTarget} onOpen={openNotification} onOpenSources={() => setView("sources")} onOpenPrivacy={() => navigation.navigate("privacy", null, null, undefined, snapshot?.privacy.mode === "local_only" ? undefined /* the mode choice at the top unlocks Jev */ : { focus: "privacy-jev", anchor: "privacy-models" })}/>}
       launcher={snapshot ? <ConversationLauncher<ChatOrigin> key={chatAccountKey} here={{key:`${view}:${selectedId ?? ''}:${navigation.courseKey ?? ''}`,label:pageTitle}} captureOrigin={captureChatOrigin} mode={view === 'chat' && selectedId ? 'follow-up' : 'new-chat'} chatId={view === 'chat' ? selectedId ?? undefined : undefined} onSubmit={entry => {
@@ -500,16 +564,16 @@ export function App() {
                 onSample={() => run({ type: "fixture" })}
               />
             ) : (
-              <Home todayCount={navigation.homeTodayCount} onTodayCountChange={navigation.updateHomeTodayCount} upcomingCount={navigation.homeUpcomingCount} onUpcomingCountChange={navigation.updateHomeUpcomingCount} snapshot={snapshot} resources={resources} onSelect={setSelectedId} onCourses={() => { setQuery(""); setView("courses"); }} onSources={() => setView("sources")} onPlan={command => requirePlanSave(run, command)} onJoin={window.magic.openLink ? url => { void perform(() => window.magic.openLink!(url)); } : undefined} report={(resource, summary) => <PersonalReport resource={resource} snapshot={snapshot} run={run} compactWhenHandled summary={summary}/>} onSetup={() => openConsent()} onNotice={setNotice} />
+              <Home onOpenSource={open} todayCount={navigation.homeTodayCount} onTodayCountChange={navigation.updateHomeTodayCount} upcomingCount={navigation.homeUpcomingCount} onUpcomingCountChange={navigation.updateHomeUpcomingCount} snapshot={snapshot} resources={resources} onSelect={setSelectedId} onCourses={() => { setQuery(""); setView("courses"); }} onSources={() => setView("sources")} onPlan={command => requirePlanSave(run, command)} onJoin={window.magic.openLink ? url => { void perform(() => window.magic.openLink!(url)); } : undefined} reviewDates={resource => <DeadlineReview resource={resource} run={run} onInspect={()=>setSelectedId(resource.id)}/>} report={(resource, summary) => <PersonalReport resource={resource} snapshot={snapshot} run={run} compactWhenHandled summary={summary}/>} onSetup={() => openConsent()} onNotice={setNotice} />
             )}
           </>
         ) : view === "chat" ? (
           <ChatPane typeHueOf={typeHueOf} chatId={selectedId ?? ''} bridge={window.magic} resources={resources} sources={snapshot.sources} courses={courseCards.map(card => chatCourse(card))} now={new Date().toISOString()} Info={EvidenceInfo} onBack={() => navigation.canBack ? navigation.back() : setView('today')} onOpenSetup={target => setView(target === 'sources' ? 'sources' : 'privacy')}/>
         ) : view === "resource" ? (
-          selected ? <ResourceDetail key={selected.id} resource={selected} snapshot={snapshot} busy={busy} run={run} open={open} onClose={navigation.back} />
+          selected ? <ResourceDetail key={selected.id} resource={selected} snapshot={snapshot} busy={busy} run={run} open={open} onClose={navigation.back} onSetup={() => openConsent()} onNotice={setNotice} />
             : <section className="initial-state"><h1 tabIndex={-1}>This item is no longer available.</h1><p>The saved item may have been removed or excluded. Your previous page is still available.</p><button className="button" onClick={navigation.back}>Go back</button></section>
         ) : view === "calendar" ? (
-          <section className="desktop-calendar"><CalendarPage resources={resources} sources={snapshot.sources} plan={snapshot.dayPlan ?? []}
+          <section className="desktop-calendar"><CalendarPage resources={resources} sources={snapshot.sources} links={snapshot.links} aliases={snapshot.courseWorkAdmission?.aliases} plan={snapshot.dayPlan ?? []}
             state={navigation.calendarState} onStateChange={navigation.updateCalendar} restoreFocusId={navigation.calendarFocus}
             onSelect={navigation.openCalendarResource} formatCourseLabel={(id, fallback) => { const resource = resources.find(r => r.id === id); const account = resource && accountBySource.get(resource.sourceId); const card = resource && courseCards.find(c => c.key === courseKey(account ?? resource.sourceId, resource.courseId)); return card?.code ?? card?.courseName ?? fallback; }} onPlan={async command => { const result = await run(command); if (!result) throw new Error("Calendar change was not saved"); return result; }}/></section>
         ) : view === "myuw" ? (
@@ -518,7 +582,7 @@ export function App() {
             signIn={(service) => uwConsented /* owner: T06 */ ? void perform(async () => { const outcome = await window.magic.signInUW?.(service); if (outcome?.status !== "confirmed") { setNotice(outcome ? signInMessage(outcome) : "Sign-in was not confirmed. Try again."); return; } return window.magic.syncPlanning?.(); }) : openConsent()} />
         ) : view === "courses" ? (
           <section className="desktop-courses">
-            {navigation.courseKey ? coursePage ? <CoursePageView typeHueOf={typeHueOf} key={coursePage.key} page={coursePage} selectedId={null} onSelect={setSelectedId} onBack={() => navigation.navigate("courses")} open={open} detail={null}/> : <><h1 tabIndex={-1}>Course unavailable</h1><p>This course is no longer included in the saved workspace.</p><Action onClick={() => navigation.navigate("courses")}>View courses</Action></> : <CoursesIndex cards={courseCards} now={courseInput.now} typeHueOf={typeHueOf} onOpen={key => navigation.navigate("courses", null, key)} onSources={() => setView("sources")}/>}
+            {navigation.courseKey ? coursePage ? <CoursePageView typeHueOf={typeHueOf} key={coursePage.key} page={coursePage} selectedId={null} onSelect={setSelectedId} onBack={() => navigation.navigate("courses")} open={open} detail={null}/> : <><h1 tabIndex={-1}>Course unavailable</h1><p>This course is no longer included in the saved workspace.</p><Action onClick={() => navigation.navigate("courses")}>View courses</Action></> : <><CoursesViewHeader termLabel={courseWorkModel?.scope.term.label ?? "Courses"} mode={navigation.coursesMode} onChange={navigation.switchCoursesMode}/>{navigation.coursesMode === 'list' && courseWorkModel ? <CoursesWorkList model={courseWorkModel} state={navigation.courseWorkState} onStateChange={navigation.updateCourseWorkState} timeZone={Intl.DateTimeFormat().resolvedOptions().timeZone} onOpen={openCourseWork} onAction={openCourseWork} onReport={reportCourseWork} onSources={()=>setView('sources')}/> : <CoursesIndex showHeader={false} cards={courseCards} now={courseInput.now} typeHueOf={typeHueOf} onOpen={key => navigation.navigate("courses", null, key)} onSources={() => setView("sources")}/>}</>}
           </section>
         ) : view === "consent" ? (
           // owner: T06. Consent route: setup, a new recipient's consent, or Agreements.
@@ -742,6 +806,8 @@ function ResourceDetail({
   run,
   open,
   onClose,
+  onSetup,
+  onNotice,
 }: {
   resource: ResourceView;
   snapshot: Snapshot;
@@ -749,6 +815,8 @@ function ResourceDetail({
   run: Run;
   open: (url: string) => void;
   onClose: () => void;
+  onSetup: () => void;
+  onNotice: (text: string) => void;
 }) {
   const [recipient, setRecipient] = useState<Recipient>("local");
   const [manifest, setManifest] = useState<ContextManifest | null>(null);
@@ -757,9 +825,19 @@ function ResourceDetail({
   const source = snapshot.sources.find(
     (candidate) => candidate.id === resource.sourceId,
   );
+  const courseProfile = source && snapshot.courseIntelligence?.find(profile =>
+    profile.accountScope === source.accountScope && profile.courseId === resource.courseId);
+  const effectivePolicy = effectiveCoursePolicy(courseProfile, resource, courseProfile?.freshness);
+  const policyResource = { ...resource, policy: { mode: effectivePolicy.mode, evidence: effectivePolicy.evidence } };
+  const policyRevision = JSON.stringify([effectivePolicy.inputHash, effectivePolicy.mode, effectivePolicy.conflict]);
   const links = snapshot.links.filter(
     (link) => link.fromId === resource.id || link.toId === resource.id,
   );
+  const sameDestinationLinks = links.length > 0 && links.every(link => {
+    const otherId = link.fromId === resource.id ? link.toId : link.fromId;
+    const other = snapshot.resources.find(candidate => candidate.id === otherId);
+    return Boolean(other && other.url === resource.url && other.title === resource.title);
+  });
   const preview = async () => {
     const result = await run({ type: "context", id: resource.id, recipient });
     setManifest(result?.manifest ?? null);
@@ -769,76 +847,48 @@ function ResourceDetail({
     setManifest(null);
   }, [
     resource.contentHash,
+    policyRevision,
     snapshot.privacy.mode,
     snapshot.privacy.jevEnabled,
     snapshot.privacy.hostedProvider,
     snapshot.privacy.shareCourseText,
     snapshot.privacy.shareStudentWork,
   ]);
+  const policyDetails = (
+<Disclosure label={`Course AI policy · ${effectivePolicy.mode}`} placeKey={`resource-policy:${resource.id}`}>
+        {effectivePolicy.conflict && <p className="attention-text">Saved policy sources disagree. The more restrictive policy applies.</p>}
+        <p className="source-text">
+          {effectivePolicy.evidence ||
+            "No AI policy was found in the captured material. Coaching is the default."}
+        </p>
+        {courseProfile?.freshness !== undefined && courseProfile.freshness !== "current_capture" && <p className="small muted">Course policy sources are {courseProfile.freshness}. The effective saved policy applies here.</p>}
+        {effectivePolicy.resourceIds.length > 0 && <ul className="evidence-list">{effectivePolicy.resourceIds.map(id => {
+          const evidence = snapshot.resources.find(candidate => candidate.id === id);
+          return <li key={id}>{evidence ? <ObjectLink resource={evidence} /> : "Policy source is unavailable"}</li>;
+        })}</ul>}
+      </Disclosure>
+  );
   return (
     <section className="resource-detail" aria-label="Selected item">
-      <p className="eyebrow">{resource.kindLabel ?? resource.kind}</p>
-      <p className="detail-course">{resource.courseName}</p>
-      <h2 tabIndex={-1}>{resource.title}</h2>
-      {changedWhileReading && <p className="evidence-note" role="status">This saved item changed while you were reading. Its requirements and dates below reflect the latest capture; your position has been kept.</p>}
-      <dl className="facts">
-        <div>
-          <dt>Due</dt>
-          <dd className={resource.deadline.conflict ? "attention-text" : ""}>
-            {resource.deadline.conflict
-              ? "Dates conflict"
-              : resource.deadline.dueAt
-                ? formatDate(resource.deadline.dueAt, true)
-                : "No confirmed due date"}
-          </dd>
-        </div>
-        {resource.points !== null ? (
-          <div>
-            <dt>Points</dt>
-            <dd>{resource.points}</dd>
-          </div>
-        ) : null}
-        <div>
-          <dt>Source</dt>
-          <dd>{source?.label ?? resource.sourceId}</dd>
-        </div>
-        <div>
-          <dt>Last seen</dt>
-          <dd>{formatDate(resource.observedAt, true)}</dd>
-        </div>
-        <div>
-          <dt>Status</dt>
-          <dd>
-            {resource.submitted === true
-              ? "Submitted · reported by source"
-              : resource.completed
-                ? "Marked complete locally"
-                : resource.submitted === false
-                  ? "Not submitted · reported by source"
-                  : "Submission status unknown"}
-          </dd>
-        </div>
-      </dl>
-      {source && (source.status !== "ok" || !source.complete) ? (
-        <div className="evidence-note">
-          {statusLabels[source.status]}. This item may have changed since its
-          last successful capture.
-        </div>
-      ) : null}
-      <Action onClick={() => open(resource.url)}>Open original <Glyph name="external" /></Action>
-      <p className="source-url">{resource.url}</p>
-      <section className="detail-section">
-        <h3>Instructions</h3>
-        {resource.text ? (
+      <ResourceDetailHeader resource={resource} snapshot={snapshot} open={open} changedWhileReading={changedWhileReading}
+        deadlineReview={resource.deadline.conflict ? <DeadlineReview resource={resource} run={run} onInspect={() => {
+        const target = document.getElementById(`deadline-evidence-${resource.id}`);
+        const disclosure = target?.querySelector('details');
+        if (disclosure) disclosure.open = true;
+        target?.querySelector('summary')?.focus({ preventScroll: true });
+        target?.scrollIntoView({ block: 'nearest' });
+      }} /> : null} />
+      {resource.kind === "assignment" ? <ResourceAssignment resource={resource} snapshot={snapshot} policy={policyDetails} onSetup={onSetup} onNotice={onNotice} onOpenOriginal={() => open(resource.url)}
+        provenance={<ResourceProvenance resource={resource} snapshot={snapshot} />} /> : <>
+        {resource.text ? <section className="detail-section">
+          <h3>Source content</h3>
           <p className="source-text">{resource.text}</p>
-        ) : (
-          <p className="muted">No instructions were found in this capture.</p>
-        )}
-      </section>
-      {resource.kind === "assignment" && <StartWork resource={resource} refreshKey={preparedWorkRevision(snapshot)}/> }
+        </section> : <p className="muted small">{resource.kind === "material" ? "This capture saved a link. Open the material to read its content." : "This capture has no saved text. Open the original to read its content."}</p>}
+        <ResourceProvenance resource={resource} snapshot={snapshot} />
+      </>}
       {links.length ? (
         <section className="detail-section">
-          <h3>Related material</h3>
+          <Disclosure label={sameDestinationLinks ? "Linked source evidence" : "Related material"} defaultOpen={!sameDestinationLinks} placeKey={`resource-links:${resource.id}`}>
           {links.map((link) => {
             const otherId =
               link.fromId === resource.id ? link.toId : link.fromId;
@@ -887,16 +937,11 @@ function ResourceDetail({
               </div>
             );
           })}
+          </Disclosure>
         </section>
       ) : null}
-      <Disclosure label="Deadline evidence">
-        <p className="muted small">{resource.deadline.reason}</p>
-        {resource.deadline.conflict && resource.deadline.planningAt ? (
-          <p className="evidence-note">
-            For planning: {formatDate(resource.deadline.planningAt, true)}.
-            Confirm the date in the source.
-          </p>
-        ) : null}
+      {(resource.kind === "assignment" || resource.deadline.conflict || resource.deadline.claims.length > 0) && <section id={`deadline-evidence-${resource.id}`}><Disclosure label="Deadline evidence" placeKey={`resource-deadline:${resource.id}`}>
+        <p className="muted small">Saved source interpretation: {resource.deadline.reason}</p>
         {resource.deadline.claims.length ? (
           <ul className="evidence-list">
             {resource.deadline.claims.map((claim, index) => (
@@ -921,18 +966,13 @@ function ResourceDetail({
             No date claims are available in this capture.
           </p>
         )}
-      </Disclosure>
-      <Disclosure label={`Course AI policy · ${resource.policy.mode}`}>
-        <p className="source-text">
-          {resource.policy.evidence ||
-            "No AI policy was found in the captured material. Coaching is the default."}
-        </p>
-      </Disclosure>
-      <LearningPanel key={`${resource.id}:${source?.accountScope}:${resource.contentHash}:${JSON.stringify(snapshot.privacy)}`} resource={resource} accountScope={source?.accountScope} />
+      </Disclosure></section>}
+      {resource.kind !== "assignment" && policyDetails}
+      <LearningPanel key={`${resource.id}:${source?.accountScope}:${resource.contentHash}:${JSON.stringify(snapshot.privacy)}`} resource={policyResource} accountScope={source?.accountScope} />
       <LocalAiPanel
-        key={`${resource.contentHash}:${JSON.stringify(snapshot.privacy)}`}
-        resource={resource}
-        privacyKey={JSON.stringify(snapshot.privacy)}
+        key={`${resource.contentHash}:${policyRevision}:${JSON.stringify(snapshot.privacy)}`}
+        resource={policyResource}
+        privacyKey={`${policyRevision}:${JSON.stringify(snapshot.privacy)}`}
       />
 
       <section className="detail-section">

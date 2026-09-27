@@ -4,8 +4,8 @@ export class SnapshotGate {
   private reading = false;
   private mutating = false;
   private queued = false;
-  beginRead(): number | null {
-    if (this.reading || this.mutating) { this.queued = true; return null; }
+  beginRead(queueIfBusy = true): number | null {
+    if (this.reading || this.mutating) { this.queued ||= queueIfBusy; return null; }
     this.reading = true;
     return ++this.version;
   }

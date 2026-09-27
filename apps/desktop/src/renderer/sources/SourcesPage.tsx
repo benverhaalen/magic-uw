@@ -582,7 +582,7 @@ function OutlookDetails({ connection: c, bridge, busy, graph, icsConnected, onCh
       } else await onSourcesChanged?.();
     } catch (cause) {
       if (!current()) return;
-      setMessage({ text: saved ? "Saved, but the follow-up check did not finish. Any partial results stay available. Refresh now tries again." : cause instanceof Error ? cause.message : "The calendar change could not be confirmed. Check its status before trying again.", alert: true, field: true });
+      setMessage({ text: saved ? "Saved, but the follow-up check did not finish. Any partial results stay available. Refresh now tries again." : "The calendar change could not be confirmed. Check its status before trying again.", alert: true, field: true });
     } finally { finish(); }
   };
   const connectGraph = async () => {
@@ -596,7 +596,7 @@ function OutlookDetails({ connection: c, bridge, busy, graph, icsConnected, onCh
       const reported = status.outlook === "needs_uw_approval" || status.outlook === "expired" || status.outlook === "error";
       setMessage(status.outlook === "connected" ? { text: "Connected. Mail and calendar are read on the next check.", alert: false } : { text: reported ? "Microsoft did not connect." : graphMessage(status.outlook), alert: true });
     } catch (cause) {
-      if (current()) setMessage({ text: cause instanceof Error ? cause.message : "Microsoft sign-in did not finish. Check its status before trying again.", alert: true });
+      if (current()) setMessage({ text: "Microsoft sign-in did not finish. Check its status before trying again.", alert: true });
     } finally { finish(); }
   };
   const disconnectGraph = async () => {
@@ -610,7 +610,7 @@ function OutlookDetails({ connection: c, bridge, busy, graph, icsConnected, onCh
       if (!current()) return;
       setMessage({ text: "Disconnected. Mail, calendar events, OneNote pages and OneDrive files read through Microsoft were removed from this device.", alert: false });
     } catch (cause) {
-      if (current()) setMessage({ text: cause instanceof Error ? cause.message : "Outlook disconnection could not be confirmed. Check its status before trying again.", alert: true });
+      if (current()) setMessage({ text: "Outlook disconnection could not be confirmed. Check its status before trying again.", alert: true });
     } finally { finish(); }
   };
   const disabled = busy || working;

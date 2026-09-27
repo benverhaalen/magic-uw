@@ -1,3 +1,5 @@
+import { courseWorkAdmission } from "./course-work-scope";
+import { currentPersonalDeadlineSource } from "./personal-deadlines";
 import type { CourseCoreStore } from "../../contracts/src/course-core";
 import {
   effectiveCoursePolicy,
@@ -204,12 +206,18 @@ export function createCore(store: Store, options: CoreOptions) {
     // The renderer never reads captured raw HTML or document parts; on a real term they were ~75%
     // of every command's payload (78 MB of 110 MB), which stalled first paint. Bodies stay in the
     // store for MCP, context and scoped queries (queries.ts), which remain the long-term path.
-    const resources = resourceViews(store, store.resources(search)).map((view) => {
+    const savedResources = store.resources();
+    const views = resourceViews(store, search?.trim() ? store.resources(search) : savedResources);
+    const workSnapshot = store.personalWorkSnapshot(views.map(view => ({canonicalResourceId: view.id,
+      contributorIds: view.deadlineContributors?.map(e => e.resourceId) ?? []})), savedResources);
+    const workById = new Map(workSnapshot.descriptors.map(descriptor => [descriptor.scope.canonicalResourceId, descriptor]));
+    const resources = views.map((view) => {
       const { rawHtml: _html, parts: _parts, ...rest } = view as typeof view & {
         rawHtml?: unknown;
         parts?: unknown;
       };
-      return rest as typeof view;
+      const personalWork = workById.get(view.id);
+      return { ...rest, ...(personalWork ? {personalWork} : {}) } as typeof view;
     });
     const sources = store.sources();
     return {
@@ -231,6 +239,7 @@ export function createCore(store: Store, options: CoreOptions) {
         reconciliation: reconcileAcademicRecords(store, now()),
       },
       resources,
+      courseWorkAdmission: courseWorkAdmission(store, now()),
       sources,
       privacy: store.privacy(),
       links: store.links(),
@@ -251,6 +260,7 @@ export function createCore(store: Store, options: CoreOptions) {
       consents: store.consents?.() ?? [],
       dayPlan: store.dayPlan(),
       personalReports: store.personalReports(),
+      personalWorkReports: workSnapshot.reports,
       // Unsearched snapshots already hold every live view; the feed reuses them.
       notifications: notifications.feed(search ? undefined : resources),
       gitlabLinks: store.gitlabLinks(),
@@ -608,7 +618,7 @@ export function createCore(store: Store, options: CoreOptions) {
     const command = commandSchema.parse(raw);
     let message: string | undefined, manifest: ContextManifest | undefined;
     // owner: T05b
-    let seamResult: Partial<Pick<CommandResult, "learning" | "map" | "pack" | "workspace" | "command" | "notes">> = {};
+    let seamResult: Partial<Pick<CommandResult, "learning" | "map" | "pack" | "workspace" | "command" | "notes" | "personalWorkReceipt">> = {};
     // end owner: T05b
     switch (command.type) {
       case "snapshot":
@@ -795,6 +805,21 @@ export function createCore(store: Store, options: CoreOptions) {
         linkExactEvidence(store);
         wake();
         message = "Loaded a synthetic sample course.";
+        break;
+      }
+      case "personal-deadline":
+        store.setPersonalDeadlineChoice(command.value, () => currentPersonalDeadlineSource(store, command.value.resourceId));
+        break;
+      case "personal-work": {
+        // Recompute the source set at write time; a stale caller cannot omit changed deadline evidence.
+        const view = resourceViews(store, store.resources()).find(r => r.id === command.value.scope.canonicalResourceId);
+        const descriptor = view && store.describePersonalWork(view.id, view.deadlineContributors?.map(e => e.resourceId) ?? []);
+        if (!descriptor) throw new Error("This work is no longer available to check. Refresh your courses.");
+        const currentIds = descriptor.evidence.map(e => e.resourceId).sort();
+        const receivedIds = command.value.evidence.map(e => e.resourceId).sort();
+        if (JSON.stringify(currentIds) !== JSON.stringify(receivedIds))
+          throw new Error("The work requirements changed. Review the updated work before saving your choice.");
+        seamResult.personalWorkReceipt = store.setPersonalWork(command.value);
         break;
       }
       case "personal-report":

@@ -1,0 +1,46 @@
+/* Local geometry: exact type, controls, inline facts and colors remain shared Magic roles. */
+.resource-heading { padding-bottom: 22px; border-bottom: 1px solid var(--magic-line-quiet); margin-bottom: 24px; }
+.resource-heading__course { margin: 0 0 16px; font: 400 13px/1.5 var(--magic-font-interface); color: var(--magic-ink-muted-strong); overflow-wrap: anywhere; }
+.resource-heading__kind { margin: 0 0 8px; font: 500 11px/1.4 var(--magic-font-interface); text-transform: uppercase; letter-spacing: .07em; color: var(--magic-ink-muted-strong); }
+.resource-heading__title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 22px; }
+.resource-heading__title-row h2 { min-width: 0; margin: 0; font: 500 var(--magic-type-section)/1.3 var(--magic-font-editorial); letter-spacing: normal; overflow-wrap: anywhere; }
+.resource-heading__title-row > .magic-ui-action { flex: 0 0 auto; margin-top: 1px; }
+.resource-heading__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; margin-top: 17px; }
+.resource-heading__facts { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
+.resource-heading__facts > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; padding: 5px 9px; border-radius: var(--magic-radius-tag-candidate); background: var(--magic-fill-tag-candidate); color: var(--magic-ink-tag-candidate); box-shadow: inset 0 0 0 1px var(--magic-line-tag-candidate); }
+.resource-heading__facts .magic-inline-time { background: transparent; box-shadow: none; padding: 0; margin: 0; }
+.resource-heading__meta .magic-date-review > .magic-ui-action { min-height: 32px; padding: 5px 10px; font-size: 13px; }
+.resource-heading__facts:empty { display: none; }
+.resource-heading__facts dt { margin: 0; font-size: 12px; line-height: 1.4; color: var(--magic-ink-muted-strong); }
+.resource-heading__facts dd { margin: 0; font-size: 13px; line-height: 1.6; }
+.resource-heading__freshness { display: flex; align-items: center; gap: 5px; margin: 0; font-size: 12px; line-height: 1.6; color: var(--magic-ink-muted-strong); }
+.resource-heading__change { margin: 12px 0 0; font-size: 13px; line-height: 1.6; color: var(--magic-ink-prose); }
+.resource-provenance { display: grid; gap: 12px; margin: 10px 0; font-size: 13px; line-height: 1.6; }
+.resource-provenance > div { display: grid; grid-template-columns: 110px minmax(0,1fr); gap: 14px; }
+.resource-provenance dt { color: var(--magic-ink-muted-strong); }
+.resource-provenance dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+@media (max-width: 800px) {
+  .resource-heading__title-row { flex-direction: column; gap: 16px; }
+  .resource-heading__facts { gap: 8px; }
+  .resource-provenance > div { grid-template-columns: 1fr; gap: 2px; }
+}
+.resource-assignment { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 35%); gap: 40px; align-items: start; }
+.resource-assignment__reading, .resource-assignment__work { min-width: 0; }
+.desktop-workspace .resource-assignment .resource-assignment__instructions { margin-top: 0; }
+.resource-assignment__work > .magic-start-work { margin-top: 0; }
+.resource-assignment__work .magic-start-work__destinations { font-size: 13px; gap: 12px; }
+.resource-assignment__work .magic-start-work small, .resource-assignment__work .magic-start-work__note { font-size: 12px; }
+.resource-assignment__support { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--magic-line-quiet); }
+.resource-assignment__support h3 { margin: 0 0 12px; font: 500 var(--magic-type-study-title)/1.4 var(--magic-font-editorial); }
+.resource-assignment__support > ul { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.65; }
+.resource-assignment__rubric { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; font-size: 13px; line-height: 1.6; }
+.resource-assignment__criterion { display: flex; gap: 14px; justify-content: space-between; }
+.resource-assignment__criterion > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.resource-assignment__criterion > span:last-child:not(:first-child) { flex: 0 0 auto; color: var(--magic-ink-muted-strong); }
+.resource-assignment__quote { white-space: pre-wrap; overflow-wrap: anywhere; }
+.resource-assignment__work .magic-ui-disclosure { font-size: 13px; line-height: 1.6; }
+.resource-assignment__work .magic-ui-disclosure .source-text { font-size: 13px; line-height: 1.65; }
+@media (max-width: 1120px) {
+  .resource-assignment { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+}
+.resource-heading__source-conflict { display: block; margin-top: 4px; font-size: 11px; color: var(--magic-ink-muted-strong); }

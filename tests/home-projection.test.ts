@@ -1,3 +1,4 @@
+import {canvasContent} from '../packages/connectors/src/canvas-content';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createElement} from 'react';
@@ -33,8 +34,9 @@ test('Canvas feed assignment entries merge by exact provider id only; overrides,
  const elsewhere=feedEntry('elsewhere','event-assignment-77',{courseId:'d'});
  const result=canonicalHomeResources([copy,a,override,event,elsewhere],sources);
  assert.deepEqual(result.map(r=>r.id).sort(),['77','elsewhere','lab','override']);
- // A copy without a due claim cannot move the deadline or change the reportable contributor set.
- assert.equal(result.find(r=>r.id==='77'),a);
+ // DATE feed evidence agrees with the precise timed deadline and remains inspectable.
+ const projected=result.find(r=>r.id==='77')!;
+ assert.equal(projected.id,a.id);assert.equal(projected.deadline.conflict,false);assert.equal(projected.deadlineContributors?.length,2);assert.equal(a.deadline.claims.length,1);
 });
 test('groups need three items with the same account, course, verified category and exact due time',()=>{
  const category=resource('g',{kind:'material',assignmentGroup:{weight:10},title:'Problem sets'});
@@ -67,23 +69,96 @@ test('review selection requires current exact linked material in same scope; emp
  assert.equal(selectHomeEvidence([assignment,{...material,sourceId:'other'}],{sources,links:[link]},now,tz).study.length,0);
  assert.deepEqual(selectHomeEvidence([],{sources,links:[]},now,tz).study,[]);
 });
-test('Home Today counts unique items, reveals them three at a time, and can show fewer; all-day entries are reachable buttons',()=>{
- const render=(count:number,allDay:number,homeDueCount?:number)=>{
-  const dueItems=Array.from({length:count},(_,i)=>resource(`d${i}`,{deadline:due('2026-09-28T04:59:00Z')}));
-  const entries=Array.from({length:allDay},(_,i)=>feedEntry(`a${i}`,`event-calendar-event-${i}`));
-  return renderToStaticMarkup(createElement(TodayRail,{now,homeDueItems:dueItems,homeDueCount,courseLabel:()=>'COURSE 1',compactEmpty:true,resources:[...dueItems,...entries],sources,onSelect:()=>{},onPlan:async()=>{}}));
- };
+test('Home Today initially shows three unique deadlines and reachable all-day entries',()=>{
+ const dueItems=Array.from({length:8},(_,i)=>resource(`d${i}`,{deadline:due('2026-09-28T04:59:00Z')}));
+ const entries=[feedEntry('all-day','event-calendar-event-0')];
+ const render=(homeDueCount:number)=>renderToStaticMarkup(createElement(TodayRail,{now,homeDueCount,homeDueItems:dueItems,courseLabel:()=>'COURSE 1',compactEmpty:true,resources:[...dueItems,...entries],sources,onSelect:()=>{},onPlan:async()=>{}}));
  const rows=(html:string)=>(html.match(/data-focus-key="today-d\d+"/g) ?? []).length;
- // Default: three rows, the full count in the heading, and "Show next" for the rest.
- const six=render(6,1);
- assert.equal(rows(six),3);assert.match(six,/<span>Due today<\/span><span>6<\/span>/);
- assert.match(six,/aria-label="Show next 3 due today; 3 of 6 shown"[^>]*>Show next 3</);assert.doesNotMatch(six,/Show less/);
- assert.match(six,/<button[^>]*class="rail-allday rail-allday--home"/);
- // Revealed: every row, no "Show next", and "Show less" returns to three.
- const allSix=render(6,1,6);
- assert.equal(rows(allSix),6);assert.doesNotMatch(allSix,/Show next/);assert.match(allSix,/aria-label="Show fewer due today; 6 of 6 shown"/);
- // The next batch is at most three, and names the remainder.
- const eight=render(8,4,6);
- assert.match(eight,/<span>Due today<\/span><span>8<\/span>/);assert.equal(rows(eight),6);assert.match(eight,/>Show next 2</);
- assert.match(eight,/2 more all day/);assert.equal((eight.match(/rail-allday--home/g) ?? []).length,4);
+ const initial=render(3);assert.equal(rows(initial),3);assert.match(initial,/Show next 3/);
+ assert.match(initial,/<span>Due today<\/span><span>8<\/span>/);
+ assert.match(initial,/<button[^>]*class="rail-allday rail-allday--home"/);
+ const expanded=render(6);assert.equal(rows(expanded),6);assert.match(expanded,/Show next 2/);assert.match(expanded,/Show less/);
+ const all=render(9);assert.equal(rows(all),8);assert.doesNotMatch(all,/Show next/);assert.match(all,/Show less/);
+});
+
+function exactPassage(text:string) {
+ const r=resource('literal',{kind:'message',text});
+ const p=meaningfulPassage(r)!;
+ assert.ok(p,'expected a complete bounded passage');
+ assert.equal(p.resource,r);assert.equal(p.span.resourceId,r.id);assert.equal(p.span.version,r.version);assert.equal(p.span.contentHash,r.contentHash);assert.equal(p.span.field,'text');
+ assert.equal(r.text.slice(p.span.start,p.span.end),p.span.text);
+ return p.span.text;
+}
+test('Home keeps adjacent applicability and reversals with the quoted instruction',()=>{
+ for(const separator of [' ','\n','\n\n','\r\n\r\n']) {
+  const text=`Please prepare the full project presentation for Monday.${separator}This applies only to students assigned to the Monday section; Tuesday students should wait.`;
+  assert.equal(exactPassage(text),text);
+  const exception=`Please submit a printed copy before the next class.${separator}Except for remote students, who should submit a PDF instead.`;
+  assert.equal(exactPassage(exception),exception);
+ }
+ const preceding='If you are assigned to the Monday section:\n\nPlease prepare the full project presentation for Monday.';
+ assert.equal(exactPassage(preceding),preceding);
+});
+test('Home does not turn a long instruction into a short stronger claim',()=>{
+ const text='Please prepare the full project presentation for Monday. '+ 'Retain the annotated planning notes for the discussion. '.repeat(10)+'Except for Tuesday students, who should wait.';
+ assert.ok(text.length>440);
+ assert.equal(meaningfulPassage(resource('long',{text})),null);
+ assert.equal(meaningfulPassage(resource('long-neighbor',{text:text.replace('Except','\n\nExcept')})),null);
+ // Another self-contained paragraph is usable; the long block is never clipped into a requirement.
+ const short='Office hours will meet in Room 210 this Thursday.';
+ assert.equal(exactPassage('Background: '+ 'The project history spans several terms. '.repeat(15)+'\n\n'+short),short);
+});
+test('Home preserves multiple requirements and HTML paragraph/list conditions without inventing text',()=>{
+ const html='<p>Hello everyone!</p><p>Please submit one PDF containing the following:</p><ul><li>The essay and bibliography.</li><li>The annotated source table.</li></ul><p>Only Monday-section students should submit this week.</p>';
+ const captured=canvasContent(html,'https://canvas.example/courses/c/assignments/1');
+ const selected=exactPassage(captured.text);
+ assert.match(selected,/essay and bibliography/);assert.match(selected,/annotated source table/);assert.match(selected,/Only Monday-section/);
+ assert.doesNotMatch(selected,/<p>|<li>/);
+ const items='Please bring these materials:\n\n1. The revised worksheet.\n\n2. Your annotated reading notes.\n\nExcept for remote students, who may use digital copies.';
+ assert.equal(exactPassage(items),items);
+});
+test('Home punctuation and social trim never split names, decimals, or audience context',()=>{
+ const text='Hello everyone! Please read Dr. Rivera’s notes, including sec. 3.2, before the next discussion. This applies only to Group B. Thanks for your time.';
+ assert.equal(exactPassage(text),'Please read Dr. Rivera’s notes, including sec. 3.2, before the next discussion. This applies only to Group B.');
+ const audience='Hello Monday-section students! Please bring the revised worksheet to the discussion.';
+ const selected=meaningfulPassage(resource('audience',{text:audience}));
+ assert.ok(!selected || selected.span.text===audience,'do not remove the audience as generic greeting');
+ const noPeriod='Please submit both the essay and bibliography in a single PDF\nOnly students in the Monday section submit this week';
+ assert.equal(exactPassage(noPeriod),noPeriod);
+});
+test('Home keeps negation and example context around apparently actionable source text',()=>{
+ for(const text of [
+  'This is an example of an incorrect instruction:\n\nPlease submit your final response without the required bibliography.',
+  'Please upload the complete final report by Monday.\n\nThis instruction is superseded. Do not submit until the revised rubric is posted.',
+  'AI tools are available for preliminary brainstorming.\n\nExcept on exams, where all automated assistance is prohibited.',
+ ]) assert.equal(exactPassage(text),text);
+});
+test('changed-date highlighting expands exact evidence to its bounded source context',()=>{
+ const text='The project deadline has moved to Monday.\n\nThis applies only to students assigned to the Monday section.';
+ const message=resource('change',{kind:'message',text});
+ const claimText='The project deadline has moved to Monday.';
+ const span={resourceId:message.id,contentHash:message.contentHash,version:message.version,field:'text' as const,start:0,end:claimText.length,text:claimText};
+ const assignment=resource('due-change',{deadline:resolveDeadline([{kind:'due',value:'2026-09-28T18:00:00Z',quote:claimText,authority:'explicit_change',scopeConfirmed:true,span}])});
+ const p=selectHomeEvidence([assignment,message],{sources,links:[]},now,tz).passages[0]!;
+ assert.equal(p.reason,'changed-date');assert.equal(p.span.text,text);assert.equal(message.text.slice(p.span.start,p.span.end),text);
+ for(const corrupt of [{version:2},{field:'title' as const},{start:-1},{end:text.length+1},{contentHash:'stale'},{text:'A fabricated change.'}]) {
+  const bad=resource('bad',{deadline:resolveDeadline([{kind:'due',value:'2026-09-28T18:00:00Z',quote:claimText,authority:'explicit_change',scopeConfirmed:true,span:{...span,...corrupt}}])});
+  const selections=selectHomeEvidence([bad,message],{sources,links:[]},now,tz).passages;
+  assert.ok(selections.every(selection=>selection.reason!=='changed-date'));
+  assert.ok(selections.every(selection=>selection.resource.text.slice(selection.span.start,selection.span.end)===selection.span.text));
+ }
+});
+test('changed-date claim cannot bypass the bound and hide a late exception',()=>{
+ const claimText='The project deadline has moved to Monday.';
+ const text=claimText+' '+ 'Keep the source notes for your next discussion. '.repeat(12)+'Only the Monday section is affected.';
+ const message=resource('long-change',{kind:'message',text});
+ const span={resourceId:message.id,contentHash:message.contentHash,version:message.version,field:'text' as const,start:0,end:claimText.length,text:claimText};
+ const assignment=resource('due-long',{deadline:resolveDeadline([{kind:'due',value:'2026-09-28T18:00:00Z',quote:claimText,authority:'explicit_change',scopeConfirmed:true,span}])});
+ assert.deepEqual(selectHomeEvidence([assignment,message],{sources,links:[]},now,tz).passages,[]);
+});
+
+test('overlong HTML lists cannot leak later isolated requirements after their heading is rejected',()=>{
+ const text=canvasContent('<p>Please complete the following steps.</p><ol>'+Array.from({length:12},(_,i)=>`<li>Read step ${i+1} and retain its comparison notes for the discussion.</li>`).join('')+'</ol><p>Only the Monday section should do these steps.</p>','https://canvas.example/courses/c/assignments/1').text;
+ assert.ok(text.length>440);
+ assert.equal(meaningfulPassage(resource('long-html-list',{text})),null);
 });
