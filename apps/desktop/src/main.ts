@@ -59,6 +59,7 @@ import { MadgradesHttp, madgradesRequestSchema } from "../../../packages/connect
 import sampleFixture from "../../../fixtures/course.json";
 // owner: T05c
 import { Tray, Menu, nativeImage } from "electron";
+import { clearUwLoginCookies } from "./sign-in-cookies";
 import {
   closeAction,
   launchSession,
@@ -1776,6 +1777,11 @@ app
       const closed = new Promise<void>((resolve) => {
         login.once("closed", () => {
           trialLog({ event: "signin.closed", confirmed, lastAt: lastSignInAt });
+          // Remember an unfinished sign-in (even across a restart) so the next one starts clean.
+          if (Boolean(sessionSettings.loginUnfinished) !== !confirmed) {
+            sessionSettings = { ...sessionSettings, loginUnfinished: !confirmed };
+            void writeSessionSettings(sessionSettingsPath, sessionSettings).catch(() => {});
+          }
           if (signIn === login) signIn = null;
           resolve();
         });
@@ -1851,6 +1857,12 @@ app
           checking = false;
         }
       });
+      // After a sign-in that did not finish, clear only UW's login-page cookies first, so a
+      // half-finished login flow can't answer "Stale Request" (see sign-in-cookies.ts).
+      if (sessionSettings.loginUnfinished) {
+        const cleared = await clearUwLoginCookies(loginSession.cookies).catch(() => -1);
+        trialLog({ event: "signin.cleared-stale-login", cookies: cleared });
+      }
       try {
         await login.loadURL(`${loginOrigin}/`);
       } catch {
