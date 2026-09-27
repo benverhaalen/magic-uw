@@ -36,7 +36,7 @@ import {
   createPublicClient,
   type PublicClient,
 } from "../../connectors/src/network";
-import { planningIdentityTable, summarizePlanningGrades } from "./planning-grades";
+import { madgradesUpToDate, planningIdentityTable, summarizePlanningGrades } from "./planning-grades"; // owner: planning-perf: madgradesUpToDate
 import { pullMadgradesGrades, type MadgradesTransport } from "../../connectors/src/madgrades";
 import { comparePlanning } from "./planning";
 import { applyConsent, egressFor } from "./egress"; // owner: T06
@@ -58,7 +58,7 @@ const judgedHash = (r: Resource) => textHash(r.title, r.text);
 /** The Jev kind question reads the title, about 2,000 characters, and the item's own stated policy, clipped. */
 const JEV_TEXT_CHARS = 2000;
 const JEV_POLICY_CHARS = 500;
-import type { QueryRequest } from "@magic/contracts";
+import type { QueryRequest, QueryResult, ResourceChange } from "@magic/contracts"; // owner: platform-fix (QueryResult, ResourceChange)
 import type { NotesRequest, NotesResult } from "@magic/contracts"; // owner: notes
 import type {
   Correction,
@@ -822,7 +822,9 @@ export function createCore(store: Store, options: CoreOptions) {
         if (command.refresh) {
           if (!options.madgrades) throw new Error("Madgrades refresh is available through the desktop app.");
           const table = planningIdentityTable(store);
-          if (!table) refresh = { status: "unverified_crosslist", message: "Saved cross-list mappings disagree. Refresh subject and cross-list evidence before loading grades." };
+          // owner: planning-perf: the latest past term is already saved; no request is made.
+          if (madgradesUpToDate(store, command.courseKey)) refresh = { status: "saved", message: "Saved Madgrades evidence already covers the latest past term. Averages are not predictions." };
+          else if (!table) refresh = { status: "unverified_crosslist", message: "Saved cross-list mappings disagree. Refresh subject and cross-list evidence before loading grades." };
           else {
             const controller = new AbortController(), version = generation;
             planningReads.add(controller);
@@ -978,8 +980,10 @@ export function createCore(store: Store, options: CoreOptions) {
         interrupt();
         store.purge();
         semanticAttempts.clear();
+        // owner: platform-fix. The desktop host also clears both sign-in sessions and their caches,
+        // the saved keys and the course bank connections (main.ts, purge-host.ts).
         message =
-          "Local workspace data deleted. Browser sign-in sessions are separate; remove them in Sources.";
+          "Local data deleted from this device: coursework, sign-ins and their caches, saved keys and course bank connections.";
         break;
       // owner: T05b. The seams. Each case routes to its lane's handler; absent means "not built".
       case "map":
@@ -1056,10 +1060,22 @@ export function createCore(store: Store, options: CoreOptions) {
     // owner: T15. A scoped query: reads only, never a command, never the whole workspace.
     query(request: QueryRequest) {
       if (closed) throw new Error("Workspace is closed.");
-      return runQuery(store, request, {
+      // owner: platform-fix. The seq change cursor (T10's monotonic resource_changes.seq): a
+      // "changes" query with a seq cursor pages forward exactly, however much changed.
+      const feed = changeFeed(store);
+      if (feed && request.view === "changes") {
+        const after = decodeSeqCursor(request.cursor);
+        if (after !== undefined) return feed.page(after, request.limit ?? 100, request.courseId);
+      }
+      const result = runQuery(store, request, {
         now,
         gatewayConfigured: !!options.gateway,
       });
+      // A caught-up time-cursor page hands over to a seq cursor from here on.
+      if (feed && result.view === "changes" && result.complete)
+        return { ...result, cursor: encodeSeqCursor(feed.latest()) };
+      return result;
+      // end owner: platform-fix
     },
     async settled() {
       while (working) await working;
@@ -1073,3 +1089,66 @@ export function createCore(store: Store, options: CoreOptions) {
     },
   };
 }
+
+// owner: platform-fix. The seq change cursor behind core.query({ view: "changes" }).
+const encodeSeqCursor = (seq: number) => Buffer.from(JSON.stringify({ s: seq })).toString("base64url");
+function decodeSeqCursor(cursor: string | undefined): number | undefined {
+  if (!cursor) return undefined;
+  try {
+    const value = JSON.parse(Buffer.from(cursor, "base64url").toString()) as Record<string, unknown>;
+    if (Object.keys(value).length === 1 && Number.isSafeInteger(value.s) && (value.s as number) >= 0)
+      return value.s as number;
+  } catch {}
+  return undefined; // not a seq cursor: the time cursor path decides (and rejects garbage)
+}
+/**
+ * Changes after a seq, oldest first. `complete: false` means another page follows: call again with
+ * the returned cursor. A course filter skips other courses' changes but still advances the cursor.
+ */
+function changeFeed(store: Store) {
+  const after = (store as Store & Partial<Pick<CourseCoreStore, "changesAfter">>).changesAfter?.bind(store);
+  if (!after) return undefined;
+  const exists = (seq: number) => after(seq, 1).length > 0;
+  return {
+    /** The newest seq: a galloping then binary search over the seq index (O(log n) point reads). */
+    latest(): number {
+      if (!exists(0)) return 0;
+      let low = 0,
+        high = 1;
+      while (exists(high)) [low, high] = [high, high * 2];
+      while (high - low > 1) {
+        const mid = Math.floor((low + high) / 2);
+        if (exists(mid)) low = mid;
+        else high = mid;
+      }
+      return high;
+    },
+    page(from: number, limit: number, courseId?: string): QueryResult {
+      // The cursor's own change is gone (a purge restarted the sequence, or its source was
+      // removed): the view reloads and follows a fresh cursor, as with an overflowing time cursor.
+      if (from > 0 && !exists(from - 1))
+        return { view: "changes", changes: [], cursor: encodeSeqCursor(this.latest()), complete: false };
+      const changes: ResourceChange[] = [];
+      let cursor = from,
+        more = false;
+      for (;;) {
+        const rows = after(cursor, 500);
+        for (const { seq, ...change } of rows) {
+          if (courseId && change.courseId !== courseId) {
+            cursor = seq;
+            continue;
+          }
+          if (changes.length === limit) {
+            more = true;
+            break;
+          }
+          changes.push(change);
+          cursor = seq;
+        }
+        if (more || rows.length < 500) break;
+      }
+      return { view: "changes", changes, cursor: encodeSeqCursor(cursor), complete: !more };
+    },
+  };
+}
+// end owner: platform-fix
