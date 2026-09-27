@@ -1083,22 +1083,24 @@ function ConnectionsStep({
   };
   const row = (name: string, state: RowState, connect: () => void) => (
     <li className="chn-row">
+      <span className="onb-source-mark chn-row-mark" aria-hidden="true">
+        {state.kind === "connected" ? (
+          <Icon name="check" className="onb-ok" />
+        ) : (
+          <Spinner idle={state.kind !== "working" && state.kind !== "checking"} />
+        )}
+      </span>
       <span className="chn-row-text">
         <span className="chn-row-name">{name}</span>
         <span className="chn-row-detail">{state.kind === "checking" ? "Checking…" : state.text}</span>
       </span>
       <span className="chn-row-end">
         {state.kind === "connected" ? (
-          <span className="chn-row-ok">
-            <Icon name="check" className="onb-ok" />
-            Connected
-          </span>
+          <span className="chn-row-ok">Connected</span>
         ) : state.kind === "connect" ? (
           <button className="chn-action" onClick={connect}>
             {state.label}
           </button>
-        ) : state.kind === "working" || state.kind === "checking" ? (
-          <Spinner />
         ) : null}
       </span>
     </li>
