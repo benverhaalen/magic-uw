@@ -14,8 +14,10 @@ export interface LaunchEntry {
   awaitingReturn: boolean;
   /** The Magic window lost focus after the launch started. */
   left: boolean;
-  /** Set when the student comes back to Magic after a real handoff. */
+  /** Set when the student comes back to Magic after a real handoff; cleared once a surface has shown it. */
   returnedAt: string | null;
+  /** A launch for this assignment is in flight on some surface. Every surface reads it. */
+  launching: boolean;
 }
 
 const LIMIT = 20;
@@ -39,7 +41,7 @@ export function putOutcome(resourceId: string, outcome: LaunchOutcome, patch: Pa
   if (entries.size >= LIMIT) entries.delete(entries.keys().next().value!);
   entries.set(resourceId, {
     anchor: current?.anchor ?? null, awaitingReturn: current?.awaitingReturn ?? false,
-    left: current?.left ?? false, returnedAt: current?.returnedAt ?? null,
+    left: current?.left ?? false, returnedAt: current?.returnedAt ?? null, launching: current?.launching ?? false,
     ...patch, outcome,
   });
   emit();

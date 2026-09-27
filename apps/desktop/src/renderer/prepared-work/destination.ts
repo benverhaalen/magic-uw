@@ -9,7 +9,7 @@ import type { WorkItem, WorkTarget } from "@magic/contracts";
  */
 export type DestinationCategory = "pdf" | "document" | "slides" | "spreadsheet" | "canvas" | "gitlab" | "web";
 /** Lucide v0.468.0 generic icons; no brand marks are bundled for these sites. */
-export type DestinationIcon = "file-text" | "presentation" | "file-spreadsheet" | "graduation-cap" | "git-branch" | "globe";
+export type DestinationIcon = "file-text" | "file" | "presentation" | "file-spreadsheet" | "graduation-cap" | "git-branch" | "globe";
 
 export interface Destination {
   category: DestinationCategory;
@@ -35,7 +35,7 @@ const FILES: Record<string, Pick<Destination, "category" | "icon" | "name" | "no
   ".ods": { category: "spreadsheet", icon: "file-spreadsheet", name: "Spreadsheet", noun: ["spreadsheet", "spreadsheets"] },
   ".csv": { category: "spreadsheet", icon: "file-spreadsheet", name: "Spreadsheet", noun: ["spreadsheet", "spreadsheets"] },
 };
-const DOCUMENT = { category: "document", icon: "file-text", name: "Document", noun: ["document", "documents"] } as const;
+const DOCUMENT = { category: "document", icon: "file", name: "Document", noun: ["document", "documents"] } as const;
 
 export function destinationOf(target: WorkTarget): Destination {
   if (target.kind === "file") {

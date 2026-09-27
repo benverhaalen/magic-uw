@@ -1,4 +1,5 @@
 import type { WorkItem, WorkLaunchReceipt, WorkSet } from "@magic/contracts";
+import { CANVAS_ORIGIN, destinationGroups, destinationSummary } from "./destination";
 
 /**
  * What Magic can truthfully say about one prepared destination.
@@ -11,7 +12,8 @@ export type DestinationState =
   | { kind: "handed_off"; via: "browser" | "file" }
   | { kind: "fallback"; reason: string }
   | { kind: "would_open"; via: "browser" | "file" }
-  | { kind: "not_sent"; reason: string }
+  /** `stale`: the prepared list changed while sending; retrying this list cannot work. */
+  | { kind: "not_sent"; reason: string; stale?: true }
   | { kind: "unconfirmed" };
 
 export type LaunchProblem =
@@ -30,6 +32,7 @@ export type LaunchProblem =
 
 export interface LaunchOutcome {
   resourceId: string;
+  assignmentTitle: string;
   /** Destinations this outcome describes; a different current hash means it is an earlier launch. */
   previewHash: string;
   at: string;
@@ -41,6 +44,7 @@ export interface LaunchOutcome {
 }
 
 const FALLBACK_NOTE = /^(.*): opened the original because (.+)\.$/;
+const CHANGED = /Prepared work changed|Review the prepared destinations/;
 
 /** Map the IPC error text from main/core to a recovery. Unknown text never implies nothing opened. */
 export function classifyLaunchError(cause: unknown): { kind: LaunchProblem; message: string; raw: string } {
@@ -49,7 +53,7 @@ export function classifyLaunchError(cause: unknown): { kind: LaunchProblem; mess
   return { ...classifyText(text), raw: text.slice(0, 300) };
 }
 function classifyText(text: string): { kind: LaunchProblem; message: string } {
-  if (/Prepared work changed|Review the prepared destinations/.test(text))
+  if (CHANGED.test(text))
     return { kind: "changed", message: "These destinations changed since you reviewed them. Check the updated list, then start again." };
   if (/already opening/.test(text))
     return { kind: "busy", message: "Another Start work is still opening. Try again in a moment." };
@@ -92,17 +96,20 @@ export function outcomeFromReceipt(set: WorkSet, receipt: WorkLaunchReceipt, pre
     if (opened && dry) state = { kind: "would_open", via: opened.via === "file" ? "file" : "browser" };
     else if (opened?.via === "browser_fallback") state = { kind: "fallback", reason: readableReason(fallbackReasons.get(item.title) ?? "the saved copy could not be used") };
     else if (opened) state = { kind: "handed_off", via: opened.via === "file" ? "file" : "browser" };
-    else if (failed) state = { kind: "not_sent", reason: readableReason(failed.reason) };
+    else if (failed) state = CHANGED.test(failed.reason) ? { kind: "not_sent", reason: readableReason(failed.reason), stale: true } : { kind: "not_sent", reason: readableReason(failed.reason) };
     else state = { kind: "unconfirmed" };
     return { resourceId: item.resourceId, title: item.title, role: item.role, target: item.target.kind, state };
   });
+  const stale = items.some(item => item.state.kind === "not_sent" && item.state.stale);
   return {
     resourceId: set.assignmentId,
+    assignmentTitle: set.assignmentTitle,
     previewHash: set.previewHash,
     at: receipt.at,
     mode: dry ? "dry_run" : "opened",
     items,
-    problem: null,
+    // Core re-checks the hash before each item; a change partway means the rest of this list is gone.
+    problem: stale ? { kind: "changed", message: "The prepared list changed while sending. Review the updated list before starting again." } : null,
     notes: [...new Set([...(only && previous?.previewHash === set.previewHash ? previous.notes : []), ...notes])],
   };
 }
@@ -112,6 +119,8 @@ export function outcomeFromError(set: WorkSet, cause: unknown, previous?: Launch
   const problem = classifyLaunchError(cause);
   const nothingSent = BEFORE_LAUNCH.has(problem.kind);
   const same = previous?.previewHash === set.previewHash ? previous : null;
+  // Another surface is still sending this list: its receipt will describe what happened.
+  if (problem.kind === "busy" && same && counts(same).pending) return same;
   const items = set.items.map(item => {
     const earlier = same?.items.find(entry => entry.resourceId === item.resourceId);
     const attempted = !only || only.includes(item.resourceId);
@@ -122,6 +131,7 @@ export function outcomeFromError(set: WorkSet, cause: unknown, previous?: Launch
   });
   return {
     resourceId: set.assignmentId,
+    assignmentTitle: set.assignmentTitle,
     previewHash: set.previewHash,
     at: same?.at ?? new Date().toISOString(),
     mode: same?.mode ?? "none",
@@ -135,6 +145,7 @@ export function sendingOutcome(set: WorkSet, previous?: LaunchOutcome | null, on
   const same = previous?.previewHash === set.previewHash ? previous : null;
   return {
     resourceId: set.assignmentId,
+    assignmentTitle: set.assignmentTitle,
     previewHash: set.previewHash,
     at: same?.at ?? new Date().toISOString(),
     mode: same?.mode ?? "none",
@@ -149,7 +160,7 @@ export function sendingOutcome(set: WorkSet, previous?: LaunchOutcome | null, on
 }
 
 export function retryableIds(outcome: LaunchOutcome) {
-  return outcome.items.filter(item => item.state.kind === "not_sent").map(item => item.resourceId);
+  return outcome.items.filter(item => item.state.kind === "not_sent" && !item.state.stale).map(item => item.resourceId);
 }
 
 export function counts(outcome: LaunchOutcome) {
@@ -187,7 +198,7 @@ export function stateLabel(state: DestinationState): string {
     case "ready": return "Ready";
     case "sending": return "Sending…";
     case "handed_off": return state.via === "file" ? "Sent to its usual app" : "Sent to your browser";
-    case "fallback": return `Saved copy not used, sent the original to your browser`;
+    case "fallback": return "Sent the original to your browser";
     case "would_open": return state.via === "file" ? "Would open the saved copy" : "Would send to your browser";
     case "not_sent": return `Not sent: ${state.reason}`;
     case "unconfirmed": return "Not confirmed";
@@ -207,3 +218,102 @@ export function readableNote(note: string, locale?: string) {
     return Number.isNaN(date.getTime()) ? iso : new Intl.DateTimeFormat(locale, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(date);
   });
 }
+
+const SENT: ReadonlySet<DestinationState["kind"]> = new Set(["handed_off", "fallback", "would_open"]);
+
+/** Titles an outcome actually handed off, for the read-only "earlier attempt" line. */
+export function sentTitles(outcome: LaunchOutcome) {
+  return outcome.mode === "opened" ? outcome.items.filter(item => SENT.has(item.state.kind)).map(item => item.title) : [];
+}
+
+/** A plain confirmation with nothing to act on; the shell may show it as a notice. */
+export function noticeLine(outcome: LaunchOutcome): string | null {
+  const { sent, total } = counts(outcome);
+  if (outcome.problem || sent !== total) return null;
+  if (outcome.mode === "dry_run") return `${outcome.assignmentTitle}: verification only, nothing opened.`;
+  if (outcome.mode !== "opened") return null;
+  return `${outcome.assignmentTitle}: sent ${total === 1 ? "1 item" : `${total} items`} to your browser and apps.`;
+}
+
+/**
+ * Literal action name. One assignment page is "Open assignment"; "Start work"
+ * is reserved for a prepared set that really sends more than one destination.
+ */
+export function launchLabel(set: Pick<WorkSet, "items">) {
+  if (set.items.length > 1) return "Start work";
+  const only = set.items[0];
+  if (!only) return "Start work";
+  if (only.role === "instructions") return "Open assignment";
+  return `Open ${destinationGroups([only])[0]!.label.replace(/^1 /, "")}`;
+}
+
+/** Canvas can record a page view only when a destination, or its fallback, is on Canvas. */
+export function pageViewApplies(set: Pick<WorkSet, "items">) {
+  const onCanvas = (url: string | undefined) => { try { return !!url && new URL(url).origin === CANVAS_ORIGIN; } catch { return false; } };
+  return set.items.some(({ target }) => target.kind === "web" ? onCanvas(target.url) : onCanvas(target.fallbackUrl));
+}
+
+/** "Sends 1 PDF and 2 Canvas pages" for the tile description. */
+export function sendsLine(set: Pick<WorkSet, "items">) {
+  return set.items.length ? `Sends ${destinationSummary(destinationGroups(set.items))}` : "Nothing is prepared to open";
+}
+
+export type SlotRemedy = "retry_failed" | "retry_all" | "setup" | "review" | "refresh";
+export interface SlotView {
+  /** Short visible state (fits the 92px slot beside the info trigger); carried by the remedy's name when a remedy is shown. */
+  text: string;
+  tone: "idle" | "pending" | "sent" | "attention";
+  remedy: { kind: SlotRemedy; label: string; name: string } | null;
+  /** Inspectable lines for the details popover; empty means no details control. */
+  details: string[];
+  /** Original error text, shown only inside details. */
+  technical: string | null;
+}
+
+/**
+ * The one reserved status slot on a tile: idle, pending, sent or needs
+ * attention, with at most one short remedy. It replaces "Sending…" in place;
+ * nothing is added below the tile.
+ */
+export function slotView(input: {
+  outcome: LaunchOutcome | null; earlier: boolean; pending: boolean;
+  prepareError: { kind: LaunchProblem; message: string; raw: string } | null;
+  canSetup: boolean; canReview: boolean;
+}): SlotView {
+  const { outcome, earlier, pending, prepareError, canSetup, canReview } = input;
+  const view = (patch: Partial<SlotView>): SlotView => ({ text: "", tone: "idle", remedy: null, details: [], technical: null, ...patch });
+  const refresh = { kind: "refresh" as const, label: "Retry", name: "Destinations unavailable. Prepare them again" };
+  // With a route, the remedy's name already says why; details would only repeat it and crowd the slot.
+  const setup = (details: string[]) => canSetup
+    ? view({ text: "Needs setup", tone: "attention", remedy: { kind: "setup", label: "Finish setup", name: "Finish setup: UW connection setup is not finished" }, details: details.slice(1) })
+    : view({ text: "Needs setup", tone: "attention" });
+  if (pending) return view({ text: "Sending…", tone: "pending" });
+  if (prepareError) {
+    if (prepareError.kind === "setup") return setup([SETUP_TEXT]);
+    return view({ text: "Unavailable", tone: "attention", remedy: refresh, details: [prepareError.message], technical: prepareError.raw || null });
+  }
+  if (!outcome) return view({});
+  if (earlier) {
+    const sent = sentTitles(outcome);
+    if (!sent.length && outcome.problem?.kind !== "changed") return view({});
+    const details = ["The prepared list changed since the last attempt.", sent.length ? `Earlier attempt sent ${sent.join(", ")}.` : "Nothing from the earlier attempt was sent."];
+    return canReview
+      ? view({ text: "Changed", tone: "attention", remedy: { kind: "review", label: "Review", name: "The prepared list changed. Review the updated list" }, details })
+      : view({ text: "Changed", tone: "attention", details });
+  }
+  const rows = outcome.items.filter(item => item.state.kind !== "ready").map(item => `${item.title}: ${stateLabel(item.state)}.`);
+  const problem = outcome.problem;
+  const { sent, failed, unconfirmed, total } = counts(outcome);
+  if (problem?.kind === "setup") return setup([problem.message, ...rows]);
+  if (problem?.kind === "busy") return view({ text: "Busy", tone: "attention", remedy: { kind: "retry_all", label: "Try again", name: "Another Start work is still sending. Try again" }, details: [problem.message, ...rows] });
+  if (problem?.kind === "changed") return view({ text: "Changed", tone: "attention", details: [problem.message, ...rows] });
+  // Unknown: the student checks their browser first; a visible retry would invite duplicate tabs.
+  if (problem?.kind === "unknown") return view({ text: "Not sure", tone: "attention", details: [problem.message, ...rows], technical: problem.raw || null });
+  if (problem?.kind === "retry_expired") return view({ text: "Not sent", tone: "attention", remedy: { kind: "retry_all", label: "Open all", name: "Retry record expired. Open all again" }, details: [problem.message, ...rows] });
+  if (problem?.kind === "unavailable") return view({ text: "Unavailable", tone: "attention", remedy: refresh, details: [problem.message, ...rows] });
+  if (outcome.mode === "dry_run") return view({ text: "Test only", tone: "sent", details: [summaryLine(outcome), ...rows] });
+  if (failed) return view({ text: `${failed} not sent`, tone: "attention", remedy: { kind: "retry_failed", label: failed === total ? "Try again" : `Retry ${failed}`, name: `${failed} not sent. Try ${failed === 1 ? "it" : "them"} again` }, details: [summaryLine(outcome), ...rows] });
+  if (unconfirmed) return view({ text: "Not sure", tone: "attention", details: [summaryLine(outcome), ...rows] });
+  return view({ text: sent === total ? "Sent" : `Sent ${sent} of ${total}`, tone: "sent", details: [summaryLine(outcome), ...rows] });
+}
+const SETUP_TEXT = "Finish the UW connection setup step before Magic opens course pages.";

@@ -1,19 +1,21 @@
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ComponentType, type ReactNode, type RefObject } from "react";
 import type { ResourceView } from "@magic/contracts";
 import { Action, Disclosure } from "../../../../../packages/ui/src";
-import { counts, readableNote, stateLabel, stateTone, summaryLine, type LaunchOutcome } from "./launch-model";
-import { destinationGroups, destinationOf, destinationPhrase, destinationSummary, type DestinationIcon } from "./destination";
+import { counts, launchLabel, pageViewApplies, readableNote, sendsLine, sentTitles, slotView, stateLabel, stateTone, summaryLine, type LaunchOutcome, type SlotView } from "./launch-model";
+import { destinationGroups, destinationOf, destinationPhrase, type DestinationIcon } from "./destination";
 import { usePreparedWork, type PreparedWorkController } from "./usePreparedWork";
 import "../StartWork.css";
 import "./PreparedWork.css";
 
 // Lucide v0.468.0 nodes, ISC; attribution in packages/ui/LICENSE.icons.
 // file-text, refresh-cw, x and arrow-right match docs/design/lab/vendor; the others are copied from lucide-react 0.468.0.
-function Icon({ name }: { name: DestinationIcon | "retry" | "close" | "forward" | "alert" }) {
+type IconName = DestinationIcon | "retry" | "close" | "forward" | "alert" | "info";
+function Icon({ name }: { name: IconName }) {
   const sheet = <><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></>;
   const paths = {
     globe: <><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></>,
     "file-text": <>{sheet}<path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></>,
+    file: sheet,
     "file-spreadsheet": <>{sheet}<path d="M8 13h2"/><path d="M14 13h2"/><path d="M8 17h2"/><path d="M14 17h2"/></>,
     presentation: <><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></>,
     "graduation-cap": <><path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"/><path d="M22 10v6"/><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"/></>,
@@ -22,6 +24,7 @@ function Icon({ name }: { name: DestinationIcon | "retry" | "close" | "forward" 
     close: <><path d="M18 6 6 18"/><path d="m6 6 12 12"/></>,
     forward: <><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></>,
     alert: <><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></>,
+    info: <><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></>,
   };
   return <svg className="magic-prepared__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
@@ -29,49 +32,147 @@ function Icon({ name }: { name: DestinationIcon | "retry" | "close" | "forward" 
 export type PreparedWorkProps = {
   resource: ResourceView;
   refreshKey: string;
-  /** Home Upcoming row: the whole row starts work; the outcome is a sibling below it. */
-  compact?: { className: string; summary: ReactNode };
-  /** Optional route to the UW connection setup step when consent is missing. */
+  /** Route to the saved assignment detail, used when nothing can be launched or the list changed. */
+  onInspect?: () => void;
+  /** Home Upcoming tile: the whole card starts work; `trailing` holds sibling controls, never nested. */
+  compact?: { className: string; summary: ReactNode; description?: string; trailing?: ReactNode };
+  /** Labeled action beside a briefing passage, with the same prepared set, status slot and retry. */
+  action?: boolean;
+  /** Actual route to the UW connection setup step ("Finish setup"). */
   onSetup?: () => void;
+  /** Plain confirmation with nothing to act on; the shell shows it as a notice without moving content. */
+  onNotice?: (text: string) => void;
+  /** Original text of an unexpected failure, for the shell's global failure contract. */
+  onFailure?: (detail: string) => void;
+  /** Shared info toggletip for routine detail (e.g. packages/ui EvidenceInfo). Children are phrasing only. */
+  info?: InfoRenderer;
 };
+export type InfoRenderer = ComponentType<{ label: string; children: ReactNode }>;
 
-/** Drop-in for StartWork: same props, one engine, outcome shared across Home and detail for the session. */
+/** Drop-in for StartWork: same props plus setup/notice/failure routes; one engine, outcome shared across surfaces. */
 export function PreparedWork(props: PreparedWorkProps) {
   return <PreparedWorkInner key={props.resource.id} {...props} />;
 }
 
-function PreparedWorkInner({ resource, refreshKey, compact, onSetup }: PreparedWorkProps) {
-  const anchor = compact ? `work-${resource.id}` : `start-work-${resource.id}`;
-  const work = usePreparedWork(resource.id, refreshKey, anchor);
-  return compact ? <CompactWork resource={resource} work={work} compact={compact} anchor={anchor} onSetup={onSetup}/>
-    : <FullWork resource={resource} work={work} anchor={anchor} onSetup={onSetup}/>;
+function PreparedWorkInner(props: PreparedWorkProps) {
+  const { resource, refreshKey, compact, action, onNotice, onFailure } = props;
+  const container = useRef<HTMLElement>(null);
+  const lazy = !!(compact || action);
+  const [visible, setVisible] = useState(!lazy);
+  useEffect(() => {
+    if (visible || !container.current) return;
+    if (typeof IntersectionObserver === "undefined") { setVisible(true); return; }
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) { setVisible(true); observer.disconnect(); }
+    }, { root: document.querySelector(".desktop-workspace"), rootMargin: "100px" });
+    observer.observe(container.current);
+    return () => observer.disconnect();
+  }, [visible]);
+  const anchor = compact ? `work-${resource.id}` : action ? `start-${resource.id}` : `start-work-${resource.id}`;
+  const work = usePreparedWork(resource.id, refreshKey, anchor, { enabled: visible, onNotice, onFailure });
+  return <WorkView {...props} work={work} anchor={anchor} container={container}/>;
 }
 
-function CompactWork({ resource, work, compact, anchor, onSetup }: { resource: ResourceView; work: PreparedWorkController; compact: NonNullable<PreparedWorkProps["compact"]>; anchor: string; onSetup?: () => void }) {
-  const { set, prepare, pending, canLaunch, outcome } = work;
-  const groups = set ? destinationGroups(set.items) : [];
-  const sends = groups.length ? `, sends ${destinationSummary(groups)}` : "";
-  return <section className="magic-start-work magic-start-work--compact" aria-label={`Prepared work: ${resource.title}`} data-place-anchor={anchor}>
-    <button className={`home-work-row ${compact.className}`} data-focus-key={anchor} aria-label={`Start work on ${resource.title}${sends}`}
-      aria-busy={pending || undefined} aria-disabled={pending || !canLaunch || undefined}
-      onClick={() => { if (!pending && canLaunch) void work.launch(); }}>
-      <span className="home-work-main">{compact.summary}
-        <span className="home-work-destinations">{set ? <DestinationCluster groups={groups} titles={new Map(set.items.map(item => [item.resourceId, item.title]))}/> : prepare.kind === "error" ? "Destinations unavailable" : "Preparing destinations…"}</span>
-        <span className="home-work-launch">{pending ? "Sending…" : "Start work →"}</span>
-      </span>
-    </button>
-    {outcome && <Outcome work={work} outcome={outcome} anchor={anchor} compact onSetup={onSetup}/>}
-    {prepare.kind === "error" && <div className="magic-prepared__problem" role="status"><p>{prepare.message}</p><Action tone="quiet" onClick={work.refresh}>Refresh destinations</Action></div>}
+/** Rendering only, driven by a controller. Exported as a test seam for rendered states. */
+export function WorkView(props: PreparedWorkProps & { work: PreparedWorkController; anchor: string; container?: RefObject<HTMLElement | null> }) {
+  return props.compact || props.action ? <Tile {...props}/> : <FullWork work={props.work} anchor={props.anchor} onSetup={props.onSetup}/>;
+}
+
+/** What the tile's main target does right now. */
+function tileTarget(work: PreparedWorkController, onInspect?: () => void) {
+  const { set, prepare, pending, earlier, canLaunch, outcome } = work;
+  const changed = earlier && !!outcome && (sentTitles(outcome).length > 0 || outcome.problem?.kind === "changed");
+  if (onInspect && (prepare.kind === "error" || !set || !window.magic.startWork)) return { label: "View assignment", run: onInspect, disabled: false };
+  if (onInspect && changed) return { label: "Review updated list", run: onInspect, disabled: false };
+  return { label: set ? launchLabel(set) : "Start work", run: () => void work.launch(), disabled: pending || !canLaunch };
+}
+
+function Tile({ resource, work, anchor, container, compact, action, onInspect, onSetup, info }: PreparedWorkProps & { work: PreparedWorkController; anchor: string; container?: RefObject<HTMLElement | null> }) {
+  const described = useId();
+  const { set, pending } = work;
+  const target = tileTarget(work, onInspect);
+  const activate = () => { if (!target.disabled && !pending) target.run(); };
+  const facts = [compact?.description, set ? sendsLine(set) : null, set && pageViewApplies(set) ? "Canvas may record a page view" : null].filter(Boolean).join(". ");
+  const titles = set ? `${target.label}. ${set.items.map(item => item.title).join(" + ")}${pageViewApplies(set) ? ". Canvas may record a page view." : ""}` : undefined;
+  const slot = <StatusSlot work={work} anchor={anchor} onSetup={onSetup} onInspect={onInspect} info={info}/>;
+  if (compact) return <section ref={container as RefObject<HTMLElement>} className="magic-start-work magic-start-work--compact magic-prepared-tile" aria-label={`Prepared work: ${resource.title}`} data-place-anchor={anchor}>
+    <div className={`home-work-card magic-prepared-card ${compact.className}`}>
+      <button className="home-work-row magic-prepared-target" data-focus-key={anchor} aria-label={`${target.label}: ${resource.title}`} aria-describedby={described} title={titles}
+        aria-busy={pending || undefined} aria-disabled={target.disabled || undefined} onClick={activate}>
+        {compact.summary}
+      </button>
+      {slot}
+      {compact.trailing}
+      <span id={described} hidden>{facts}</span>
+    </div>
+  </section>;
+  const multi = !!set && set.items.length > 1;
+  return <section ref={container as RefObject<HTMLElement>} className="magic-start-work magic-start-work--action magic-prepared-action" aria-label={`Prepared work: ${resource.title}`} data-place-anchor={anchor}>
+    <Action data-focus-key={anchor} aria-describedby={described} title={titles} pending={pending} aria-disabled={target.disabled || undefined} onClick={activate}>
+      <span>{target.label}{multi && target.label === "Start work" && <small>{sendsLine(set)}</small>}</span><Icon name="forward"/>
+    </Action>
+    {slot}
+    <span id={described} hidden>{facts}</span>
   </section>;
 }
 
-/** Summary of where Start work sends things: one icon per actual destination category. Not a control. */
-function DestinationCluster({ groups, titles }: { groups: ReturnType<typeof destinationGroups>; titles: Map<string, string> }) {
-  return <span className="magic-prepared__cluster">
-    {groups.map(group => <span key={group.category} className="magic-prepared__dest" title={`${group.label}: ${group.resourceIds.map(id => titles.get(id)).join(", ")}`}>
-      <Icon name={group.icon}/>{group.label}
-    </span>)}
+/** Idle marks: one icon per actual destination category, decoration only (the row names them). */
+function Marks({ work }: { work: PreparedWorkController }) {
+  if (!work.set) return null;
+  const groups = destinationGroups(work.set.items);
+  return <span className="magic-prepared-slot__marks" aria-hidden="true">
+    {groups.slice(0, 3).map(group => <span key={group.category} className="magic-prepared-slot__mark" title={group.label}><Icon name={group.icon}/></span>)}
+    {groups.length > 3 && <span className="magic-prepared-slot__more">+{groups.length - 3}</span>}
   </span>;
+}
+
+/**
+ * The reserved action/status slot. Every state renders inside the same fixed
+ * bounds: marks when idle, then Sending…, then the result or one short remedy.
+ * Routine detail opens over the page instead of pushing rows down. Never nested
+ * in the launch button.
+ */
+function StatusSlot({ work, anchor, onSetup, onInspect, info }: { work: PreparedWorkController; anchor: string; onSetup?: () => void; onInspect?: () => void; info?: InfoRenderer }) {
+  const view: SlotView = slotView({
+    outcome: work.outcome, earlier: work.earlier, pending: work.pending,
+    prepareError: work.prepare.kind === "error" ? work.prepare.problem : null,
+    canSetup: !!onSetup, canReview: !!onInspect,
+  });
+  // The student saw the result here; a later visit does not repeat a "back" cue.
+  useEffect(() => () => work.acknowledgeReturn(), []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Remedies disappear once they run; keep focus on the tile's own target.
+  const keepFocus = () => focusAnchor(anchor);
+  const remedy = view.remedy && (() => {
+    switch (view.remedy.kind) {
+      case "retry_failed": return () => { keepFocus(); work.retryFailed(); };
+      case "retry_all": return () => { keepFocus(); void work.launch(); };
+      case "refresh": return () => { keepFocus(); work.refresh(); };
+      case "setup": return () => onSetup?.();
+      case "review": return () => onInspect?.();
+    }
+  })();
+  const Info = info ?? LocalInfo;
+  const label = `Start work details: ${view.text}`;
+  return <div className={`home-work-status-slot magic-prepared-slot is-${view.tone}`}>
+    {/* One live region in every state; with a remedy its text is announced but takes no slot width. */}
+    <span className={view.remedy ? "magic-prepared-sr" : "magic-prepared-slot__text"} role="status" aria-live="polite">{view.text}</span>
+    {view.tone === "idle" && <Marks work={work}/>}
+    {view.remedy && remedy && <button type="button" className="home-work-remedy magic-prepared-slot__remedy" aria-label={view.remedy.name} onClick={remedy}>{view.remedy.label}</button>}
+    {view.details.length > 0 && <Info label={label}>
+      {view.details.map(line => <span key={line} className="magic-prepared-info__line">{line}</span>)}
+      {view.technical && <span className="magic-prepared-info__line magic-prepared-info__technical">Technical detail: <code>{view.technical}</code></span>}
+    </Info>}
+  </div>;
+}
+
+/** Fallback when no shared info toggletip is supplied: native disclosure, opens over the page, Escape returns to it. */
+function LocalInfo({ label, children }: { label: string; children: ReactNode }) {
+  const details = useRef<HTMLDetailsElement>(null);
+  return <details ref={details} className="home-work-error-info magic-prepared-info"
+    onKeyDown={event => { if (event.key === "Escape" && details.current?.open) { event.stopPropagation(); details.current.open = false; details.current.querySelector("summary")?.focus(); } }}>
+    <summary aria-label={label}><Icon name="info"/></summary>
+    <div role="note" aria-label={label}>{children}</div>
+  </details>;
 }
 
 type Stage = "ready" | "sending" | "verify" | "return" | "problem";
@@ -85,19 +186,25 @@ function stageOf(outcome: LaunchOutcome | null): Stage {
 }
 const STAGE_TITLE: Record<Stage, string> = { ready: "Start work", sending: "Start work", verify: "Verification run", return: "Return to your work", problem: "Start work" };
 
-/** One region whose state changes: amber while ready, blue once something was handed off. */
-function FullWork({ work, anchor, onSetup }: { resource: ResourceView; work: PreparedWorkController; anchor: string; onSetup?: () => void }) {
+/** Assignment detail: one flat region whose state changes; rows are separated by lines, not an inner card. */
+function FullWork({ work, anchor, onSetup }: { work: PreparedWorkController; anchor: string; onSetup?: () => void }) {
   const heading = useId();
-  const ledeRef = useRef<HTMLParagraphElement>(null);
   const { set, prepare, pending, canLaunch, outcome, earlier, returnedAt } = work;
   const current = outcome && !earlier ? outcome : null;
   const stage = stageOf(current);
   const sentBefore = !!current && current.mode !== "none";
   const assignment = set?.items.find(item => item.role === "instructions")?.title ?? set?.assignmentTitle;
-  useEffect(() => { if (returnedAt) ledeRef.current?.scrollIntoView?.({ block: "nearest" }); }, [returnedAt]);
-  const lede = !current ? (earlier ? "An earlier attempt used destinations that have since changed. Start again from this updated list." : "Magic sends these reviewed destinations to your browser and apps.")
-    : stage === "problem" && counts(current).sent === 0 && current.problem?.kind !== "unknown" ? "Nothing was sent."
+  const earlierSent = earlier && outcome ? sentTitles(outcome) : [];
+  // Acknowledge on leaving; no scroll on mount, so Back keeps the restored place.
+  useEffect(() => () => work.acknowledgeReturn(), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const problem = current?.problem ?? null;
+  const lede = !current ? (earlier ? "The prepared list changed since your last attempt. Review it before starting again." : "Magic sends these reviewed destinations to your browser and apps.")
+    : problem && stage === "problem" ? problem.message
     : summaryLine(current);
+  const extra = problem && stage !== "problem" && problem.message !== lede ? problem.message : null;
+  const label = set ? launchLabel(set) : "Start work";
+  const setupNeeded = problem?.kind === "setup" || (prepare.kind === "error" && prepare.problem.kind === "setup");
+  const footnote = set ? [pageViewApplies(set) ? "Canvas may record a page view." : "", "Magic can confirm each handoff to your browser or apps, not that a page loaded. Opening does not mark work done."].filter(Boolean).join(" ") : "";
   return <section className={`magic-start-work magic-prepared is-${stage === "sending" ? (sentBefore ? "return" : "ready") : stage}`} aria-labelledby={heading} data-place-anchor={anchor}>
     <header className="magic-prepared__head">
       <span className="magic-prepared__badge"><Icon name={stage === "return" ? "retry" : "forward"}/></span>
@@ -105,8 +212,10 @@ function FullWork({ work, anchor, onSetup }: { resource: ResourceView; work: Pre
         <h3 id={heading}>{STAGE_TITLE[stage]}</h3>
         <div role="status" aria-live="polite">
           {returnedAt && current && stage === "return" && <p className="magic-prepared__return"><strong>Back from {assignment ?? "your work"}.</strong></p>}
-          <p ref={ledeRef} className="magic-prepared__lede">{lede}</p>
-          {current?.problem && <p className="magic-prepared__problem-text">{current.problem.message}</p>}
+          <p className="magic-prepared__lede">{lede}</p>
+          {earlierSent.length > 0 && <p className="magic-prepared__earlier">Earlier attempt sent {earlierSent.join(", ")}.</p>}
+          {extra && <p className="magic-prepared__problem-text">{extra}</p>}
+          {problem?.kind === "unknown" && problem.raw && <TechnicalDetail raw={problem.raw}/>}
         </div>
       </div>
       {current && !pending && <button type="button" className="magic-prepared__dismiss" onClick={() => { work.dismiss(); focusAnchor(anchor); }} aria-label="Clear this Start work result"><Icon name="close"/></button>}
@@ -117,16 +226,16 @@ function FullWork({ work, anchor, onSetup }: { resource: ResourceView; work: Pre
           const row = current?.items.find(entry => entry.resourceId === item.resourceId);
           const tone = row ? stateTone(row.state) : "quiet";
           const where = destinationOf(item.target);
+          const retryable = row?.state.kind === "not_sent" && !row.state.stale;
           return <li key={item.resourceId} className={`magic-prepared__row is-${tone}`}>
             <span className="magic-prepared__kind" title={where.name}><Icon name={where.icon}/></span>
             <span className="magic-prepared__what">
               <span className="magic-prepared__title">{item.title}</span>
-              <small>{destinationPhrase(item)} · {item.reason}</small>
-              {row?.state.kind === "fallback" && <small>Saved copy not used because {row.state.reason}.</small>}
+              <small>{row?.state.kind === "fallback" ? `Saved copy not used because ${row.state.reason}` : `${destinationPhrase(item)} · ${item.reason}`}</small>
             </span>
             <span className="magic-prepared__state">
               {row && row.state.kind !== "ready" && <span className={`magic-prepared__status is-${tone}`}>{tone === "attention" && <Icon name="alert"/>}{stateLabel(row.state)}</span>}
-              {row?.state.kind === "not_sent" && <Action tone="quiet" pending={pending} onClick={() => void work.launch([item.resourceId])} aria-label={`Try sending ${item.title} again`}><Icon name="retry"/> Try again</Action>}
+              {retryable && <Action tone="quiet" pending={pending} onClick={() => void work.launch([item.resourceId])} aria-label={`Try sending ${item.title} again`}><Icon name="retry"/> Try again</Action>}
             </span>
           </li>;
         })}
@@ -135,54 +244,31 @@ function FullWork({ work, anchor, onSetup }: { resource: ResourceView; work: Pre
         <ul>{set.held.map(item => <li key={item.resourceId}>{item.title} · {item.reason}</li>)}</ul>
       </Disclosure>}
       <div className="magic-prepared__actions">
-        {!sentBefore ? <Action data-focus-key={anchor} disabled={!canLaunch} pending={pending} onClick={() => void work.launch()}>
-          Start work · open {set.items.length} {set.items.length === 1 ? "item" : "items"} <Icon name="forward"/>
-        </Action> : <>
-          {work.failedIds.length > 1 && <Action pending={pending} onClick={() => work.retryFailed()}><Icon name="retry"/> Try {work.failedIds.length} not sent again</Action>}
-          <Action data-focus-key={anchor} tone="quiet" disabled={!canLaunch} pending={pending} onClick={() => void work.launch()}>Open all {set.items.length} again</Action>
-        </>}
-        {current && <Recovery work={work} outcome={current} onSetup={onSetup} full/>}
+        {setupNeeded && onSetup ? <Action data-focus-key={anchor} onClick={onSetup}>Finish setup <Icon name="forward"/></Action>
+          : !sentBefore ? <Action data-focus-key={anchor} disabled={!canLaunch} pending={pending} onClick={() => void work.launch()}>
+            {label}{label === "Start work" && ` · open ${set.items.length} items`} <Icon name="forward"/>
+          </Action> : <>
+            {work.failedIds.length > 1 && <Action pending={pending} onClick={() => work.retryFailed()}><Icon name="retry"/> Try {work.failedIds.length} not sent again</Action>}
+            <Action data-focus-key={anchor} tone="quiet" disabled={!canLaunch} pending={pending} onClick={() => void work.launch()}>{set.items.length === 1 ? "Open again" : `Open all ${set.items.length} again`}</Action>
+          </>}
+        {problem?.kind === "busy" && <Action tone="quiet" pending={pending} onClick={() => void work.launch()}>Try again</Action>}
+        {problem?.kind === "unavailable" && <Action tone="quiet" onClick={work.refresh}>Refresh destinations</Action>}
       </div>
-      {[...set.notes, ...(current?.notes ?? [])].map(note => <p className="magic-start-work__note" key={note}>{readableNote(note)}</p>)}
-      <p className="magic-start-work__note">Canvas may record a page view. Magic can confirm each handoff to your browser or apps, not that a page loaded. Opening does not mark work done.</p>
+      <p className="magic-start-work__note">{[...set.notes, ...(current?.notes ?? [])].map(note => readableNote(note)).concat(footnote).join(" ")}</p>
     </> : prepare.kind === "loading" ? <p role="status">Preparing your materials…</p> : null}
-    {prepare.kind === "error" && <div className="magic-prepared__problem" role="status"><p>{prepare.message}</p><Action tone="quiet" onClick={work.refresh}>Refresh destinations</Action></div>}
+    {prepare.kind === "error" && <div className="magic-prepared__problem" role="status">
+      <p>{prepare.problem.kind === "setup" ? "Finish the UW connection setup step before Magic prepares course pages." : prepare.problem.message}</p>
+      {prepare.problem.kind === "setup" ? onSetup && <Action tone="quiet" onClick={onSetup}>Finish setup</Action>
+        : <Action tone="quiet" onClick={work.refresh}>Refresh destinations</Action>}
+      {prepare.problem.kind === "unknown" && prepare.problem.raw && <TechnicalDetail raw={prepare.problem.raw}/>}
+    </div>}
   </section>;
 }
 
+function TechnicalDetail({ raw }: { raw: string }) {
+  return <details className="magic-prepared__technical"><summary>Technical detail</summary><code>{raw}</code></details>;
+}
+
 function focusAnchor(anchor: string) {
-  document.querySelector<HTMLElement>(`[data-focus-key="${CSS.escape(anchor)}"]`)?.focus();
-}
-
-/** Recovery for problems before or around the handoff. Full variant omits controls it already shows. */
-function Recovery({ work, outcome, onSetup, full }: { work: PreparedWorkController; outcome: LaunchOutcome; onSetup?: () => void; full?: boolean }) {
-  const problem = outcome.problem, { pending } = work;
-  return <>
-    {!full && work.failedIds.length > 0 && !problem && <Action tone="quiet" pending={pending} onClick={() => work.retryFailed()}><Icon name="retry"/> Try {work.failedIds.length} not sent again</Action>}
-    {problem?.kind === "busy" && <Action tone="quiet" pending={pending} onClick={() => void work.launch()}>Try again</Action>}
-    {problem?.kind === "setup" && onSetup && <Action tone="quiet" onClick={onSetup}>Finish setup</Action>}
-    {!full && (problem?.kind === "retry_expired" || problem?.kind === "unknown") && <Action tone="quiet" pending={pending} disabled={!work.canLaunch} onClick={() => void work.launch()}>Open all again</Action>}
-    {problem?.kind === "unavailable" && <Action tone="quiet" onClick={work.refresh}>Refresh destinations</Action>}
-  </>;
-}
-
-/** Home row sibling: short summary, rows only when something needs attention, and recovery. */
-function Outcome({ work, outcome, anchor, onSetup }: { work: PreparedWorkController; outcome: LaunchOutcome; anchor: string; compact?: boolean; onSetup?: () => void }) {
-  const { earlier, returnedAt } = work;
-  const tally = counts(outcome);
-  const title = outcome.items.find(item => item.role === "instructions")?.title;
-  return <div className={`magic-prepared__outcome${returnedAt ? " is-returned" : ""}`}>
-    <div role="status" aria-live="polite">
-      {earlier ? <p className="magic-start-work__note">An earlier attempt used destinations that have since changed. Start again from the updated row.</p>
-        : <p className="magic-prepared__summary">{returnedAt && <strong>Back from {title ?? "your work"}. </strong>}{summaryLine(outcome)}</p>}
-      {!earlier && tally.pending === 0 && (tally.failed > 0 || tally.unconfirmed > 0 || outcome.items.some(item => item.state.kind === "fallback")) && <ul className="magic-start-work__receipt">
-        {outcome.items.filter(item => item.state.kind !== "ready").map(item => <li key={item.resourceId}>{item.title} · {stateLabel(item.state)}</li>)}
-      </ul>}
-      {outcome.problem && <p className="magic-prepared__problem-text">{outcome.problem.message}</p>}
-    </div>
-    <div className="magic-prepared__recover">
-      {!earlier && <Recovery work={work} outcome={outcome} onSetup={onSetup}/>}
-      {tally.pending === 0 && <button type="button" className="magic-prepared__dismiss" onClick={() => { work.dismiss(); focusAnchor(anchor); }} aria-label="Clear this Start work result"><Icon name="close"/></button>}
-    </div>
-  </div>;
+  document.querySelector<HTMLElement>(`[data-focus-key="${CSS.escape(anchor)}"]`)?.focus({ preventScroll: true });
 }

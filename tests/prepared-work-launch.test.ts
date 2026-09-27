@@ -33,7 +33,7 @@ test("handoff is reported per destination and never as loaded, done or complete"
     notes: [...set.notes, "Week 3 slides: opened the original because the saved copy is no longer on this device."],
   }));
   assert.deepEqual(outcome.items.map(item => item.state.kind), ["fallback", "not_sent", "handed_off"]);
-  assert.equal(stateLabel(outcome.items[0]!.state), "Saved copy not used, sent the original to your browser");
+  assert.equal(stateLabel(outcome.items[0]!.state), "Sent the original to your browser");
   assert.deepEqual(outcome.items[0]!.state, { kind: "fallback", reason: "the saved copy is no longer on this device" });
   assert.equal(stateLabel(outcome.items[1]!.state), "Not sent: only ordinary web links can be opened");
   assert.equal(stateLabel(outcome.items[2]!.state), "Sent to your browser");
@@ -119,6 +119,7 @@ test("destination comes from the actual target: a Canvas-hosted PDF is a PDF, si
   assert.equal(GITLAB_ORIGIN, UW_GITLAB_ORIGIN, "renderer mapping tracks the connector's GitLab origin");
   const file = (extension: string) => ({ kind: "file" as const, path: "/docs/x", extension, fallbackUrl: "https://canvas.wisc.edu/courses/1/files/2" });
   assert.deepEqual([".pdf", ".PPTX", ".csv", ".docx", ".md"].map(ext => destinationOf(file(ext)).category), ["pdf", "slides", "spreadsheet", "document", "document"]);
+  assert.notEqual(destinationOf(file(".pdf")).icon, destinationOf(file(".docx")).icon, "a PDF and a document never share one glyph");
   assert.equal(destinationOf(file(".pdf")).opensIn, "app");
   const web = (url: string) => destinationOf({ kind: "web", url });
   assert.equal(web("https://canvas.wisc.edu/courses/1/assignments/3").category, "canvas");
