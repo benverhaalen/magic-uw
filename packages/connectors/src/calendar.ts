@@ -315,7 +315,7 @@ export function calendarPublishGuide(): { url: string; steps: string[] } {
     steps: [
       "Under Publish a calendar, choose your Calendar and Can view all details.",
       "Select Publish.",
-      "Copy the ICS link and paste it into Magic Canvas.",
+      "Copy the ICS link and paste it into My Magic UW.",
     ],
   };
 }

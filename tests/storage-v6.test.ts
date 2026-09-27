@@ -329,7 +329,7 @@ test("a database newer than this schema is refused and left alone", () => {
     const db = new DatabaseSync(file);
     db.exec(`PRAGMA user_version = ${SCHEMA_VERSION + 1}`);
     db.close();
-    assert.throws(() => createStore(file), /newer Magic Canvas version/);
+    assert.throws(() => createStore(file), /newer My Magic UW version/);
     const again = new DatabaseSync(file, { readOnly: true });
     assert.equal(again.prepare("PRAGMA user_version").get()!.user_version, SCHEMA_VERSION + 1);
     again.close();

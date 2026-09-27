@@ -187,7 +187,7 @@ export function createMcpService(
     );
     return fitted.value;
   }
-  const server = new McpServer({ name: "Magic Canvas", version: "0.3.0" });
+  const server = new McpServer({ name: "My Magic UW", version: "0.3.0" });
   for (const [name, description] of Object.entries(toolDescriptions))
     server.registerTool(
       name,
@@ -216,7 +216,7 @@ export function createMcpService(
             content: [
               {
                 type: "text" as const,
-                text: "This read was blocked or unavailable. Check the connection's course and data permissions in Magic Canvas.",
+                text: "This read was blocked or unavailable. Check the connection's course and data permissions in My Magic UW.",
               },
             ],
           };
