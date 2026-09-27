@@ -11,7 +11,7 @@ pnpm build
 pnpm exec electron apps/desktop
 ```
 
-Use Node 24 and the repository's pnpm version. [Development](development.md) covers gateway and desktop configuration. Preserve your existing workspace and credentials; do not copy another student's database. Lora Medium is bundled. Geist still comes from a private local font asset, so a clean checkout's exact font match remains a distribution dependency.
+Use Node 24 and the repository's pnpm version. [Development](development.md) covers gateway and desktop configuration. Preserve your existing workspace and credentials; do not copy another student's database. Lora Medium and Geist are bundled with their SIL Open Font Licenses. The build verifies both emitted font files against the supplied originals.
 
 ## Where to work
 

@@ -1,5 +1,5 @@
 /* Desktop adapter: geometry is local; shared semantic values come from @magic/ui. */
-@font-face { font-family: Geist; src: url('../private-fonts/Geist-Variable.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
+
 :root { font-family: var(--magic-font-interface); font-size: 16px; color: var(--magic-ink); --border: var(--magic-line-quiet); --muted: var(--magic-ink-muted); --surface: var(--magic-surface-quiet); }
 .desktop-shell { --sidebar-width: 234px; display: grid; grid-template: 55px minmax(0,1fr) / var(--sidebar-width) minmax(0,1fr); height: 100dvh; padding: 0 10px 10px 0; background: var(--magic-fill-shell); overflow: hidden; }
 .desktop-shell.is-collapsed { --sidebar-width: 64px; }
