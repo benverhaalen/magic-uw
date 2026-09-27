@@ -7,6 +7,7 @@
   "dependencies": {
     "@magic/contracts": "workspace:*",
     "@magic/core": "workspace:*",
+    "@magic/domain": "workspace:*",
     "@magic/storage": "workspace:*",
     "@magic/connectors": "workspace:*",
     "@magic/ai": "workspace:*",

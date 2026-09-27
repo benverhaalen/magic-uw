@@ -46,6 +46,8 @@ export interface PublicClient {
     canvasOrigin: string,
     signal?: AbortSignal,
   ): Promise<string>;
+  /** Reads only a published Outlook calendar link; see isOutlookPublishedCalendar. */
+  outlookFeed?(secretUrl: string, signal?: AbortSignal): Promise<string>;
   signedDownload(
     url: string,
     allowedOrigins: string[],
@@ -54,6 +56,28 @@ export interface PublicClient {
   isCanvas(url: string): boolean;
 }
 export const DEFAULT_CANVAS_ORIGIN = "https://canvas.wisc.edu";
+const OUTLOOK_ORIGINS = new Set(["https://outlook.office365.com", "https://outlook.office.com"]);
+/**
+ * A published Outlook calendar link (Settings → Calendar → Shared calendars → Publish).
+ * The link is a capability: it lives only in the encrypted vault, never in records.
+ */
+export function isOutlookPublishedCalendar(value: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  return (
+    url.protocol === "https:" &&
+    OUTLOOK_ORIGINS.has(url.origin) &&
+    !url.username &&
+    !url.password &&
+    !url.search &&
+    !url.hash &&
+    /^\/owa\/calendar\/[^/]+\/[^/]+\/(?:calendar|reachcalendar)\.ics$/.test(url.pathname)
+  );
+}
 const secretKey =
   /token|auth|cookie|password|secret|signature|credential|api[-_]?key|verifier|^sig$|^key$|^policy$|^expires$|^x-amz-|^x-goog-/i;
 
@@ -375,6 +399,16 @@ export function createPublicClient(
       )
         throw new MaterialReadError("invalid_feed");
       const result = await get(secretUrl, { signal }, "feed", [canvasOrigin]);
+      const text = await readBounded(result.response, 8 * 1024 * 1024, signal);
+      if (!/^\s*BEGIN:VCALENDAR\r?\n/i.test(text))
+        throw new MaterialReadError("invalid_calendar");
+      return text;
+    },
+    async outlookFeed(secretUrl, signal) {
+      if (!isOutlookPublishedCalendar(secretUrl))
+        throw new MaterialReadError("invalid_feed");
+      const origin = new URL(secretUrl).origin;
+      const result = await get(secretUrl, { signal }, "feed", [origin]);
       const text = await readBounded(result.response, 8 * 1024 * 1024, signal);
       if (!/^\s*BEGIN:VCALENDAR\r?\n/i.test(text))
         throw new MaterialReadError("invalid_calendar");

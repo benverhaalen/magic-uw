@@ -244,8 +244,12 @@ export const calendarMetadataSchema = z
     lastModified: optionalInstant,
     assignmentExternalId: id.optional(),
     recurrenceId: z.string().max(200).optional(),
+    location: z.string().max(500).optional(),
+    onlineMeeting: z.enum(["teams"]).optional(),
   })
   .strict();
+/** Course id used for events from the student's published Outlook calendar (not a course). */
+export const OUTLOOK_CALENDAR_COURSE_ID = "outlook-calendar";
 export const crawlMetadataSchema = z
   .object({
     discoveredFrom: evidenceUrlSchema.optional(),
@@ -622,6 +626,29 @@ export const mcpGrantSchema = z
   })
   .strict();
 export type McpGrant = z.infer<typeof mcpGrantSchema>;
+/** One day-plan decision about a Today rail suggestion. Local only; never shared with Jev, AI, or MCP. */
+export const dayPlanEntrySchema = z
+  .object({
+    key: z.string().min(1).max(300),
+    date: z.iso.date(),
+    status: z.enum(["accepted", "skipped"]),
+    block: z
+      .object({
+        type: z.enum(["prep", "work", "exam"]),
+        resourceId: id,
+        title: z.string().trim().min(1).max(200),
+        courseName: z.string().max(200),
+        startMin: z.number().int().min(0).max(1440),
+        endMin: z.number().int().min(0).max(1440),
+      })
+      .strict()
+      .refine((b) => b.endMin - b.startMin >= 10, {
+        message: "A block needs at least 10 minutes.",
+      }),
+    doneAt: instant.nullable().optional(),
+  })
+  .strict();
+export type DayPlanEntry = z.infer<typeof dayPlanEntrySchema>;
 export const syncRunSchema = z
   .object({
     id,
@@ -709,6 +736,14 @@ export interface Store {
   addSyncRun(value: SyncRun): void;
   mcpGrants(): McpGrant[];
   setMcpGrant(value: McpGrant): void;
+  dayPlan(): DayPlanEntry[];
+  setDayPlanEntry(value: DayPlanEntry): void;
+  removeDayPlanEntry(key: string, date: string): void;
+  /**
+   * Deletes a source the student disconnected and everything captured from it; returns the
+   * number of items removed. Not for failed or empty reads, which must never erase coursework.
+   */
+  removeSource(sourceId: string): number;
   resources(search?: string): Resource[];
   resource(id: string): Resource | undefined;
   sources(): SourceHealth[];
@@ -769,6 +804,7 @@ export interface Snapshot {
   changes?: ResourceChange[];
   syncRuns?: SyncRun[];
   mcpGrants?: McpGrant[];
+  dayPlan?: DayPlanEntry[];
 }
 export const commandSchema = z.discriminatedUnion("type", [
   z
@@ -823,7 +859,19 @@ export const commandSchema = z.discriminatedUnion("type", [
     .object({ type: z.literal("course-override"), value: courseOverrideSchema })
     .strict(),
   z.object({ type: z.literal("mcp-grant"), value: mcpGrantSchema }).strict(),
+  z
+    .object({ type: z.literal("day-plan"), entry: dayPlanEntrySchema })
+    .strict(),
+  z
+    .object({
+      type: z.literal("day-plan-remove"),
+      key: z.string().min(1).max(300),
+      date: z.iso.date(),
+    })
+    .strict(),
   z.object({ type: z.literal("fixture") }).strict(),
+  // Removes only the Outlook calendar and its meetings from this device. Used by disconnect and sign-out.
+  z.object({ type: z.literal("outlook-disconnect") }).strict(),
   z
     .object({ type: z.literal("complete"), id, completed: z.boolean() })
     .strict(),
@@ -903,6 +951,10 @@ export interface AppBridge {
   syncPlanning?(): Promise<CommandResult>;
   syncCanvas?(): Promise<CommandResult>;
   signOutUW?(): Promise<void>;
+  /** Saves (or with null, removes) the published Outlook calendar link in the encrypted vault. */
+  setOutlookCalendar?(url: string | null): Promise<{ connected: boolean }>;
+  /** Whether a link is saved. The link itself is never returned to the renderer. */
+  outlookCalendarStatus?(): Promise<{ connected: boolean }>;
   localStatus?(): Promise<LocalStatus>;
   localAsk?(request: LocalQuestion): Promise<LocalAnswer>;
   cancelLocal?(): Promise<void>;

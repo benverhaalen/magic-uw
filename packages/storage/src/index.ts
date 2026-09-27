@@ -20,6 +20,7 @@ import {
   defaultIngestionSettings,
   courseOverrideSchema,
   mcpGrantSchema,
+  dayPlanEntrySchema,
   syncRunSchema,
   type CaptureDiagnostic,
   type ChangeType,
@@ -29,6 +30,7 @@ import {
   instant,
   privacySchema,
   type Attempt,
+  type DayPlanEntry,
   type EgressReceipt,
   type IngestReport,
   type Job,
@@ -102,7 +104,11 @@ function assertText(value: string, name: string, max = 512): void {
 }
 
 /** One local writer. Network requests and model inference must happen outside its transactions. */
-export function createStore(path: string): Store {
+export function createStore(
+  path: string,
+  options: { now?: () => Date } = {},
+): Store {
+  const clock = options.now ?? (() => new Date());
   if (path !== ":memory:")
     mkdirSync(dirname(resolve(path)), { recursive: true, mode: 0o700 });
   const db = new DatabaseSync(path);
@@ -413,6 +419,42 @@ export function createStore(path: string): Store {
       new Date().toISOString(),
     );
   let closed = false;
+  // Keep two weeks of day-plan history, measured from the newest saved day.
+  const DAY_PLAN_KEEP_DAYS = 14;
+  function readDayPlan(): DayPlanEntry[] {
+    const row = db
+      .prepare("SELECT value FROM preferences WHERE key = 'dayPlan'")
+      .get();
+    if (!row) return [];
+    let saved: unknown;
+    try {
+      saved = JSON.parse(String(row.value));
+    } catch {
+      return [];
+    }
+    // Each entry validates on its own so one bad record cannot hide the rest.
+    return (Array.isArray(saved) ? saved : [])
+      .map((e) => dayPlanEntrySchema.safeParse(e))
+      .filter((r) => r.success)
+      .map((r) => r.data);
+  }
+  const DAY_PLAN_MAX_ENTRIES = 500;
+  // Measured from today, never from the newest saved day, so one far-off date cannot erase the rest.
+  function dayPlanWindow() {
+    const day = (offset: number) =>
+      new Date(clock().getTime() + offset * 86400000).toISOString().slice(0, 10);
+    return { from: day(-DAY_PLAN_KEEP_DAYS), to: day(DAY_PLAN_KEEP_DAYS) };
+  }
+  function writeDayPlan(entries: DayPlanEntry[]) {
+    const { from, to } = dayPlanWindow();
+    const kept = entries
+      .filter((e) => e.date >= from && e.date <= to)
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, DAY_PLAN_MAX_ENTRIES);
+    db.prepare(
+      "INSERT INTO preferences VALUES ('dayPlan', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    ).run(JSON.stringify(kept));
+  }
   return {
     courseIntelligence() {
       return db
@@ -1078,6 +1120,55 @@ export function createStore(path: string): Store {
       db.prepare(
         "INSERT INTO preferences VALUES ('privacy', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
       ).run(JSON.stringify(parsed));
+    },
+    dayPlan() {
+      return readDayPlan();
+    },
+    setDayPlanEntry(value) {
+      const entry = dayPlanEntrySchema.parse(value);
+      const { from, to } = dayPlanWindow();
+      if (entry.date < from || entry.date > to)
+        throw new Error("A plan entry must be dated within 14 days of today.");
+      const rest = readDayPlan().filter(
+        (e) => !(e.key === entry.key && e.date === entry.date),
+      );
+      writeDayPlan([...rest, entry]);
+    },
+    removeDayPlanEntry(key, date) {
+      writeDayPlan(
+        readDayPlan().filter((e) => !(e.key === key && e.date === date)),
+      );
+    },
+    removeSource(sourceId) {
+      return transaction(() => {
+        const source = db
+          .prepare("SELECT account_scope,course_id FROM sources WHERE id=?")
+          .get(sourceId) as Row | undefined;
+        if (!source) return 0;
+        const ids = (
+          db.prepare("SELECT id FROM resources WHERE source_id=?").all(sourceId) as Row[]
+        ).map((r) => String(r.id));
+        // The search index, course profiles, and day plan are not tied to resources by a
+        // foreign key; everything else cascades.
+        for (const id of ids)
+          db.prepare("DELETE FROM resource_search WHERE resource_id=?").run(id);
+        db.prepare("DELETE FROM sources WHERE id=?").run(sourceId);
+        const account = String(source.account_scope),
+          course = String(source.course_id);
+        const remaining = db
+          .prepare("SELECT 1 FROM sources WHERE account_scope=? AND course_id=? LIMIT 1")
+          .get(account, course);
+        if (remaining) rebuildIntelligence(account, course, clock().toISOString());
+        else
+          db.prepare("DELETE FROM course_intelligence WHERE id=?").run(
+            courseIntelligenceId(account, course),
+          );
+        const removed = new Set(ids);
+        const plan = readDayPlan();
+        if (plan.some((e) => removed.has(e.block.resourceId)))
+          writeDayPlan(plan.filter((e) => !removed.has(e.block.resourceId)));
+        return ids.length;
+      });
     },
     setCompleted(id, completed) {
       if (!liveResource(id))
