@@ -112,6 +112,11 @@ export function NotesPreview({ course }: { course: Course }) {
                   {firstLine(n.preview) ? <div className="backend-meta">{firstLine(n.preview)}</div> : null}
                 </li>
               ))}
+              <li aria-disabled="true">
+                <div className="backend-row">
+                  <strong>Microsoft 365: possibly coming soon</strong>
+                </div>
+              </li>
             </ul>
           )
         }
@@ -136,6 +141,11 @@ export function NotesPreview({ course }: { course: Course }) {
                   </button>
                 </li>
               ))}
+              <li aria-disabled="true">
+                <div className="backend-row">
+                  <strong>Microsoft 365: possibly coming soon</strong>
+                </div>
+              </li>
             </ul>
           );
         }}
@@ -216,14 +226,14 @@ export function NotesPreview({ course }: { course: Course }) {
           ) : null}
         </div>
       ) : null}
-      <h3>Sync with Word and Google Docs</h3>
+      <h3>Sync with Google Docs</h3>
       <Loaded load={sync} retry={reloadSync}>
         {(got) =>
           failed(got) ? (
             <Partial status={got.failed}>{got.message}</Partial>
           ) : (
             <ul className="backend-list">
-              {got.sync.providers.map((p) => (
+              {got.sync.providers.filter((p) => p.provider === "google").map((p) => (
                 <li key={p.provider}>
                   <div className="backend-row">
                     <strong>{p.provider === "microsoft" ? "Word (OneDrive)" : "Google Docs"}</strong>
@@ -235,6 +245,11 @@ export function NotesPreview({ course }: { course: Course }) {
                   </div>
                 </li>
               ))}
+              <li aria-disabled="true">
+                <div className="backend-row">
+                  <strong>Microsoft 365: possibly coming soon</strong>
+                </div>
+              </li>
             </ul>
           )
         }

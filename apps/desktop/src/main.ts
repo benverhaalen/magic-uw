@@ -308,6 +308,7 @@ app
     // owner: notes. Google Docs sync: OAuth (PKCE, loopback) and the Drive proxy; the token stays here.
     const notesGoogle = createGoogleNotesAuth({
       clientId: process.env.MAGIC_GOOGLE_CLIENT_ID || undefined,
+      clientSecret: process.env.MAGIC_GOOGLE_CLIENT_SECRET || undefined,
       vault,
       openExternal: (url) => shell.openExternal(url),
     });

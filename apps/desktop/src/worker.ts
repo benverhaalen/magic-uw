@@ -417,10 +417,14 @@ const notesRemotes: { microsoft?: NotesRemote; google?: NotesRemote & { connect(
   : {};
 // Word online: the app folder through main's Graph proxy (T30). Connected once the student's
 // Microsoft sign-in granted Files.ReadWrite.AppFolder. graphHost is defined below; called later.
-notesRemotes.microsoft = microsoftRemote(
-  (request) => graphHost.transport(request),
-  async () => graphScopes.includes("Files.ReadWrite.AppFolder"),
-);
+// Not offered in this build: Google Drive is the only notes connection; the UI shows Microsoft 365
+// as "possibly coming soon". Flip this constant to offer Word/OneDrive sync again.
+const OFFER_MICROSOFT_NOTES = false;
+if (OFFER_MICROSOFT_NOTES)
+  notesRemotes.microsoft = microsoftRemote(
+    (request) => graphHost.transport(request),
+    async () => graphScopes.includes("Files.ReadWrite.AppFolder"),
+  );
 // Notes saved straight to a folder the student's own OneDrive, Google Drive or iCloud client
 // already syncs: zero setup, no sign-in (see packages/notes/src/local-drive.ts). The chosen
 // folder and each note's last-written hash live in a small JSON file beside the workspace db.

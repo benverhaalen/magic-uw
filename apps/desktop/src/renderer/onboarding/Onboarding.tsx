@@ -1173,24 +1173,6 @@ function AppearanceStep({ heading, onBack, onNext }: { heading: Heading; onBack:
 // --- 5. Connections -------------------------------------------------------------------------------
 type RowState = { kind: "checking" } | { kind: "unavailable"; text: string } | { kind: "connect"; text: string; label: string } | { kind: "working"; text: string } | { kind: "connected"; text: string } | { kind: "waiting"; text: string };
 
-function outlookRow(status: OutlookStatus | null): RowState {
-  if (!status) return { kind: "unavailable", text: "Available in the desktop app." };
-  switch (status.outlook) {
-    case "not_set_up":
-      return { kind: "unavailable", text: "Not set up in this build." };
-    case "connected":
-      return { kind: "connected", text: "Connected." };
-    case "needs_uw_approval":
-      return { kind: "waiting", text: "Waiting for UW to approve My Magic UW for your account." };
-    case "expired":
-      return { kind: "connect", text: "The sign-in expired.", label: "Reconnect" };
-    case "error":
-      return { kind: "connect", text: "The last connection attempt failed.", label: "Try again" };
-    default:
-      return { kind: "connect", text: "Mail and calendar, read with your own Microsoft sign-in.", label: "Connect" };
-  }
-}
-
 function ConnectionsStep({
   heading,
   run,
@@ -1202,7 +1184,6 @@ function ConnectionsStep({
   onBack: (() => void) | null;
   onNext: () => void;
 }) {
-  const [microsoft, setMicrosoft] = useState<RowState>({ kind: "checking" });
   const [google, setGoogle] = useState<RowState>({ kind: "checking" });
   const [localFolders, setLocalFolders] = useState<DetectedLocalFolder[]>([]);
   const [localChosen, setLocalChosen] = useState<string | null>(null);
@@ -1220,9 +1201,6 @@ function ConnectionsStep({
       .catch(() => {});
   }, [run]);
   useEffect(() => {
-    const bridge = window.magic;
-    if (bridge?.outlookStatus) bridge.outlookStatus().then((s) => setMicrosoft(outlookRow(s))).catch(() => setMicrosoft(outlookRow(null)));
-    else setMicrosoft(outlookRow(null));
     run({ type: "notes", request: { op: "notes.sync.status" } })
       .then((result) => {
         const notes = result?.notes;
@@ -1238,14 +1216,6 @@ function ConnectionsStep({
   const chooseLocalFolder = async (folder: string | null) => {
     await run({ type: "notes", request: { op: "notes.localFolders.choose", folder } });
     loadLocal();
-  };
-  const connectMicrosoft = async () => {
-    setMicrosoft({ kind: "working", text: "Finish signing in with Microsoft." });
-    try {
-      setMicrosoft(outlookRow((await window.magic?.outlookConnect?.()) ?? null));
-    } catch {
-      setMicrosoft({ kind: "connect", text: "Microsoft sign-in didn't finish.", label: "Try again" });
-    }
   };
   const connectGoogle = async () => {
     setGoogle({ kind: "working", text: "Finish signing in with Google in your browser." });
@@ -1288,8 +1258,13 @@ function ConnectionsStep({
       {heading("Add other accounts")}
       <p className="onb-lede">Optional. Each one uses that service's own sign-in, and you can disconnect it any time.</p>
       <ul className="chn-rows" aria-label="Optional connections">
-        {row("Microsoft 365", microsoft, () => void connectMicrosoft())}
         {row("Google Drive", google, () => void connectGoogle())}
+        {/* Microsoft 365 notes (Word/OneDrive) aren't offered in this build; Outlook stays under Sources. */}
+        <li className="chn-row" aria-disabled="true">
+          <span className="chn-row-text">
+            <span className="chn-row-name">Microsoft 365: possibly coming soon</span>
+          </span>
+        </li>
       </ul>
       {localChosen ? (
         <p className="onb-note">
@@ -1319,7 +1294,7 @@ function ConnectionsStep({
       ) : null}
       <Actions onBack={onBack}>
         <button className="onb-primary" onClick={onNext}>
-          {microsoft.kind === "connected" || google.kind === "connected" ? "Continue" : "Skip for now"}
+          {google.kind === "connected" ? "Continue" : "Skip for now"}
         </button>
       </Actions>
     </>
