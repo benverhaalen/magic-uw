@@ -371,8 +371,13 @@ export function CourseAnalyticsTab({
     };
   }, [course.accountScope, course.courseId, revision, nonce]);
 
+  /** Opens a stored item; a synthetic-only sample item has no saved page, so it says so instead. */
+  function openItem(itemId: string) {
+    if (snapRef.current.resources.some((r) => r.id === itemId && !r.deleted)) return onOpenItem(itemId);
+    setNotice("This synthetic sample item has no saved page. In your own course this opens the assignment.");
+  }
   async function onAction(card: ActionCard) {
-    if (card.kind === "start" && card.itemId) return onOpenItem(card.itemId);
+    if (card.kind === "start" && card.itemId) return openItem(card.itemId);
     if (!card.command) return;
     setBusy(true);
     setNotice("");
@@ -424,7 +429,7 @@ export function CourseAnalyticsTab({
           {notice}
         </p>
       ) : null}
-      <AnalyticsDashboard view={view} onAction={(c) => void onAction(c)} onPrep={onOpenItem} onCoursework={onCoursework} busy={busy} />
+      <AnalyticsDashboard view={view} onAction={(c) => void onAction(c)} onPrep={openItem} onCoursework={onCoursework} busy={busy} />
     </>
   );
 }
