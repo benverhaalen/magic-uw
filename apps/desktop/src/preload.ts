@@ -91,6 +91,7 @@ const bridge: AppBridge = {
   cancelLocal: () => ipcRenderer.invoke("magic:local-cancel"),
   exportMcp: (id) => ipcRenderer.invoke("magic:mcp-export", id),
   keepSignedIn: (value) => ipcRenderer.invoke("magic:keep-signed-in", value),
+  rememberSignIn: (op) => ipcRenderer.invoke("magic:remember-signin", op), // owner: T05e
   clients,
   setOutlookCalendar: (url) => ipcRenderer.invoke("magic:outlook-calendar", url),
   outlookCalendarStatus: () => ipcRenderer.invoke("magic:outlook-calendar-status"),

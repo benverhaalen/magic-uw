@@ -21,6 +21,7 @@ import { Onboarding, needsFirstRunSetup } from "./onboarding";
 import { CourseSpaceDetails } from "./CourseSpaceDetails";
 import { TodayRail } from "./TodayRail";
 import { NotificationsMenu } from "./NotificationsMenu";
+import { RememberSignIn } from "./RememberSignIn"; // owner: T05e
 
 type View =
   | "today"
@@ -1352,10 +1353,14 @@ function Sources({
         {/* owner: T05c. Keep me signed in toggle. */}
         <KeepSignedInToggle busy={busy} />
         {/* end owner: T05c */}
+        {/* owner: T05e. Remember my sign-in: Forget my sign-in. */}
+        <RememberSignIn busy={busy} />
+        {/* end owner: T05e */}
         <p className="small muted">
           If UW requests Duo or a new sign-in, complete it in the browser.
           Previously captured records remain available when a session expires.
-          Clearing the UW session also disconnects a published Outlook calendar.
+          Clearing the UW session also disconnects a published Outlook calendar
+          and deletes a saved sign-in.
         </p>
       </section>
       <OutlookCalendar busy={busy} onSync={onSync} />
@@ -1734,8 +1739,8 @@ function Privacy({
           </div>
         )}
         <p className="small muted">
-          Deleting local data also clears app-owned UW sessions, calendar feed
-          secrets, downloaded documents, and exported MCP connections. It does
+          Deleting local data also clears app-owned UW sessions, a saved sign-in,
+          calendar feed secrets, downloaded documents, and exported MCP connections. It does
           not delete UW records.
         </p>
       </section>

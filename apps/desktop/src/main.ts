@@ -63,6 +63,25 @@ import {
   type TrayAction,
 } from "./keep-signed-in";
 // end owner: T05c
+// owner: T05e. Remember my sign-in (plan D39).
+import {
+  REMEMBERED_SIGNIN_FILE,
+  autoSignInWanted,
+  createAutoSignIn,
+  createRememberedSignInStore,
+  isNetIdLoginPage,
+  parseCapture,
+  rememberAvailability,
+  rememberSignInBuildEnabled,
+  type SignInCapture,
+  type SignInPageState,
+} from "./remember-signin";
+import {
+  canvasProfilePath,
+  canvasProfileSignedOut,
+} from "../../../packages/connectors/src/canvas-http";
+import type { RememberSignInStatus } from "@magic/contracts";
+// end owner: T05e
 import { consentGateAllows } from "../../../packages/core/src/egress"; // owner: T06
 import { consentRecordSchema, type ConsentRecord } from "@magic/contracts"; // owner: T06
 import {
@@ -191,6 +210,24 @@ app
       encrypt: (value) => safeStorage.encryptString(value),
       decrypt: (value) => safeStorage.decryptString(Buffer.from(value)),
     });
+    // owner: T05e. Remember my sign-in (plan D39): its own encrypted file, apart from the vault the
+    // worker's messages can reach. MAGIC_REMEMBER_SIGNIN is baked in by scripts/build.ts.
+    const remembered = createRememberedSignInStore(join(data, REMEMBERED_SIGNIN_FILE), {
+      available: () => safeStorage.isEncryptionAvailable(),
+      encrypt: (value) => safeStorage.encryptString(value),
+      decrypt: (value) => safeStorage.decryptString(Buffer.from(value)),
+    });
+    const rememberState = () =>
+      rememberAvailability({
+        buildEnabled: rememberSignInBuildEnabled(process.env.MAGIC_REMEMBER_SIGNIN),
+        encryptionAvailable: safeStorage.isEncryptionAvailable(),
+        platform: process.platform,
+        linuxBackend:
+          process.platform === "linux" ? safeStorage.getSelectedStorageBackend() : undefined,
+      });
+    // A build with the switch off keeps no saved sign-in from an earlier build.
+    if (rememberState().state === "off") await remembered.forget().catch(() => {});
+    // end owner: T05e
     // owner: notes. Google Docs sync: OAuth (PKCE, loopback) and the Drive proxy; the token stays here.
     const notesGoogle = createGoogleNotesAuth({
       clientId: process.env.MAGIC_GOOGLE_CLIENT_ID || undefined,
@@ -683,6 +720,24 @@ app
               headers.location = to.origin + to.pathname;
             } catch {}
           }
+          // owner: T05e. A sync's profile read that confirms the session ended (spec A1): with
+          // Remember my sign-in on and the student present, the app signs in again.
+          if (
+            service === "canvas" &&
+            new URL(target).pathname === canvasProfilePath &&
+            canvasProfileSignedOut(
+              {
+                status: response.status,
+                body,
+                contentType: response.headers.get("content-type"),
+                location: headers.location,
+                url: response.url,
+              },
+              "https://canvas.wisc.edu",
+            )
+          )
+            void autoSignInAfterExpiry();
+          // end owner: T05e
           trialLog({ event: "fetch", service, to: trialPath(target), status: response.status, contentType: (response.headers.get("content-type") ?? "").split(";")[0], bytes: body.length, redirect: headers.location ? trialPath(headers.location) : undefined });
           worker.postMessage({
             kind: "source-response",
@@ -1059,6 +1114,7 @@ app
         if (purging) {
           for (const c of sourceReads.values()) c.abort();
           await vault.clear();
+          await remembered.forget(); // owner: T05e
           await outlook.disconnect().catch(() => {}); // owner: T30: tokens and state
           void postGraphScopes(); // owner: T30
           clientsRuntime?.terminal.closeAll(); // owner: T80
@@ -1228,8 +1284,9 @@ app
     // owner: T05c. magic:signin: one app-owned, visible sign-in window at a time (spec A1).
     // A second call while it is open waits for that window. Canvas and GitLab confirm with
     // their profile read; My UW and Enroll confirm with the existing session.json or
-    // student-info read and then close themselves. No script is injected, no field is read
-    // or filled, and no cookie is written.
+    // student-info read and then close themselves. No cookie is written. The only script is
+    // T05e's sign-in preload, which reads or fills the NetID form only on UW's exact NetID
+    // login origin, and only with Remember my sign-in ticked (signin-preload.ts).
     type SignInService = "canvas" | "gitlab" | "enroll" | "myuw";
     const isSignInService = (value: unknown): value is SignInService =>
       value === "canvas" || value === "gitlab" || value === "enroll" || value === "myuw";
@@ -1241,8 +1298,154 @@ app
       await writeSessionSettings(sessionSettingsPath, sessionSettings).catch(() => {});
     }
     const signInFlight = singleFlight<boolean>();
+    // owner: T05e. Remember my sign-in in the UW sign-in window. The window's preload
+    // (signin-preload.ts) sends two messages, accepted only from the open UW sign-in window's top
+    // frame while it is on UW's exact NetID login origin. A capture is held in memory and saved
+    // only once the sign-in is confirmed; an automatic window fills once and never retries.
+    let signInAttempt:
+      | {
+          contents: Electron.WebContents;
+          auto: ReturnType<typeof createAutoSignIn>;
+          pending?: SignInCapture;
+        }
+      | undefined;
+    let lastAutoSignInAt: number | undefined;
+    const studentPresent = () =>
+      !headless && powerMonitor.getSystemIdleState(30 * 60) === "active";
+    function signInFrame(event: IpcMainInvokeEvent | Electron.IpcMainEvent) {
+      const attempt = signInAttempt,
+        frame = event.senderFrame;
+      if (
+        !attempt ||
+        attempt.contents.isDestroyed() ||
+        event.sender !== attempt.contents ||
+        !frame ||
+        frame !== attempt.contents.mainFrame ||
+        !isNetIdLoginPage(frame.url)
+      )
+        throw new Error("Untrusted sign-in page.");
+      return attempt;
+    }
+    ipcMain.handle("magic-signin:page", async (event): Promise<SignInPageState> => {
+      const attempt = signInFrame(event);
+      const availability = rememberState();
+      if (availability.state === "off") return { offer: false };
+      if (availability.state === "unavailable")
+        return { offer: true, checked: false, disabledReason: availability.reason };
+      const saved = await remembered.saved();
+      const step = attempt.auto.formShown(saved);
+      if (step === "failed") {
+        // UW showed the NetID form again after the automatic submit: clear it, show the normal sign-in.
+        await remembered.forget();
+        trialLog({ event: "signin.remember", step: "auto-failed" });
+        return { offer: true, checked: false, notice: "failed" };
+      }
+      if (step === "fill") {
+        const fill = await remembered.load();
+        // Checked again after the awaits: the same window, its top frame, the exact origin.
+        signInFrame(event);
+        if (!fill) {
+          attempt.auto.abandon();
+          return { offer: true, checked: false };
+        }
+        trialLog({ event: "signin.remember", step: "auto-fill" });
+        return { offer: true, checked: true, fill };
+      }
+      return { offer: true, checked: saved };
+    });
+    ipcMain.on("magic-signin:capture", (event, payload: unknown) => {
+      let attempt: NonNullable<typeof signInAttempt>;
+      try {
+        attempt = signInFrame(event);
+      } catch {
+        return;
+      }
+      if (rememberState().state !== "available") return;
+      const capture = parseCapture(payload);
+      if (capture) attempt.pending = capture;
+    });
+    /** Wires one sign-in window; gitlab's window (its own partition) gets none of this. */
+    function trackSignIn(login: BrowserWindow, automatic: boolean, confirmedNow: () => boolean) {
+      const attempt = { contents: login.webContents, auto: createAutoSignIn(automatic) } as NonNullable<
+        typeof signInAttempt
+      >;
+      signInAttempt = attempt;
+      login.webContents.on("did-navigate", (_event, url) => attempt.auto.navigated(url));
+      login.webContents.on("did-fail-load", (_event, code, _description, _url, mainFrame) => {
+        // -3 is an aborted load (a newer navigation replaced it), not a failed sign-in.
+        if (mainFrame && code !== -3 && attempt.auto.loadFailed() === "failed") {
+          void remembered.forget().catch(() => {});
+          trialLog({ event: "signin.remember", step: "auto-failed" });
+        }
+      });
+      login.once("closed", () => {
+        if (signInAttempt === attempt) signInAttempt = undefined;
+        const confirmed = confirmedNow(),
+          pending = attempt.pending;
+        attempt.pending = undefined;
+        if (attempt.auto.closed(confirmed) === "failed") {
+          void remembered.forget().catch(() => {});
+          trialLog({ event: "signin.remember", step: "auto-failed" });
+          return;
+        }
+        // Saved only after UW accepted it: a mistyped password is never stored.
+        if (!confirmed || !pending || rememberState().state !== "available") return;
+        const step = pending.remember ? "saved" : "declined";
+        void (pending.remember ? remembered.save(pending.signIn) : remembered.forget()).catch(
+          () => {},
+        );
+        trialLog({ event: "signin.remember", step });
+      });
+    }
+    /** A sync confirmed the session ended: sign in again, once, while the student is here. */
+    async function autoSignInAfterExpiry() {
+      try {
+        const saved = await remembered.saved(),
+          now = Date.now();
+        if (
+          !autoSignInWanted({
+            availability: rememberState(),
+            saved,
+            present: studentPresent(),
+            headless,
+            signInOpen: signInFlight.pending,
+            lastAutoAt: lastAutoSignInAt,
+            now,
+          })
+        )
+          return;
+        lastAutoSignInAt = now;
+        if (!(await consentGate("magic:signin"))) return;
+        trialLog({ event: "signin.remember", step: "auto-open" });
+        if (!(await openSignIn("canvas", true))) return;
+        const id = randomUUID();
+        const timer = setTimeout(() => {
+          calls.delete(id);
+          worker.postMessage({ kind: "refresh-cancel" });
+        }, 600_000);
+        calls.set(id, { resolve: () => {}, reject: () => {}, timer });
+        worker.postMessage({ kind: "refresh", id });
+      } catch {
+        /* The banner still offers Sign in again. */
+      }
+    }
+    ipcMain.handle(
+      "magic:remember-signin",
+      async (event, op: unknown): Promise<RememberSignInStatus> => {
+        validateSender(event);
+        if (op === "forget") await remembered.forget();
+        else if (op !== "status") throw new Error("Unknown operation.");
+        const availability = rememberState();
+        if (availability.state === "off") return { offered: false };
+        const saved = await remembered.saved();
+        return availability.state === "available"
+          ? { offered: true, available: true, saved }
+          : { offered: true, available: false, reason: availability.reason, saved };
+      },
+    );
+    // end owner: T05e
     /** Resolves when the window closes: true when a sign-in was confirmed. */
-    function openSignIn(requestedService?: SignInService): Promise<boolean> {
+    function openSignIn(requestedService?: SignInService, automatic = false): Promise<boolean> {
       if (headless)
         return Promise.reject(
           new Error(
@@ -1250,9 +1453,12 @@ app
           ),
         );
       if (signInFlight.pending) signIn?.focus();
-      return signInFlight.run(() => signInWindow(requestedService));
+      return signInFlight.run(() => signInWindow(requestedService, automatic));
     }
-    async function signInWindow(requestedService?: SignInService): Promise<boolean> {
+    async function signInWindow(
+      requestedService?: SignInService,
+      automatic = false, // owner: T05e: opened by the app, so a saved sign-in is filled
+    ): Promise<boolean> {
       const gitlab = requestedService === "gitlab",
         planning = requestedService === "enroll" || requestedService === "myuw"
           ? requestedService : undefined,
@@ -1272,6 +1478,8 @@ app
         autoHideMenuBar: true,
         webPreferences: {
           partition: gitlab ? "persist:gitlab" : "persist:uw",
+          // owner: T05e. The Remember my sign-in box, capture and fill (UW windows only).
+          ...(gitlab ? {} : { preload: join(root, "signin-preload.cjs") }),
           nodeIntegration: false,
           contextIsolation: true,
           sandbox: true,
@@ -1311,6 +1519,7 @@ app
           resolve();
         });
       });
+      if (!gitlab) trackSignIn(login, automatic, () => confirmed); // owner: T05e
       let checking = false;
       // Verify only after a user-driven navigation returns to the service; never keep a session alive.
       login.webContents.on("did-finish-load", async () => {
@@ -1499,7 +1708,8 @@ app
         }
         // D33: after a previous sign-in, the UW window opens by itself.
         if (!decision.openSignIn || !(await consentGate("magic:signin"))) return;
-        if (!(await openSignIn("canvas"))) return;
+        // owner: T05e: opened by the app, so a saved sign-in is filled while the student is here.
+        if (!(await openSignIn("canvas", studentPresent()))) return;
         const id = randomUUID();
         const timer = setTimeout(() => {
           calls.delete(id);
@@ -1588,6 +1798,7 @@ app
         await gitlabSession.clearCache();
         // Every saved calendar link goes, Outlook's included; its meetings are removed too.
         await clearSignOutSecrets(vault);
+        await remembered.forget(); // owner: T05e: Sign out deletes a saved sign-in
         await outlook.signOut().catch(() => {}); // owner: T30: the Microsoft tokens go too
         await postGraphScopes(); // owner: T30
         await execute({ type: "outlook-disconnect" });
