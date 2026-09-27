@@ -576,7 +576,7 @@ The student can change any of them.
 - Retrieval is run by the app: code assembles the context, and the model may request up to 3 typed lookups through a `need` field. At most 2 rounds per turn, with no tools given to the model.
 - A "Learning guide" style (Socratic, one question at a time) follows the learning spec.
 
-**D5. Studio, as prompt packs (Open Notebook's "transformations" made course-aware).** The artifact catalogue and what transfers from Open Notebook are in the team's [Open Notebook artifact inventory](../../notes/open-notebook-artifacts.md) (on `northcutt-frontend`, not yet on `main`). Packs carry a version. Open Notebook's transformations are prompt templates; whether they're versioned wasn't established ([open-notebook](https://github.com/lfnovo/open-notebook), `docs/3-USER-GUIDE/transformations.md`).
+**D5. Studio, as prompt packs (Open Notebook's "transformations" made course-aware).** The artifact catalogue and what transfers from Open Notebook are in the team's Open Notebook artifact inventory (`docs/notes/open-notebook-artifacts.md` on `northcutt-frontend`, not on `main`). Packs carry a version. Open Notebook's transformations are prompt templates; whether they're versioned wasn't established ([open-notebook](https://github.com/lfnovo/open-notebook), `docs/3-USER-GUIDE/transformations.md`).
 
 | When | Artifacts |
 |---|---|

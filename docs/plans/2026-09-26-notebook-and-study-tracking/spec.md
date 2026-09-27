@@ -72,7 +72,7 @@ The knowledge model, the grounding checks and the study modes are provider-neutr
 - Uploads as the main path. Import stays available only for explicitly labelled imported material.
 - Video overviews. Audio overviews are a Phase 2 option (§12).
 - Leaderboards, "lives", streak paywalls or pooled data across students.
-- Choosing among the [six organizing concepts](../../product-directions.md). The notebook is a per-course surface that any of them can open.
+- Choosing among the [six organizing concepts](../../archive/product-directions.md). The notebook is a per-course surface that any of them can open.
 - An in-app Word editor. Notes open in the student's own `.docx` app.
 
 ---

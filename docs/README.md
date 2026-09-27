@@ -1,71 +1,126 @@
-# Shared project context
+# Documentation index
 
-For Ben and three teammates. Updated September 26, 2026.
+Every document in `docs/`, listed once. Start with [the architecture](architecture.md) and [implementation status](implementation-status.md); the repository [README](../README.md) is the one-screen overview. Status words (researched, proposed, built, tested in isolation, integrated, demonstrated) are defined in [implementation status](implementation-status.md). My Magic UW is an independent student project, not affiliated with UW–Madison. Older documents use the working name Magic Canvas.
 
-This section gets everyone informed about what My Magic UW is and where the thinking stands. It is not a build guide, ownership plan, or first-demo proposal. Treat the concept as established; resolve remaining choices without repeatedly reopening the thesis.
+## Product
 
-## The short version
+| Document | What it answers |
+|---|---|
+| [Product brief](product.md) | who it's for, the student experience, the learning loop |
+| [Product direction](magic-canvas-direction.md) | the whole product end to end, the two-part launch, where it's going |
+| [Decisions and open points](decisions.md) | what's established, dated decisions with their reasons, what's still open |
+| [BuildFest context](buildfest.md) | event facts, entries, judging audiences |
+| [Business model](notes/business-model.md) | open source with the student's own AI, the hosted Jev service, the campus licence path (price is an open team decision) |
+| [Accounts and payments](accounts-and-payments.md) | email sign-in, purchase status in Supabase, setup |
+| [Marketing materials](../marketing/README.md) | website directions, logo pack, team photos |
 
-**The future of learning, tailored to you.** My Magic UW already knows your classes, brings the right materials together, opens what you need, and helps you practice for your professor's expectations. Students should spend their attention learning instead of managing school.
+## Architecture
 
-Least user effort is the central taste principle. Fit existing apps and study habits. Feel calm and capable, with interaction beyond a chatbot.
+| Document | What it answers |
+|---|---|
+| [Architecture](architecture.md) | **canonical:** processes, packages, sync, storage, the AI boundary, retrieval, study, notes and Outlook, privacy, the agent layer |
+| [Backend reference](course-backend-architecture.md) | schema history, agent-runtime mechanisms, the job-handler contract, freshness, measured effect per design choice, the command bar, open human calls |
+| [Academic data platform](academic-data-platform.md) | the database for developers: agent API, MCP course bank, quickstart, licensing, scorecard, roadmap |
+| [AI and privacy](ai-and-privacy.md) | AI choices, protection layers per egress path, encryption at rest, provider settings |
+| [Pipeline details](pipeline-details.md) | Canvas reads, limits, reconnect, scrubbing, citation checks, link thresholds |
+| [Backend map](notes/backend-map.md) | what the code gives learning features and its extension points |
+| [Local database](notes/local-db.md) | what's built in storage and what the research supports adding |
+| [Agent runtime](notes/agent-runtime.md) | chat and agents on the student's own AI CLI |
 
-Reference-driven design is our working method: assign each reference a job, inspect its actual mechanism, transfer the useful part, and verify the resulting student journey. We use architecture analogies beyond education and current tools beyond familiar defaults. Ben should see consequential ambiguity, clutter, complexity, or excessive token/tool cost before we commit to it. See [agent work principles](agent-work-principles.md) and the repo's [agent instructions](../AGENTS.md).
+## Features
 
-The technical direction starts with local course data: connectors capture sources, code handles exact facts, Jev makes typed judgments, and a language model writes and reasons with relevant context. **Our gateway pays for Jev on the Claude/Codex/Gemini routes; OpenRouter users will pay through their own OpenRouter key. Our TypeSafe key stays server-side.** The OpenRouter path is accepted direction, not yet implemented.
+| Document | What it answers |
+|---|---|
+| [Implementation status](implementation-status.md) | **every feature's status, location and evidence** |
+| [Course ingestion](ingestion-upgrade.md) | what's captured, how it refreshes, what survives failures |
+| [Planning integration](planning-upgrade.md) | My UW adapters, source reconciliation, privacy |
+| [Course intelligence](course-intelligence.md) | versioned course claims and source-bound policy |
+| [Course-aware learning sessions](learning-sessions.md) | the assignment learning surface and its limits |
+| [Session notes](notes-setup.md) | lecture-note scaffolds, commands, Word and Google Docs sync |
+| [Outlook setup](outlook-setup.md) | the app's own Microsoft sign-in and the E1 live test |
+| [Calendar page integration](calendar-page-integration.md) | the Calendar page's binding and return state |
+| [Prepared work integration](start-work-integration.md) | the prepared-work launch contract |
 
-Ben accepted Nathaniel’s $5 one-time license plus bring-your-own-paid-AI direction. Intended routes are Claude Code, Codex, Gemini CLI with a paid key, and OpenRouter; verified adapters and payment setup remain unfinished. See [the resolution](decisions.md#pricing-and-ai-access-resolution--september-26). Desktop comes first; the website is for information/downloads/GitHub; iOS is later if time permits.
+## Operations
 
-Trust is part of the product: course AI policy first, no submitting/enrolling/posting or explicit completion commands to school systems, sources and freshness, reversible links, and honest uncertainty. Reading may register views or satisfy must-view requirements; this accepted effect is disclosed. Local storage and hosted processing must be described separately.
+| Document | What it answers |
+|---|---|
+| [Status, September 27](status-2026-09-27.md) | what works this morning, with measurements, and what's broken |
+| [Development](development.md) | running the workspace, checks, the gateway |
+| [Frontend data bugs](frontend-data-bugs.md) | backend data defects found while building the frontend |
+| [Engineering principles](engineering-principles.md) | tool selection, evidence, privacy |
+| [Agent work principles](agent-work-principles.md) | intent, delegation, context and cost, complete delivery |
+| [Reference-driven design](reference-driven-design.md) | how references change design, implementation and verification |
 
-We are entering Applied AI & Automation, DoIT's Badgers Building for Badgers, and The Art of the Break. Winning matters; launching during the event is a bonus.
+## Research and evidence
 
-## Reading map
+| Document | What it answers |
+|---|---|
+| [Benchmarks](benchmarks.md) | every measurement with its method, and what isn't measured yet |
+| [Research status](research.md) | checked references and unresolved evidence |
+| [Tool evaluation](tool-evaluation.md) | candidate tools, licences, benchmark provenance |
+| [Research notes index](notes/README.md) | the notes below, with their status |
+| [Where we differ](notes/where-we-differ.md) | where our research departs from the current plan, with evidence |
+| [Competitive comparison](notes/competitive-comparison.md) | against NotebookLM, Quizlet and Duolingo |
+| [Benchmarking honestly](notes/benchmarking.md) | the method for fair comparisons |
+| [Benchmark catalog](notes/benchmark-catalog.md) | public datasets and metrics |
+| [Performance plan](notes/performance-plan.md) | what makes the app measurably better |
+| [Retrieval research](notes/retrieval-research.md) | what beats plain search, and what we adopt |
+| [AI provider access](notes/ai-provider-access.md) | what provider terms allow for the student's own account |
+| [Jev usage](notes/jev-usage.md) | design rules for each typed judgment |
+| [Jev insights](notes/jev-insights.md) | the design behind each typed judgment |
+| [Practice engine](notes/practice-engine.md) | quizzes, exams, preparedness, study sessions |
+| [Practice evidence](notes/practice-evidence.md) | the learning-science evidence behind it |
+| [Integrity roles](notes/integrity-roles.md) | helping without doing the graded work |
+| [Notes method](notes/notes.md) | the right note method per session, turned into practice |
+| [Where notes go](notes/notes-targets.md) | local first, cloud only when present |
+| [Integrations](notes/integrations.md) | everything reachable through the Canvas portal |
+| [Calendar and campus life](notes/calendar-life.md) | one calendar, plus a place for everything else |
+| [Project coordinator](notes/project-coordinator.md) | one space per project |
+| [Major toolkits](notes/major-toolkits.md) | the workspace specialised per degree |
+| [Open-source candidates](notes/open-source-candidates.md) | libraries for the learning features |
+| [BuildFest rules](notes/buildfest-rules.md) | the rules that shape the submission |
 
-| Read                                                  | Contents                                                                                                 |
-| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| [Academic data platform](academic-data-platform.md)   | **Start here for the backend and for developers:** the app's backend as an open, local-first academic database; status per part, quickstart, decisions with evidence, sourced scorecard |
-| [Current desktop handoff](design-handoff.md) | **Start here for frontend work:** one published branch, normal entry points, integrated consumers, tested journeys and remaining gaps |
-| [Design system](../DESIGN.md) | Accepted visual and behavior requirements, canonical roles, and consumer adoption gates |
-| [Benchmarks](benchmarks.md) | How the app is measured and every result: method, performance, quality, robustness, the competitor protocol and what is not yet measured |
-| [Marketing materials](../marketing/README.md)          | Website page directions, wizard logo pack, and team photos (design exports, not the built site)          |
-| [Home and visual direction](home-design-direction.md) | Current flagship Home, near-approved layout/type, remaining local refinements and reference transfers |
-| [My Magic UW direction](magic-canvas-direction.md) | Course backend lane: the whole product, frontend surfaces, open-source academic data platform plus paid product, roadmap (open decisions marked) |
-| [Course backend architecture](course-backend-architecture.md) | Course backend lane: system map, integration with main, what changed and why, implementation status and what is left |
-| [Course-aware learning sessions](learning-sessions.md) | Assignment learning surface adapted to the shared backend; explicit integration dependencies and verification limits |
-| [Product](product.md)                                 | Vision, student experience, learning loop, interface ideas, visual taste                                 |
-| [Organizing concepts](product-directions.md)          | Earlier organizing alternatives; current Home decisions supersede their unresolved entry/navigation status |
-| [Reference-driven design](reference-driven-design.md) | Reference roles, architecture analogies, images, demo inspection, and product verification               |
-| [Agent work principles](agent-work-principles.md)     | Intent, discovery, expert methods, delegation, context/cost, and complete delivery                       |
-| [Feature planning skill](../.agents/skills/magic-feature-planning/SKILL.md) | Inspect unfinished capabilities, choose useful next features, and carry bounded plans into authorized implementation and review |
-| [AI and privacy](ai-and-privacy.md)                   | Paid AI direction, existing local adapter, sign-in, and data disclosures                                |
-| [Technical direction](architecture.md)                | Access, connectors, records, deadlines, Jev, models, stack proposals                                     |
-| [Pipeline details](pipeline-details.md)               | Actual endpoints and limits; proposed reconnect, scrubbing, citation checks, and link thresholds         |
-| [Sync resilience handoff](sync-resilience-review.md) | In-progress shared acquisition, linked-file capture, durable access observations, interfaces and remaining verification |
-| [Course ingestion](ingestion-upgrade.md)              | Expanded sources, refresh, local materials, privacy, and verified limits                                 |
-| [Course intelligence](course-intelligence.md)          | Versioned course claims, source-bound policy interpretation, optional local extraction, and evidence limits |
-| [Planning integration](planning-upgrade.md)           | My UW adapters, source reconciliation, privacy, live evidence, and remaining work                         |
-| [Implementation status](implementation-status.md)     | Actual capability boundaries, evidence, and the remaining product scope                                  |
-| [Accounts and payments](accounts-and-payments.md)     | Email sign-in, Lemon Squeezy purchase status in Supabase, setup steps and data stored                     |
-| [Development](development.md)                         | Run the workspace and checks; configure the shared gateway safely                                        |
-| [Decisions and open points](decisions.md)             | What is established and what still needs input                                                           |
-| [BuildFest context](buildfest.md)                     | Event facts, judging audiences, opening-slide notes                                                      |
-| [Engineering principles](engineering-principles.md)   | How we choose tools, judge evidence, test alternatives, and preserve privacy                             |
-| [Tool evaluation](tool-evaluation.md)                 | Current candidates, licenses, benchmark provenance, and adoption tests                                   |
-| [Research status](research.md)                        | Checked references and unresolved evidence                                                               |
-| [Plans](plans/README.md)                               | **Start here to pick up the work:** notebook and study-tracking spec, backend optimization, measurement, complete-app plan |
-| [Research notes](notes/README.md)                     | Research and decisions: where we differ from the current plan, competitive comparison, benchmarking, local DB, Jev, practice, integrity and more |
+## Plans (historical)
 
-## Status matters
+Plans record intent when they were written; current status is in [implementation status](implementation-status.md). Where a plan and the course-backend plan folder differ, the folder wins.
 
-- **Direction:** Ben's stated intent or constraint.
-- **Proposal:** a possible approach, not an accepted team decision.
-- **Verified:** checked against a cited source; not a claim our software implements it.
-- **Implemented:** present in code; its validation scope is stated separately.
-- **Tested in isolation:** exercised with controlled inputs, without establishing live service compatibility.
-- **Integrated:** connected through the application; live and cross-platform results still need their own evidence.
-- **Open:** a product decision or technical fact still unresolved.
+| Document | What it answers |
+|---|---|
+| [Plans index](plans/README.md) | the plans and how they relate |
+| [Course backend: spec](plans/2026-09-26-course-backend/spec.md) · [plan](plans/2026-09-26-course-backend/plan.md) · [tasks](plans/2026-09-26-course-backend/tasks.md) · [execution](plans/2026-09-26-course-backend/execution.md) | the governing backend specification, decisions (D-numbers) and task graph |
+| [Notebook and study tracking: spec](plans/2026-09-26-notebook-and-study-tracking/spec.md) · [tasks](plans/2026-09-26-notebook-and-study-tracking/tasks.md) · [practice and insights](plans/2026-09-26-notebook-and-study-tracking/practice-and-insights.md) | the course notebook and study-tracking design |
+| [Sync and actions: design](plans/2026-09-26-sync-and-actions/design.md) · [course compile](plans/2026-09-26-sync-and-actions/course-compile.md) · [accuracy](plans/2026-09-26-sync-and-actions/accuracy.md) | sync without a model on the hot path |
+| [Backend optimization](plans/2026-09-26-backend-optimization/plan.md) | faster and cheaper than the alternatives |
+| [Measurement](plans/2026-09-26-measurement/plan.md) | the measurement harness |
+| [Learning features](plans/2026-09-26-learning-features/plan.md) | learning features on the backend, evidence-gated |
+| [Complete app](plans/2026-09-26-complete-app/plan.md) | the app as a product |
+| [Agent data layer](plans/2026-09-26-agent-data-layer/proposal.md) | one query engine, two thin routes |
+| [Course brief](plans/2026-09-27-course-brief.md) | the course brief on the course page |
 
-A detailed idea is not automatically a commitment. These notes preserve the broader vision without implying every capability exists. They summarize the discussion rather than reproduce it word for word.
+## Design
 
-When a point is resolved, update the decisions page and the affected description. Keep private course data, credentials, sessions, and unpublished research captures out of this repository.
+| Document | What it answers |
+|---|---|
+| [DESIGN.md](../DESIGN.md) | **the design system's entry point:** visual and behaviour requirements, roles, adoption gates |
+| [Desktop handoff](design-handoff.md) | the current desktop frontend: entry points, runtime receipts and boundaries |
+| [Home and visual direction](home-design-direction.md) | the near-approved Home and its refinements |
+| [Adoption](design/adoption.md) · [foundations](design/foundations.md) · [tokens](design/tokens.css) | how screens adopt the system; foundations and tokens |
+| [Component contracts](design/component-contracts.md) · [recipes](design/component-recipes.md) · [content design](design/content-design.md) | product and interaction contracts, reusable recipes, copy |
+| [Personal deadlines](design/personal-deadlines.md) · [personal reports](design/personal-reports.md) | planning-date choices and briefing reports |
+| [Handoff v3](design/handoff-v3.md) · [platform handoff](design/platform-handoff.md) · [component lab](design/lab/README.md) | using the component system, cross-platform handoff, the working lab |
+| [Decision record](design/decision-record.md) · [reference selection](design/reference-selection.md) · [system research](design/system-research.md) | design decisions, references and adopted mechanisms |
+| [System coverage](design/system-coverage.md) · [visual baseline](design/visual-baseline.md) · [validation v2](design/validation-v2.md) · [validation v3](design/validation-v3.md) · [v3 source audit](design/audit-v3-direct-sources.md) | surface map, baseline and validation records |
+
+## Archive
+
+Superseded documents, kept as dated records. Each opens with what supersedes it.
+
+| Document | Superseded by |
+|---|---|
+| [Technical direction, September 26](archive/technical-direction-2026-09-26.md) | [architecture](architecture.md) |
+| [Implementation log, to September 27](archive/implementation-log-2026-09-27.md) | [implementation status](implementation-status.md) (the log keeps the full verification narratives) |
+| [Course backend build record](archive/course-backend-build-record.md) | [architecture](architecture.md), [backend reference](course-backend-architecture.md), [benchmarks](benchmarks.md) |
+| [Backend branch audit](archive/backend-branch-audit.md) | [implementation status](implementation-status.md) |
+| [Sync resilience review](archive/sync-resilience-review.md) | [architecture §4](architecture.md#4-sync) |
+| [Six organizing concepts](archive/product-directions.md) | [Home and visual direction](home-design-direction.md) |

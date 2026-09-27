@@ -1,7 +1,7 @@
 # My Magic UW: the open academic data platform
 
-**Status:** verified against `origin/main` at `699e386` (2026-09-27), where the whole suite passes 1,101/1,101 on Windows 11, and against the open pull requests. Every part below carries one of the status labels defined in [architecture §1.1](course-backend-architecture.md#11-status-labels): *researched, proposed, built, tested in isolation, integrated, demonstrated*.
-**Canonical homes:** the technical design, the status per area and the measured effect of each choice are in [the course backend architecture](course-backend-architecture.md); benchmarks in [benchmarks](benchmarks.md); the full business model in [business model](notes/business-model.md); product surfaces in [the product direction](magic-canvas-direction.md). This document links to them rather than repeating them.
+**Status:** written against `origin/main` at `699e386` (2026-09-27) and updated where the architecture changed since; current status per feature is in [implementation status](implementation-status.md), which defines the labels used here: *researched, proposed, built, tested in isolation, integrated, demonstrated*.
+**Canonical homes:** the architecture is [architecture](architecture.md), with backend detail in [the backend reference](course-backend-architecture.md); benchmarks in [benchmarks](benchmarks.md); the full business model in [business model](notes/business-model.md); product surfaces in [the product direction](magic-canvas-direction.md). This document links to them rather than repeating them.
 
 ## 1. What it is
 
@@ -26,7 +26,7 @@ It serves two audiences:
 
 ## 3. The agent-first academic database
 
-One SQLite file (`workspace.sqlite`), one writer (the app's worker), schema v13 on `main`. "Agent-first" means the data is shaped for a model's context window: small, cited, bounded units (passages with offsets, facts with quotes, graph edges with reasons) rather than whole documents, and every read has a token budget. The table-level layout per schema version is [architecture §5](course-backend-architecture.md#5-storage).
+One SQLite file (`workspace.sqlite`), one writer (the app's worker), schema v14 on `main`. "Agent-first" means the data is shaped for a model's context window: small, cited, bounded units (passages with offsets, facts with quotes, graph edges with reasons) rather than whole documents, and every read has a token budget. The table-level layout per schema version is [architecture §5](course-backend-architecture.md#5-storage).
 
 ```mermaid
 flowchart TB

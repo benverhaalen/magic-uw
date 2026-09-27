@@ -112,6 +112,6 @@ pnpm build
 pnpm test:desktop
 ```
 
-These exercise domain rules, actual SQLite/core flows, source adapters, transport limits, reconciliation, and hidden desktop import/purge. The full gate is `pnpm test`. [Implementation status](implementation-status.md#verification) records observed results. For visual work, use the temporary `pnpm preview` surface with synthetic captures and headless agent-browser; it deliberately has no UW session or live planning transport.
+These exercise domain rules, actual SQLite/core flows, source adapters, transport limits, reconciliation, and hidden desktop import/purge. The full gate is `pnpm test`. [Implementation status](archive/implementation-log-2026-09-27.md#verification) records observed results. For visual work, use the temporary `pnpm preview` surface with synthetic captures and headless agent-browser; it deliberately has no UW session or live planning transport.
 
 Ben separately authorized a headless Firefox-session check for development. Its adapters and persistence were exercised on live data; the product still uses app-owned sessions and has no browser-cookie importer. Embedded SSO/reconnect, Windows, and broad program coverage need independent checks. Reserved planning sharing flags do not enable model/MCP access.

@@ -1,127 +1,30 @@
-# My Magic UW course backend: architecture
+# My Magic UW backend reference
 
-**Status:** verified against `origin/main` at `699e386` (2026-09-27) and the open pull requests on `benverhaalen/magic-uw` (#1, #3, #4, #5, #25, #27, #31; #33 merged after this check and changes only notifications).
-**Scope:** this document holds the technical facts: processes, data flow, storage, the agent runtime, privacy, jobs, freshness, and what each design choice measurably changed. The platform, open-source and business view is [the academic data platform](academic-data-platform.md). Product surfaces are in [the product direction](magic-canvas-direction.md). The build specification is [the course-backend plan folder](plans/2026-09-26-course-backend/) ([spec](plans/2026-09-26-course-backend/spec.md), [plan](plans/2026-09-26-course-backend/plan.md), [tasks](plans/2026-09-26-course-backend/tasks.md), [execution](plans/2026-09-26-course-backend/execution.md)); where this summary and the plan folder differ, the plan folder wins. Benchmarks are consolidated in [benchmarks](benchmarks.md); the per-lane test and measurement record is [the build record](course-backend-build-record.md).
+**Role:** the detailed reference behind [the architecture](architecture.md), which is canonical. This page keeps what is too detailed for it: the schema history, the agent-runtime mechanisms with their measured effects, the job-handler contract, freshness, the measured effect of each design choice, the frontend's query path, the command bar and the open human calls. Status per feature is in [implementation status](implementation-status.md); measurements and methods are in [benchmarks](benchmarks.md); the build specification is [the course-backend plan folder](plans/2026-09-26-course-backend/) (where they differ on a design, the plan folder wins). **Checked against `main` at `ccd21f8`, September 27, 2026.**
 
 ## 1. Summary
 
-The course backend is the local system behind every My Magic UW feature. After one UW sign-in it:
-1. **connects** to every source the student's own sign-in can already read (Canvas, UW Outlook and Microsoft 365, course sites, GitLab, calendar feeds, My UW planning);
-2. **stores** that material in one SQLite file on the student's computer, as versioned resources and passages with exact character offsets;
-3. **maps** each course by code: material roles, dates, terms, formulas, assessments covered, and a reference graph from each assignment to what it needs;
-4. **generates** study material through versioned prompt packs, one checked call on the student's own AI client;
-5. **runs study** (quizzes, flashcards, Learn rounds, topic states, analytics) at zero model tokens.
-
-**The principle: AI writes, code decides** ([spec §2](plans/2026-09-26-course-backend/spec.md)). Code does whatever has one right answer: dates, IDs, permissions, budgets, quotes. Jev makes small typed judgments. The student's AI is called once, with tools off, only where language has to be read or written, and code checks every quote, number, date and ID it returns.
+The backend connects to the sources the student's own UW sign-in can read, stores them in one SQLite file as versioned resources and passages with exact offsets, maps each course by code, generates study material with one checked call on the student's own AI client, and runs study at zero model tokens. The system picture, processes, packages and data flow are in [the architecture](architecture.md).
 
 ### 1.1 Status labels
 
-This document and [the platform document](academic-data-platform.md) use these labels, and only these:
-
-| Label | Meaning |
-|---|---|
-| researched | evidence gathered; no specification or code |
-| proposed | specified in the plan folder or a decision; no code on `main` |
-| built | code exists on a branch or an open pull request, not merged into `main` |
-| tested in isolation | on `main` with passing tests, but no screen in the running app reaches it |
-| integrated | on `main`, and reachable from a screen of the running app (including the labelled *Workspace tools* preview tabs, #30) |
-| demonstrated | shown working on a real student account; the evidence is named |
-
-"Demonstrated" always names its evidence, and the live evidence so far is the operator's own account, reported as aggregates only.
+The labels are defined once, in [implementation status](implementation-status.md): researched, proposed, built, tested in isolation, integrated, demonstrated. "Demonstrated" always names its evidence; the live evidence so far is the operator's own account, reported as aggregates only.
 
 ## 2. Where we are
 
-*Every row was checked against the code at `699e386` and the pull-request list. Test counts per PR are from each PR's own description. Rows for privacy (#25), the agenda (#27), the course pass (#45) and "Remember my sign-in" (#40) were updated when the September 27 integration branch merged them; their labels hold once that branch is on `main`.*
-
-| Area | Status | Evidence |
-|---|---|---|
-| UW sign-in, session state, "Keep me signed in" | **demonstrated** | live trial 2026-09-26: sign-in to confirmed in 16.5 s including typing; Duo "Remember me" survived a quit and relaunch (#6). Typed sign-in outcome (#29) |
-| One-checkbox consent and the egress gate | **demonstrated** | 0 requests before the checkbox, in a spy test and in the live trial (#6) |
-| Canvas sync: inventory, access state per course space, bounded concurrent scheduler | **demonstrated** (first read); T17 speed-up **integrated** | first live read of 6 courses: 125 requests, 65 s (#6). The T17 scheduler cut a 5-course replay from 115 to 65 requests and 5.7 s to 2.1 s (#8); a live re-measure after T17 is not recorded |
-| Per-course freshness (hot tick, content probe, warm reads) | **integrated** | synthetic: a hot tick costs 1–1.7% of a full sync; an undated new file found within 15 min ([build record §5.2](course-backend-build-record.md)) |
-| File acquisition and extraction (session downloads, OCR) | **integrated** | synthetic 300-file course: files with text 0/300 → 285/300 (#22). Not yet run live on UW Canvas |
-| Storage, schema v13 | **integrated** | migrations run on open with a `VACUUM INTO` backup; purge ≈0.35 s at 5,000 resources (#19) |
-| Passages and contentless FTS search | **integrated** | search p50/p95 56/197 → 3.3/4.8 ms at 5,000 (MT1, synthetic) |
-| Material pipeline: passages, links, `compile.course`, `material_facts`, references, agenda (schema v9–v10) | **demonstrated** | on the operator's 6 live courses: 1,254 jobs in 12.8 s with 0 failures; 96.4% of 673 materials categorised; references recall 100% of 175 body links; agenda vs Canvas's own to-do: 0 missing, 0 duplicates (#13) |
-| One job drain | **integrated** | `tests/one-drain.test.ts`: a save during a sync leases nothing until the sync ends (#23) |
-| Outlook and Microsoft 365 through the app's own Microsoft sign-in | **integrated**; not demonstrated | tested against fakes; the E1 run against Microsoft and UW's tenant is pending ([Outlook setup](outlook-setup.md)) |
-| Agent runtime: runner, warm pool, instant mode, client health | **integrated** | pool wired for Claude generation and the intent router (#14, #24); instant mode cut Claude Code's input from 3,021 to 1,298 tokens and Codex's from 21,424 to 6,373 (#29) |
-| Generation: quiz and flashcard packs, study guides | **integrated**; a real-content model run is not recorded | #9, #10; "Live model run pending a signed-in client profile" (#10) |
-| Learning engines and study session (FSRS, knowledge states, Learn, Write, sectioned quizzes) | **integrated** | `LearningPanel` calls `study.*` and `notebook.ask`; practice ops on the learning router (#9) |
-| Practice analytics | **integrated** | 0 tokens; live check found 0 of 233 current assignments reaching a topic yet (#11) |
-| Lecture notes (schema v11) | **integrated** | scaffolds at 0 tokens; Word and Google Docs sync not run live (#16) |
-| Intent router and grounded ask | **tested in isolation** (wired in the worker; no screen calls it) | code path 25/40 real commands, all 25 correct, on a read-only copy of the operator's workspace (#24) |
-| Agent API v1 (`@magic/agent-api`) | **tested in isolation** | `tests/fix-platform-agent-api.test.ts` (#19); the MCP course bank shares its session code |
-| Read-only MCP course bank | **integrated** | exported from Data & AI; the reader opens the database read-only; search p50 6.3 s → ≈0.28 s at 5,000 (#19) |
-| Jev gateway (`apps/gateway`) | **tested in isolation** | its README says "Not deployed"; judgments 100 → 50 Jev calls on a synthetic 100-assignment course by deciding quiz and discussion items in code (#14) |
-| Privacy protection across every egress path; encryption at rest (schema v14) | **integrated** (#25, via the September 27 integration) | teaching characters changed 0 of 696,516; personal canaries leaked 0/14 (PR description) |
-| Critical-action agenda | **integrated** (#27, via the September 27 integration) | Workspace tools, Agenda tab |
-| Course brief (`course_briefs`) and the course pass (T21, T22) | **integrated** (#45, via the September 27 integration) | the `course.facts` drain job writes the brief through the student's own client, with a local fallback; packs, guides and the grounded ask open with it |
-| Versioned SQL views, `@magic/sdk`, write path (D42) | **proposed** | [plan D42](plans/2026-09-26-course-backend/plan.md) |
-| "Remember my sign-in" (D39) | **integrated** (#40, via the September 27 integration), tested with fakes; not live-trialled; open H2 | `tests/remember-signin.test.ts` |
-| Dictation (D43) | **proposed** | |
-
-**Gates:** T02 (the operator signs off the AI boundary) is still open, and G0 (nothing pushed before the team's release cleanup) governs this workspace's branches. The open human calls are in §12.
+Status per feature moved to [implementation status](implementation-status.md). **Gates:** T02 (the operator signs off the AI boundary) is still open. The open human calls are in [§12](#12-open-human-calls).
 
 ## 3. Process model
 
-```mermaid
-flowchart LR
-  subgraph PC["Student's computer"]
-    R["Renderer: React UI"] -->|"preload AppBridge: magic:* channels"| M
-    M["Main process: persist:uw session, consent gate, sign-in and Microsoft windows, Graph proxy, tray, presence, Jev device credential"]
-    M <-->|"utilityProcess messages: command, source-fetch, graph, evaluate, presence"| W
-    W["Utility worker: Store (the one writer), ingestion, refresh, one job drain, runner and warm pool, intent router, notes"]
-    W --> DB[("workspace.sqlite")]
-    W -->|"spawn, prompt on stdin, tools off, JSON schema"| C["Student's Claude Code or Codex (instant mode or app-owned profile)"]
-    MCP["mcp-server.cjs: read-only course bank"] -.->|"readOnly open; receipts to a side log"| DB
-  end
-  M -->|"signed-in reads for the worker"| UW["UW: Canvas, My UW, Enroll, GitLab"]
-  M -->|"allowlisted Graph GETs, token held by main"| MS["Microsoft Graph: mail, calendar, OneNote, OneDrive"]
-  W -->|"public client, gated on consent"| PUB["Public course sites, calendar feeds"]
-  M -->|"evaluate"| JEV["Jev gateway"]
-  C --> AI["The student's AI provider"]
-  EXT["The student's own AI client"] -.->|"stdio MCP"| MCP
-```
-
-- **Only main touches credentials and sessions.** The worker asks main for every signed-in read (`source-fetch`), every Graph request (main checks the URL against an allowlist and attaches the token), and every Jev call (`evaluate`).
-- **One writer.** Only the worker writes `workspace.sqlite`. The MCP reader opens it with `node:sqlite` `readOnly: true`, never migrates it, refuses an older schema, and appends its receipts to `workspace.sqlite.reader-receipts.jsonl`, which the app imports on its next open (#19).
-- **The model is a subprocess with no tools.** The worker spawns the student's CLI with tools off, the prompt on stdin and a JSON schema for the output (§6).
+See [architecture §2](architecture.md#2-processes).
 
 ## 4. Data flow: from sign-in to study
 
-```mermaid
-sequenceDiagram
-  autonumber
-  actor S as Student
-  participant M as Main
-  participant W as Worker
-  participant DB as SQLite
-  participant J as Jev gateway
-  participant AI as Student's AI client
-  S->>M: one consent checkbox, then UW sign-in (NetID and Duo by the student)
-  M->>M: confirm the session (login redirect, login page or 401 "unauthenticated" = expiry)
-  M->>W: sign-in confirmed
-  W->>M: source-fetch (inventory, then bounded concurrent reads, 6 per host)
-  M-->>W: Canvas, GitLab, Graph responses
-  W->>DB: ingest: resources, versions, passages with offsets (0 model calls during sync)
-  Note over W,DB: sync ends; the idle drain starts
-  W->>DB: passages.resource, link.resource, compile.course: material_facts, references (code)
-  W->>J: enrich.resource only where code can't decide (typed judgment, consent and scrub first)
-  S->>W: "make me a quiz on unit 3"
-  W->>AI: one call: stable course prefix, selected passages, strict schema, tools off
-  AI-->>W: JSON
-  W->>W: code checks every quote, key, number and date; failed items dropped
-  W->>DB: accepted items, content-hash cache, ledger row
-  S->>W: study: answers, reviews
-  W->>DB: FSRS schedule, topic states, analytics (0 tokens)
-```
-
-The same stored result serves every later request: a repeat costs 0 tokens through the content-hash cache, and study reads only stored artifacts.
+See [architecture §4](architecture.md#4-sync) for sync and [architecture §6](architecture.md#6-the-ai-boundary) for generation. The same stored result serves every later request: a repeat costs 0 tokens through the content-hash cache, and study reads only stored artifacts.
 
 ## 5. Storage
 
-One file, one writer, schema versions owned only by `packages/storage` (`SCHEMA_VERSION = 13` on `main`). All pending steps run in one `BEGIN IMMEDIATE` after a `VACUUM INTO` backup copy, so a failure can't leave an intermediate version.
+One file, one writer, schema versions owned only by `packages/storage` (`SCHEMA_VERSION = 14` on `main`, from `privacy-v14.ts`). All pending steps run in one `BEGIN IMMEDIATE` after a `VACUUM INTO` backup copy, so a failure can't leave an intermediate version.
 
 | Version | What it adds | Status |
 |---|---|---|
@@ -161,27 +64,13 @@ One file, one writer, schema versions owned only by `packages/storage` (`SCHEMA_
 | **Background budget** | a daily token limit on work the student didn't start, and a pause after a provider usage limit | protects the student's plan limits (`packages/runner/src/runner.ts`) |
 | **Ledger** | one row per call, cache hit or intent route | the student sees each action's use |
 
-**The course brief.** The checked syllabus brief (D34, `course_briefs`) is meant to join the prefix once the course pass (T21) writes it. On `main` the table and its quote validation exist, the guide pack reads it when present, and nothing writes it yet; the prefix today carries the course-intelligence profile instead. Where the brief lives is open decision H6.
+**The course brief.** The checked syllabus brief (D34, `course_briefs`) is written by the `course.facts` drain job through the student's own client, with a local fallback (#45, on `main`); packs, guides and the grounded ask open with it as a stable prefix. How it relates to the course-intelligence profile is open decision H6.
 
 **Study at zero tokens.** `readPackArtifact` takes no runner, and the learning engines have no runner dependency, so no study-time path can call a model.
 
 ## 7. Privacy and consent layers
 
-```mermaid
-flowchart TB
-  A["1. Consent: one setup checkbox writes a record per recipient (uw, jev, the chosen AI); withdrawing uw disconnects Outlook and deletes its records"] --> B
-  B["2. Egress gate: main's gate and the worker's own public clients refuse every network channel without consent"] --> C
-  C["3. Grants: maySend checks course, category and recipient on every request; MCP and agent-API grants are rechecked per call"] --> D
-  D["4. Preview: a newly shared sensitive category, or always-preview, holds the send until the student acknowledges that exact payload hash"] --> E
-  E["5. Scrub: known identities replaced before any hosted payload, MCP or agent-API output"] --> F
-  F["6. Receipts: one per send or read, allowed or blocked"]
-  P["Planning records (My UW, DARS, enrollment): never sent to AI, Jev, MCP or the platform"] -.- C
-```
-
-- **Layers 1–6 are integrated.** The scoped protection by content class, role-typed placeholders, log redaction and encryption at rest are **integrated** (#25, via the September 27 integration).
-- **School actions do not exist.** No submit, enroll, post or completion capability; reading can register a page view, and the app discloses that. Duo is never automated.
-- **Microsoft scopes** are read-only except the app's own OneDrive folder and one calendar event per click the student confirmed; `Mail.Send` and `Mail.ReadWrite` are never requested ([Outlook setup](outlook-setup.md)). Mail keeps metadata and Graph's ≤255-character preview; bodies are read on demand and never persisted.
-- The full privacy position is [AI and privacy](ai-and-privacy.md).
+See [architecture §10](architecture.md#10-privacy-and-consent) and, per egress path, [AI and privacy](ai-and-privacy.md). Microsoft scopes are read-only except the app's own OneDrive folder and one calendar event per click the student confirmed; `Mail.Send` and `Mail.ReadWrite` are never requested ([Outlook setup](outlook-setup.md)).
 
 ## 8. One job drain
 
@@ -232,13 +121,13 @@ Measurements are on one Windows 11 laptop unless marked live. Synthetic results 
 | **Code-first Jev** | code decides quiz and discussion items from submission types; Jev sees the title, ≤2,000 characters and the clipped item policy | 100 → 50 Jev calls on a synthetic 100-assignment course (#14) | tested in isolation |
 | **Per-course change detection** (D37) | hot tick plus per-course content probes | a hot tick is 1–1.7% of a full sync (synthetic) | integrated |
 | **Bounded concurrent sync** (T17) | per-host scheduler with Canvas's own rate-limit headers | replay: 115 → 65 requests, 5.7 → 2.1 s (#8) | integrated |
-| **Session file downloads to verified hosts** | main follows Canvas's redirects itself; only the Canvas hop carries cookies | synthetic: files with text 0/300 → 285/300; 4 syncs → 1 (#22) | integrated |
+| **Session file downloads to verified hosts** | main follows Canvas's redirects itself; only the Canvas hop carries cookies | synthetic: files with text 0/300 → 285/300; 4 syncs → 1 (#22). Electron 44's `session.fetch` rejected every redirect, so a live run on 2026-09-27 lost 386 of 386 files; `sessionHopFetch` fixes every session read (PR #53, a 12 MB file byte-exact over local servers) | integrated; the fix is built (PR #53) |
 | **Warm pool and instant mode** | one warm session per course; the student's own signed-in client with flags only | 5.8–7.4 s → 1.7–2.2 s per ask; input tokens 3,021 → 1,298 (Claude Code), 21,424 → 6,373 (Codex) | integrated |
 | **Speculative intent routing** | the AI branch prepares in parallel with a 20 ms code resolver and sends only on a miss | code hit p50 1.1 ms, 0 calls; a code miss adds p95 −0.9 ms against AI-only (fake CLI at 800 ms, #24) | tested in isolation |
 | **Grant-scoped read-only course bank** | the MCP reader opens the file read-only and searches `passage_fts` within the grant | search p50 6.3 s → ≈0.28 s at 5,000 resources (#19) | integrated |
 | **Scoped queries instead of snapshots** | summary, paged course views, one resource, and an exact change cursor | 30.6 MB snapshot → 17.5 KB summary (MT1, synthetic); the renderer switch is the frontend owner's | tested in isolation |
 | **One-transaction migrations with a backup** | `VACUUM INTO`, then every step in one `BEGIN IMMEDIATE` | v5 → v7 with backup in 1.60 s, 0 rows lost (MT1, synthetic) | integrated |
-| **Code-verified quotes** | every quote checked against the exact passage version; a sentence with no checked quote is dropped | no public tool we checked states that it verifies quotes ([platform §8](academic-data-platform.md#8-scorecard)) | integrated (generation); tested in isolation (grounded ask) |
+| **Code-verified quotes** | every quote checked against the exact passage version; a sentence with no checked quote is dropped | no public tool we checked states that it verifies quotes ([platform §8](academic-data-platform.md#8-scorecard)) | integrated (generation); the grounded ask checks each quote but does not yet bind answer sentences to them |
 
 **Quality is not yet benchmarked.** The blind quality run on a public MIT OpenCourseWare course (spec B6, [benchmarking](notes/benchmarking.md)) has its protocol fixed; its results, including rows we lose, go to [benchmarks](benchmarks.md).
 
@@ -248,12 +137,12 @@ The UI will change with the team's design direction ([DESIGN.md](../DESIGN.md)).
 
 | Surface | Calls | Status |
 |---|---|---|
-| Onboarding: agreement → UW sign-in → your AI → appearance → connections | `magic:onboarding`, `consent`, `magic:signin`, `magic:sync` | integrated |
+| Onboarding: agreement → UW sign-in → Your courses → your AI → appearance → connections | `magic:onboarding`, `consent`, `magic:signin`, `magic:sync` | integrated |
+| Home, Courses and the course page, Calendar, My UW, Sources (the designed desktop, [desktop handoff](design-handoff.md)) | `snapshot`, page views, `day-plan`, `magic:planning-sync`, `planning-*` | integrated |
 | Course item and study panel | `learning` (`study.*`, `notebook.ask`) | integrated |
-| Workspace tools (labelled previews, #30): agenda, references, guides, practice, analytics, mastery, notes, Outlook, course facts, page views | scoped queries, `magic:graph`, one learning or notes op per tab | integrated |
-| Today rail and My UW | `snapshot`, `day-plan`, `magic:planning-sync`, `planning-*` | integrated |
+| Workspace tools (labelled previews, #30): agenda, references, guides, practice, analytics, mastery, notes, Outlook, course facts, page views | scoped queries, `magic:graph`, one learning or notes op per tab | not mounted on `main` since the design integration; the component remains in `renderer/backend/` |
 | Settings: data, privacy and the course bank | `privacy`, `purge`, `mcp-grant`, `magic:mcp-export` | integrated |
-| Command bar (D40) | `command` (intent router) | tested in isolation (no screen yet) |
+| Chat pane and command bar (D40) | `command` and `intent.preview` (intent router) | the chat pane runs read-only intents (ask, agenda, search): integrated; no Ctrl+K binding on `main` |
 
 **From the 2-second snapshot poll to summary plus change cursor.** The backend side is in place (`core.query` via `magic:query`); the renderer switch belongs to its owner:
 1. **On mount:** `query({ view: "summary" })`, then `query({ view: "resources", courseId, limit })` for the visible course, paging with `nextCursor`; open one item with `query({ view: "resource", id })`.
@@ -266,7 +155,7 @@ The UI will change with the team's design direction ([DESIGN.md](../DESIGN.md)).
 **What it does.** The command bar (Ctrl+K typed, or dictated into the same bar) takes a plain-language request and returns one typed result: `ran {action, args, result}`, `clarify {question, candidates}`, `answer {text, citations}` or `unavailable {reason}`, each with its path (`code`, `ai`, `cache` or `none`), latency and tokens (`packages/core/src/intent`).
 - **The code path, 0 tokens:** courses by code, name or nickname; relative dates in the student's time zone; topics by the course's concept labels; assignments by title words. A confident single match runs at once; an ambiguous one is asked by code. The resolver runs under a 20 ms CPU-time budget; an overrun is a miss, never an error.
 - **The AI fallback** (`intent-classify` v1): the prefix is the action catalogue, an argument glossary and the course codes and names, with no passages and no other student data. Code re-resolves every argument the model returns: an invented course, assignment or date becomes `clarify`, never a guess.
-- **The grounded ask** (`intent-ask` v1): code retrieves within 3,000 tokens and 8 passages; the coverage gate answers "Not in your materials." with no model call; every cited quote is checked by `findQuote`, and a sentence without a checked quote is dropped. Planning records are never retrieved.
+- **The grounded ask** (`intent-ask` v1): code retrieves within 3,000 tokens and 8 passages; the coverage gate answers "Not in your materials." with no model call; every cited quote is checked by `findQuote`. Open gap: answer sentences are not yet bound to their cited quotes ([status](status-2026-09-27.md)). Planning records are never retrieved.
 - **Actions that write** go through their owners' checks: a calendar event from the router is only a proposal; main writes it after the student clicks to confirm.
 
 ## 12. Open human calls

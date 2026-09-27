@@ -47,7 +47,7 @@ Local storage is the default. Hosted Jev is separately disclosed: Magic Canvas p
 
 **Desktop first:** the full workspace for Mac and Windows. **Website:** product information, working downloads, and GitHub links. **iOS later:** a focused companion if time permits.
 
-The current [Home and visual direction](home-design-direction.md) is the canonical surface decision: briefing-first Home, compact graded Upcoming, tailored Study & Learn, a quiet right Today calendar, and one collapsible left Home/Courses/My UW/Calendar sidebar. Home is the hackathon flagship. It must connect evidence to a useful next action and the right working context. The earlier [organizing concepts](product-directions.md) remain background exploration, not six still-unresolved Home choices.
+The current [Home and visual direction](home-design-direction.md) is the canonical surface decision: briefing-first Home, compact graded Upcoming, tailored Study & Learn, a quiet right Today calendar, and one collapsible left Home/Courses/My UW/Calendar sidebar. Home is the hackathon flagship. It must connect evidence to a useful next action and the right working context. The earlier [organizing concepts](archive/product-directions.md) remain background exploration, not six still-unresolved Home choices.
 
 Spaces and familiar external apps support the assignment/work journey. Voice and the floating control remain open interaction ideas; Ben has explicitly requested Calendar alongside Home: current week by default, week/month views, commitments and accepted study blocks normally, and suggestions on request. Home's Today rail remains a compact daily projection. See the [calendar review](design/platform-handoff.md#seans-calendar-work).
 

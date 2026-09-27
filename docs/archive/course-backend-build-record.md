@@ -1,6 +1,8 @@
+> **Archived September 27, 2026.** Superseded by [the architecture](../architecture.md), [the backend reference](../course-backend-architecture.md), [implementation status](../implementation-status.md) and [benchmarks](../benchmarks.md). This records the backend as of September 26 late (`feat/course-backend` at `33b1827`).
+
 # Course backend: build record
 
-**Branch:** `feat/course-backend` at `33b1827` (the same tree is in PR #6). **Status of this record:** factual, as of 2026-09-26 late. Where this record and [the architecture doc](course-backend-architecture.md) differ on a current fact, this record wins; the architecture doc's own "Where we are" section is updated alongside it.
+**Branch:** `feat/course-backend` at `33b1827` (the same tree is in PR #6). **Status of this record:** factual, as of 2026-09-26 late. Where this record and [the architecture doc](../course-backend-architecture.md) differ on a current fact, this record wins; the architecture doc's own "Where we are" section is updated alongside it.
 
 ## 1. Summary
 
@@ -383,4 +385,4 @@ Every item below is **built and tested in isolation, merged into `feat/course-ba
 
 ## 11. Open decisions
 
-The canonical, updated list of open human calls (H1–H8) is [plan §9](plans/2026-09-26-course-backend/plan.md#9-open-human-calls). Nothing in this record settles any of them; where a section above depends on one (the subscription CLI route, H5; the mastery-bar wording, H8), that dependency is noted inline.
+The canonical, updated list of open human calls (H1–H8) is [plan §9](../plans/2026-09-26-course-backend/plan.md#9-open-human-calls). Nothing in this record settles any of them; where a section above depends on one (the subscription CLI route, H5; the mastery-bar wording, H8), that dependency is noted inline.

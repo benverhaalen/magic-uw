@@ -1,9 +1,9 @@
 # My Magic UW: product direction
 
-**Status:** direction as of 2026-09-26 late. It describes what we're building and where it's going, and labels what exists. **One live trial has run on a real student account** (sign-in and the first Canvas read; [build record §6](course-backend-build-record.md#6-live-trial-results)); nothing else is demonstrated yet.
-**Companion:** [course backend architecture](course-backend-architecture.md) holds the technical facts: processes, storage, channels, measurements, and [where the build stands](course-backend-architecture.md#2-where-we-are). The full specification is the [course-backend spec](plans/2026-09-26-course-backend/spec.md). The visual design follows the team's [DESIGN.md](../DESIGN.md); every surface below adopts it, and none of this document is a visual design.
+**Status:** direction as of 2026-09-26 late. It describes what we're building and where it's going. **What exists now, with evidence, is in [implementation status](implementation-status.md)**; the status labels inside this page are from 2026-09-26 and may lag it.
+**Companion:** [the architecture](architecture.md) holds the technical facts, and [the backend reference](course-backend-architecture.md) the backend detail. The full specification is the [course-backend spec](plans/2026-09-26-course-backend/spec.md). The visual design follows the team's [DESIGN.md](../DESIGN.md); every surface below adopts it, and none of this document is a visual design.
 
-**Status labels:** *integrated* (merged and running in the app on the feature branch), *tested in isolation* (merged with tests, not yet called by the app), *built* (code on a lane branch, not merged), *in progress* (being built now), *proposed* (specified, no code), *researched* (evidence only). Definitions: [architecture §1](course-backend-architecture.md#1-summary).
+**Status labels:** *integrated* (merged and running in the app on the feature branch), *tested in isolation* (merged with tests, not yet called by the app), *built* (code on a lane branch, not merged), *in progress* (being built now), *proposed* (specified, no code), *researched* (evidence only). Definitions: [implementation status](implementation-status.md).
 
 ## 1. In one paragraph
 
@@ -51,7 +51,7 @@ Every surface follows [DESIGN.md](../DESIGN.md) and the near-approved Home. A ne
 
 ## 4. NotebookLM, Quizlet and Anki: parity, and where we aim to outperform
 
-The sourced scorecard against ten study tools (price, Canvas access, citations, quotas, study-time cost, benchmarks) is [academic data platform §5](academic-data-platform.md#5-scorecard); this table keeps only the per-capability measurement plan. The full capability map, 25 rows with each reference product's own help page, is [spec §1c](plans/2026-09-26-course-backend/spec.md). **Nothing in the "aim" column is claimed publicly until its measurement has run** (plan D22), and rows we lose are published too.
+The sourced scorecard against ten study tools (price, Canvas access, citations, quotas, study-time cost, benchmarks) is [academic data platform §8](academic-data-platform.md#8-scorecard); this table keeps only the per-capability measurement plan. The full capability map, 25 rows with each reference product's own help page, is [spec §1c](plans/2026-09-26-course-backend/spec.md). **Nothing in the "aim" column is claimed publicly until its measurement has run** (plan D22), and rows we lose are published too.
 
 | Capability | The reference product | Ours | Status | How we aim to do better, and the measurement |
 |---|---|---|---|---|
@@ -67,7 +67,7 @@ The sourced scorecard against ten study tools (price, Canvas access, citations, 
 
 ## 5. How we optimise: measured versus target
 
-The techniques, each with what we did, why it wins and its evidence, are in [academic data platform §4](academic-data-platform.md#4-the-decisions-with-evidence). The measured before-and-after numbers (MT1, synthetic, one Windows laptop) and the AI cost structure are in [build record §5 and §7](course-backend-build-record.md#5-scores-and-measurements). Batch pricing on the key route stays proposed, adopted only if M7 measures a real saving.
+The techniques, each with what we did, why it wins and its evidence, are in [academic data platform §2](academic-data-platform.md#2-why-build-on-it). The measured before-and-after numbers (MT1, synthetic, one Windows laptop) and the AI cost structure are in [build record §5 and §7](archive/course-backend-build-record.md#5-scores-and-measurements). Batch pricing on the key route stays proposed, adopted only if M7 measures a real saving.
 
 ## 6. The two-part launch
 
@@ -88,7 +88,7 @@ The operator's framing: "an academic autonmous database layer for agentic operat
 
 ## 7. Where it's going
 
-The detailed state and build order are in [architecture §2](course-backend-architecture.md#2-where-we-are). In phases:
+The detailed state and build order are in [implementation status](implementation-status.md). In phases:
 
 | Phase | What | Depends on |
 |---|---|---|
@@ -98,4 +98,4 @@ The detailed state and build order are in [architecture §2](course-backend-arch
 
 ## 8. What's true today
 
-The canonical status per piece is [architecture §2](course-backend-architecture.md#2-where-we-are), and the status per platform part is [academic data platform §2](academic-data-platform.md#2-why-build-on-it). In one line, at `33b1827` with 540/540 tests: storage, sync, sign-in, consent and onboarding are integrated; retrieval, the drain, the runner, packs and the learning engines are tested in isolation; the course map, generation, every study surface and the data platform are proposed; one live trial has run on a real account.
+The canonical status per piece is [implementation status](implementation-status.md), and the status per platform part is [academic data platform §2](academic-data-platform.md#2-why-build-on-it). In one line, on `main` at `ccd21f8`: sign-in, consent, the Canvas read and the code-first course map are demonstrated on a real account; current-courses-only sync, generation, the study engines, privacy and the MCP course bank are integrated; wave 2 (sync speed, file downloads, AI efficiency, GPA, notes to a cloud folder) is PR #53; the study space and course analytics are on branches.
