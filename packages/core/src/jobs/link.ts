@@ -4,10 +4,7 @@
  * code-first facts. Code only. T20's Jev map links (map_links, plan §3) stay a separate job.
  */
 import { courseOfSource, isPipelineStore, linkResource } from "../graph/index";
-import { stubHandler, type JobHandler } from "./registry";
-
-/** Kept for the default (stub) registry. */
-export const linkJob = stubHandler("link.resource", "resource", "T20");
+import type { JobHandler } from "./registry";
 
 export const linkResourceJob: JobHandler = {
   kind: "link.resource",

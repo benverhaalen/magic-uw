@@ -140,3 +140,23 @@ Open for Ben: styling within the Home visual direction, whether the cap/cutoff s
 ## 2026-09-27 — Editorial face: Lora Medium
 
 Ben supplied `Lora-Medium.ttf` and asked: “replace the cooper font with this font across everything in the app including website and everything mentioning cooper and then push the changes” (recorded September 27; message time unknown). Unmodified Lora Medium at weight 500 now fills the former Cooper roles in the desktop app, the informational website headings, the design lab and the marketing drafts' display text. Geist and layout are unchanged. The font and its OFL are tracked in `packages/ui/assets/fonts` and copied into both build outputs. Provenance and the treatment of earlier Cooper screenshots are in the [decision record](design/decision-record.md#editorial-face--recorded-september-27-2026-original-message-timestamp-unknown).
+## 2026-09-27: Today rail meeting details from the Microsoft calendar
+
+Merged in [PR #15](https://github.com/benverhaalen/magic-uw/pull/15). The Graph calendar ([#12](https://github.com/benverhaalen/magic-uw/pull/12)) supplies each meeting's join link, provider, and the student's response; before this, the rail ignored all three and a declined meeting still blocked study suggestions. Rules, in code at `packages/domain/src/today-rail.ts` and `apps/desktop/src/renderer/TodayRail.tsx`:
+
+- **Declined** meetings stay on the schedule, struck through, so the student can see what they turned down. They hold no busy time, get no prep block, and do not trigger an overlap warning when a study block is edited over them.
+- **Tentative and unanswered** meetings still hold their time. This is the cautious choice: a suggestion placed over a meeting the student later accepts is worse than a missed free slot. They are outlined dashed and dotted.
+- **Join** appears only for a plain https link with no embedded credentials, checked in the rail and again by the https-only `openLink` bridge, and never for a declined meeting. Opening it is always the student's own click.
+- **Provider badges** name Teams, Zoom, Webex, or Meet from the calendar's own field, not a guess from the title.
+
+Proposed for Ben's review, not yet accepted direction: whether declined meetings should disappear instead of showing struck through.
+
+## 2026-09-27: Manual UW GitLab project links
+
+Merged in [PR #18](https://github.com/benverhaalen/magic-uw/pull/18). GitLab projects were discovered only when Canvas material linked them, so a course that names its repository in prose or in class had no way to connect it. The fallback:
+
+- A student pastes a project link; the existing `gitlabProjectFromUrl` accepts only `git.doit.wisc.edu` group/project paths, not user pages or the API. Anything else is refused with a message saying what to paste.
+- The course must be in the student's saved coursework for that account, so a link cannot attach to a course the app does not know.
+- Links are local preferences, capped at 200 and cleared by Delete local data. No new network access: a linked project is read by the existing GitLab connector with the app-owned GitLab session.
+
+Open for Ben: where the "link a GitLab project" input belongs on screen (Sources, or the course page). Until it has a screen, students cannot use it.

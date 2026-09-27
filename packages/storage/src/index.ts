@@ -52,6 +52,8 @@ import {
   courseOverrideSchema,
   mcpGrantSchema,
   dayPlanEntrySchema,
+  gitlabLinkSchema,
+  type GitlabLink,
   syncRunSchema,
   type CaptureDiagnostic,
   type ChangeType,
@@ -831,6 +833,29 @@ export function createStore(
     if (override ? !override.included : course?.selection?.included === false) return undefined;
     return { contentHash: resource.contentHash, accountScope };
   }, clock);
+  // Manual GitLab links live beside the day plan in preferences, so Delete local data clears them.
+  const GITLAB_LINKS_MAX = 200;
+  function readGitlabLinks(): GitlabLink[] {
+    const row = db.prepare("SELECT value FROM preferences WHERE key = 'gitlabLinks'").get();
+    if (!row) return [];
+    let saved: unknown;
+    try {
+      saved = JSON.parse(String(row.value));
+    } catch {
+      return [];
+    }
+    return (Array.isArray(saved) ? saved : [])
+      .map((e) => gitlabLinkSchema.safeParse(e))
+      .filter((r) => r.success)
+      .map((r) => r.data);
+  }
+  function writeGitlabLinks(links: GitlabLink[]) {
+    db.prepare(
+      "INSERT INTO preferences VALUES ('gitlabLinks', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    ).run(JSON.stringify(links.slice(-GITLAB_LINKS_MAX)));
+  }
+  const sameLink = (a: GitlabLink, account: string, course: string, path: string) =>
+    a.accountScope === account && a.courseId === course && a.projectPath.toLowerCase() === path.toLowerCase();
   // owner: platform-fix. Receipts: the one validated insert, the 90-day roll-up, the reader's log.
   function addReceiptRow(value: EgressReceipt) {
     assertText(value.id, "receipt ID");
@@ -1633,6 +1658,19 @@ export function createStore(
         (e) => !(e.key === entry.key && e.date === entry.date),
       );
       writeDayPlan([...rest, entry]);
+    },
+    gitlabLinks() {
+      return readGitlabLinks();
+    },
+    setGitlabLink(value) {
+      const link = gitlabLinkSchema.parse(value);
+      writeGitlabLinks([
+        ...readGitlabLinks().filter((l) => !sameLink(l, link.accountScope, link.courseId, link.projectPath)),
+        link,
+      ]);
+    },
+    removeGitlabLink(accountScope, courseId, projectPath) {
+      writeGitlabLinks(readGitlabLinks().filter((l) => !sameLink(l, accountScope, courseId, projectPath)));
     },
     removeDayPlanEntry(key, date) {
       writeDayPlan(

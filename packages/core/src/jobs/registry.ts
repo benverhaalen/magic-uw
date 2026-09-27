@@ -1,13 +1,16 @@
 /**
  * The job registry (T05b): one place that names every background job kind, what a saved
- * resource enqueues, and the handler the drain dispatches to. Handlers are code; a handler
- * that calls Jev or a model goes through egress like every other send.
+ * resource enqueues, and the handler the app's one drain (`./pipeline`, over `../drain`)
+ * dispatches to. Handlers are code; a handler that calls Jev or a model goes through egress like
+ * every other send (see `./enrich`).
  *
- * A registered handler is `ready: false` until its owning task builds it (T20 cards and links,
- * T21 compile, T10 passages). The save hook never enqueues a kind that isn't ready, so a stub
- * can't fill the queue with work nothing will do.
+ * A registered handler is `ready: false` until its owning task builds it (T20 cards). The save
+ * hook never enqueues a kind that isn't ready and the drain never leases one, so a stub can't
+ * fill the queue with work nothing will do. Register before `createCore`: the drain's kinds are
+ * fixed when its loop starts.
  */
 import type { Job, Resource, Store } from "@magic/contracts";
+import type { DrainOutcome } from "../drain";
 import { courseOfSource, isPipelineStore } from "../graph/course-index";
 
 export type JobSubjectKind = "resource" | "course" | "assessment";
@@ -18,13 +21,13 @@ export interface JobContext {
 }
 /**
  * - done: finished (or nothing to do)
- * - retry: failed this time; the store backs off and retries up to its limit
+ * - retry: failed this time; the store backs off and retries up to its limit (a thrown error is a
+ *   retry too, and its message is recorded on the job)
  * - stop: refused (for example consent or privacy); the drain stops for this wake
+ * - defer: retry-after (a budget 429): pending again without spending an attempt, and the kind
+ *   waits until `until`; the loop wakes itself then
  */
-export type JobOutcome =
-  | { status: "done" }
-  | { status: "retry"; error: string }
-  | { status: "stop"; error: string };
+export type JobOutcome = DrainOutcome;
 export interface JobHandler {
   kind: string;
   subject: JobSubjectKind;
@@ -33,6 +36,11 @@ export interface JobHandler {
   owner: string;
   /** Save → enqueue: whether a newly saved or changed resource needs this job. */
   onSave?(resource: Resource): boolean;
+  /**
+   * Checked before every lease: while false, the drain leaves this kind queued (for example Jev
+   * when no gateway is configured or privacy refuses course text). Default: always available.
+   */
+  available?(context: { store: Store }): boolean;
   run(job: Job, context: JobContext): Promise<JobOutcome>;
 }
 export interface JobRegistry {
