@@ -1,6 +1,6 @@
 # Accounts and payments
 
-Status, September 27, 2026: **built and tested in isolation. The Supabase project exists with both migrations applied; the website, webhook and app are not yet pointed at it, and no Lemon Squeezy store is connected.** Accepted scope (Aidan, September 27): a student signs up and pays on the website; the desktop app signs in and shows whether the account has bought the app. Price: $10 one-time, which still conflicts with the $5 license in [decisions](decisions.md#pricing-and-ai-access-resolution--september-26). Sign-in is by email, no passwords.
+Status, September 27, 2026: **built and tested in isolation. The Supabase project exists with both migrations applied; the website, webhook and app are not yet pointed at it, and no Lemon Squeezy store is connected.** Accepted scope (Aidan, September 27): a student signs up and pays on the website; the desktop app signs in and shows whether the account has bought the app. Price: **$5 a month** (operator decision, [decisions](decisions.md#2026-09-27--price-5-a-month)); the website and the store setup below still say $10 one-time until they are updated. Sign-in is by email, no passwords.
 
 ## What exists
 
@@ -33,7 +33,7 @@ Keys go into Vercel and your local environment, never into Git or chat.
 
 **Lemon Squeezy** (test mode works before the store is approved)
 
-1. Create the product "My Magic UW app", single payment, $10. Set its post-purchase redirect / button link to `https://magic-uw-omega.vercel.app/account/?paid=1`.
+1. Create the product "My Magic UW app" as a $5-a-month subscription (the steps below were written for a $10 single payment; recheck the webhook's events for a subscription). Set its post-purchase redirect / button link to `https://magic-uw-omega.vercel.app/account/?paid=1`.
 2. Copy the product's checkout link (`https://<store>.lemonsqueezy.com/buy/<id>`) and its **variant ID**.
 3. **Settings → Webhooks → +**: URL `https://magic-uw-omega.vercel.app/api/lemon-webhook`, events `order_created` and `order_refunded`, and a signing secret (for example `openssl rand -hex 32`).
 
@@ -57,7 +57,7 @@ Keys go into Vercel and your local environment, never into Git or chat.
 - **Sign-in links are unreliable; codes are the fix.** First live test, September 27 (Supabase auth logs): a wisc.edu link was used up about 5 seconds after sending, from an address that wasn't Aidan's, so his own clicks got "expired". This is probably the university's email security scanner opening links (an inference, not confirmed). Separately, a Gmail link was verified by Supabase but never completed, because it was opened in a different browser than the one that requested it (the PKCE check needs the same browser). The page now explains both failures. The fix is the 6-digit code in the email: scanners don't type codes, and codes work in any browser. That needs custom SMTP so both the **Confirm signup** email (sent to new accounts) and the **Magic Link** email can include `{{ .Token }}`.
 - No download exists yet, so a real purchase is effectively a pre-order; the account page says so. Keep Lemon Squeezy in test mode until the team decides to sell.
 - The app shows status only. Deciding what an unpaid install can do, and enforcing it, is a separate decision.
-- Price conflict ($10 site and product vs $5 recorded) needs Ben and Aidan to agree.
+- The site and product still show $10 one-time; the decided price is $5 a month.
 - Hobby-plan hosting on Vercel is for non-commercial use; taking payments needs a paid plan.
 - When the permanent domain replaces `magic-uw-omega.vercel.app`, update the Supabase URLs, the Lemon Squeezy redirect and webhook, and `MAGIC_ACCOUNT_URL`.
 - Not yet exercised against live Supabase and Lemon Squeezy: the tests use stand-ins, and the desktop section was checked in the renderer preview with a stand-in bridge.

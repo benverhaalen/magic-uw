@@ -1,3 +1,5 @@
+> **Archived September 27, 2026.** Superseded by [the architecture](../architecture.md) and [implementation status](../implementation-status.md): the audited branches have since merged. Kept as the September 26 audit record.
+
 # Backend branch integration audit
 
 Audited September 26, 2026. Baselines: main `18a8486`, backend branch `1f8b1f7`, original Start work `2817609`. Historical research and recommendations; see the resolution below for the subsequent authorized product integration.
@@ -88,7 +90,7 @@ Ben authorized integration after the audit. The isolated `integration/backend-cu
 
 - **Evidence privacy:** MCP filters contributing sources before deadline derivation and reports their categories. Source labels, section names, grade/comment strings and nested evidence use the scrubber. Search and output use the resource’s account-scoped roster.
 - **Identity and citations:** automatic local roster capture and immutable outgoing projections are integrated. Tests cover roster changes, denied communications, unseen quote ranges, compressed record history and purge. Necessary profile identifiers live in the private local roster; this is deliberately distinct from exporting them in coursework/snapshots.
-- **Study generation:** Nate’s actual quiz/card runner now checks and scrubs every initial/retry/escalated send, binds previews to outgoing prompt/input/schema, restores citations from frozen passage maps and discards results after evidence or permission changes. See [the exact boundary and limits](pipeline-details.md#study-generation-at-the-actual-send-boundary).
+- **Study generation:** Nate’s actual quiz/card runner now checks and scrubs every initial/retry/escalated send, binds previews to outgoing prompt/input/schema, restores citations from frozen passage maps and discards results after evidence or permission changes. See [the exact boundary and limits](../pipeline-details.md#study-generation-at-the-actual-send-boundary).
 - **Deadlines:** deterministic source-anchored prose extraction enters canonical queries. An explicit prose extension conflicting with structured Canvas remains a visible conflict with a conservative planning date; it is not promoted to unquestioned truth.
 - **Jev recovery:** kind-scoped durable cooldowns preserve other registered jobs. Typed budget refusals survive the desktop IPC path; tests cover restart and retry bounds.
 - **Madgrades:** protected token transport and public planning comparison are integrated. Student token setup and live response validation remain open. Historical grades do not rank recommendations or establish mastery; private planning data remains excluded from AI/MCP.

@@ -8,11 +8,11 @@
 | **Gemini Notebook** (NotebookLM was renamed; its Help Center is now "Gemini Notebook Help") | Free; Google AI Plus $4.99/mo; AI Pro $19.99/mo; AI Ultra $100 or $200/mo | Free: 50 sources/notebook, 50 chats/day, 10 quizzes/day, 10 flashcard sets/day, 3 audio overviews/day. Pro: 300 sources, 500 chats/day, 100 quizzes/day. **Consumer tiers moved to compute-based usage limits (quota refreshes every 5 hours) from 2026-09-02, so these fixed daily counts may be outdated (corrected 2026-09-26; support.google.com/gemininotebook/answer/17670842)** |
 | **Quizlet** | Plus $35.99/yr; Plus Unlimited $44.99/yr (annual billing shown) | Plus: 3 practice tests, 20 Learn rounds, 3 textbook solutions **per month**. Unlimited removes those caps and adds study paths, progress and smart grading |
 | **Duolingo** | not a course-material tool; used here for engagement mechanics only | — |
-| **Magic Canvas** | **$5 once** (covers Jev and the service), plus **the student's own paid AI**: Claude Pro or higher, a paid ChatGPT plan, a paid Gemini API key, or an OpenRouter key | No app-side daily quotas. The student's provider limits apply. The app caches and precomputes, so repeated views don't spend the student's quota again |
+| **Magic Canvas** | **$5 a month** (covers Jev and the service; September 27 decision), plus **the student's own paid AI**: Claude Pro or higher, a paid ChatGPT plan, a paid Gemini API key, or an OpenRouter key | No app-side daily quotas. The student's provider limits apply. The app caches and precomputes, so repeated views don't spend the student's quota again |
 
 **Honest reading:**
 - **Gemini Notebook's free tier costs less than Magic Canvas** for a student with no paid AI plan. Magic Canvas requires one.
-- **For a student who already pays for Claude, ChatGPT or Gemini,** the marginal cost is $5 once, against Quizlet's annual fee or Gemini Notebook's quotas.
+- **For a student who already pays for Claude, ChatGPT or Gemini,** the marginal cost is $5 a month, against Quizlet's annual fee or Gemini Notebook's quotas.
 
 **Our side of the cost** (targets, measured by the ledger in the [backend plan](../plans/2026-09-26-backend-optimization/plan.md)):
 - Jev calls per course sync and per 100 items checked. Internal figures only; see [Jev insights](jev-insights.md).

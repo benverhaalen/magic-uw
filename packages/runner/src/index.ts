@@ -42,6 +42,7 @@ export {
 } from "./runner";
 export {
   createSessionPool,
+  INTERACTIVE_HISTORY_TOKENS,
   claudeSessionArgs,
   unionSchema,
   POOL_PROTOCOL,

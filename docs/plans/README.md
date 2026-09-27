@@ -1,5 +1,7 @@
 # Plans: start here to pick up the work
 
+> **Historical plans.** These record intent and decisions as written on September 26–27. What is built now, with evidence, is in [implementation status](../implementation-status.md); how it fits together is in [the architecture](../architecture.md).
+
 **Status: Proposal.** Updated 2026-09-26 against `main` at `d44dcf7`. The plans carry our decisions and their evidence. Changes to the shared packages go to `main` as PRs ([AGENTS.md](../../AGENTS.md)).
 
 ## Where things stand

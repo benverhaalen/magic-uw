@@ -362,8 +362,11 @@ export function createNotifications(store: Store, deps: NotificationDeps) {
     }
   }
 
-  /** `views`: every live resource view, when the caller has already built them (snapshot). */
-  function feed(views?: ResourceView[]): NotificationFeed {
+  /**
+   * `views`: every live resource view, when the caller has already built them (snapshot).
+   * `reads`: that caller's store with its sources, course-choice and judgments reads shared.
+   */
+  function feed(views?: ResourceView[], reads: Store = store): NotificationFeed {
     const live = views ?? resourceViews(store, store.resources());
     const changes = store.changes({ since: since(), limit: 2000 });
     const liveIds = new Set(live.map((v) => v.id));
@@ -385,7 +388,7 @@ export function createNotifications(store: Store, deps: NotificationDeps) {
     const triageStatus = status();
     // Turning Jev off also stops earlier judgments from changing what the student sees.
     if (triageStatus.status !== "off")
-      for (const j of store.judgments()) {
+      for (const j of reads.judgments()) {
         if (byId.get(j.resourceId)?.contentHash !== j.inputHash) continue;
         if (j.questionVersion === MESSAGE_TRIAGE_QUESTION_VERSION)
           triage[j.resourceId] = j.result as MessageTriageJudgment;
@@ -395,9 +398,9 @@ export function createNotifications(store: Store, deps: NotificationDeps) {
     return buildNotifications({
       changes,
       resources: all,
-      sources: store.sources(),
+      sources: reads.sources(),
       baselineReadIds: store.baselineReadIds?.() ?? [],
-      included: courseInclusion(store, live),
+      included: courseInclusion(reads, live),
       triage,
       mailTriage,
       triageStatus,

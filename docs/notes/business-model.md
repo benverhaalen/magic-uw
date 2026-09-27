@@ -1,4 +1,6 @@
-# Business model: open source and free with your own keys, $5 lifetime for our hosted Jev, then a campus licence
+# Business model: open source and free with your own keys, a paid hosted Jev service, then a campus licence
+
+> **Price, September 27, 2026: $5 a month** (operator decision, [decisions](../decisions.md#2026-09-27--price-5-a-month)). The lifetime and one-time figures below are the earlier analysis; the fee comparisons still apply per charge.
 
 **Status: Decision (operator), updated 2026-09-26.** It differs from decisions recorded in [decisions](../decisions.md) (free, local-first default, no paid-plan prerequisite); see [where we differ](where-we-differ.md). Checked 2026-09-26.
 

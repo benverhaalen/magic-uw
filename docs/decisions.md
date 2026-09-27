@@ -25,7 +25,7 @@ A context register, not an implementation backlog. No ownership is assigned.
 ## Resolved product decisions — September 26
 
 - **Privacy:** course data and UW sessions live locally. Selected context may be sent to Jev and the hosted AI the student chooses. Clearly disclose the recipient, data categories, purpose, and applicable usage/retention settings. Offer guidance for disabling optional provider data uses; do not imply that disabling training disables all retention.
-- **Paid AI and app license:** Ben accepted Nathaniel's direction later on September 26: a $5 one-time app license, with the student paying for their own supported AI plan or API key. This supersedes the earlier any-account/no-paid-plan requirement and local AI as the launch default alternative. See [the recorded resolution](#pricing-and-ai-access-resolution--september-26).
+- **Paid AI and app license:** Ben accepted Nathaniel's direction later on September 26: a $5 one-time app license (since replaced by [$5 a month](#2026-09-27--price-5-a-month)), with the student paying for their own supported AI plan or API key. This supersedes the earlier any-account/no-paid-plan requirement and local AI as the launch default alternative. See [the recorded resolution](#pricing-and-ai-access-resolution--september-26).
 - **Minimal setup:** reuse supported installed provider clients through their own sign-in where permitted; otherwise guide setup. UW sign-in, a supported provider plan/key, and license activation are the intended prerequisites. No extra Magic Canvas or Jev user account is intended. User-completed Duo and later session renewal remain part of UW authentication.
 - **Existing local AI:** retain the installed-model adapter and local privacy controls as implemented capabilities; they do not establish a free-account launch offering. Managed model installation is deferred. Fully local processing must disable or replace hosted Jev.
 - **Desktop first:** Mac and Windows are the product focus. The website provides information, working downloads, and GitHub links. iOS is later if time permits.
@@ -103,6 +103,10 @@ Named objects within briefing prose should be visibly clickable and lead to cont
 See [planning integration](planning-upgrade.md) for implementation evidence and remaining scope.
 
 
+## 2026-09-27 — Price: $5 a month
+
+The operator set the price at **$5 a month** (September 27, 2026, relayed through the backend lane's coordinator). It replaces both the $5 one-time licence below and the $10 one-time price on the website draft, and it closes the open website-price conflict. What the price covers (the hosted Jev service and the app; never the student's own model usage) is unchanged. The website (`apps/web/pricing`, `apps/web/account`) and the Lemon Squeezy product still say $10 one-time until they are updated.
+
 ## Pricing and AI access resolution — September 26
 
 Ben resolved the pricing/provider disagreement with: "nathaniels is the way" (this project conversation, recorded September 26; original message timestamp unavailable). The question explicitly contrasted Nathaniel's paid-AI/$5 direction with the earlier any-account/local alternative. Nathaniel's original proposal is preserved in [business model](https://github.com/benverhaalen/magic-uw/blob/5bf86f7be3eac8e85fa5ccb2a0e925a721ca24f3/docs/notes/business-model.md) and [agent runtime](https://github.com/benverhaalen/magic-uw/blob/5bf86f7be3eac8e85fa5ccb2a0e925a721ca24f3/docs/notes/agent-runtime.md).
@@ -114,7 +118,7 @@ Ben resolved the pricing/provider disagreement with: "nathaniels is the way" (th
 - **Disclosure flow accepted:** Ben chose "Adopt this flow (Recommended)": consent once per provider, visible selected context and a receipt per request, with a blocking preview for the first sharing of a new sensitive category or when the student enables **always preview**. Keep the exact outgoing payload inspectable. Code must enforce course/category grants and revocation on every request; ongoing consent does not permit new categories or recipients. Disclosure timing does not relax data minimization or identity scrubbing.
 - These answers resolve commercial direction, paid-provider access, Jev billing, and disclosure timing. Other research-branch choices, including runtime permissions and storage/MCP architecture, still need scoped integration review; this is not a blanket branch merge.
 - Existing local-model code stays documented honestly. Automatic local model setup is no longer a launch requirement. No runtime, payment, or account settings were changed by this documentation correction.
-- **Open conflict, website price:** on September 26 Aidan chose to publish the $10 one-time price from the `marketing/Pricing.dc.html` draft on the website (Pricing page and FAQ) instead of the $5 license above. Ben has not confirmed the change; resolve it with both before treating either price as final.
+- **Resolved September 27 ([$5 a month](#2026-09-27--price-5-a-month)). Was an open conflict, website price:** on September 26 Aidan chose to publish the $10 one-time price from the `marketing/Pricing.dc.html` draft on the website (Pricing page and FAQ) instead of the $5 license above. Ben has not confirmed the change; resolve it with both before treating either price as final.
 
 ## Design foundation and handoff — September 26
 

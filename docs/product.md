@@ -35,7 +35,7 @@ The event audience will likely skew technical. The product story should still ma
 
 ## AI choice, sign-in, and data transparency — decided
 
-The accepted launch direction is a $5 one-time app license plus the student's own paid AI plan or key. Intended routes are Claude Code, Codex, Gemini CLI with a paid key, and OpenRouter. The license covers the service and company-funded Jev, not language-model usage. Exact account/plan compatibility and authorized connection methods still need verification. See [the pricing and AI resolution](decisions.md#pricing-and-ai-access-resolution--september-26).
+The accepted launch direction is a $5-a-month app subscription ([decision](decisions.md#2026-09-27--price-5-a-month); earlier a $5 one-time licence) plus the student's own paid AI plan or key. Intended routes are Claude Code, Codex, Gemini CLI with a paid key, and OpenRouter. The license covers the service and company-funded Jev, not language-model usage. Exact account/plan compatibility and authorized connection methods still need verification. See [the pricing and AI resolution](decisions.md#pricing-and-ai-access-resolution--september-26).
 
 Minimize setup by detecting supported installed clients and using their own authentication flows where permitted; otherwise guide the student through setup. UW sign-in, provider setup, and license activation are the intended prerequisites, without an extra Magic Canvas or Jev user account. The existing local-model adapter remains available in the development foundation; automatic local-model setup is no longer a launch requirement.
 
@@ -47,7 +47,7 @@ Local storage is the default. Hosted Jev is separately disclosed: Magic Canvas p
 
 **Desktop first:** the full workspace for Mac and Windows. **Website:** product information, working downloads, and GitHub links. **iOS later:** a focused companion if time permits.
 
-The current [Home and visual direction](home-design-direction.md) is the canonical surface decision: briefing-first Home, compact graded Upcoming, tailored Study & Learn, a quiet right Today calendar, and one collapsible left Home/Courses/My UW/Calendar sidebar. Home is the hackathon flagship. It must connect evidence to a useful next action and the right working context. The earlier [organizing concepts](product-directions.md) remain background exploration, not six still-unresolved Home choices.
+The current [Home and visual direction](home-design-direction.md) is the canonical surface decision: briefing-first Home, compact graded Upcoming, tailored Study & Learn, a quiet right Today calendar, and one collapsible left Home/Courses/My UW/Calendar sidebar. Home is the hackathon flagship. It must connect evidence to a useful next action and the right working context. The earlier [organizing concepts](archive/product-directions.md) remain background exploration, not six still-unresolved Home choices.
 
 Spaces and familiar external apps support the assignment/work journey. Voice and the floating control remain open interaction ideas; Ben has explicitly requested Calendar alongside Home: current week by default, week/month views, commitments and accepted study blocks normally, and suggestions on request. Home's Today rail remains a compact daily projection. See the [calendar review](design/platform-handoff.md#seans-calendar-work).
 

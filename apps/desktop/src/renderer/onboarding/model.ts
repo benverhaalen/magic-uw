@@ -452,9 +452,12 @@ const kindWords: { kind: ResourceView["kind"]; one: string; many: string }[] = [
 ];
 /** Course lists a student may simply not be shown (Canvas answers 401/403/404 for a hidden tab). */
 const LIST_SCOPES = new Set(["pages", "files", "folders", "quizzes", "discussions", "assignment-groups", "submissions", "announcements", "syllabus", "modules", "calendar-discovery"]);
-const isFileScope = (scope: string) => /^(?:file|document):/.test(scope);
+export const isFileScope = (scope: string) => /^(?:file|document):/.test(scope);
+/** A list or file Canvas doesn't show students (401/403/404 for a hidden tab): normal, not a read check. */
+export const hiddenFromStudents = (source: SourceHealth) =>
+  source.status === "inaccessible" && (LIST_SCOPES.has(source.scope) || isFileScope(source.scope));
 
-function sourceLine(source: SourceHealth, busy: boolean): SourceLine {
+export function sourceLine(source: SourceHealth, busy: boolean): SourceLine {
   const progress = source.progress;
   // A read with no total can't say it's done, so only a running sync keeps an unfinished source in flight.
   // Canvas batches carry no total and a terminal phase ("complete", "inaccessible"), so progress alone isn't.
@@ -521,7 +524,7 @@ export function summarize(snapshot: Snapshot, busy: boolean): PopulateSummary {
   for (const source of snapshot.sources) {
     const key = `${source.accountScope}|${source.courseId}`;
     if (source.kind === "canvas" && courseRows.has(key) && !included(key)) continue;
-    if (source.status === "inaccessible" && (LIST_SCOPES.has(source.scope) || isFileScope(source.scope))) {
+    if (hiddenFromStudents(source)) {
       hiddenLists++; // not available to students: fine, and not a partial read
       continue;
     }

@@ -12,7 +12,7 @@ Deeper research and feature proposals behind the product docs. The status terms 
 | [retrieval-research.md](retrieval-research.md) | What's reported to beat plain search (graph RAG, BM25S, SPLADE, ColBERT, ColPali, late chunking, long context), embeddings in Electron, agentic search vs vectors, and what we adopt |
 | [local-db.md](local-db.md) | The local SQLite store as built, checked facts, and proposed additions (feature tables, passages, query form, embeddings only if measured) |
 | [backend-map.md](backend-map.md) | What the current code gives learning features: store methods, commands, IPC, extension points, and what would need changes to the current packages |
-| [business-model.md](business-model.md) | One-time $5 purchase, bring-your-own paid AI, who pays for Jev, payment and distribution options |
+| [business-model.md](business-model.md) | $5 a month (earlier: one-time $5), bring-your-own paid AI, who pays for Jev, payment and distribution options |
 | [notes-targets.md](notes-targets.md) | Where generated .docx notes go: local first, detected OneDrive or Drive sync folders, opt-in Drive or Graph APIs |
 | [open-source-candidates.md](open-source-candidates.md) | Licence-checked open-source candidates for extraction, spaced repetition, mind maps, .docx, and NotebookLM-style features |
 | [jev-insights.md](jev-insights.md) | How each planned Jev judgment is designed: questions, state, thresholds, journal, browsing loop, fit with today's gateway (no performance numbers) |
