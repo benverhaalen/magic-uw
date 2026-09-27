@@ -68,6 +68,13 @@ export function openExternal(url: string): Promise<void> {
   return bridge().openExternal(url);
 }
 
+/** owner: doc-window. A synced note's Word/Google Doc in the signed-in document window; the browser in older builds. */
+export async function openDocument(url: string): Promise<void> {
+  const b = bridge();
+  if (b.openDocument) await b.openDocument(url);
+  else await b.openExternal(url);
+}
+
 export type Load<T> =
   | { state: "loading" }
   | { state: "error"; message: string }

@@ -4,7 +4,7 @@
 // notes.sync.status (Word and Google Docs).
 import { useState } from "react";
 import type { NoteDetail, NoteSummary, NoteTemplateId, NotesResult } from "@magic/contracts";
-import { notes, useAction, useLoad, type Course } from "./bridge";
+import { notes, openDocument, useAction, useLoad, type Course } from "./bridge";
 import { Empty, ErrorLine, Loaded, Partial, PreviewSection, formatWhen } from "./ui";
 
 /** The ok variant answering `Op` (several ops share one variant, so its `op` is a union). */
@@ -167,6 +167,23 @@ export function NotesPreview({ course }: { course: Course }) {
             <p className="small muted">
               {open.remotes.map((r) => `${r.provider === "microsoft" ? "Word" : "Google Docs"}: ${r.status}${r.error ? ` (${r.error})` : ""}`).join(" · ")}
             </p>
+          ) : null}
+          {/* owner: doc-window. The synced copy opens in the app's signed-in document window. */}
+          {open.remotes.some((r) => r.webUrl) ? (
+            <div className="backend-controls">
+              {open.remotes.map(({ provider, webUrl }) =>
+                webUrl ? (
+                  <button
+                    key={provider}
+                    className="button small-button"
+                    disabled={action.busy}
+                    onClick={() => void action.run(() => openDocument(webUrl))}
+                  >
+                    {provider === "microsoft" ? "Open in Word" : "Open in Google Docs"}
+                  </button>
+                ) : null,
+              )}
+            </div>
           ) : null}
           <div className="backend-note-blocks">
             {open.blocks.map((block) => (
