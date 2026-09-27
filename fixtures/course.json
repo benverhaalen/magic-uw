@@ -18,6 +18,9 @@
       "courseName": "Writing 101 · Sample",
       "title": "Comparative analysis",
       "url": "https://example.org/course/essay-1",
+      "links": [
+        "https://example.org/course/reading-1"
+      ],
       "text": "Compare the arguments in two assigned readings. Cite both sources. Submit a 900-word essay. AI may explain concepts and ask questions, but must not write the submission.",
       "deadlines": [
         {

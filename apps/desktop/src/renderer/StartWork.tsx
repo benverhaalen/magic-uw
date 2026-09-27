@@ -1,0 +1,84 @@
+import { useEffect, useId, useRef, useState } from "react";
+import type { ResourceView, WorkLaunchReceipt, WorkSet } from "@magic/contracts";
+import { Action, Disclosure } from "../../../../packages/ui/src";
+import "./StartWork.css";
+
+/** Keep each assignment's pending work and receipt scoped to that assignment. */
+export function StartWork(props: { resource: ResourceView; refreshKey: string }) {
+  return <PreparedWork key={props.resource.id} {...props} />;
+}
+function PreparedWork({ resource, refreshKey }: { resource: ResourceView; refreshKey: string }) {
+  const heading = useId();
+  const [set, setSet] = useState<WorkSet | null>(null);
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+  const [receipt, setReceipt] = useState<WorkLaunchReceipt | null>(null);
+  const [reload, setReload] = useState(0);
+  const busy = useRef(false);
+  const mounted = useRef(true);
+  const previewHash = useRef<string | null>(null);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => {
+    let current = true;
+    window.magic.execute({ type: "work-set", id: resource.id }).then(result => {
+      if (!current) return;
+      const next = result.workSet ?? null;
+      if (previewHash.current !== next?.previewHash) setReceipt(null);
+      previewHash.current = next?.previewHash ?? null;
+      setSet(next);
+    }).catch(cause => {
+      if (!current) return;
+      setSet(null); setReceipt(null); previewHash.current = null;
+      setError(cause instanceof Error ? cause.message : "Could not prepare this work.");
+    });
+    return () => { current = false; };
+  }, [resource.id, refreshKey, reload]);
+  const launch = async (only?: string[]) => {
+    if (busy.current || !set || !window.magic.startWork) return;
+    const hash = set.previewHash;
+    busy.current = true; setPending(true); setError("");
+    try {
+      const next = await window.magic.startWork(resource.id, hash, only);
+      if (!mounted.current || previewHash.current !== hash) return;
+      setReceipt(previous => only && previous ? {
+        ...next,
+        opened: [...previous.opened, ...next.opened],
+        failed: [...previous.failed.filter(item => !only.includes(item.resourceId)), ...next.failed],
+        notes: [...new Set([...previous.notes, ...next.notes])],
+      } : next);
+    } catch (cause) {
+      if (mounted.current) setError(cause instanceof Error ? cause.message : "Could not open this work. Try again.");
+    } finally { busy.current = false; if (mounted.current) setPending(false); }
+  };
+  return <section className="magic-start-work" aria-labelledby={heading}>
+    <h3 id={heading}>Start work</h3>
+    {set ? <>
+      <ol className="magic-start-work__destinations" aria-label="Destinations prepared to open">
+        {set.items.map(item => <li key={item.resourceId}><span>{item.title}</span><small>
+          {item.role === "instructions" ? "Assignment page · opens in front" : item.target.kind === "file" ? "Saved document in its usual app" : "Course page in your browser"}
+        </small><small>{item.reason}</small></li>)}
+      </ol>
+      {set.notes.map(note => <p className="magic-start-work__note" key={note}>{note}</p>)}
+      {set.held.length > 0 && <Disclosure label={`${set.held.length} related ${set.held.length === 1 ? "item" : "items"} held back`}>
+        <ul>{set.held.map(item => <li key={item.resourceId}>{item.title} — {item.reason}</li>)}</ul>
+      </Disclosure>}
+      <Action disabled={!window.magic.startWork} pending={pending} onClick={() => void launch()}>
+        Start work · open {set.items.length} {set.items.length === 1 ? "item" : "items"}
+      </Action>
+      <p className="magic-start-work__note">Canvas may record a page view. Opening does not mark work done.</p>
+    </> : !error && <p role="status">Preparing your materials…</p>}
+    <div role="status" aria-live="polite">
+      {receipt && <>
+        <p>{receipt.mode === "dry_run" ? "Verification mode: nothing opened." : `Opened ${receipt.opened.length} of ${receipt.opened.length + receipt.failed.length}.`}</p>
+        <ul className="magic-start-work__receipt">
+          {receipt.opened.map(item => <li key={item.resourceId}>{item.title} · {receipt.mode === "dry_run" ? "would open" : item.via === "file" ? "saved copy opened" : "opened in browser"}</li>)}
+          {receipt.failed.map(item => <li key={item.resourceId}>{item.title} · {item.reason}</li>)}
+        </ul>
+        {receipt.notes.filter(note => !set?.notes.includes(note)).map(note => <p className="magic-start-work__note" key={note}>{note}</p>)}
+        {!!receipt.failed.length && <Action tone="quiet" pending={pending} onClick={() => void launch(receipt.failed.map(item => item.resourceId))}>Retry failed items</Action>}
+      </>}
+      {error && <p>{error}</p>}
+    </div>
+    {error && <Action tone="quiet" pending={pending} onClick={() => { setError(""); setReload(value => value + 1); }}>Refresh prepared destinations</Action>}
+  </section>;
+}

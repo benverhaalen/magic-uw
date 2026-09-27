@@ -1,0 +1,9 @@
+@import '../../../../packages/ui/src/styles.css';
+.magic-start-work { color:var(--magic-ink); font-family:var(--magic-font-interface); margin-block:1.25rem; }
+.magic-start-work h3 { font:400 1.2rem/1.35 var(--magic-font-editorial); margin:0 0 .75rem; }
+.magic-start-work__destinations { list-style:none; padding:0; display:grid; gap:.6rem; margin:0 0 1rem; }
+.magic-start-work__destinations li { display:grid; gap:.2rem; }
+.magic-start-work small,.magic-start-work__note { font-size:.875rem; line-height:1.5; color:var(--magic-ink-muted); }
+.magic-start-work__note { margin:.6rem 0; }
+.magic-start-work__receipt { padding-inline-start:1.25rem; font-size:.9rem; line-height:1.5; }
+.magic-start-work p,.magic-start-work li { overflow-wrap:anywhere; }
