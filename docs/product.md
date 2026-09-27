@@ -35,7 +35,7 @@ The event audience will likely skew technical. The product story should still ma
 
 ## AI choice, sign-in, and data transparency — decided
 
-The accepted launch direction is a $5 one-time app license plus the student's own paid AI plan or key. Intended routes are Claude Code, Codex, Gemini CLI with a paid key, and OpenRouter. The license covers the service and company-funded Jev, not language-model usage. Exact account/plan compatibility and authorized connection methods still need verification. See [the pricing and AI resolution](decisions.md#pricing-and-ai-access-resolution--september-26).
+The accepted launch direction is a $5-a-month app subscription ([decision](decisions.md#2026-09-27--price-5-a-month); earlier a $5 one-time licence) plus the student's own paid AI plan or key. Intended routes are Claude Code, Codex, Gemini CLI with a paid key, and OpenRouter. The license covers the service and company-funded Jev, not language-model usage. Exact account/plan compatibility and authorized connection methods still need verification. See [the pricing and AI resolution](decisions.md#pricing-and-ai-access-resolution--september-26).
 
 Minimize setup by detecting supported installed clients and using their own authentication flows where permitted; otherwise guide the student through setup. UW sign-in, provider setup, and license activation are the intended prerequisites, without an extra Magic Canvas or Jev user account. The existing local-model adapter remains available in the development foundation; automatic local-model setup is no longer a launch requirement.
 

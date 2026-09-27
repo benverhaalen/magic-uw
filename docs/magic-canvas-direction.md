@@ -79,7 +79,7 @@ The operator's framing: "an academic autonmous database layer for agentic operat
 
 **Our lane's business model** ([business model](notes/business-model.md); plan D30; Nathaniel, 2026-09-26):
 - Open source (MIT), and **free with the student's own AI**: their Claude Code, Codex or Gemini CLI, or an OpenRouter key.
-- **$5 for life** for early adopters who want our hosted Jev service instead of bringing their own Jev access.
+- **$5 a month** (September 27 decision, [decisions](decisions.md#2026-09-27--price-5-a-month); this page earlier said $5 for life) for students who want our hosted Jev service instead of bringing their own Jev access.
 - **After launch only:** a UW–Madison campus licence proposed at $1–2 per student. No partnership exists, and none is claimed.
 
 **The team's recorded resolution differs.** [Decisions](decisions.md) records a **$5 one-time app licence** that covers the service and company-funded Jev, with a paid AI plan or key as a setup prerequisite. Both record that OpenRouter users pay for Jev through their own key. **Which applies is open decision H1, between Nathaniel and Ben.** Setup, the licence task (T62) and the submission text depend on it.
@@ -98,4 +98,4 @@ The detailed state and build order are in [implementation status](implementation
 
 ## 8. What's true today
 
-The canonical status per piece is [implementation status](implementation-status.md), and the status per platform part is [academic data platform §2](academic-data-platform.md#2-why-build-on-it). In one line, on `main` at `ccd21f8`: sign-in, consent, the Canvas read and the code-first course map are demonstrated on a real account; current-courses-only sync, generation, the study engines, privacy and the MCP course bank are integrated; wave 2 (sync speed, file downloads, AI efficiency, GPA, notes to a cloud folder) is PR #53; the study space and course analytics are on branches.
+The canonical status per piece is [implementation status](implementation-status.md), and the status per platform part is [academic data platform §2](academic-data-platform.md#2-why-build-on-it). In one line, on `main` at `d832d61`: sign-in, consent, the Canvas read and the code-first course map are demonstrated on a real account; current-courses-only sync with change-driven refresh, file downloads, generation, the study spaces and Study & Learn, course analytics, privacy and the MCP course bank are integrated.

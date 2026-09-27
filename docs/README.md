@@ -10,7 +10,7 @@ Every document in `docs/`, listed once. Start with [the architecture](architectu
 | [Product direction](magic-canvas-direction.md) | the whole product end to end, the two-part launch, where it's going |
 | [Decisions and open points](decisions.md) | what's established, dated decisions with their reasons, what's still open |
 | [BuildFest context](buildfest.md) | event facts, entries, judging audiences |
-| [Business model](notes/business-model.md) | open source with the student's own AI, the hosted Jev service, the campus licence path (price is an open team decision) |
+| [Business model](notes/business-model.md) | open source with the student's own AI, the hosted Jev service, the campus licence path; price $5 a month |
 | [Accounts and payments](accounts-and-payments.md) | email sign-in, purchase status in Supabase, setup |
 | [Marketing materials](../marketing/README.md) | website directions, logo pack, team photos |
 
@@ -26,6 +26,7 @@ Every document in `docs/`, listed once. Start with [the architecture](architectu
 | [Backend map](notes/backend-map.md) | what the code gives learning features and its extension points |
 | [Local database](notes/local-db.md) | what's built in storage and what the research supports adding |
 | [Agent runtime](notes/agent-runtime.md) | chat and agents on the student's own AI CLI |
+| [Analytics mount](notes/analytics-mount.md) | how the course Analytics tab mounts on the course page |
 
 ## Features
 
@@ -45,7 +46,7 @@ Every document in `docs/`, listed once. Start with [the architecture](architectu
 
 | Document | What it answers |
 |---|---|
-| [Status, September 27](status-2026-09-27.md) | what works this morning, with measurements, and what's broken |
+| [Status, September 27](status-2026-09-27.md) | the backend lane's morning report (before wave 2 and 3 merged): measurements and what was broken then |
 | [Development](development.md) | running the workspace, checks, the gateway |
 | [Frontend data bugs](frontend-data-bugs.md) | backend data defects found while building the frontend |
 | [Engineering principles](engineering-principles.md) | tool selection, evidence, privacy |
@@ -57,6 +58,7 @@ Every document in `docs/`, listed once. Start with [the architecture](architectu
 | Document | What it answers |
 |---|---|
 | [Benchmarks](benchmarks.md) | every measurement with its method, and what isn't measured yet |
+| [Break card](break-card.md) | our Art of the Break entry: checks that confirmed the evidence but not the claim, with before/after rates |
 | [Research status](research.md) | checked references and unresolved evidence |
 | [Tool evaluation](tool-evaluation.md) | candidate tools, licences, benchmark provenance |
 | [Research notes index](notes/README.md) | the notes below, with their status |

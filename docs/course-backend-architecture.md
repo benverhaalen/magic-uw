@@ -1,6 +1,6 @@
 # My Magic UW backend reference
 
-**Role:** the detailed reference behind [the architecture](architecture.md), which is canonical. This page keeps what is too detailed for it: the schema history, the agent-runtime mechanisms with their measured effects, the job-handler contract, freshness, the measured effect of each design choice, the frontend's query path, the command bar and the open human calls. Status per feature is in [implementation status](implementation-status.md); measurements and methods are in [benchmarks](benchmarks.md); the build specification is [the course-backend plan folder](plans/2026-09-26-course-backend/) (where they differ on a design, the plan folder wins). **Checked against `main` at `ccd21f8`, September 27, 2026.**
+**Role:** the detailed reference behind [the architecture](architecture.md), which is canonical. This page keeps what is too detailed for it: the schema history, the agent-runtime mechanisms with their measured effects, the job-handler contract, freshness, the measured effect of each design choice, the frontend's query path, the command bar and the open human calls. Status per feature is in [implementation status](implementation-status.md); measurements and methods are in [benchmarks](benchmarks.md); the build specification is [the course-backend plan folder](plans/2026-09-26-course-backend/) (where they differ on a design, the plan folder wins). **Checked against `main` at `d832d61`, September 27, 2026.**
 
 ## 1. Summary
 
@@ -121,13 +121,13 @@ Measurements are on one Windows 11 laptop unless marked live. Synthetic results 
 | **Code-first Jev** | code decides quiz and discussion items from submission types; Jev sees the title, ≤2,000 characters and the clipped item policy | 100 → 50 Jev calls on a synthetic 100-assignment course (#14) | tested in isolation |
 | **Per-course change detection** (D37) | hot tick plus per-course content probes | a hot tick is 1–1.7% of a full sync (synthetic) | integrated |
 | **Bounded concurrent sync** (T17) | per-host scheduler with Canvas's own rate-limit headers | replay: 115 → 65 requests, 5.7 → 2.1 s (#8) | integrated |
-| **Session file downloads to verified hosts** | main follows Canvas's redirects itself; only the Canvas hop carries cookies | synthetic: files with text 0/300 → 285/300; 4 syncs → 1 (#22). Electron 44's `session.fetch` rejected every redirect, so a live run on 2026-09-27 lost 386 of 386 files; `sessionHopFetch` fixes every session read (PR #53, a 12 MB file byte-exact over local servers) | integrated; the fix is built (PR #53) |
+| **Session file downloads to verified hosts** | main follows Canvas's redirects itself; only the Canvas hop carries cookies | synthetic: files with text 0/300 → 285/300; 4 syncs → 1 (#22). Electron 44's `session.fetch` rejected every redirect, so a live run on 2026-09-27 lost 386 of 386 files; `sessionHopFetch` fixes every session read (#53, a 12 MB file byte-exact over local servers) | integrated (the redirect fix since #53) |
 | **Warm pool and instant mode** | one warm session per course; the student's own signed-in client with flags only | 5.8–7.4 s → 1.7–2.2 s per ask; input tokens 3,021 → 1,298 (Claude Code), 21,424 → 6,373 (Codex) | integrated |
 | **Speculative intent routing** | the AI branch prepares in parallel with a 20 ms code resolver and sends only on a miss | code hit p50 1.1 ms, 0 calls; a code miss adds p95 −0.9 ms against AI-only (fake CLI at 800 ms, #24) | tested in isolation |
 | **Grant-scoped read-only course bank** | the MCP reader opens the file read-only and searches `passage_fts` within the grant | search p50 6.3 s → ≈0.28 s at 5,000 resources (#19) | integrated |
 | **Scoped queries instead of snapshots** | summary, paged course views, one resource, and an exact change cursor | 30.6 MB snapshot → 17.5 KB summary (MT1, synthetic); the renderer switch is the frontend owner's | tested in isolation |
 | **One-transaction migrations with a backup** | `VACUUM INTO`, then every step in one `BEGIN IMMEDIATE` | v5 → v7 with backup in 1.60 s, 0 rows lost (MT1, synthetic) | integrated |
-| **Code-verified quotes** | every quote checked against the exact passage version; a sentence with no checked quote is dropped | no public tool we checked states that it verifies quotes ([platform §8](academic-data-platform.md#8-scorecard)) | integrated (generation); the grounded ask checks each quote but does not yet bind answer sentences to them |
+| **Code-verified quotes** | every quote checked against the exact passage version; a sentence with no checked quote is dropped | no public tool we checked states that it verifies quotes ([platform §8](academic-data-platform.md#8-scorecard)) | integrated (generation and the grounded ask; sentence binding since #59) |
 
 **Quality is not yet benchmarked.** The blind quality run on a public MIT OpenCourseWare course (spec B6, [benchmarking](notes/benchmarking.md)) has its protocol fixed; its results, including rows we lose, go to [benchmarks](benchmarks.md).
 
@@ -140,11 +140,13 @@ The UI will change with the team's design direction ([DESIGN.md](../DESIGN.md)).
 | Onboarding: agreement → UW sign-in → Your courses → your AI → appearance → connections | `magic:onboarding`, `consent`, `magic:signin`, `magic:sync` | integrated |
 | Home, Courses and the course page, Calendar, My UW, Sources (the designed desktop, [desktop handoff](design-handoff.md)) | `snapshot`, page views, `day-plan`, `magic:planning-sync`, `planning-*` | integrated |
 | Course item and study panel | `learning` (`study.*`, `notebook.ask`) | integrated |
+| Study & Learn, the item space, the Home study card (#57) | `study.prep`, the item-space list, packs | integrated |
+| Course page Analytics tab (#55) | `snapshot` plus three batched learning calls | integrated |
 | Workspace tools (labelled previews, #30): agenda, references, guides, practice, analytics, mastery, notes, Outlook, course facts, page views | scoped queries, `magic:graph`, one learning or notes op per tab | not mounted on `main` since the design integration; the component remains in `renderer/backend/` |
 | Settings: data, privacy and the course bank | `privacy`, `purge`, `mcp-grant`, `magic:mcp-export` | integrated |
 | Chat pane and command bar (D40) | `command` and `intent.preview` (intent router) | the chat pane runs read-only intents (ask, agenda, search): integrated; no Ctrl+K binding on `main` |
 
-**From the 2-second snapshot poll to summary plus change cursor.** The backend side is in place (`core.query` via `magic:query`); the renderer switch belongs to its owner:
+**From the 2-second snapshot poll to summary plus change cursor.** Since #58 the renderer reads the snapshot only when the worker signals a change ([architecture §12](architecture.md#12-performance-where-the-time-goes)); the steps below remain the path to per-page slices. The backend side is in place (`core.query` via `magic:query`); the renderer switch belongs to its owner:
 1. **On mount:** `query({ view: "summary" })`, then `query({ view: "resources", courseId, limit })` for the visible course, paging with `nextCursor`; open one item with `query({ view: "resource", id })`.
 2. **Every tick, or on the worker's change notification:** `query({ view: "changes", cursor })`, then patch only the listed resource ids. Store the returned `cursor`.
 3. **The cursor:** the first caught-up page hands over from the summary's time cursor to a sequence cursor on `resource_changes.seq`. `complete: false` with changes means another page follows; `complete: false` with none (a purge, a removed source) means reload the summary and the visible page.
@@ -155,7 +157,7 @@ The UI will change with the team's design direction ([DESIGN.md](../DESIGN.md)).
 **What it does.** The command bar (Ctrl+K typed, or dictated into the same bar) takes a plain-language request and returns one typed result: `ran {action, args, result}`, `clarify {question, candidates}`, `answer {text, citations}` or `unavailable {reason}`, each with its path (`code`, `ai`, `cache` or `none`), latency and tokens (`packages/core/src/intent`).
 - **The code path, 0 tokens:** courses by code, name or nickname; relative dates in the student's time zone; topics by the course's concept labels; assignments by title words. A confident single match runs at once; an ambiguous one is asked by code. The resolver runs under a 20 ms CPU-time budget; an overrun is a miss, never an error.
 - **The AI fallback** (`intent-classify` v1): the prefix is the action catalogue, an argument glossary and the course codes and names, with no passages and no other student data. Code re-resolves every argument the model returns: an invented course, assignment or date becomes `clarify`, never a guess.
-- **The grounded ask** (`intent-ask` v1): code retrieves within 3,000 tokens and 8 passages; the coverage gate answers "Not in your materials." with no model call; every cited quote is checked by `findQuote`. Open gap: answer sentences are not yet bound to their cited quotes ([status](status-2026-09-27.md)). Planning records are never retrieved.
+- **The grounded ask** (`intent-ask` v1): code retrieves within 3,000 tokens and 8 passages; the coverage gate answers "Not in your materials." with no model call; every cited quote is checked by `findQuote`. Since the break-card fix B1 (#59), every date, weekday, number and name in an answer sentence must appear in its checked quotes, or the quote is shown in the sentence's place ([break card](break-card.md)). Planning records are never retrieved.
 - **Actions that write** go through their owners' checks: a calendar event from the router is only a proposal; main writes it after the student clicks to confirm.
 
 ## 12. Open human calls
@@ -164,7 +166,7 @@ The canonical list is [plan §9](plans/2026-09-26-course-backend/plan.md#9-open-
 
 | # | The question | The operator's direction | The team's recorded position | What depends on it |
 |---|---|---|---|---|
-| H1 | Pricing and setup prerequisites | open source and free with the student's own keys; $5 lifetime for the hosted Jev service | a $5 one-time app licence covering the service and company-funded Jev ([decisions](decisions.md#pricing-and-ai-access-resolution--september-26)) | licence activation (T62), setup, the submission text |
+| H1 | Pricing and setup prerequisites (price settled September 27: [$5 a month](decisions.md#2026-09-27--price-5-a-month)) | open source and free with the student's own keys; $5 lifetime for the hosted Jev service | a $5 one-time app licence covering the service and company-funded Jev ([decisions](decisions.md#pricing-and-ai-access-resolution--september-26)) | licence activation (T62), setup, the submission text |
 | H2 | "Remember my sign-in" | opt-in saved sign-in on UW's login page; Duo still decides (D39) | "Never automate Duo or bypass expiry" ([AGENTS.md](../AGENTS.md)) | T05e, the public disclosure |
 | H3 | A sign-in window that opens by itself | opens when needed and "Keep me signed in" is on (D33) | "the app does not pop up a login during background work" ([pipeline details](pipeline-details.md)) | T05c, T05e |
 | H4 | Jev links and scopes applied without review | settled by code, then Jev, then one pass; correctable in one click (D33) | auto-apply only independently checked exact identity rules ([pipeline details](pipeline-details.md)) | T20, T22 |

@@ -12,7 +12,7 @@ Status per feature, with its evidence, is in [implementation status](docs/implem
 
 - **Connects on its own.** One consent checkbox and the student's own UW sign-in (NetID and Duo by the student); enrollment decides which Canvas courses are this term's, and only those are read. My UW enrollment, saved DARS audits and course search stay on the computer.
 - **Maps each course by code.** Materials are split into passages with exact offsets; code sorts material roles, dates, terms and what each assignment references (96.4% of 673 materials on six live courses, with no model calls).
-- **Studies with the student's own AI.** Quizzes, flashcards and study guides come from one checked call on the student's Claude Code or Codex (tools off); code checks every quote, date and ID. Studying itself (FSRS cards, Learn rounds, sectioned quizzes, topic mastery) costs 0 tokens.
+- **Studies with the student's own AI.** Quizzes, flashcards and study guides come from one checked call on the student's Claude Code or Codex (tools off); code checks every quote, date and ID. Every exam, quiz, problem set, essay or lab gets its own study space, gathered in Study & Learn, with maths rendered by KaTeX. Studying itself (FSRS cards, Learn rounds, sectioned quizzes, topic mastery, per-course analytics) costs 0 tokens.
 - **Plans the day.** Home, the Today rail, the Calendar with the enrolled class schedule, and notifications from what changed.
 - **Open to other tools.** A read-only MCP course bank and a versioned agent API let a student's own AI client or a developer's tool read their courses, with a receipt for every read.
 - **Private by design.** Nothing leaves the computer without consent; identities are replaced before any hosted payload; the app has no submit, enroll or post capability.
@@ -42,7 +42,7 @@ pnpm test     # the test suite
 pnpm check    # TypeScript
 ```
 
-The app starts empty with hosted AI sharing off. Load the labelled synthetic sample course, or sign in to UW in the app's own window. See [development](docs/development.md) for the rest, including the Jev gateway.
+The app starts empty with hosted AI sharing off. Load the labelled synthetic sample course (it carries a full synthetic term), or sign in to UW in the app's own window. See [development](docs/development.md) for the rest, including the Jev gateway.
 
 ## Documentation
 
@@ -52,7 +52,8 @@ The app starts empty with hosted AI sharing off. Load the labelled synthetic sam
 | [Implementation status](docs/implementation-status.md) | every feature's status, location and evidence |
 | [Benchmarks](docs/benchmarks.md) | performance and quality measurements, methods, and the rows we lose |
 | [Academic data platform](docs/academic-data-platform.md) | the database for developers: agent API, MCP course bank, quickstart, business model |
-| [Status, September 27](docs/status-2026-09-27.md) | what works this morning, how it was measured, what's broken |
+| [Status, September 27](docs/status-2026-09-27.md) | the backend lane's morning report: measurements and what was broken then |
+| [Break card](docs/break-card.md) | our Art of the Break entry: checked quotes, unchecked sentences |
 | [Documentation index](docs/README.md) | every document, grouped |
 
 Private course data, credentials, sessions and unredacted captures never belong in this repository; examples are synthetic.
