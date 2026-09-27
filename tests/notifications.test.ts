@@ -935,3 +935,25 @@ test("email: determinism", () => {
   assert.deepEqual(build(input), build(input));
   assert.deepEqual(build(input), build({ ...input, resources: [...input.resources].reverse() }));
 });
+
+// Tightened announcement rule (Sep 27): exams always count; other topics need a change word in
+// the same sentence; a negation cancels everything but an exam mention.
+for (const [text, level] of [
+  ["Reminder: the exam is still Friday as scheduled.", "important"],
+  ["Final exam review slides are posted.", "important"],
+  ["Your final project rubric is posted.", "info"],
+  ["The deadline for HW 4 is Friday at 11:59 PM.", "info"],
+  ["The HW 4 deadline has been extended to Monday.", "important"],
+  ["The HW 6 deadline was not extended.", "info"],
+  ["Quiz 3 is posted on Canvas.", "info"],
+  ["Quiz 3 has moved to Wednesday.", "important"],
+  ["The problem set now also covers chapter 5.", "important"],
+  ["We won't meet Thursday.", "important"],
+  ["No class on Monday for the holiday.", "important"],
+  ["Please bring a calculator to tomorrow's quiz.", "important"],
+  ["Great work on the reflections this week.", "info"],
+] as const)
+  test(`announcement change test: ${text}`, () => {
+    const n = only(build({ resources: [resource("m1", { kind: "message", text })], changes: [change("m1", "new")] }));
+    assert.equal(n.level, level);
+  });
