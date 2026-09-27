@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { decodeUwTerm } from "../../../../packages/domain/src/planning";
+import { decodeUwTerm, UW_GRADE_POINTS } from "../../../../packages/domain/src/planning";
 import { planningPolicies } from "../../../../packages/domain/src/planning-policy";
-import type { AuditNode, Command, CommandResult, PlanningComparison, PlanningSourceHealth, Snapshot, StoredPlanningRecord } from "@magic/contracts";
+import { gpaBySemester, gradesNeeded, whatIfGpa } from "../../../../packages/domain/src/gpa";
+import type { AuditNode, Command, CommandResult, PlanningComparison, PlanningCourseHistory, PlanningSourceHealth, Snapshot, StoredPlanningRecord, UwGpaGrade } from "@magic/contracts";
 
 type Props = {
   snapshot: Snapshot;
@@ -62,6 +63,36 @@ export function MyUw({ snapshot, busy, run, open, signIn, refresh }: Props) {
   const catalog = records.filter((record) => record.kind === "catalog_course");
   const enrolled = records.filter((record) => record.kind === "enrollment_package").filter((record) => record.enrollmentState === "enrolled");
   const history = records.filter((record) => record.kind === "course_history");
+  // Domain functions validate against the plain contract shape; strip the storage-only fields (localId, sourceId, etc.).
+  const courseHistory: PlanningCourseHistory[] = history.map((record) => ({
+    id: record.id, kind: "course_history", provenance: record.provenance, courseKey: record.courseKey,
+    termCode: record.termCode, state: record.state, credits: record.credits, grade: record.grade, gpaEligible: record.gpaEligible,
+  }));
+  const semesters = gpaBySemester(courseHistory);
+  const reportedGpa = summaries.find((summary) => summary.cumulativeGpa !== null)?.cumulativeGpa ?? null;
+  const computedCumulativeGpa = semesters.length ? semesters[semesters.length - 1].cumulativeGpa : null;
+  const enrolledTermCodes = [...new Set(enrolled.map((course) => course.termCode))].sort();
+  const thisTermCode = enrolledTermCodes[0] ?? "";
+  const thisTermCourses = enrolled.filter((course) => course.termCode === thisTermCode);
+  const [grades, setGrades] = useState<Record<string, UwGpaGrade | "">>({});
+  const [creditOverrides, setCreditOverrides] = useState<Record<string, string>>({});
+  const [targetGpa, setTargetGpa] = useState("");
+  const gradeOptions = Object.keys(UW_GRADE_POINTS) as UwGpaGrade[];
+  const creditsFor = (courseKey: string): number | null => {
+    const override = creditOverrides[courseKey]?.trim();
+    if (override) { const value = Number(override); return Number.isFinite(value) && value > 0 ? value : null; }
+    const catalogMatch = catalog.find((course) => course.courseKey === courseKey && course.creditMin !== null && course.creditMin === course.creditMax);
+    return catalogMatch ? catalogMatch.creditMin : null;
+  };
+  const hypotheticals = thisTermCourses.flatMap((course) => {
+    const grade = grades[course.courseKey], credits = creditsFor(course.courseKey);
+    return grade && credits !== null ? [{ courseKey: course.courseKey, credits, grade }] : [];
+  });
+  const whatIf = whatIfGpa(courseHistory, hypotheticals);
+  const targetGpaValue = targetGpa.trim() !== "" ? Number(targetGpa) : null;
+  const targetResult = targetGpaValue !== null && Number.isFinite(targetGpaValue)
+    ? gradesNeeded(courseHistory, thisTermCourses.map((course) => ({ courseKey: course.courseKey, credits: creditsFor(course.courseKey) ?? Number.NaN })), targetGpaValue)
+    : null;
   const reconciliation = snapshot.planning?.reconciliation;
   const namedCourse = (key: string) => catalog.find((course) => course.courseKey === key)?.title || key.replace(/^uw:(\d+):/, (_match, code: string) => `${subjects.find((row) => row.code === code)?.shortName ?? code} `);
   const readableReason = (reason: string) => reason.replace(/uw:\d+:[A-Z0-9]+/g, namedCourse);
@@ -85,6 +116,26 @@ export function MyUw({ snapshot, busy, run, open, signIn, refresh }: Props) {
       </div> : null}
       <PlanningAlerts snapshot={snapshot} open={open} />
       {summaries.map((summary) => <section key={summary.localId} className="settings-section"><h2>{summary.programNames.join(" · ") || "Student record"}</h2><p>{summary.career || "Career not available"}{summary.earnedCredits !== null ? ` · ${summary.earnedCredits} earned credits` : ""}{summary.cumulativeGpa !== null ? ` · ${summary.cumulativeGpa.toFixed(3)} reported GPA` : ""}</p><Evidence record={summary} snapshot={snapshot} open={open} /></section>)}
+      {semesters.length || thisTermCourses.length ? <section className="settings-section"><h2>GPA</h2>
+        {semesters.length ? <>{semesters.map((term) => <article className="planning-row" key={term.termCode}><strong>{term.label}</strong><p className="small muted">{term.termCredits} GPA credits · Term GPA {term.termGpa !== null ? term.termGpa.toFixed(3) : "Not enough graded credits yet"} · Cumulative {term.cumulativeGpa !== null ? term.cumulativeGpa.toFixed(3) : "—"}{term.cumulativeHasUnknowns ? " · some attempts unresolved" : ""}</p></article>)}
+          <p className="small muted">{reportedGpa === null ? "Your student record hasn’t reported a cumulative GPA to compare against." : computedCumulativeGpa === null ? "Not enough graded history here to compute a cumulative GPA to compare." : Math.abs(computedCumulativeGpa - reportedGpa) < 0.0005 ? `Matches the ${reportedGpa.toFixed(3)} reported on your student record.` : `Our computed cumulative (${computedCumulativeGpa.toFixed(3)}) differs from the ${reportedGpa.toFixed(3)} reported on your student record — see Compare academic sources below.`}</p></> : <p className="muted">Connect your course history to see GPA by semester.</p>}
+        {thisTermCourses.length ? <>
+          <h3>This term, what if?</h3>
+          {thisTermCourses.map((course) => <div className="planning-row" key={course.localId}><strong>{namedCourse(course.courseKey)}</strong>
+            <div className="planning-controls">
+              <label>Grade<select value={grades[course.courseKey] ?? ""} onChange={(event) => setGrades((prior) => ({ ...prior, [course.courseKey]: event.target.value as UwGpaGrade | "" }))}><option value="">Choose a grade</option>{gradeOptions.map((grade) => <option key={grade} value={grade}>{grade}</option>)}</select></label>
+              {creditsFor(course.courseKey) === null ? <label>Credits<input type="number" min={0} max={12} step={0.5} value={creditOverrides[course.courseKey] ?? ""} onChange={(event) => setCreditOverrides((prior) => ({ ...prior, [course.courseKey]: event.target.value }))} /></label> : null}
+            </div>
+          </div>)}
+          <p>Projected term GPA: {whatIf.term.gpa !== null ? whatIf.term.gpa.toFixed(3) : "Choose grades to see a projection"}{whatIf.term.unknownCount ? " · some classes still need a grade or credits" : ""}</p>
+          <p>Projected cumulative GPA: {whatIf.cumulative.gpa !== null ? whatIf.cumulative.gpa.toFixed(3) : "—"}</p>
+          <div className="planning-controls"><label>Target cumulative GPA<input type="number" min={0} max={4} step={0.01} value={targetGpa} onChange={(event) => setTargetGpa(event.target.value)} /></label></div>
+          {targetResult ? <p>{targetResult.status === "unknown" ? targetResult.reason
+            : targetResult.status === "already_met" ? `Already reachable at a cumulative of ${targetResult.achievableCumulative.toFixed(3)}, even with an F this term.`
+            : targetResult.status === "reachable" ? `Needs at least ${targetResult.neededGrade} in every current class this term to reach ${targetGpaValue!.toFixed(3)}.`
+            : `Not reachable this term even with straight A's; the best achievable cumulative is ${targetResult.bestAchievableCumulative.toFixed(3)}.`}</p> : null}
+        </> : <p className="small muted">Connect this term’s enrollment to try what-if grades.</p>}
+      </section> : null}
       {enrolled.length ? <section className="settings-section"><h2>Enrolled courses</h2>{enrolled.map((course) => <article className="planning-row" key={course.localId}><strong>{namedCourse(course.courseKey)}</strong><p className="small muted">{decodeUwTerm(course.termCode).label} · {course.sections.join(" · ")}</p>{course.meetings.map((meeting, index) => <p className="small" key={index}>{meeting.kind === "exam" ? "Exam · " : ""}{meeting.mode === "asynchronous" ? "Asynchronous" : meeting.mode === "unknown" ? "Meeting time not confirmed" : `${meeting.days.map((day) => ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][day]).join(" / ")} · ${minuteLabel(meeting.startMinute)}–${minuteLabel(meeting.endMinute)}`}{meeting.location ? ` · ${meeting.location}` : ""}{meeting.kind === "exam" && meeting.startDate ? ` · ${meeting.startDate}` : ""}</p>)}<Evidence record={course} snapshot={snapshot} open={open} /></article>)}</section> : null}
       {history.length ? <details className="settings-section"><summary>Course history · {history.length} source records</summary><p className="small muted">Completed, in-progress, planned, and dropped records stay separate. Overlapping sources may describe the same attempt; this list is not a transcript or credit total.</p>{history.slice().sort((a, b) => (b.termCode || "").localeCompare(a.termCode || "")).map((course) => <article className="planning-row" key={course.localId}><strong>{namedCourse(course.courseKey)}</strong><p>{course.termCode ? decodeUwTerm(course.termCode).label : "Term unknown"} · {course.state.replaceAll("_", " ")}{course.grade ? ` · ${course.grade}` : ""}{course.credits !== null ? ` · ${course.credits} credits` : ""}</p><Evidence record={course} snapshot={snapshot} open={open} /></article>)}</details> : null}
       <details className="settings-section"><summary>Compare academic sources{reconciliation?.status === "available" ? ` · ${reconciliation.attempts.filter(row => row.differences.length).length} differences` : ""}</summary>
