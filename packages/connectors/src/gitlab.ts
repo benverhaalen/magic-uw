@@ -637,3 +637,19 @@ export function gitlabConnector(options: GitlabConnectorOptions): Connector {
     },
   };
 }
+
+/**
+ * The GitLab projects a refresh reads for one course: those Canvas material links to, plus any
+ * the student linked by hand for that exact account and course. Each project once, sorted.
+ */
+export function gitlabProjectsForCourse(
+  links: string[],
+  manual: { accountScope: string; courseId: string; projectPath: string }[],
+  course: { accountScope: string; courseId: string },
+): string[] {
+  const found = links.map(gitlabProjectFromUrl).filter((v): v is string => !!v);
+  const linked = manual
+    .filter((m) => m.accountScope === course.accountScope && m.courseId === course.courseId)
+    .map((m) => m.projectPath);
+  return [...new Set([...found, ...linked])].sort();
+}

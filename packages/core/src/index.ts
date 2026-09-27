@@ -22,13 +22,14 @@ import {
 } from "@magic/contracts";
 import { maySend, resolveDeadline } from "@magic/domain";
 import type { JudgmentGateway } from "@magic/ai";
-import { contentCategories, courseIncluded } from "./access";
+import { contentCategories, courseIncluded, courseInclusion } from "./access";
 import { evidenceFor } from "./evidence";
 import { rebaseFixture } from "./fixture-dates";
 export { rebaseFixture } from "./fixture-dates";
 import { clearOutgoingProjections, outgoingProjection, payloadScrubber, validateCitations } from "./identity";
 export { scrubText, rosterFor, toOriginalSpan, validateCitations } from "./identity";
 import { pullGuideForSubject } from "../../connectors/src/planning-public";
+import { gitlabProjectFromUrl } from "../../connectors/src/gitlab";
 import {
   createPublicClient,
   type PublicClient,
@@ -83,6 +84,14 @@ export interface CoreSeams {
   pack?(pack: string, scope: PackScope, signal: AbortSignal): Promise<unknown>;
   /** ui_events (schema v5). */
   uiEvent?(value: UiEvent, at: string): void;
+  // owner: intent. The command bar's intent router (packages/core/src/intent). Core hands it
+  // its own workspace verbs and seams; the router adds no new path to data or the network.
+  intent?: {
+    handle(command: IntentCommand, host: IntentHost, signal: AbortSignal): Promise<IntentCommandResult>;
+    /** The live hint (the `intent.preview` query): the code resolver only, never the model. */
+    preview?(text: string, courseId?: string): IntentCommandResult;
+  };
+  // end owner: intent
   // owner: notes. Session notes (packages/notes): scaffolds, edits, fill and two-way sync.
   notes?: {
     handle(request: NotesRequest, signal: AbortSignal): Promise<NotesResult>;
@@ -91,6 +100,10 @@ export interface CoreSeams {
 }
 export type { JobRegistry } from "./jobs/registry";
 // end owner: T05b
+// owner: intent
+import type { IntentCommand, IntentCommandResult } from "@magic/contracts";
+import type { IntentHost } from "./intent/types";
+// end owner: intent
 export interface CoreOptions {
   fixture: CaptureBatch;
   courseExtractor?: {
@@ -217,6 +230,7 @@ export function createCore(store: Store, options: CoreOptions) {
       // owner: T06: the renderer routes on these and main's consent gate mirrors them.
       consents: store.consents?.() ?? [],
       dayPlan: store.dayPlan(),
+      gitlabLinks: store.gitlabLinks(),
     };
   }
   function context(
@@ -500,7 +514,9 @@ export function createCore(store: Store, options: CoreOptions) {
       const days = value.days ?? 7,
         start = Date.parse(now()),
         end = start + days * 86_400_000,
-        evidence = evidenceFor(store);
+        evidence = evidenceFor(store),
+        // One inclusion map for the whole list (it reads every resource); per item it was O(n²).
+        included = courseInclusion(store);
       const items = store
         .resources()
         .filter(
@@ -509,7 +525,7 @@ export function createCore(store: Store, options: CoreOptions) {
             !r.deleted &&
             !r.completed &&
             (!value.courseId || r.courseId === value.courseId) &&
-            courseIncluded(store, r),
+            included(r),
         )
         .flatMap((r) => {
           const at = resolveDeadline(evidence.deadlines(r)).dueAt;
@@ -568,7 +584,7 @@ export function createCore(store: Store, options: CoreOptions) {
     const command = commandSchema.parse(raw);
     let message: string | undefined, manifest: ContextManifest | undefined;
     // owner: T05b
-    let seamResult: Partial<Pick<CommandResult, "learning" | "map" | "pack" | "workspace" | "notes">> = {};
+    let seamResult: Partial<Pick<CommandResult, "learning" | "map" | "pack" | "workspace" | "command" | "notes">> = {};
     // end owner: T05b
     switch (command.type) {
       case "snapshot":
@@ -837,6 +853,25 @@ export function createCore(store: Store, options: CoreOptions) {
       case "day-plan-remove":
         store.removeDayPlanEntry(command.key, command.date);
         break;
+      case "gitlab-link": {
+        const projectPath = gitlabProjectFromUrl(command.url.trim());
+        if (!projectPath)
+          throw new Error(
+            "That isn't a UW GitLab project link. Copy the project's address from git.doit.wisc.edu, for example https://git.doit.wisc.edu/group/project.",
+          );
+        const accounts = new Map(store.sources().map((s) => [s.id, s.accountScope]));
+        const known = store
+          .resources()
+          .some((r) => !r.deleted && r.courseId === command.courseId && accounts.get(r.sourceId) === command.accountScope);
+        if (!known) throw new Error("That course isn't in your saved coursework, so a GitLab project can't be linked to it.");
+        store.setGitlabLink({ accountScope: command.accountScope, courseId: command.courseId, projectPath, addedAt: now() });
+        message = `GitLab project linked: ${projectPath}. It is read on the next refresh.`;
+        break;
+      }
+      case "gitlab-unlink":
+        store.removeGitlabLink(command.accountScope, command.courseId, command.projectPath);
+        message = "GitLab project unlinked. Work already saved from it stays until the next refresh.";
+        break;
       case "outlook-disconnect": {
         // Only the student's Outlook calendar; coursework and other feeds are never touched here.
         // owner: T30: the published-ICS link only; the Microsoft (Graph) calendar has its own disconnect.
@@ -906,6 +941,26 @@ export function createCore(store: Store, options: CoreOptions) {
         };
         break;
       }
+      // owner: intent. The command bar: code resolves first; only language goes on to the model.
+      case "command": {
+        const intent = seams.intent;
+        if (!intent) {
+          seamResult = { command: { status: "unavailable", reason: "The command bar isn't built yet.", path: "none", latencyMs: 0, tokens: { in: 0, cached: 0, out: 0 } } };
+          break;
+        }
+        const host: IntentHost = {
+          workspace,
+          learning: seams.learning,
+          pack: seams.pack,
+          query: (request) => runQuery(store, request, { now, gatewayConfigured: !!options.gateway }),
+        };
+        const mode = command.value.mode ?? "run";
+        seamResult = {
+          command: mode === "run" ? await seamCall((signal) => intent.handle(command.value, host, signal)) : await intent.handle(command.value, host, new AbortController().signal),
+        };
+        break;
+      }
+      // end owner: intent
       // owner: notes
       case "notes": {
         const notes = seams.notes;
@@ -942,8 +997,12 @@ export function createCore(store: Store, options: CoreOptions) {
     jobs, // owner: T05b
     pipeline, // owner: drain: the worker feeds it sync, presence and suspend signals
     // owner: T15. A scoped query: reads only, never a command, never the whole workspace.
-    query(request: QueryRequest) {
+    query(request: QueryRequest): QueryResult {
       if (closed) throw new Error("Workspace is closed.");
+      // owner: intent. The command bar's live hint: code resolver only, 0 tokens, no snapshot.
+      if (request.view === "intent.preview" && seams.intent?.preview)
+        return { view: "intent.preview", preview: seams.intent.preview(request.text, request.courseId) };
+      // end owner: intent
       // owner: platform-fix. The seq change cursor (T10's monotonic resource_changes.seq): a
       // "changes" query with a seq cursor pages forward exactly, however much changed.
       const feed = changeFeed(store);
