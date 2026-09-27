@@ -8,7 +8,7 @@ The outcome is learning tailored to the student, class, and professor with less 
 
 ## UI and design work
 
-Use the repo’s [Magic design skill](.agents/skills/magic-design/SKILL.md) for UI design, implementation and audit. Start with its small reading map and load only relevant contracts. Preserve the near-approved Home and current user corrections; external skills are selective references. For cross-platform handoffs, use [the design foundation](docs/design-handoff.md). At natural task boundaries, reread relevant changed guidance; pulling alone does not load it into an active agent.
+Use the repo’s [Magic design skill](.agents/skills/magic-design/SKILL.md) for UI design, implementation and audit. The governing entry point is [DESIGN.md](DESIGN.md); load only the relevant contracts. Preserve the near-approved Home and current user corrections; external skills are selective references. For cross-platform handoffs, use [the design foundation](docs/design-handoff.md). At natural task boundaries, reread relevant changed guidance; pulling alone does not load it into an active agent.
 
 ## How we work here
 

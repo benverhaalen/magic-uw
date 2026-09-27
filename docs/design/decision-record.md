@@ -1,6 +1,6 @@
 # Decisions, evidence and inference
 
-Recorded September 26, 2026 from Ben's Magic Canvas design conversation. Exact original message timestamps and IDs were not available to this pass; recording date is not the time he said each sentence. Quoted excerpts below are verbatim. The linked canonical contracts hold current behavior; this is a compact provenance record, not a transcript.
+Recorded September 26, 2026 from Ben's Magic Canvas design conversation. The initial pass lacked original timestamps. A subsequent audit recovered the source records below; recording date remains distinct from utterance time. Raw logs stay private. Quoted excerpts below are verbatim. The linked canonical contracts hold current behavior; this is a compact provenance record, not a transcript.
 
 | ID / status | Ben's words | Consequence and scope |
 | --- | --- | --- |
@@ -20,8 +20,7 @@ Recorded September 26, 2026 from Ben's Magic Canvas design conversation. Exact o
 | D14 accepted maintainability | “i want to be able to tweak things in one spot in case things change. but not everything needs to be absolutely abstracted.” | Centralize repeated identity/type/color/border/radius roles; share real recurring components. Avoid a general page builder or variable for every pixel. |
 | D15 accepted autonomous process | “using the image to code to recursively adjust and continually improve and create a design constitution both in text and images”; “it should probably at set checkmarks check in with me” | Agents select useful generations, build and inspect actual output, independently review and refine within settled intent. Ask at consequential milestones, not every detail. Pending answers do not block unrelated progress. |
 | D16 accepted current scope | “Design foundation and handoff first” | Deliver this portable foundation now. Later code integration needs its own implementation task. |
-
-| D17 accepted Calendar views | “yes but both a week and a month view with suggestions on request” | Reply to the proposed current-week default with real commitments and accepted study blocks. Provide week and month views; suggestions appear on request. Home retains Today. Exact event interactions remain to be designed. Recorded September 26; original reply ID/time unavailable. |
+| D17 accepted Calendar views | “yes but both a week and a month view with suggestions on request” | Reply to the proposed current-week default with real commitments and accepted study blocks. Provide week and month views; suggestions appear on request. Home retains Today. Exact event interactions remain to be designed. Original reply: September 27, 2026 at 01:22:48.691 UTC (September 26 in Chicago), source B:1277. |
 
 ## How to apply new feedback
 
@@ -34,3 +33,29 @@ If two people disagree, tell the affected people what conflicts, with their actu
 Ben repeatedly favors familiar navigation with distinctive, controlled identity; meaningful hierarchy over decoration; useful context already assembled; readable compactness; consistent details across nested surfaces; and continuity through interruptions. For a new project, test these hypotheses against its audience and task. Cooper, ember, this sidebar and the student Home layout remain project-specific choices.
 
 **Past reviewer failure:** a compressed handoff over-restricted serif use; an Opus critique called a permitted treatment a violation. The corrected review withdrew it after seeing exact quotes. Therefore consequential judge packets include controlling excerpts and their scope. Quote accuracy and task fidelity are review requirements alongside visual craft.
+
+## Recovered source crosswalk and additional scope
+
+Original chat source A: session `01a0df16-32e0-7542-a375-cd514b4bd887`, first rollout; B: its continuation beginning 18:38:21 on September 26. Locators below are original physical record lines and UTC timestamps, not dates inferred from this document. Private source files remain with Ben. Teammates receive only relevant exact excerpts.
+
+| Decision / source | Original UTC timestamp | Exact excerpt and application |
+| --- | --- | --- |
+| D01 · B:803 | 2026-09-27 00:54:50.387 | The existing D01 quotation fixes the Home anchor; does not approve new screens. |
+| D05 · A:1728 | 2026-09-26 21:04:27.737 | Existing serif-scope quotation; supersedes a headings-only interpretation. |
+| D08 · A:893 | 2026-09-26 20:03:02.309 | Existing reading/knowledge-evidence correction. |
+| D09 · A:2797 | 2026-09-26 22:37:18.697 | Existing self-report capability. |
+| D11 · A:1832 | 2026-09-26 21:14:47.042 | Flat previews correction; compactness reinforced A:2095 at 21:29:22.427. |
+| D12 · B:436 | 2026-09-27 00:27:50.516 | Existing unresolved action-geometry correction. |
+| D13 · A:2675 | 2026-09-26 22:33:12.314 | Existing blue latitude supersedes earlier minor-blue restriction. |
+| D16 · B:838 | 2026-09-27 01:03:22.942 | Existing foundation-first answer. |
+| D17 · B:1277 | 2026-09-27 01:22:48.691 | Existing week/month and suggestions-on-request answer. |
+| D18 accepted all-app evidence · A:1431 | 2026-09-26 20:33:59.807 | “also when the ai references anything it should have that too across the app.” Apply the shared evidence-reference contract to every AI surface, not only Briefing. |
+| D19 preferred Courses overview · A:915 | 2026-09-26 20:08:15.229 | “just the general 1 card per course format is ideal. but can change it and use our ui references to do it better.” Favor one card per course; alternate composition remains discussable. |
+| D20 accepted adaptive purpose · A:854 | 2026-09-26 19:56:15.483 | “it combines all the sources and briefs me and allows me in one click to do it and continually updates based on the time.” The time-aware scenario operationalizes this; later D08 limits knowledge/completion inference. |
+| D21 accepted shared placement · B:1513 | 2026-09-27 01:31:45.408 | “actually its fine in the repo. but i more want the design constitution” Shared skill stays; DESIGN.md is the principal entry. Supersedes the local-only answer B:1502. |
+
+Quotes establish requirements; the associated implementation and validation status lives in the surface map. The timestamps above do not establish that every external reference was fully reviewed.
+
+### D22 — Calendar request effort clarified
+
+Ben, current design conversation, recorded September 26, 2026: “suggestions on request but make it easy to do so”. This confirms D17 while adding discoverability and low setup effort. The proposed contextual “Suggest study time” action is an agent interpretation, not an exact approved label. The new demo script's automatic scheduling language must be reconciled with this decision; do not silently change its author's text.

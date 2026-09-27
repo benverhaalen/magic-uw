@@ -1,6 +1,6 @@
 # Component and interaction contracts
 
-Version 1. These are implementation recipes and acceptance targets, not claims of working components. Consult the baseline for appearance and current Home direction for product semantics. Begin with these recurring roles; extract reusable code when two real uses need the same behavior. Avoid a universal component framework.
+Version 2. These are implementation recipes and acceptance targets, not claims of working components. Consult the baseline for appearance and current Home direction for product semantics. Begin with these recurring roles; extract reusable code when two real uses need the same behavior. Avoid a universal component framework.
 
 ## Atomic structure
 
@@ -15,7 +15,7 @@ Version 1. These are implementation recipes and acceptance targets, not claims o
 | Review + confirmation | A coherent action region, separate review and handled controls, quiet internal division when needed | Clicking review never checks handled. Confirmation explains local self-report, persists by issue and source version, supports Undo. Material new evidence can reopen with reason; copy regeneration alone cannot. Focus survives update. |
 | Upcoming work row | Flat colored surface, selective Cooper title, readily seen due date/time, small authentic destination marks | Whole-row launch must communicate what opens. Preserve one-click prepared work; no nested competing buttons. Show partial launch failure per destination and retry only failures. Do not imply installed tools or correct resource matching without evidence. |
 | Study action | Specific already-chosen activity and reason, clear typographic action, compact vibrant surface | Start the selected useful activity. An exam in a week can justify source-grounded practice without invented mastery. No generic class menu, minutes selector or quiz/podcast thumbnail. If unavailable, explain and offer an actual alternative. |
-| Today / Calendar | Deadline and timed-event distinctions; readable hours; consistent course/source identity | Home is today's projection. Calendar defaults to the current week, offers week/month views and shows suggestions on request; normal content is commitments and accepted study blocks. Same underlying records and confirmed plan state in both; partial coverage is not a free day. Preserve source timezone, all-day semantics and overlapping events. |
+| Today / Calendar | Deadline and timed-event distinctions; readable hours; consistent course/source identity | Home is today's projection. Calendar defaults to the current week, offers week/month views and shows suggestions on request through an easy-to-find action with relevant context already supplied; normal content is commitments and accepted study blocks. Same underlying records and confirmed plan state in both; partial coverage is not a free day. Preserve source timezone, all-day semantics and overlapping events. |
 
 ## State and return contract
 
@@ -39,8 +39,32 @@ Keep domain evidence, student confirmations and view state distinct. A completed
 
 Use synthetic cases. Vision catches hierarchy/wrapping/material inconsistency; DOM/accessibility inspection catches semantics and focus; deterministic checks catch IDs, time handling and persistence. Run only the cases affected by the change plus a representative sibling and return path. A screenshot cannot establish these behaviors.
 
-## Motion and polish
+## Visual states and motion
 
-Feedback should be immediate; movement should explain state and remain interruptible. Frequent navigation may need no decorative animation. Respect reduced motion, avoid forced waiting, and keep hover effects stable rather than shifting hit targets. Test the actual transition, including rapid reversal. A duration recommendation from an expert is a starting hypothesis, not a reason to animate everything.
+Use [Foundations](foundations.md) for color, boundary, icon, focus and motion rules. The recipes above specify which states and return behavior need those treatments.
 
-Color, gradients and borders are functional parts of this language. A filled card already supplies a boundary; a divider groups information; a focus ring locates keyboard attention. These need consistent roles, not identical outlines everywhere. Verify contrast on the lightest/darkest gradient regions and after customization. Match perceived visual weight of glyphs separately from click-target size.
+## Shared evidence reference — every AI surface
+
+Applies to Briefing, course/detail summaries, Study, chat and My UW whenever AI refers to a source-backed object or assertion. Choose the correct role:
+
+- **Named object:** recognizable link to the exact course, assignment, lecture or resource context.
+- **Evidence:** compact source affordance exposing title, source, relevant excerpt/location, captured/updated time and uncertainty where material. It may accompany the named link without creating two indistinguishable actions.
+- **Work action:** explicit verb describing what starts or opens. An action label such as “Review assigned readings” is not merely a citation to the Canvas homepage.
+
+These share a visual family but not a generic click handler. Preserve keyboard semantics, visible link recognition and a useful destination. A source missing or changed after generation retains its identity and explains the limitation; never substitute a similarly named item. Unsupported inference is labeled as inference and cannot acquire a fabricated citation. Expose evidence on demand to preserve glanceability; do not require hover. Permission-sensitive content remains subject to the app's existing access boundary.
+
+**Acceptance example:** the same assignment appears in Home prose, a course page and chat. All three resolve to the same source object/version; a changed deadline is represented consistently, and Back restores the originating surface. This is a required integration check, not currently demonstrated by a static mock.
+
+## Courses overview and course detail
+
+Prefer one card per course, following Ben's Canvas reference while using Magic's material/type language. The card identifies the course with a concise readable name and code and supplies one meaningful current cue when supported. Opening it goes to that course's working context; do not turn every card into a duplicated Home briefing or infer mastery from a grade. Full official identity remains available in detail. There is no mandatory grade/progress ring.
+
+Keep course identity stable across card, sidebar, event and assignment. The dropdown must be a sibling of the same design system, including hover/focus/selection. Expansion and navigation are distinguishable controls. Empty enrollment, long names, many courses and partial capture need usable states. Preserve saved courses while a capture is partial. A stale course can still open saved evidence with an honest freshness label.
+
+Course detail gives the student course-specific work/material context and useful evidence access. Its exact page composition is provisional; do not freeze a new layout based only on this paragraph. A representative transfer trial is overview → course → assignment/source → Back, checking the selected card, semantic scroll anchor and focus. Keep domain identity and view state outside display copy.
+
+## Time-aware briefing — synthetic scenario, not a clock-only algorithm
+
+Inputs: a verified 2:30 lecture; explicitly assigned reading linked to it; source freshness; upcoming graded work; known typed-note preference only if the student supplied it. Before class, a useful passage can state the lecture time and offer “Review assigned readings.” Near class, it can offer opening the relevant notes when that matches the student's habit. The reading remains accessible; merely reaching 2:30 or opening its link never marks it read. A changed lecture time uses fresh evidence and does not silently discard an active review.
+
+The system selects the useful implication and action from available evidence and preferences, rather than displaying every input. Unknown preference or missing reading association must not become invented certainty. An informational advisor update may need no button. This scenario makes the flagship intelligence testable without forcing every briefing into the same three rows.

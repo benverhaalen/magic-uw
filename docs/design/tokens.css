@@ -1,7 +1,8 @@
 /*
- * Magic Canvas visual seed v1 — September 26, 2026.
+ * Magic Canvas visual seed v2 — September 26, 2026.
  * Small semantic values extracted from the final cohesive Home mock.
  * Reference/provenance: visual-baseline.md. No app integration performed.
+ * v2 adds candidate status/disabled roles and explicit contrast caveats.
  * This is not a fully approved universal theme. Candidate border/tag values
  * preserve the current reference while local refinements remain open.
  * No font files are provided: "Cooper Light" names the mock's private
@@ -27,6 +28,9 @@
   --magic-ink-prose: #3a342f;
   --magic-ink-muted: #746d66;
   --magic-ink-link: #325c90;
+  /* Brightest raw shell stop with this ink is 3.43:1. Do not assume
+     small text passes on the highlight: measure composed locations and
+     darken/confine highlight beneath text when needed; preserve Home anchor. */
   --magic-ink-on-shell: #fff4ed;
   --magic-ink-on-shell-secondary: #ffe9dd;
   --magic-fill-shell: radial-gradient(ellipse 95% 78% at 8% 10%, #d3643d 0%, transparent 57%), linear-gradient(155deg, #ae412e 0%, #913128 45%, #6e2824 100%);
@@ -57,9 +61,19 @@
   --magic-radius-control: 8px;
   --magic-radius-card: 8px;
   --magic-line-quiet: #dfd7ce;
+  /* Use a 2px offset onto the ivory surface for filled-control focus;
+     this blue against the darkest review fill alone is below 3:1. */
   --magic-focus: #3c70ac;
   --magic-focus-on-shell: #fff0df;
   --magic-icon-stroke-seed: 1.65;
+
+  /* Candidate status pairs: distinct text/symbol required, not hue alone.
+     Not demonstrated by the historical Home reference. */
+  --magic-fill-status-warning-candidate: #fff0cc;
+  --magic-ink-status-warning-candidate: #684714;
+  --magic-fill-status-error-candidate: #f9e7e5;
+  --magic-ink-status-error-candidate: #7b2927;
+  --magic-ink-disabled-candidate: #77716b;
 
   /* Pending local comparison; do not generalize to all components. */
   --magic-line-action-candidate: #adc5e3;
