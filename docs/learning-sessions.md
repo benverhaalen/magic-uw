@@ -1,6 +1,6 @@
 # Course-aware learning sessions
 
-Status: canonical N24/N25 integration built in the September 26 learning-session branch. Nathaniel’s course backend at `f850ea7` supplied the learning engines and shared v6/v7 schema; this integration adds the SQL adapter, prepared-practice router and contextual desktop binding. Driver integration review and rendered checks are pending. No live coursework tutoring quality has been demonstrated.
+Status: canonical N24/N25 integration built in the September 26 learning-session branch. Nathaniel’s course backend, reconciled with main at `780aaed`, supplied the learning engines and shared v6/v7 schema; this integration adds the SQL adapter, prepared-practice router and contextual desktop binding. The combined branch passes 637 tests, TypeScript, the build and the hidden Electron bridge check. No live coursework tutoring quality has been demonstrated.
 
 ## Student outcome and current journey
 
@@ -59,4 +59,14 @@ These are inspected code/spec mechanisms and their local tests, not evidence of 
 
 Ten focused router tests pass using synthetic course material run through the actual item-check pipeline and canonical memory store. They cover the normal saved-round journey, idempotency/revision conflicts, unscored uncertainty, deliberate repeats, assistance, exact evidence and account/policy/cancellation gates, newest-version invalidation, original source disclosure and failed-CAS recovery. They make no provider calls. Earlier standalone-service tests are retired and are not evidence for this architecture.
 
-The SQL adapter has separate persistence/migration tests. Driver-owned combined checking, SQL-backed restart/purge, renderer entry, keyboard behavior and draft recovery must be reported from their actual results. Passing isolated tests does not establish app integration or live course quality. Production preparation of a checked question pool, explicit explanation generation, broad course coverage, and student learning evaluation remain separate work.
+SQL tests cover reopen, v7 migration, account isolation, atomic revision writes and rollback. Five production-context tests cover source eligibility, policy, freshness, course exclusion and context invalidation. The combined 637-test suite passes; the hidden Electron check exercises the canonical study channel and honest empty-pool response, plus workspace import/export/purge. Passing isolated tests does not establish app integration or live course quality. Production preparation of a checked question pool, explicit explanation generation, broad course coverage, and student learning evaluation remain separate work.
+
+## Concurrent integration decisions
+
+Substantial conflicts are evaluated through `magic-feature-planning`: compare the actual student journey, available evidence, accepted constraints and remaining gaps before choosing. Mechanical conflicts need only preserve both valid changes. The September 26 reconciliation found Nate's learning engines unchanged from the earlier integration; retained the new main calendar/Outlook and storage-clock behavior, and added N24/N25 rather than replacing his engine. No new AI/runtime or mastery policy was chosen by resolving Git markers.
+
+### Observed desktop journey
+
+Headless synthetic preview after the main merge: sample onboarding → workspace → assignment → prepared practice → saved explanation → typed answer/feedback → next/end; source disclosure and skip/end also passed. Explicit Explain reports unavailable without erasing saved work; coursework stays unchecked. Draft navigation/reload recovery passed before the merge on the same canonical path. No browser console errors were observed. Numeric/choice controls were not exercised in this browser pass; native app restart and real-course teaching remain unverified. The synthetic preview runs the actual item-check pipeline, router and SQL store; it does not prove production question preparation exists.
+
+Team integration: implementation is on `feat/course-learning-sessions`, with canonical integration at `73bce37` and main reconciliation at `ba24140`. This document may land on main before the implementation. Avoid duplicating N24 or this bounded N25 path; the remaining preparation/T42 work should connect through Nate's existing contracts.

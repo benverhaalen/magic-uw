@@ -461,93 +461,102 @@ export function LearningPanel({
                 void operate("answer");
             }}
           >
-            <label
-              className="field-label learning-prompt"
-              htmlFor={`${fieldId}-response`}
-            >
-              Your response
-              {item.kind === "numeric" && item.unit ? ` (${item.unit})` : ""}
-            </label>
-            {item.kind === "mc" || item.kind === "tf" ? (
-              <select
-                id={`${fieldId}-response`}
-                value={draft}
-                disabled={pending || view?.answered}
-                onChange={(event) =>
-                  void saveDraft(event.target.value).catch(() => undefined)
-                }
-              >
-                <option value="">Choose an answer</option>
-                {item.options?.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.text}
-                  </option>
-                ))}
-              </select>
-            ) : item.kind === "numeric" ? (
-              <input
-                id={`${fieldId}-response`}
-                type="number"
-                step="any"
-                value={draft}
-                disabled={pending || view?.answered}
-                onChange={(event) =>
-                  void saveDraft(event.target.value).catch(() => undefined)
-                }
-              />
+            {view?.answered ? (
+              <div className="inline-actions learning-actions">
+                <button
+                  className="button primary"
+                  type="button"
+                  disabled={!canAct}
+                  onClick={() => void operate("next")}
+                >
+                  Next activity
+                </button>
+              </div>
             ) : (
-              <textarea
-                id={`${fieldId}-response`}
-                rows={4}
-                maxLength={2000}
-                value={draft}
-                disabled={pending || view?.answered}
-                onChange={(event) =>
-                  void saveDraft(event.target.value).catch(() => undefined)
-                }
-                placeholder="Explain your thinking…"
-              />
+              <>
+                <label
+                  className="field-label learning-prompt"
+                  htmlFor={`${fieldId}-response`}
+                >
+                  Your response
+                  {item.kind === "numeric" && item.unit
+                    ? ` (${item.unit})`
+                    : ""}
+                </label>
+                {item.kind === "mc" || item.kind === "tf" ? (
+                  <select
+                    id={`${fieldId}-response`}
+                    value={draft}
+                    disabled={pending || view?.answered}
+                    onChange={(event) =>
+                      void saveDraft(event.target.value).catch(() => undefined)
+                    }
+                  >
+                    <option value="">Choose an answer</option>
+                    {item.options?.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.text}
+                      </option>
+                    ))}
+                  </select>
+                ) : item.kind === "numeric" ? (
+                  <input
+                    id={`${fieldId}-response`}
+                    type="number"
+                    step="any"
+                    value={draft}
+                    disabled={pending || view?.answered}
+                    onChange={(event) =>
+                      void saveDraft(event.target.value).catch(() => undefined)
+                    }
+                  />
+                ) : (
+                  <textarea
+                    id={`${fieldId}-response`}
+                    rows={4}
+                    maxLength={2000}
+                    value={draft}
+                    disabled={pending || view?.answered}
+                    onChange={(event) =>
+                      void saveDraft(event.target.value).catch(() => undefined)
+                    }
+                    placeholder="Explain your thinking…"
+                  />
+                )}
+                <p className="small muted" role="status">
+                  {saving
+                    ? "Saving response…"
+                    : view?.draft === draft
+                      ? "Response saved on this device."
+                      : "Response has unsaved changes."}
+                </p>
+                <div className="inline-actions learning-actions">
+                  <button
+                    className="button primary"
+                    type="submit"
+                    disabled={!canAct || view?.answered || !validResponse}
+                  >
+                    Check response
+                  </button>
+                  <button
+                    className="button"
+                    type="button"
+                    disabled={!canAct || view?.answered}
+                    onClick={() => void operate("saved_explanation")}
+                  >
+                    Show saved explanation
+                  </button>
+                  <button
+                    className="button"
+                    type="button"
+                    disabled={!canAct || view?.answered}
+                    onClick={() => void operate("skip")}
+                  >
+                    Skip activity
+                  </button>
+                </div>
+              </>
             )}
-            <p className="small muted" role="status">
-              {saving
-                ? "Saving response…"
-                : view?.draft === draft
-                  ? "Response saved on this device."
-                  : "Response has unsaved changes."}
-            </p>
-            <div className="inline-actions learning-actions">
-              <button
-                className="button primary"
-                type="submit"
-                disabled={!canAct || view?.answered || !validResponse}
-              >
-                Check response
-              </button>
-              <button
-                className="button"
-                type="button"
-                disabled={!canAct || view?.answered}
-                onClick={() => void operate("saved_explanation")}
-              >
-                Show saved explanation
-              </button>
-              <button
-                className="button"
-                type="button"
-                disabled={!canAct || view?.answered}
-                onClick={() => void operate("skip")}
-              >
-                Skip activity
-              </button>
-              <button
-                className="button"
-                type="button"
-                disabled={!canAct || !view?.answered}
-                onClick={() => void operate("next")}
-              >
-                Next activity
-              </button>
-            </div>
             <p className="small muted">
               Leave and return to your saved session. Skipping or opening an
               activity does not mark coursework complete.

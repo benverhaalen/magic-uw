@@ -155,3 +155,9 @@ The architecture is being updated, not written from scratch. Each **piece** is r
 - the P1 live trial with the operator
 - the eval harness on synthetic and OCW cases
 - N28's scripted demo, at the 09:30 freeze
+
+### Learning-session integration handoff — September 26
+
+On `feat/course-learning-sessions`, based on main `780aaed`: **N24 built and integrated on this feature branch**, using the existing workspace connection and storage-owned v8 alignment. **N25 partially built and integrated on this feature branch**: checked-item rounds, saved draft/resume, code grading with undecided answers preserved, explanation exposure, skip/advance, scoped evidence and atomic session/attempt writes. This does not mark the full N25/P-task roadmap complete. Production item preparation and T42 remain unconnected.
+
+Verification: 637 combined tests pass, plus TypeScript/build and hidden Electron bridge checks. Synthetic examples establish plumbing and recovery, not real-course teaching quality. See [learning sessions](../../learning-sessions.md) for the implemented journey, data safeguards and precise remaining limits. These changes have not yet been merged to main or demonstrated on a real course.
