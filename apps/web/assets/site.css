@@ -12,6 +12,9 @@
   --night-cardinal: #5c0b10; /* dark tiles; headings on tinted rooms */
   --star-yellow: #f7c440; /* stars and the vivid yellow rooms */
   --blush: #faebec; /* 8% cardinal on white: pale rooms and chips */
+  /* The wizard's whole outfit (hat, robe, sleeves) reads this one variable; set it on :root to
+     theme the wizard. Dark-background marks and tiles derive from it below. */
+  --wizard-robe: var(--cardinal);
 
   --ink: var(--magic-ink);
   --navy: var(--night-cardinal); /* headings on tinted rooms, 13.9:1 on white; draft #1e2757 */
@@ -34,6 +37,15 @@
   --round: var(--serif);
   --radius-room: 36px;
   --pad-room: clamp(28px, 5vw, 64px);
+}
+
+/* Derived wizard colours follow --wizard-robe where color-mix is supported; otherwise the SVGs'
+   own fallbacks apply (#d44449 and #5c0b10, the cardinal values). */
+@supports (color: color-mix(in srgb, red, blue)) {
+  :root {
+    --wizard-robe-on-dark: color-mix(in srgb, var(--wizard-robe) 75%, #fff);
+    --wizard-tile: color-mix(in srgb, var(--wizard-robe) 47%, #000);
+  }
 }
 
 *,
@@ -114,7 +126,7 @@ button {
   align-items: center;
   gap: 10px;
 }
-.brand img {
+.brand .wizard {
   height: 38px;
   width: auto;
 }
@@ -280,7 +292,7 @@ button {
   align-items: flex-end;
   justify-content: center;
 }
-.hero-art img {
+.hero-art .wizard {
   height: 500px;
   width: auto;
   margin-bottom: -30px;
@@ -633,7 +645,7 @@ button {
   text-align: center;
   scroll-margin-top: 20px;
 }
-.closer img {
+.closer .wizard {
   height: 130px;
   width: auto;
 }
@@ -784,10 +796,10 @@ button {
 .wiz-cta:hover .wiz-peek > div {
   transform: translateY(-30px);
 }
-.wiz-cta:hover #arm-left {
+.wiz-cta:hover .arm-left {
   animation: wizWaveL 0.24s 0.3s ease-in-out infinite;
 }
-.wiz-cta:hover #arm-right {
+.wiz-cta:hover .arm-right {
   animation: wizWaveR 0.24s 0.3s ease-in-out infinite;
 }
 .wiz-cta .btn {
@@ -847,7 +859,7 @@ button {
   max-width: 560px;
   line-height: 1.55;
 }
-.about-hero .hero-art img {
+.about-hero .hero-art .wizard {
   height: 380px;
   margin-bottom: -24px;
 }
@@ -1068,7 +1080,7 @@ button {
   position: sticky;
   top: 20px;
 }
-.ask img {
+.ask .wizard {
   height: 130px;
   width: auto;
   align-self: center;
@@ -1256,7 +1268,7 @@ button {
   .hero-copy {
     padding-bottom: 0;
   }
-  .hero-art img {
+  .hero-art .wizard {
     height: 300px;
   }
   .pillars {
@@ -1306,7 +1318,7 @@ button {
   .price b {
     font-size: 72px;
   }
-  .about-hero .hero-art img {
+  .about-hero .hero-art .wizard {
     height: 260px;
   }
   .notebook-head {

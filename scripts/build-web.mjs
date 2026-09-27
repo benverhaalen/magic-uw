@@ -37,17 +37,26 @@ const footer = `<footer class="site-footer">
         <nav aria-label="Footer"><a href="${github}">GitHub</a><a href="/faq/#privacy">Privacy</a><a href="/about/">About us</a><a href="/faq/">FAQ</a></nav>
       </footer>`;
 
-const wizard = (await readFile(join(root, "assets/logo/mark-on-dark.svg"), "utf8")).replace(
-  "<svg ",
-  '<svg width="81" height="130" aria-hidden="true" ',
-);
+// Wizard marks are inlined rather than loaded with <img>, so the page's --wizard-robe variable
+// (and a future theme colour) reaches the robe, sleeves and hat. Arm ids become classes because
+// a page can show several wizards; the SVG files keep their hex fallbacks for other tools.
+const logos = {};
+for (const name of ["mark-color", "mark-on-dark", "head-color"]) {
+  logos[name] = (await readFile(join(root, `assets/logo/${name}.svg`), "utf8"))
+    .replace(/<metadata>[\s\S]*?<\/metadata>/, "")
+    .replace(/ id="(arm-left|arm-right)"/g, ' class="$1"');
+}
+const inlineLogo = (name, width, height) =>
+  logos[name].replace("<svg ", `<svg class="wizard" width="${width}" height="${height}" aria-hidden="true" focusable="false" `);
+const logoImg = /<img src="\/assets\/logo\/(mark-color|mark-on-dark|head-color)\.svg" alt="" width="(\d+)" height="(\d+)" \/>/g;
 
 const fill = (html) =>
   html
     .replace("<!--#head-->", head)
     .replace(/<!--#header (\w+)-->/, (_, current) => header(current))
     .replace("<!--#footer-->", footer)
-    .replace("<!--#wizard-->", wizard);
+    .replace("<!--#wizard-->", inlineLogo("mark-on-dark", 81, 130))
+    .replace(logoImg, (_, name, width, height) => inlineLogo(name, width, height));
 
 async function copy(dir) {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
