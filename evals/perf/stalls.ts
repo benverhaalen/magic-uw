@@ -22,7 +22,7 @@
  * proxy). `measureStalls()` returns the whole report; tests/perf/stalls.test.ts gates its counts.
  */
 import { fork, type ChildProcess } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -279,13 +279,13 @@ export interface StallReport {
   size: number;
   startup: { readyMs: number };
   actions: ActionCost[];
-  idle: { windowMs: number; child: ChildReport; mainLoop: { p99: number; max: number } };
-  idlePolling: { windowMs: number; polls: number; child: ChildReport; perPoll: { workerMs: number; statements: number; bytes: number; forwardMs: number } };
-  sync: { wallMs: number; result: string; views: Record<string, Latencies>; snapshotPoll: Latencies; child: ChildReport; mainLoop: { p99: number; max: number } };
-  drain: { windowMs: number; views: Record<string, Latencies>; child: ChildReport };
+  idle: { windowMs: number; quiesceMs: number; child: ChildReport; mainLoop: { p99: number; max: number } };
+  idlePolling: { windowMs: number; mode: "changed" | "poll"; polls: number; child: ChildReport; perPoll: { workerMs: number; statements: number; bytes: number; forwardMs: number } };
+  sync: { wallMs: number; result: string; views: Record<string, Latencies>; snapshotPoll: Latencies; snapshotReads: number; child: ChildReport; mainLoop: { p99: number; max: number } };
+  drain: { windowMs: number; views: Record<string, Latencies>; snapshotReads: number; child: ChildReport };
   canvasRequests: number;
 }
-export interface StallOptions { size?: number; idleMs?: number; latencyMs?: number; drainMs?: number; log?: (line: string) => void }
+export interface StallOptions { size?: number; idleMs?: number; latencyMs?: number; drainMs?: number; renderer?: "changed" | "poll"; log?: (line: string) => void }
 
 const lat = (xs: number[]): Latencies => {
   if (!xs.length) return { n: 0, p50: 0, p99: 0, max: 0, over100: 0 };
@@ -338,9 +338,15 @@ export async function measureStalls(options: StallOptions = {}): Promise<StallRe
   let onReady!: () => void;
   const ready = new Promise<void>((r) => (onReady = r));
   let lastBytes = 0,
-    lastForwardMs = 0;
+    lastForwardMs = 0,
+    onChanged: (() => void) | undefined;
+  // The worker announces changes (`changed`) since the stall audit; before it, App.tsx polled.
+  const rendererMode: "changed" | "poll" =
+    options.renderer ??
+    (readFileSync(join(root, "apps", "desktop", "src", "worker.ts"), "utf8").includes('kind: "changed"') ? "changed" : "poll");
   child.on("message", async (m: any) => {
     if (m?.kind === "ready") return onReady();
+    if (m?.kind === "changed") return onChanged?.();
     if (m?.kind === "__stalls-report" || m?.kind === "__stalls-reset-done") return waiters.get(m.kind)?.(m);
     if ((m?.kind === "response" || m?.kind === "local-response") && waiters.has(m.id)) {
       // Main forwards the result to the renderer: a structured clone of the whole result.
@@ -395,6 +401,58 @@ export async function measureStalls(options: StallOptions = {}): Promise<StallRe
     const readyMs = round(performance.now() - started);
     log(`worker ready in ${readyMs} ms`);
     child.send({ kind: "presence", present: true });
+    // The renderer's snapshot reads, as App.tsx does them: on the worker's `changed` (at most every
+    // 2 s, one at a time) when the worker announces changes, else the 2 s poll.
+    const snapshotRead = { kind: "command", command: { type: "snapshot" } };
+    const startRenderer = () => {
+      let reading = false,
+        pending = false,
+        stopped = false,
+        lastRead = performance.now(),
+        trailing: ReturnType<typeof setTimeout> | undefined,
+        count = 0,
+        bytes = 0,
+        forwardMs = 0;
+      const times: number[] = [];
+      const pull = () => {
+        pending = true;
+        if (stopped || reading || trailing) return;
+        const wait = lastRead + 2000 - performance.now();
+        if (wait > 0) {
+          trailing = setTimeout(() => {
+            trailing = undefined;
+            if (pending) pull();
+          }, wait);
+          return;
+        }
+        pending = false;
+        reading = true;
+        lastRead = performance.now();
+        void request(snapshotRead, 60_000)
+          .then((r) => {
+            times.push(r.ms);
+            count++;
+            bytes = r.bytes;
+            forwardMs += r.forwardMs;
+          })
+          .catch(() => times.push(60_000))
+          .finally(() => {
+            reading = false;
+            if (pending) pull();
+          });
+      };
+      const poll = rendererMode === "poll" ? setInterval(pull, 2000) : undefined;
+      onChanged = pull;
+      return {
+        stop() {
+          stopped = true;
+          clearInterval(poll);
+          clearTimeout(trailing);
+          onChanged = undefined;
+          return { count, times, bytes, forwardMs };
+        },
+      };
+    };
     // ------------------------------------------------------------------ per action
     const snapshotCmd = { kind: "command", command: { type: "snapshot" } };
     const ACTIONS: { action: string; messages: Record<string, unknown>[]; syncOrProbe?: boolean }[] = [
@@ -445,38 +503,44 @@ export async function measureStalls(options: StallOptions = {}): Promise<StallRe
       log(`${a.action}: ${round(wallMs)} ms, ${c.statements} statements, ${bytes} B${full ? " (full snapshot)" : ""}`);
     }
     // ------------------------------------------------------------------ idle, no renderer
+    // Idle means nothing is being written: wait until the worker has announced no change for 3 s
+    // (the seeded workspace's background derivation settles) and the worker's one-time backfill
+    // (20 s after start, worker.ts) has run, at most 90 s.
+    let lastChange = performance.now();
+    const quietWatch = setInterval(() => {}, 1000);
+    onChanged = () => (lastChange = performance.now());
+    const quiesceStart = performance.now();
+    const readyAt = started + readyMs;
+    while ((performance.now() - lastChange < 3000 || performance.now() - readyAt < 25_000) && performance.now() - quiesceStart < 90_000) await sleep(250);
+    onChanged = undefined;
+    clearInterval(quietWatch);
+    const quiesceMs = round(performance.now() - quiesceStart);
+    log(`quiet after ${quiesceMs} ms`);
     const requestsBeforeIdle = canvasRequests;
     await reset();
     let stopMain = mainLoop();
     await sleep(idleMs);
-    const idle = { windowMs: idleMs, child: await report(), mainLoop: stopMain() };
+    const idle = { windowMs: idleMs, quiesceMs, child: await report(), mainLoop: stopMain() };
     log(`idle ${idleMs} ms: worker cpu ${idle.child.cpuMs} ms, ${idle.child.statements} statements, canvas ${canvasRequests - requestsBeforeIdle}`);
-    // ------------------------------------------------------------------ idle with the renderer's poll (App.tsx: snapshot every 2 s)
+    // ------------------------------------------------------------------ idle with the renderer (App.tsx)
+    const idleRenderer = startRenderer();
     await reset();
-    let polls = 0,
-      pollBytes = 0,
-      pollForward = 0;
-    const pollUntil = performance.now() + idleMs;
-    while (performance.now() < pollUntil) {
-      const r = await request(snapshotCmd);
-      polls++;
-      pollBytes = r.bytes;
-      pollForward += r.forwardMs;
-      await sleep(2000);
-    }
+    await sleep(idleMs);
     const pollChild = await report();
+    const idleRead = idleRenderer.stop();
     const idlePolling = {
       windowMs: idleMs,
-      polls,
+      mode: rendererMode,
+      polls: idleRead.count,
       child: pollChild,
       perPoll: {
-        workerMs: round(pollChild.requests.reduce((n, r) => n + r.ms, 0) / Math.max(1, polls)),
-        statements: Math.round(pollChild.statements / Math.max(1, polls)),
-        bytes: pollBytes,
-        forwardMs: round(pollForward / Math.max(1, polls)),
+        workerMs: round(pollChild.requests.reduce((n, r) => n + r.ms, 0) / Math.max(1, idleRead.count)),
+        statements: Math.round(pollChild.statements / Math.max(1, idleRead.count)),
+        bytes: idleRead.bytes,
+        forwardMs: round(idleRead.forwardMs / Math.max(1, idleRead.count)),
       },
     };
-    log(`poll: ${idlePolling.perPoll.workerMs} ms worker, ${idlePolling.perPoll.bytes} B, forward ${idlePolling.perPoll.forwardMs} ms per poll`);
+    log(`renderer (${rendererMode}) idle ${idleMs} ms: ${idleRead.count} snapshot reads, ${pollChild.statements} statements, ${idlePolling.perPoll.bytes} B each`);
     // ------------------------------------------------------------------ first sync with concurrent views
     const VIEWS: Record<string, Record<string, unknown>> = {
       "query:summary": { kind: "query", query: { view: "summary" } },
@@ -486,21 +550,16 @@ export async function measureStalls(options: StallOptions = {}): Promise<StallRe
     };
     const underLoad = async (until: () => boolean) => {
       const views: Record<string, number[]> = Object.fromEntries(Object.keys(VIEWS).map((k) => [k, []]));
-      const snapshots: number[] = [];
-      let i = 0,
-        nextPoll = performance.now();
+      const renderer = startRenderer();
+      let i = 0;
       while (!until()) {
         const name = Object.keys(VIEWS)[i++ % Object.keys(VIEWS).length]!;
         const r = await request(VIEWS[name]!, 60_000).catch(() => ({ ms: 60_000 }));
         views[name]!.push(r.ms);
-        if (performance.now() >= nextPoll) {
-          const s = await request(snapshotCmd, 60_000).catch(() => ({ ms: 60_000 }));
-          snapshots.push(s.ms);
-          nextPoll = performance.now() + 2000;
-        }
         await sleep(100);
       }
-      return { views: Object.fromEntries(Object.entries(views).map(([k, v]) => [k, lat(v)])), snapshotPoll: lat(snapshots) };
+      const read = renderer.stop();
+      return { views: Object.fromEntries(Object.entries(views).map(([k, v]) => [k, lat(v)])), snapshotPoll: lat(read.times), snapshotReads: read.count };
     };
     await reset();
     stopMain = mainLoop();
@@ -520,7 +579,7 @@ export async function measureStalls(options: StallOptions = {}): Promise<StallRe
     await reset();
     const drainUntil = performance.now() + drainMs;
     const drainLoad = await underLoad(() => performance.now() >= drainUntil);
-    const drain = { windowMs: drainMs, views: drainLoad.views, child: await report() };
+    const drain = { windowMs: drainMs, views: drainLoad.views, snapshotReads: drainLoad.snapshotReads, child: await report() };
     log(`drain: ${JSON.stringify(drainLoad.views)}`);
     return { size, startup: { readyMs }, actions, idle, idlePolling, sync: syncReport, drain, canvasRequests };
   } finally {
@@ -540,12 +599,12 @@ export function renderStalls(r: StallReport): string {
   for (const a of r.actions) lines.push(`| ${a.action} | ${a.wallMs} | ${a.workerMs} | ${a.statements} | ${a.responseBytes} | ${a.forwardMs} | ${a.fullSnapshot ? "yes" : "no"} |`);
   const loop = (c: ChildReport) => `loop p50 ${c.loop.p50} / p99 ${c.loop.p99} / max ${c.loop.max} ms, ${c.loop.blocks.length} blocks > 50 ms, cpu ${c.cpuMs} ms, ${c.statements} statements`;
   lines.push("", `Idle ${r.idle.windowMs} ms, no renderer: ${loop(r.idle.child)}`);
-  lines.push(`Idle with App.tsx's 2 s snapshot poll: ${loop(r.idlePolling.child)}; per poll ${JSON.stringify(r.idlePolling.perPoll)}`);
+  lines.push(`Idle with the renderer (${r.idlePolling.mode}): ${r.idlePolling.polls} snapshot reads in ${r.idlePolling.windowMs} ms; ${loop(r.idlePolling.child)}; per read ${JSON.stringify(r.idlePolling.perPoll)}`);
   lines.push("", "Timers alive or fired while idle:");
   for (const t of r.idle.child.timers) lines.push(`- ${t.kind} ${t.delay} ms, fired ${t.fires}, ${t.active ? "active" : "done"}: ${t.site}`);
   const views = (v: Record<string, Latencies>) => Object.entries(v).map(([k, l]) => `${k} p50 ${l.p50} p99 ${l.p99} max ${l.max} (n ${l.n}, >100 ms ${l.over100})`).join("; ");
-  lines.push("", `First sync: ${r.sync.wallMs} ms, ${r.canvasRequests} Canvas requests, ${r.sync.result}`, `- views: ${views(r.sync.views)}`, `- snapshot poll: p50 ${r.sync.snapshotPoll.p50} p99 ${r.sync.snapshotPoll.p99} max ${r.sync.snapshotPoll.max}`, `- worker ${loop(r.sync.child)}`, `- main loop p99 ${r.sync.mainLoop.p99} max ${r.sync.mainLoop.max}`);
-  lines.push("", `Drain ${r.drain.windowMs} ms after the sync: ${views(r.drain.views)}; worker ${loop(r.drain.child)}`);
+  lines.push("", `First sync: ${r.sync.wallMs} ms, ${r.canvasRequests} Canvas requests, ${r.sync.result}`, `- views: ${views(r.sync.views)}`, `- snapshot reads: ${r.sync.snapshotReads}, p50 ${r.sync.snapshotPoll.p50} p99 ${r.sync.snapshotPoll.p99} max ${r.sync.snapshotPoll.max}`, `- worker ${loop(r.sync.child)}`, `- main loop p99 ${r.sync.mainLoop.p99} max ${r.sync.mainLoop.max}`);
+  lines.push("", `Drain ${r.drain.windowMs} ms after the sync: ${views(r.drain.views)}; ${r.drain.snapshotReads} snapshot reads; worker ${loop(r.drain.child)}`);
   const blocks = [...r.sync.child.loop.blocks, ...r.drain.child.loop.blocks, ...r.idlePolling.child.loop.blocks].sort((a, b) => b.ms - a.ms).slice(0, 15);
   lines.push("", "Worst blocks (> 50 ms):");
   for (const b of blocks) lines.push(`- ${b.ms} ms during [${b.ops.join(", ")}] sql: ${b.sql.map((s) => `${s.ms} ms ${s.sql}`).join(" | ") || "none > 5 ms"}`);
@@ -568,7 +627,8 @@ else if (process.argv[1] && resolve(process.argv[1]) === here) {
     const i = process.argv.indexOf(`--${name}`);
     return i >= 0 ? process.argv[i + 1] : undefined;
   };
-  measureStalls({ size: Number(arg("size") ?? 1000), idleMs: Number(arg("idle") ?? 12_000), log: (l) => console.error(`[stalls] ${l}`) })
+  const renderer = arg("renderer");
+  measureStalls({ size: Number(arg("size") ?? 1000), idleMs: Number(arg("idle") ?? 12_000), ...(renderer === "poll" || renderer === "changed" ? { renderer } : {}), log: (l) => console.error(`[stalls] ${l}`) })
     .then((r) => {
       process.stdout.write(renderStalls(r));
       const out = arg("json");
