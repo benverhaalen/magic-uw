@@ -126,7 +126,10 @@ test("store restarts with evidence, completion, privacy, judgments, links, attem
     });
     store.close();
     store = createStore(file);
-    assert.equal(statSync(file).mode & 0o777, 0o600);
+    // Windows' chmod cannot produce POSIX owner-only mode bits; the store still
+    // calls chmodSync(path, 0o600) for the POSIX platforms where it matters.
+    if (process.platform !== "win32")
+      assert.equal(statSync(file).mode & 0o777, 0o600);
     assert.equal(store.resource(a.id)?.completed, true);
     assert.deepEqual(store.privacy(), { ...defaultPrivacy, ...privacy });
     assert.deepEqual(store.judgment(result.key), result);
