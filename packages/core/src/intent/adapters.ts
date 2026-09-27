@@ -10,6 +10,7 @@ import { analyticsAssignment, analyticsCourse, analyticsNext } from "./adapters/
 import { guideView } from "./adapters/guides";
 import { calendarPropose, mailSearch } from "./adapters/outlook";
 import { assignmentReferences, courseOverview } from "./adapters/pipeline";
+import { changesSince } from "./adapters/changes";
 import type { AnyAction } from "./registry";
 
 export { fromNotes, type NotesSeam } from "./adapters/notes";
@@ -22,6 +23,7 @@ export function defaultActions(first: AnyAction[] = []): AnyAction[] {
     learnRound,
     quizMe,
     agenda,
+    changesSince,
     calendarPropose,
     mailSearch,
     guideView,
