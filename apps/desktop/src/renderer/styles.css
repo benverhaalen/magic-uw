@@ -1,18 +1,28 @@
 @import "../../../../docs/design/tokens.css";
 
 /* Accent frame: Sean's interim choice (2026-09-27), pending Ben's design system (DESIGN.md/tokens.css).
-   The chosen accent colours only the frame outside the white content; "warm" is today's shell. */
+   The chosen accent colours only the frame outside the white content; "warm" is today's shell.
+   Text on the frame (onboarding wordmark, preview flag) uses the matching identity ink so it stays
+   readable on the light accents. */
 :root {
   --magic-accent-frame: var(--magic-fill-shell);
+  --magic-accent-frame-ink: var(--magic-ink-on-shell);
+  --magic-accent-frame-chip: var(--magic-fill-shell-selected);
 }
 :root[data-accent="rose"] {
   --magic-accent-frame: var(--magic-fill-identity-rose);
+  --magic-accent-frame-ink: var(--magic-ink-identity-rose);
+  --magic-accent-frame-chip: var(--magic-surface-workspace);
 }
 :root[data-accent="blue"] {
   --magic-accent-frame: var(--magic-fill-identity-blue);
+  --magic-accent-frame-ink: var(--magic-ink-identity-blue);
+  --magic-accent-frame-chip: var(--magic-surface-workspace);
 }
 :root[data-accent="coral"] {
   --magic-accent-frame: var(--magic-fill-identity-coral);
+  --magic-accent-frame-ink: var(--magic-ink-identity-coral);
+  --magic-accent-frame-chip: var(--magic-surface-workspace);
 }
 :root:has(.app-shell) {
   height: 100%;

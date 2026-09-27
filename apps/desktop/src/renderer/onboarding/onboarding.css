@@ -25,7 +25,7 @@
   font-family: var(--magic-font-editorial);
   font-size: var(--magic-type-identity);
   font-weight: 400;
-  color: var(--magic-ink-on-shell);
+  color: var(--magic-accent-frame-ink);
 }
 .onb-bar-end {
   display: flex;
@@ -35,8 +35,8 @@
   font-size: 12px;
   padding: 4px 10px;
   border-radius: var(--magic-radius-control);
-  background: var(--magic-fill-shell-selected);
-  color: var(--magic-ink-on-shell);
+  background: var(--magic-accent-frame-chip);
+  color: var(--magic-accent-frame-ink);
 }
 .onb-surface {
   overflow: auto;
