@@ -24,7 +24,7 @@ import { createWorkerClients } from "./worker-clients"; // owner: T06
 import { pullPublicSubjects, pullPublicTerms } from "../../../packages/connectors/src/planning-public";
 import type { UwPlanningSyncResult } from "../../../packages/connectors/src/uw-planning-sync";
 // owner: pipeline
-import { pipelineJobRegistry } from "../../../packages/core/src/jobs/default-registry";
+import { appJobRegistry } from "../../../packages/core/src/jobs/default-registry";
 // owner: agenda. D49: the critical-action agenda's background job, correction and narration.
 import { correctAgendaEstimate, invalidateAgenda, narrateAgenda, registerAgendaJobs } from "../../../packages/core/src/priority/index";
 // end owner: agenda
@@ -253,9 +253,10 @@ notesRemotes.microsoft = microsoftRemote(
 );
 const notes = createNotesService({ store, runner: generationRunner, remotes: notesRemotes });
 // end owner: notes
-// owner: agenda. The pipeline's registry plus agenda.estimate: code estimates, then the student's
-// own client on the background lane (one call per course change, cached per text hash).
-const jobs = pipelineJobRegistry();
+// owner: agenda. The app's registry (owner: drain: only kinds that need a queue) plus agenda.estimate:
+// code estimates, then the student's own client on the background lane (one call per course
+// change, cached per text hash).
+const jobs = appJobRegistry();
 registerAgendaJobs(jobs, { runner: generationRunner });
 // end owner: agenda
 jobs.register(createCourseFactsJob({ runner: generationRunner, local: createLocalCourseExtractor(), brief: courseBriefs.courseBrief })); // owner: course-facts
@@ -279,7 +280,11 @@ jobs.register(
 const core = createCore(store, {
   fixture: captureBatchSchema.parse(fixture),
   planningPublicClient: publicClients.core, // owner: T06
-  jobs, // owner: pipeline: passages, links and facts, the course pass; owner: agenda: agenda.estimate; owner: site-recipes; course-facts adds course.facts
+  // owner: drain. Passages, links and facts and the course pass are reconciled in budgeted batches
+  // (jobs/derive.ts), not queued per row; the registry keeps only kinds that need a queue.
+  // owner: agenda: agenda.estimate; owner: site-recipes; course-facts adds course.facts (all on `jobs`).
+  jobs,
+  drain: { derive: true },
   madgrades: { read: (request, signal) => hostRead("madgrades-read", { request }, signal) },
   planningHttp: { read: (request, signal) => hostRead("planning-public-read", { request }, signal) },
   seams: { learning: createLearningRouter({
@@ -432,10 +437,21 @@ const ingestion = createIngestion(store, {
 // slice between jobs and nothing is leased until it ends; presence sets the slice size.
 const pipeline = core.pipeline;
 const syncTick = ingestion.tick;
+// Background derivations (the pipeline's reconcile, the notes' scaffolds) never run while a sync
+// reads: a sync starting stops them between stretches, and its end lets them continue.
+let syncing = 0;
+let notesRun: AbortController | undefined;
 ingestion.tick = (trigger) => {
+  syncing++;
+  notesRun?.abort();
   pipeline.syncStarted();
   const run = syncTick(trigger);
-  void run.finally(() => pipeline.syncEnded()).catch(() => {});
+  void run
+    .finally(() => {
+      syncing--;
+      pipeline.syncEnded();
+    })
+    .catch(() => {});
   return run;
 };
 const pipelineTimer = setInterval(() => pipeline.wake(), 60_000);
@@ -583,11 +599,18 @@ refreshTimer.unref();
 const tick = setInterval(() => core.wake(), 30000);
 tick.unref();
 // owner: notes. The rolling window's scaffolds (skipped when nothing changed) and the sync check.
-function notesTick() {
-  try {
-    notes.refresh();
-  } catch (error) {
-    console.error("Notes refresh failed:", error instanceof Error ? error.name : "unknown");
+// owner: drain. The scaffolds are reconciled incrementally in budgeted stretches, never during a
+// sync read (a sync starting aborts the run between stretches; the next tick continues).
+async function notesTick() {
+  if (!syncing && !notesRun) {
+    notesRun = new AbortController();
+    try {
+      await notes.reconcile({ signal: notesRun.signal });
+    } catch (error) {
+      console.error("Notes refresh failed:", error instanceof Error ? error.name : "unknown");
+    } finally {
+      notesRun = undefined;
+    }
   }
   notes.syncTick().catch((error) => console.error("Notes sync failed:", error instanceof Error ? error.name : "unknown"));
 }
@@ -644,6 +667,9 @@ port.on("message", async ({ data }: { data: any }) => {
   if (data.kind === "graph") {
     try {
       const query = graphQuerySchema.parse(data.query);
+      // owner: drain. Opening a course derives it next, even a past one while the student is present.
+      if (query.type !== "references" && query.type !== "agenda")
+        pipeline.prioritize({ accountScope: query.accountScope, courseId: query.courseId });
       const result =
         query.type === "references"
           ? references(store, query.assignmentId)
@@ -746,6 +772,7 @@ port.on("message", async ({ data }: { data: any }) => {
     // owner: pipeline
     clearInterval(pipelineTimer);
     clearTimeout(pipelineBackfill);
+    notesRun?.abort(); // owner: drain: an in-flight notes reconcile stops before the store closes
     await pipeline.stop();
     // end owner: pipeline
     clearInterval(planningCadence); // owner: planning-perf

@@ -109,7 +109,10 @@ export function enqueueOnSave(
   /** Courses already enqueued in this pass (the backfill), so each course hashes once. */
   coursesDone?: Set<string>,
 ): number {
-  if (!registry.readyKinds().length) return 0;
+  // Nothing to read when no ready kind is queued on save (for example only Jev's, which storage
+  // queues itself): the backfill then costs nothing instead of decoding every source.
+  const ready = registry.readyKinds().map((k) => registry.get(k)!);
+  if (!ready.some((h) => h.subject === "course" || (h.subject === "resource" && h.onSave))) return 0;
   let calls = 0;
   // The pipeline store reads one source's resources; a plain store falls back to the full list.
   const graph = isPipelineStore(store) ? store : undefined;

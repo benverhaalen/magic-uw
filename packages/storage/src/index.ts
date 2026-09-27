@@ -17,6 +17,7 @@ import { textHash } from "../../retrieval/src/index";
 import { COURSE_CORE_SCHEMA, COURSE_SPACE_OBSERVATION_MIGRATION, courseCoreRepository } from "./course-core";
 import { createPassageIndex, scopeToken } from "./passages";
 import { graphRepository, migrateGraph } from "./graph";
+import { deriveRepository, type DeriveMethods } from "./derive"; // owner: drain
 import { LEARNING_SCHEMA } from "./learning";
 import { LEARNING_V8 } from "./learning-v8";
 import { createSqlLearningStore, type SqlLearningStore } from "../../learning/src/sql-store";
@@ -231,6 +232,13 @@ export type LocalStore = Store &
     importReaderReceipts(): number;
     /** Per-day receipt counts for receipts older than the detail window. */
     receiptCounts(): ReceiptCount[];
+  } & DeriveMethods & {
+    // owner: drain
+    /** Runs `operation` in one write transaction; the store's own writes inside it join it. */
+    deriveBatch<T>(operation: () => T): T;
+    /** One job by ID (indexed), for a handler's lease check. */
+    job(id: string): CourseJob | undefined;
+    // end owner: drain
   };
 // end owner: platform-fix
 
@@ -303,7 +311,11 @@ export function createStore(
     return statement;
   }
 
+  // owner: drain. Inside `deriveBatch`, a store write (putMaterialFacts, rebuildPassages, ...)
+  // joins the batch's one transaction instead of committing on its own.
+  let batching = false;
   function transaction<T>(operation: () => T): T {
+    if (batching) return operation();
     db.exec("BEGIN IMMEDIATE");
     try {
       const result = operation();
@@ -843,6 +855,7 @@ export function createStore(
   });
   const learning = createSqlLearningStore(prepare, transaction, () => clock().toISOString());
   const graph = graphRepository(prepare, { transaction, timestamp });
+  const derive = deriveRepository(prepare, { timestamp }); // owner: drain
   const notes = createSqlNotesStore(prepare, transaction, () => clock().toISOString()); // owner: notes
   let closed = false;
   // Keep two weeks of day-plan history, measured from the newest saved day.
@@ -2353,6 +2366,35 @@ export function createStore(
     },
     ...courseCore,
     ...graph,
+    // owner: drain
+    ...derive,
+    deriveBatch<T>(operation: () => T): T {
+      if (batching) throw new Error("A derivation batch is already open.");
+      // Derived rows are recomputed from what is stored, so their commit need not wait for the
+      // disk: in WAL mode synchronous=NORMAL never corrupts, and a crash can only drop the newest
+      // derived batches (their course marker with them), which the next run redoes. The next
+      // FULL commit (ingest, a student's edit) syncs these frames too. Measured: under disk
+      // contention a FULL commit's fsync held the thread for 50-170 ms.
+      const mode = Number(prepare("PRAGMA synchronous").get()!.synchronous);
+      if (mode > 1) db.exec("PRAGMA synchronous = NORMAL");
+      try {
+        return transaction(() => {
+          batching = true;
+          try {
+            return operation();
+          } finally {
+            batching = false;
+          }
+        });
+      } finally {
+        if (mode > 1) db.exec(`PRAGMA synchronous = ${mode}`);
+      }
+    },
+    job(id: string) {
+      const row = prepare("SELECT * FROM jobs WHERE id = ?").get(id) as Row | undefined;
+      return row ? readJob(row) : undefined;
+    },
+    // end owner: drain
     sourceResources(sourceId: string) {
       return (
         prepare(
