@@ -23,6 +23,8 @@ export interface ClaudeOptions {
   models?: Partial<Record<Tier, string>>;
   /** For a key route only (D36): passed to the spawned process, never written anywhere. */
   env?: Record<string, string>;
+  /** owner: client-health. Appended after the spec argv (instant mode's `--safe-mode`, D50). */
+  extraArgs?: readonly string[];
 }
 
 /**
@@ -134,11 +136,10 @@ export function createClaudeBackend(options: ClaudeOptions): ModelBackend {
     async call(call: BackendCall): Promise<BackendResult> {
       const model = models[call.tier];
       const prefixPath = await prefixFile(options.workDir, call.systemPrompt);
-      const args = claudeOneShotArgs({
-        schemaJson: inlineSchema(call.jsonSchema),
-        prefixPath,
-        model,
-      });
+      const args = [
+        ...claudeOneShotArgs({ schemaJson: inlineSchema(call.jsonSchema), prefixPath, model }),
+        ...(options.extraArgs ?? []),
+      ];
       const run = await runProcess(options.command, args, {
         stdin: call.input,
         cwd: options.workDir,
