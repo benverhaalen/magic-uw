@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { pipelineJobRegistry, defaultJobRegistry } from "../packages/core/src/jobs/default-registry";
+import { pipelineJobRegistry } from "../packages/core/src/jobs/default-registry";
 import { createPipelineLoop } from "../packages/core/src/jobs/pipeline";
 import { enqueueOnSave } from "../packages/core/src/jobs/registry";
 import { ANALYZER_VERSION } from "../packages/core/src/graph/index";
@@ -18,7 +18,7 @@ test("the drain runs the pipeline jobs: passages, links and facts, and one cours
   const store = seededStore();
   const registry = pipelineJobRegistry();
   assert.deepEqual(registry.readyKinds().sort(), ["compile.course", "link.resource", "passages.resource"]);
-  assert.deepEqual(defaultJobRegistry().readyKinds(), [], "the default registry keeps its stubs");
+  assert.ok(registry.kinds().includes("card.resource"), "the cards stub is known, never leased");
   const loop = createPipelineLoop({ store, registry });
   const enqueued = await loop.backfill();
   assert.ok(enqueued > 0);

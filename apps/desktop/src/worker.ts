@@ -20,7 +20,6 @@ import { pullPublicSubjects, pullPublicTerms } from "../../../packages/connector
 import type { UwPlanningSyncResult } from "../../../packages/connectors/src/uw-planning-sync";
 // owner: pipeline
 import { pipelineJobRegistry } from "../../../packages/core/src/jobs/default-registry";
-import { createPipelineLoop } from "../../../packages/core/src/jobs/pipeline";
 import { agenda, courseGraph, createPipelineReferences, references } from "../../../packages/core/src/graph/index";
 import { graphQuerySchema } from "../../../packages/contracts/src/course-core";
 // end owner: pipeline
@@ -258,10 +257,10 @@ const ingestion = createIngestion(store, {
   ...(tesseract ? { ocr: tesseract } : {}),
   extractWorkerScript: join(__dirname, "extract-worker.cjs"),
 });
-// owner: pipeline. The material pipeline's drain: code-only jobs (passages, links and facts, the
-// course pass) in bounded idle slices. A sync aborts the slice between jobs and wakes it when done;
-// presence sets the slice size. Nothing here calls Jev or a model, and planning is never queued.
-const pipeline = createPipelineLoop({ store, registry: core.jobs });
+// owner: drain. The app's one job drain is core's pipeline loop: every job kind (passages, links
+// and facts, the course pass, Jev's enrich.resource) in bounded idle slices. A sync aborts the
+// slice between jobs and nothing is leased until it ends; presence sets the slice size.
+const pipeline = core.pipeline;
 const syncTick = ingestion.tick;
 ingestion.tick = (trigger) => {
   pipeline.syncStarted();

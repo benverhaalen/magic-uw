@@ -1,24 +1,26 @@
 /**
- * The material pipeline's background loop (the desktop worker runs one). It drains only the ready
- * code kinds through the course-core drain (`createDrain`, `lease(kinds[])`), in small slices:
+ * The app's one job loop (core creates it; the desktop worker drives its sync and presence
+ * signals). It drains every ready registered kind, code jobs and Jev's `enrich.resource` alike,
+ * through the course-core drain (`createDrain`, `lease(kinds[])`), in small slices:
  *
  * - idle-only: a slice starts only after a quiet gap, never while a sync is reading;
  * - yields to syncs: a sync starting aborts the slice between jobs; the sync's end wakes it again;
  * - presence-aware: while the student is at the computer, slices are small and spaced out; away,
  *   they run back to back;
- * - bounded: each slice leases at most `slice` jobs, then yields to the event loop.
+ * - bounded: each slice leases at most `slice` jobs, then yields to the event loop;
+ * - retry-after: a handler's `defer` sets a durable per-kind cooldown, and the loop wakes itself
+ *   when the earliest cooldown ends (also after a restart).
  *
- * It never calls a model or Jev: the kinds it drains are code, and planning data is never queued.
+ * A handler that sends (Jev) keeps its own egress checks: `available` gates leasing and the
+ * handler re-checks consent, writes its receipt and discards a result that went stale.
+ * Planning data is never queued.
  */
 import type { Store } from "@magic/contracts";
 import type { CourseCoreStore, CourseJob } from "../../../contracts/src/course-core";
 import { createDrain, type DrainContext, type DrainReport } from "../drain";
 import { enqueueOnSave, type JobRegistry } from "./registry";
 
-export interface PipelineLoopOptions {
-  store: Store & Pick<CourseCoreStore, "lease">;
-  registry: JobRegistry;
-  now?: () => string;
+export interface PipelineTiming {
   /** Quiet gap before a slice starts (ms). */
   idleMs?: number;
   /** Jobs per slice while present / away. */
@@ -26,6 +28,11 @@ export interface PipelineLoopOptions {
   awaySlice?: number;
   /** Gap between slices while present (ms). */
   presentGapMs?: number;
+}
+export interface PipelineLoopOptions extends PipelineTiming {
+  store: Store & Pick<CourseCoreStore, "lease">;
+  registry: JobRegistry;
+  now?: () => string;
 }
 export interface PipelineLoop {
   /** Something was saved or the timer fired: run after the quiet gap. */
@@ -35,9 +42,11 @@ export interface PipelineLoop {
   syncEnded(): void;
   suspend(): void;
   resume(): void;
+  /** Abort the running slice between jobs (purge, privacy change); the next wake continues. */
+  interrupt(): void;
   /** Enqueue every source's resources once (idempotent: the store keys jobs by hash); yields per source. */
   backfill(): Promise<number>;
-  /** Drain until nothing due is left (tests and the eval harness). */
+  /** Drain until nothing due is left, ignoring the idle gap and syncs (tests and the eval harness). */
   runToIdle(): Promise<DrainReport>;
   stop(): Promise<void>;
   readonly totals: DrainReport;
@@ -51,34 +60,60 @@ export function createPipelineLoop(options: PipelineLoopOptions): PipelineLoop {
   const handlers = Object.fromEntries(
     kinds.map((kind) => [
       kind,
-      async (job: CourseJob, context: DrainContext) => {
-        const outcome = await options.registry.get(kind)!.run(job, { store: options.store, now: context.now, signal: context.signal });
-        if (outcome.status !== "done") throw new Error(outcome.error);
-      },
+      (job: CourseJob, context: DrainContext) =>
+        options.registry.get(kind)!.run(job, { store: options.store, now: context.now, signal: context.signal }),
     ]),
   );
-  const present = createDrain({ store: options.store, handlers, now, maxJobs: options.presentSlice ?? 20 });
-  const away = createDrain({ store: options.store, handlers, now, maxJobs: options.awaySlice ?? 200 });
+  const available = (kind: string) => options.registry.get(kind)?.available?.({ store: options.store }) ?? true;
+  const present = createDrain({ store: options.store, handlers, available, now, maxJobs: options.presentSlice ?? 20 });
+  const away = createDrain({ store: options.store, handlers, available, now, maxJobs: options.awaySlice ?? 200 });
   const totals: DrainReport = { done: 0, failed: 0, skipped: 0 };
   let isPresent = true,
     syncing = 0,
     suspended = false,
     stopped = false,
+    wakeWhileRunning = false,
     timer: ReturnType<typeof setTimeout> | undefined,
+    cooldownTimer: ReturnType<typeof setTimeout> | undefined,
     controller: AbortController | undefined,
     running: Promise<void> | undefined;
 
   function schedule(delay: number) {
-    if (stopped || suspended || syncing > 0 || !kinds.length) return;
+    // No timer while nothing registered can run (for example only Jev's kind, with Jev off).
+    if (stopped || suspended || syncing > 0 || !kinds.some(available)) return;
     if (timer) clearTimeout(timer);
+    // Not unref'd: a pending slice is short (the idle gap) and stop() clears it.
     timer = setTimeout(() => {
       timer = undefined;
       void slice();
     }, delay);
-    timer.unref?.();
+  }
+  /** Wake when the earliest per-kind cooldown (a handler's retry-after) ends. */
+  function scheduleCooldownWake() {
+    if (cooldownTimer) clearTimeout(cooldownTimer);
+    cooldownTimer = undefined;
+    if (stopped) return;
+    const at = Date.parse(now());
+    let delay = Infinity;
+    for (const kind of kinds) {
+      const until = options.store.jobCooldown(kind);
+      const wait = until ? Date.parse(until) - at : NaN;
+      if (wait > 0 && wait < delay) delay = wait;
+    }
+    if (!Number.isFinite(delay)) return;
+    cooldownTimer = setTimeout(() => {
+      cooldownTimer = undefined;
+      schedule(0);
+    }, Math.min(delay, 2_147_483_647));
+    cooldownTimer.unref?.();
   }
   async function slice(): Promise<void> {
-    if (running || stopped || suspended || syncing > 0) return;
+    if (running) {
+      wakeWhileRunning = true;
+      return;
+    }
+    if (stopped || suspended || syncing > 0) return;
+    wakeWhileRunning = false;
     controller = new AbortController();
     const drain = isPresent ? present : away;
     const run = drain.run(controller.signal).then((report) => {
@@ -86,19 +121,27 @@ export function createPipelineLoop(options: PipelineLoopOptions): PipelineLoop {
       totals.failed += report.failed;
       totals.skipped += report.skipped;
       const served = report.done + report.failed + report.skipped;
+      scheduleCooldownWake();
       // A full slice means more is due: continue after a short gap (none while away).
-      if (served >= (isPresent ? (options.presentSlice ?? 20) : (options.awaySlice ?? 200)))
+      if (!report.stopped && served >= (isPresent ? (options.presentSlice ?? 20) : (options.awaySlice ?? 200)))
         schedule(isPresent ? presentGapMs : 0);
     });
     running = run.finally(() => {
       running = undefined;
       controller = undefined;
+      if (wakeWhileRunning) {
+        wakeWhileRunning = false;
+        schedule(idleMs);
+      }
     });
     await running;
   }
 
   return {
-    wake: () => schedule(idleMs),
+    wake() {
+      scheduleCooldownWake();
+      schedule(idleMs);
+    },
     presence(value) {
       const returned = value && !isPresent;
       isPresent = value;
@@ -109,6 +152,7 @@ export function createPipelineLoop(options: PipelineLoopOptions): PipelineLoop {
       syncing++;
       controller?.abort();
       if (timer) clearTimeout(timer);
+      timer = undefined;
     },
     syncEnded() {
       syncing = Math.max(0, syncing - 1);
@@ -118,10 +162,17 @@ export function createPipelineLoop(options: PipelineLoopOptions): PipelineLoop {
       suspended = true;
       controller?.abort();
       if (timer) clearTimeout(timer);
+      timer = undefined;
     },
     resume() {
       suspended = false;
       schedule(idleMs);
+    },
+    interrupt() {
+      if (controller) {
+        controller.abort();
+        wakeWhileRunning = true;
+      }
     },
     async backfill() {
       let calls = 0;
@@ -135,17 +186,24 @@ export function createPipelineLoop(options: PipelineLoopOptions): PipelineLoop {
     },
     async runToIdle() {
       const report: DrainReport = { done: 0, failed: 0, skipped: 0 };
+      await running;
       for (;;) {
+        if (stopped) return report;
         const r = await away.run();
         report.done += r.done;
         report.failed += r.failed;
         report.skipped += r.skipped;
-        if (r.done + r.failed + r.skipped === 0) return report;
+        if (r.stopped) report.stopped = true;
+        if (r.stopped || r.done + r.failed + r.skipped === 0) break;
       }
+      scheduleCooldownWake();
+      return report;
     },
     async stop() {
       stopped = true;
       if (timer) clearTimeout(timer);
+      if (cooldownTimer) clearTimeout(cooldownTimer);
+      timer = cooldownTimer = undefined;
       controller?.abort();
       await running;
     },
