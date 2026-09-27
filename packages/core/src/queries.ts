@@ -23,6 +23,7 @@ import { evidenceFor } from "./evidence";
 import { courseIncluded } from "./access";
 import { createHash } from "node:crypto";
 import { guideQuery } from "../../packs/guide/src/query"; // owner: guides
+import { agendaRankedView, workspaceBootstrapView } from "./priority/query"; // owner: agenda
 
 /** Canvas submission types that name the kind exactly; code decides these, Jev never sees them. */
 const EXACT_KINDS: Record<string, "quiz" | "discussion"> = { online_quiz: "quiz", discussion_topic: "discussion" };
@@ -325,6 +326,12 @@ export function runQuery(store: Store, request: QueryRequest, context: QueryCont
     case "guide":
       return guideQuery(store, request, context.now());
     // end owner: guides
+    // owner: agenda. D49: the critical-action agenda and the launch view; local reads only, 0 model calls.
+    case "agenda.ranked":
+      return agendaRankedView(store, request, context.now());
+    case "workspace.bootstrap":
+      return workspaceBootstrapView(store, request, context.now());
+    // end owner: agenda
     // owner: intent. Answered by core's intent seam before runQuery; reaching here means no seam.
     case "intent.preview":
       throw new Error("The command bar isn't built yet.");

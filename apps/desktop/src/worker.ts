@@ -24,6 +24,9 @@ import { pullPublicSubjects, pullPublicTerms } from "../../../packages/connector
 import type { UwPlanningSyncResult } from "../../../packages/connectors/src/uw-planning-sync";
 // owner: pipeline
 import { pipelineJobRegistry } from "../../../packages/core/src/jobs/default-registry";
+// owner: agenda. D49: the critical-action agenda's background job, correction and narration.
+import { correctAgendaEstimate, invalidateAgenda, narrateAgenda, registerAgendaJobs } from "../../../packages/core/src/priority/index";
+// end owner: agenda
 import { agenda, courseGraph, createPipelineReferences, references } from "../../../packages/core/src/graph/index";
 import { graphQuerySchema } from "../../../packages/contracts/src/course-core";
 // end owner: pipeline
@@ -215,11 +218,16 @@ notesRemotes.microsoft = microsoftRemote(
 );
 const notes = createNotesService({ store, runner: generationRunner, remotes: notesRemotes });
 // end owner: notes
+// owner: agenda. The pipeline's registry plus agenda.estimate: code estimates, then the student's
+// own client on the background lane (one call per course change, cached per text hash).
+const jobs = pipelineJobRegistry();
+registerAgendaJobs(jobs, { runner: generationRunner });
+// end owner: agenda
 const core = createCore(store, {
   fixture: captureBatchSchema.parse(fixture),
   courseExtractor: createLocalCourseExtractor(),
   planningPublicClient: publicClients.core, // owner: T06
-  jobs: pipelineJobRegistry(), // owner: pipeline: passages, links and facts, the course pass
+  jobs, // owner: pipeline: passages, links and facts, the course pass; owner: agenda: agenda.estimate
   madgrades: { read: (request, signal) => hostRead("madgrades-read", { request }, signal) },
   planningHttp: { read: (request, signal) => hostRead("planning-public-read", { request }, signal) },
   seams: { learning: createLearningRouter({
@@ -230,7 +238,14 @@ const core = createCore(store, {
     // and course-map assessment rows).
     analyticsReferences: () => createPipelineReferences(store),
     // end owner: analytics
-  }), pack: generation.pack /* owner: generation */, notes /* owner: notes */, intent /* owner: intent */ },
+  }), pack: generation.pack /* owner: generation */, notes /* owner: notes */, intent /* owner: intent */,
+    // owner: agenda. Only the estimate subject is built; the others keep core's honest message.
+    correct: (value, at) =>
+      value.subject === "estimate"
+        ? correctAgendaEstimate(store, value, at)
+        : "Corrections aren't built yet; nothing was changed.",
+    // end owner: agenda
+  },
   ...(process.env.MAGIC_GATEWAY_URL
     ? {
         gateway: {
@@ -368,6 +383,28 @@ pipelineTimer.unref();
 const pipelineBackfill = setTimeout(() => void pipeline.backfill().then(() => pipeline.wake()), 20_000);
 pipelineBackfill.unref();
 // end owner: pipeline
+// owner: agenda. After the first sync of each local day, refresh the agenda's why-now lines once
+// (cached by the top items' fact hash, so an unchanged agenda costs nothing; a send already in
+// flight for the same hash, from the drain, is shared). Unless the lines end current (a paused,
+// blocked or unconnected client, or a throw), the day is cleared so the next sync tries again.
+let agendaNarratedDay = "";
+const agendaSyncTick = ingestion.tick;
+ingestion.tick = (trigger) => {
+  const run = agendaSyncTick(trigger);
+  void run
+    .then(async () => {
+      const day = new Date().toLocaleDateString("en-CA");
+      if (day === agendaNarratedDay) return;
+      agendaNarratedDay = day;
+      const narrated = await narrateAgenda(store, { runner: generationRunner });
+      if (!narrated.current && agendaNarratedDay === day) agendaNarratedDay = "";
+    })
+    .catch(() => {
+      agendaNarratedDay = "";
+    });
+  return run;
+};
+// end owner: agenda
 const planningPublicClient = publicClients.planning; // owner: T06
 let planningAccountScope = /^uw-session:[a-f0-9-]{36}$/.test(process.env.MAGIC_PLANNING_SCOPE ?? "")
   ? process.env.MAGIC_PLANNING_SCOPE! : `uw-session:${randomUUID()}`;
@@ -730,10 +767,15 @@ port.on("message", async ({ data }: { data: any }) => {
     local.cancel();
   }
   try {
+    const result = await core.execute(data.command);
+    // owner: agenda. A completion isn't a source re-read: drop the agenda's cached facts before the
+    // renderer's next query.
+    if (data.command?.type === "complete") invalidateAgenda(store);
+    // end owner: agenda
     port.postMessage({
       kind: "response",
       id: data.id,
-      result: await core.execute(data.command),
+      result,
     });
     if (data.command?.type === "purge") {
       ingestion.resume();

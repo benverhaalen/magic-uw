@@ -21,6 +21,8 @@ export interface RailResource {
   submission?: ResourceInput["submission"];
   assignmentGroupId?: string | null;
   assignmentGroup?: ResourceInput["assignmentGroup"];
+  /** The account (source) boundary for grade shares (FDB-001); optional for existing callers. */
+  accountScope?: string;
 }
 export interface RailEvent {
   id: string;
@@ -243,29 +245,147 @@ function shortDate(iso: string, timeZone: string) {
   return new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short", month: "short", day: "numeric" }).format(new Date(iso));
 }
 
+// FDB-001 (docs/frontend-data-bugs.md). A grade share is keyed by account and course, and says
+// how complete it is:
+// - listed: the Canvas group weight as listed (the group's share, not this assignment's);
+// - computed: this assignment's share, only when the caller confirms every assignment of the
+//   course was captured for that account, the group has no drop rules and nothing is excused;
+// - unknown: nothing supportable (percent null, with a reason).
+export type GradeShareBasis = "listed" | "computed" | "unknown";
+export type GradeShareReason =
+  /** The assignment names no group. */
+  | "no_group"
+  /** The group row wasn't captured for this account and course. */
+  | "group_not_captured"
+  /** Every group weight is 0: the course isn't weighted by group. */
+  | "unweighted"
+  /** The group weights don't add up to 100%, so Canvas may not apply them. */
+  | "weights_do_not_total_100"
+  /** The same group appears twice with different weights. */
+  | "duplicate_group"
+  /** The group itself is weighted 0%. */
+  | "zero_weight_group"
+  /** Not every assignment of the course is known to be captured (listed only). */
+  | "partial_capture"
+  /** The group drops scores; which ones depends on grades (listed only). */
+  | "drop_rules"
+  /** An assignment in the group is excused, so the points that count aren't known (listed only). */
+  | "excused"
+  /** This assignment or a sibling has no points (listed only). */
+  | "no_points";
+export interface GradeShareDetail {
+  basis: GradeShareBasis;
+  /** listed: the group's weight; computed: this assignment's share; unknown: null. */
+  percent: number | null;
+  groupWeight: number | null;
+  groupTitle: string | null;
+  /** The account the share was computed within (null when the input carries none). */
+  accountScope: string | null;
+  /** listed: why it couldn't be computed; unknown: why nothing is known; computed: null. */
+  reason: GradeShareReason | null;
+  text: string | null;
+}
+/** The fields gradeShare reads; RailResource satisfies it. */
+export type GradeShareResource = Pick<RailResource, "id" | "kind" | "title" | "courseId" | "courseName"> &
+  Partial<Pick<RailResource, "externalId" | "points" | "assignmentGroupId" | "assignmentGroup" | "submission" | "deleted">> & {
+    /** The account (source) boundary: rows of another account never mix, even with the same course ID. */
+    accountScope?: string;
+  };
+export interface GradeShareOptions {
+  /**
+   * True when every assignment of this account's course was captured (a complete assignments
+   * read). Without it no share is computed; the listed group weight is the most that's said.
+   */
+  complete?: (accountScope: string | undefined, courseId: string) => boolean;
+}
+
 /**
- * An assignment's share of its own course grade, from Canvas assignment-group weights.
- * Used only when that course's group weights add up to 100%; otherwise Canvas may not
- * apply them. Never compares raw points across courses.
+ * The grade-share detail for each assignment: listed, computed or unknown (see above). Groups,
+ * totals and siblings are keyed by account and course, and siblings count once per Canvas ID.
  */
-export function gradeShare(resources: RailResource[]) {
-  const groups = resources.filter((r) => r.assignmentGroup?.weight != null);
-  const totals = new Map<string, number>();
-  for (const g of groups) totals.set(g.courseId, (totals.get(g.courseId) ?? 0) + g.assignmentGroup!.weight!);
-  return (r: RailResource): { percent: number; text: string } | null => {
-    if (!r.assignmentGroupId) return null;
-    const total = totals.get(r.courseId) ?? 0;
-    if (total < 99 || total > 101) return null;
-    const g = groups.find((x) => x.courseId === r.courseId && (x.externalId ?? x.id) === r.assignmentGroupId);
-    const weight = g?.assignmentGroup?.weight;
-    if (!g || !weight) return null;
-    const siblings = resources.filter(
-      (x) => x.kind === "assignment" && x.courseId === r.courseId && x.assignmentGroupId === r.assignmentGroupId,
-    );
-    const pts = siblings.reduce((n, x) => n + (x.points ?? 0), 0);
-    if (!r.points || !pts) return { percent: weight, text: `Counts in ${g.title}, ${weight}% of the ${r.courseName} grade.` };
-    const percent = Math.max(1, Math.round((weight * r.points) / pts));
-    return { percent, text: `About ${percent}% of the ${r.courseName} grade (${g.title} is ${weight}%, before any dropped scores).` };
+export function gradeShareDetail(resources: GradeShareResource[], options: GradeShareOptions = {}) {
+  const courseKey = (r: GradeShareResource) => `${r.accountScope ?? ""}\n${r.courseId}`;
+  const live = resources.filter((r) => !r.deleted);
+  const groups = new Map<string, Map<string, GradeShareResource[]>>();
+  for (const g of live) {
+    if (g.assignmentGroup?.weight == null) continue;
+    const byId = groups.get(courseKey(g)) ?? new Map<string, GradeShareResource[]>();
+    const id = g.externalId ?? g.id;
+    byId.set(id, [...(byId.get(id) ?? []), g]);
+    groups.set(courseKey(g), byId);
+  }
+  const siblingsOf = new Map<string, Map<string, GradeShareResource>>();
+  for (const x of live) {
+    if (x.kind !== "assignment" || !x.assignmentGroupId) continue;
+    const key = `${courseKey(x)}\n${x.assignmentGroupId}`;
+    const byId = siblingsOf.get(key) ?? new Map<string, GradeShareResource>();
+    // The same assignment seen through several lists counts once.
+    byId.set(x.externalId ?? x.id, x);
+    siblingsOf.set(key, byId);
+  }
+  return (r: GradeShareResource): GradeShareDetail => {
+    const accountScope = r.accountScope ?? null;
+    const unknown = (reason: GradeShareReason, g?: GradeShareResource): GradeShareDetail => ({
+      basis: "unknown",
+      percent: null,
+      groupWeight: g?.assignmentGroup?.weight ?? null,
+      groupTitle: g?.title ?? null,
+      accountScope,
+      reason,
+      text: null,
+    });
+    if (!r.assignmentGroupId) return unknown("no_group");
+    const byId = groups.get(courseKey(r));
+    const rows = byId?.get(r.assignmentGroupId);
+    if (!byId || !rows?.length) return unknown("group_not_captured");
+    const g = rows[0]!;
+    const weights = [...byId.values()].map((xs) => xs[0]!.assignmentGroup!.weight!);
+    if ([...byId.values()].some((xs) => new Set(xs.map((x) => x.assignmentGroup!.weight)).size > 1)) return unknown("duplicate_group", g);
+    const total = weights.reduce((n, w) => n + w, 0);
+    if (weights.every((w) => w === 0)) return unknown("unweighted", g);
+    if (total < 99 || total > 101) return unknown("weights_do_not_total_100", g);
+    const weight = g.assignmentGroup!.weight!;
+    if (!weight) return unknown("zero_weight_group", g);
+    const listed = (reason: GradeShareReason): GradeShareDetail => ({
+      basis: "listed",
+      percent: weight,
+      groupWeight: weight,
+      groupTitle: g.title,
+      accountScope,
+      reason,
+      text: `Counts in ${g.title}, ${weight}% of the ${r.courseName} grade (the group's weight as listed in Canvas).`,
+    });
+    if (!options.complete?.(r.accountScope, r.courseId)) return listed("partial_capture");
+    const rules = g.assignmentGroup!.rules;
+    if ((rules?.dropLowest ?? 0) > 0 || (rules?.dropHighest ?? 0) > 0) return listed("drop_rules");
+    const siblings = [...(siblingsOf.get(`${courseKey(r)}\n${r.assignmentGroupId}`)?.values() ?? [])];
+    if (siblings.some((x) => x.submission?.excused)) return listed("excused");
+    if (!r.points || siblings.some((x) => !x.points)) return listed("no_points");
+    const pts = siblings.reduce((n, x) => n + x.points!, 0);
+    const raw = (weight * r.points) / pts;
+    const percent = raw < 10 ? Math.round(raw * 10) / 10 : Math.round(raw);
+    return {
+      basis: "computed",
+      percent,
+      groupWeight: weight,
+      groupTitle: g.title,
+      accountScope,
+      reason: null,
+      text: `About ${percent}% of the ${r.courseName} grade (${g.title} is ${weight}%, split by points across its ${siblings.length} assignments).`,
+    };
+  };
+}
+
+/**
+ * An assignment's grade share for the Today rail: the listed group weight or, when coverage is
+ * confirmed, the computed share; null when neither is supportable (gradeShareDetail says why).
+ * Never compares raw points across courses.
+ */
+export function gradeShare(resources: GradeShareResource[], options: GradeShareOptions = {}) {
+  const detail = gradeShareDetail(resources, options);
+  return (r: GradeShareResource): { percent: number; text: string; basis: "listed" | "computed"; reason: GradeShareReason | null } | null => {
+    const d = detail(r);
+    return d.basis === "unknown" ? null : { percent: d.percent!, text: d.text!, basis: d.basis, reason: d.reason };
   };
 }
 
