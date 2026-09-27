@@ -13,6 +13,7 @@ import { findQuote } from "../../../retrieval/src/quotes";
 import { courseInclusion } from "../../../core/src/access";
 import type { CoursePrefixSource } from "../../../core/src/course-facts/prefix"; // owner: course-facts
 import { BRIEF_POLICY_POINTER, briefHoldsPolicy } from "../../../core/src/course-facts/brief"; // owner: course-facts
+import { readOnce } from "../../../core/src/graph/read-once";
 import type { Resolve } from "./review";
 import type { GuideInput, GuideKind } from "./schema";
 
@@ -53,19 +54,19 @@ export const localDay = (value: string): string | null => {
   return Number.isFinite(t) ? new Date(t).toLocaleDateString("en-CA") : null;
 };
 
-export function selectGuideInputs(
-  store: GuideStore,
-  kind: GuideKind,
-  scope: PackScope,
-  passageBudget = GUIDE_PASSAGE_BUDGET,
-  /** owner: course-facts. The course prefix (brief + catalogue): it replaces the re-serialised profile. */
-  coursePrefix: CoursePrefixSource | null = null,
-): SelectionResult {
+type Failure = Extract<SelectionResult, { ok: false }>;
+const EMPTY = "There's no course material in this scope to study from yet.";
+const NOT_SPLIT = "The course material hasn't been split into passages yet. Try again after it syncs.";
+
+/** The scope both paths share: the course, its policy, and the resources a guide may draw on. */
+function guideScope(store: GuideStore, scope: PackScope) {
   const sources = new Map(store.sources().map((s) => [s.id, s]));
-  const included = courseInclusion(store);
-  const inCourse = store.resources().filter((r) => !r.deleted && r.courseId === scope.courseId && sources.has(r.sourceId));
+  // Every resource is read once; inclusion is built from the same list.
+  const all = store.resources();
+  const included = courseInclusion(readOnce(store, all));
+  const inCourse = all.filter((r) => !r.deleted && r.courseId === scope.courseId && sources.has(r.sourceId));
   const accountScope = inCourse.map((r) => sources.get(r.sourceId)!.accountScope).sort()[0];
-  if (!accountScope) return { ok: false, status: "empty", message: "There's no course material in this scope to study from yet.", courseRef: null };
+  if (!accountScope) return { ok: false, status: "empty", message: EMPTY, courseRef: null } satisfies Failure;
   const courseRef = `${accountScope}:${scope.courseId}`;
   const ref = { accountScope, courseId: scope.courseId };
   const course = inCourse.filter((r) => sources.get(r.sourceId)!.accountScope === accountScope);
@@ -77,7 +78,7 @@ export function selectGuideInputs(
     .sort((a, b) => b.version - a.version)[0];
   const policies = course.map((r) => effectiveCoursePolicy(intelligence, r));
   if (policies.some((p) => p.mode === "restricted"))
-    return { ok: false, status: "blocked", message: "This course restricts AI-made study material, so nothing was generated.", courseRef };
+    return { ok: false, status: "blocked", message: "This course restricts AI-made study material, so nothing was generated.", courseRef } satisfies Failure;
 
   // The scope: a module, or an assessment (its linked materials, else the whole course, searched by its stated scope).
   let scopeText = "The whole course";
@@ -85,7 +86,7 @@ export function selectGuideInputs(
   let linked: Set<string> | null = null;
   const assessment = scope.assessmentId ? store.assessments(ref).find((a) => a.id === scope.assessmentId) : undefined;
   if (scope.assessmentId) {
-    if (!assessment) return { ok: false, status: "empty", message: "That assessment isn't on the course map yet.", courseRef };
+    if (!assessment) return { ok: false, status: "empty", message: "That assessment isn't on the course map yet.", courseRef } satisfies Failure;
     const stated = store
       .assessmentScopes(assessment.id)
       .filter((s) => s.status !== "flagged")
@@ -102,8 +103,49 @@ export function selectGuideInputs(
     .filter((r) => !scope.moduleId || r.module?.id === scope.moduleId)
     .filter((r) => !linked || linked.has(r.id))
     .sort((a, b) => a.id.localeCompare(b.id));
-  if (!resources.length) return { ok: false, status: "empty", message: "There's no course material in this scope to study from yet.", courseRef };
+  if (!resources.length) return { ok: false, status: "empty", message: EMPTY, courseRef } satisfies Failure;
   const allowed = new Set(resources.map((r) => r.id));
+  return { ok: true as const, accountScope, courseRef, ref, label, intelligence, policies, scopeText, assessmentQuery, assessment, resources, allowed };
+}
+/** Whether any resource in scope has a usable passage: the check that ends `selectGuideInputs` empty. */
+function hasPassage(store: GuideStore, resources: Resource[], allowed: Set<string>): boolean {
+  for (const r of resources)
+    for (const listed of store.passages(r.id)) {
+      if (listed.redacted) continue;
+      const p = store.passage(listed.pid);
+      if (p && !p.passage.redacted && allowed.has(p.passage.resourceId) && p.text.trim()) return true;
+    }
+  return false;
+}
+
+/**
+ * What the guide view needs (its course and resources), decided exactly as `selectGuideInputs`
+ * decides it, without the topic searches, facts and passage text that only generation uses.
+ * Any passage a topic search could return is also in its resource's own list, so emptiness is
+ * the same.
+ */
+export function selectGuideScope(
+  store: GuideStore,
+  scope: PackScope,
+): { ok: true; courseRef: string; resources: Resource[] } | Failure {
+  const picked = guideScope(store, scope);
+  if (!picked.ok) return picked;
+  if (!hasPassage(store, picked.resources, picked.allowed))
+    return { ok: false, status: "empty", message: NOT_SPLIT, courseRef: picked.courseRef };
+  return { ok: true, courseRef: picked.courseRef, resources: picked.resources };
+}
+
+export function selectGuideInputs(
+  store: GuideStore,
+  kind: GuideKind,
+  scope: PackScope,
+  passageBudget = GUIDE_PASSAGE_BUDGET,
+  /** owner: course-facts. The course prefix (brief + catalogue): it replaces the re-serialised profile. */
+  coursePrefix: CoursePrefixSource | null = null,
+): SelectionResult {
+  const picked = guideScope(store, scope);
+  if (!picked.ok) return picked;
+  const { accountScope, courseRef, ref, label, intelligence, policies, scopeText, assessmentQuery, assessment, resources, allowed } = picked;
 
   // Topics: the course's own map (never generation-made concepts, so the key stays stable), the profile, the facts.
   const map = store.learning.concepts(courseRef).filter((c) => c.status === "active" && c.origin !== "model");
@@ -160,7 +202,7 @@ export function selectGuideInputs(
     passages.push({ sourceId: `p${pid}`, text: p.text });
     resourceOf.set(`p${pid}`, p.passage.resourceId);
   }
-  if (!passages.length) return { ok: false, status: "empty", message: "The course material hasn't been split into passages yet. Try again after it syncs.", courseRef };
+  if (!passages.length) return { ok: false, status: "empty", message: NOT_SPLIT, courseRef };
 
   // Canonical dates (timeline only, so a deadline change doesn't invalidate the other guides).
   const dates = new Set<string>();

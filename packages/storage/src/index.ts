@@ -93,6 +93,12 @@ import {
 
 export const SCHEMA_VERSION = PRIVACY_SCHEMA_VERSION; // owner: privacy (v14, after main's v13)
 const MAX_ATTEMPTS = 3;
+/**
+ * A resource row's latest observation per field, as one JSON object column. It walks the
+ * (resource_id, field) primary key, so its key order is the per-resource query's order.
+ */
+const FIELD_SEEN = `(SELECT json_group_object(f.field, f.observed_at) FROM field_observations f
+  WHERE f.resource_id = r.id) AS field_seen`;
 /** The latest pre-migration backup, beside the database (one kept; purge deletes it). */
 export function migrationBackupPath(path: string): string {
   return `${resolve(path)}.pre-v${SCHEMA_VERSION}.bak`;
@@ -559,7 +565,7 @@ export function createStore(
 
   function resourceRow(id: string): Row | undefined {
     return prepare(
-        `SELECT r.*, v.payload, COALESCE(c.completed, 0) AS completed
+        `SELECT r.*, v.payload, COALESCE(c.completed, 0) AS completed, ${FIELD_SEEN}
       FROM resources r JOIN resource_versions v ON v.resource_id = r.id AND v.version = r.version
       LEFT JOIN completions c ON c.resource_id = r.id WHERE r.id = ?`,
       )
@@ -577,13 +583,17 @@ export function createStore(
       capturedAt: String(row.captured_at),
       deleted: Boolean(row.deleted),
       completed: Boolean(row.completed),
-      fieldLastSeen: Object.fromEntries(
-        (
-          prepare(
-            "SELECT field, observed_at FROM field_observations WHERE resource_id = ?",
-          ).all(String(row.id)) as Row[]
-        ).map((v) => [String(v.field), String(v.observed_at)]),
-      ),
+      // A list query selects FIELD_SEEN, so a list is one statement, not one more per resource.
+      fieldLastSeen:
+        typeof row.field_seen === "string"
+          ? (JSON.parse(row.field_seen) as Record<string, string>)
+          : Object.fromEntries(
+              (
+                prepare(
+                  "SELECT field, observed_at FROM field_observations WHERE resource_id = ?",
+                ).all(String(row.id)) as Row[]
+              ).map((v) => [String(v.field), String(v.observed_at)]),
+            ),
     };
   }
 
@@ -1519,7 +1529,7 @@ export function createStore(
     },
 
     resources(search?: string): Resource[] {
-      const base = `SELECT r.*, v.payload, COALESCE(c.completed, 0) AS completed
+      const base = `SELECT r.*, v.payload, COALESCE(c.completed, 0) AS completed, ${FIELD_SEEN}
         FROM resources r JOIN resource_versions v ON v.resource_id = r.id AND v.version = r.version
         LEFT JOIN completions c ON c.resource_id = r.id`;
       if (!search?.trim())
@@ -2334,7 +2344,7 @@ export function createStore(
     sourceResources(sourceId: string) {
       return (
         prepare(
-          `SELECT r.*, v.payload, COALESCE(c.completed, 0) AS completed
+          `SELECT r.*, v.payload, COALESCE(c.completed, 0) AS completed, ${FIELD_SEEN}
            FROM resources r JOIN resource_versions v ON v.resource_id = r.id AND v.version = r.version
            LEFT JOIN completions c ON c.resource_id = r.id WHERE r.source_id = ? AND r.deleted = 0 ORDER BY r.external_id`,
         ).all(sourceId) as Row[]
@@ -2343,7 +2353,7 @@ export function createStore(
     courseResources(course: CourseRef) {
       return (
         prepare(
-          `SELECT r.*, v.payload, COALESCE(c.completed, 0) AS completed, s.scope AS source_scope
+          `SELECT r.*, v.payload, COALESCE(c.completed, 0) AS completed, s.scope AS source_scope, ${FIELD_SEEN}
            FROM resources r JOIN resource_versions v ON v.resource_id = r.id AND v.version = r.version
            JOIN sources s ON s.id = r.source_id LEFT JOIN completions c ON c.resource_id = r.id
            WHERE s.account_scope = ? AND s.course_id = ? AND r.deleted = 0 ORDER BY r.source_id, r.external_id`,

@@ -20,7 +20,7 @@ import { tagOptions } from "../../../learning/src/insights/option-tags";
 import { GUIDE_PACKS } from "./packs";
 import { reviewAny, type ConceptMapDoc, type DropCode, type GuideDoc, type GuideDrop, type ReviewStats } from "./review";
 import { personalize, type ConceptMapView, type GuideView, type PersonalSignals } from "./personalize";
-import { selectGuideInputs, type GuideSelection, type GuideStore } from "./inputs";
+import { selectGuideInputs, selectGuideScope, type GuideSelection, type GuideStore } from "./inputs";
 import type { CoursePrefixSource } from "../../../core/src/course-facts/prefix"; // owner: course-facts
 import { changedSources, putLatest, readLatest, withoutChangedSpans, type SourceChange } from "./latest";
 import type { ConceptMapOutput, GuideInput, GuideKind, GuideOutput } from "./schema";
@@ -331,9 +331,9 @@ export type GuideViewResult =
  * changed sources; a new one is made only when the student asks (the pack command).
  */
 export function guideView(deps: Pick<GuideDeps, "store" | "now">, kind: GuideKind, scope: PackScope): GuideViewResult {
-  const picked = selectGuideInputs(deps.store, kind, scope);
-  if (!picked.ok) return { op: "guide.view", status: picked.status, pack: kind, courseRef: picked.courseRef, message: picked.message, modelCalls: 0 };
-  const sel = picked.selection;
+  // The view needs the scope's course and resources only; generation's inputs are not selected here.
+  const sel = selectGuideScope(deps.store, scope);
+  if (!sel.ok) return { op: "guide.view", status: sel.status, pack: kind, courseRef: sel.courseRef, message: sel.message, modelCalls: 0 };
   const latest = readLatest(deps.store.learning, kind, sel.courseRef, scope);
   if (!latest)
     return { op: "guide.view", status: "missing", pack: kind, courseRef: sel.courseRef, message: `There's no ${NOUN[kind]} for this material yet. Generate one first.`, modelCalls: 0 };

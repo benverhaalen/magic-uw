@@ -24,6 +24,7 @@ import { maySend, resolveDeadline } from "@magic/domain";
 import type { JudgmentGateway } from "@magic/ai";
 import { contentCategories, courseIncluded, courseInclusion } from "./access";
 import { evidenceFor } from "./evidence";
+import { readOnce } from "./graph/read-once";
 import { rebaseFixture } from "./fixture-dates";
 export { rebaseFixture } from "./fixture-dates";
 import { clearOutgoingProjections } from "./identity";
@@ -189,8 +190,8 @@ export function createCore(store: Store, options: CoreOptions) {
     now,
   });
   // end owner: drain
-  function profileFor(r: Resource): CourseIntelligence | undefined {
-    const source = store.sources().find((s) => s.id === r.sourceId);
+  function profileFor(r: Resource, sources = store.sources()): CourseIntelligence | undefined {
+    const source = sources.find((s) => s.id === r.sourceId);
     return source
       ? store
           .courseIntelligence()
@@ -203,7 +204,9 @@ export function createCore(store: Store, options: CoreOptions) {
   }
   function snapshot(search?: string): Snapshot {
     // owner: T15. The full snapshot stays for debugging; views use scoped queries (queries.ts).
-    const resources = resourceViews(store, store.resources(search));
+    // Unsearched, the list is every resource: the views' evidence reuses it (one full read).
+    const listed = store.resources(search);
+    const resources = resourceViews(store, listed, search?.trim() ? undefined : listed);
     const sources = store.sources();
     // owner: course-facts. A course waiting on a queued or running `course.facts` job is pending.
     const factsQueued = new Set(
@@ -214,8 +217,9 @@ export function createCore(store: Store, options: CoreOptions) {
     );
     // end owner: course-facts
     return {
+      // One sources read for every profile (it was read again per profile).
       courseIntelligence: store.courseIntelligence().map((p) => ({
-        ...intelligenceView(p, store.sources(), now()),
+        ...intelligenceView(p, sources, now()),
         semantic: semanticAttempts.get(
           `${p.id}:${p.inputHash}:${options.courseExtractor?.version ?? "v1"}`,
         ) ?? {
@@ -263,24 +267,30 @@ export function createCore(store: Store, options: CoreOptions) {
   ): ContextManifest {
     const r = store.resource(id);
     if (!r || r.deleted) throw new Error("This item is no longer available.");
+    // One call's reads: every resource once (evidence and inclusion share it), privacy and sources once.
+    const all = store.resources();
+    const view = readOnce(store, all);
+    const included = courseInclusion(store, all);
+    const privacy = store.privacy();
+    const sources = store.sources();
     // An explicit allowlist: no source URLs, cookies, credentials, account IDs, grades, or student drafts.
     const supporting =
       recipient === "jev"
         ? []
-        : evidenceFor(store)
+        : evidenceFor(view)
             .supporting(r)
             .filter(
               (s) =>
-                courseIncluded(store, s) &&
+                included(s) &&
                 contentCategories(s).every(
-                  (c) => maySend(store.privacy(), recipient, [c]).allowed,
+                  (c) => maySend(privacy, recipient, [c]).allowed,
                 ),
             );
-    const profile = recipient === "jev" ? undefined : profileFor(r);
+    const profile = recipient === "jev" ? undefined : profileFor(r, sources);
     const effectivePolicy = effectiveCoursePolicy(profile, r);
     if (
       profile &&
-      intelligenceView(profile, store.sources(), now()).freshness !==
+      intelligenceView(profile, sources, now()).freshness !==
         "current_capture" &&
       effectivePolicy.mode === "allowed"
     )
@@ -290,15 +300,16 @@ export function createCore(store: Store, options: CoreOptions) {
       .filter((s): s is Resource => !!s && !s.deleted);
     const policyAllowed = policyResources.every(
       (s) =>
-        courseIncluded(store, s) &&
+        included(s) &&
         contentCategories(s).every(
-          (c) => maySend(store.privacy(), recipient, [c]).allowed,
+          (c) => maySend(privacy, recipient, [c]).allowed,
         ),
     );
     // Hosted recipients get identity-scrubbed free text; this payload is both
     // the preview and the exact outgoing body. Each field is scrubbed on its own
     // so citations can be re-validated per source field.
-    const scrub = protectedPayloadScrubber(store, recipient !== "local", store.sources().find((s) => s.id === r.sourceId)?.accountScope, `context:${recipient}:${r.courseId}`); // owner: privacy
+    // The scrubber's roster reads the call's list too (it only reads).
+    const scrub = protectedPayloadScrubber(view, recipient !== "local", sources.find((s) => s.id === r.sourceId)?.accountScope, `context:${recipient}:${r.courseId}`); // owner: privacy
     // owner: privacy: teaching material keeps its content; messages, mail and notes get every detector.
     const cls = classOf(r);
     scrub.prime([[r.courseName, "teaching"], [r.title, cls], [r.text, cls], ...supporting.flatMap((s): [string, ContentClass][] => [[s.title, classOf(s)], [s.text, classOf(s)]])], r.courseId);
@@ -326,8 +337,8 @@ export function createCore(store: Store, options: CoreOptions) {
         ),
       ),
     ];
-    const permission = maySend(store.privacy(), recipient, categories);
-    if (!courseIncluded(store, r)) {
+    const permission = maySend(privacy, recipient, categories);
+    if (!included(r)) {
       permission.allowed = false;
       permission.reason =
         "This course is excluded. Include it in Sources before sharing its data.";

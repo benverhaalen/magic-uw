@@ -11,6 +11,7 @@
     "dev": "pnpm build && electron apps/desktop",
     "check": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
+    "test:budgets": "tsx --test tests/perf/budgets.test.ts",
     "build": "pnpm check && tsx scripts/build.ts",
     "gateway": "node --env-file-if-exists=apps/gateway/.env --import tsx apps/gateway/src/index.ts",
     "fixture": "tsx scripts/inspect-fixture.ts",

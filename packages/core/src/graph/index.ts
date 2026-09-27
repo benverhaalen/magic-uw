@@ -9,9 +9,11 @@ export {
   buildCourseIndex,
   courseIndex,
   courseOfSource,
+  graphCall,
   isPipelineStore,
   normaliseUrl,
   type CourseIndex,
+  type GraphCall,
   type PipelineStore,
   type Res,
 } from "./course-index";
