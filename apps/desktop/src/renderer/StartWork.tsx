@@ -83,12 +83,14 @@ function PreparedWork({ resource, refreshKey, compact, action }: Props) {
       if (mounted.current) setError(cause instanceof Error ? cause.message : "Could not open this work. Try again.");
     } finally { busy.current = false; if (mounted.current) setPending(false); }
   };
+  const assignmentOnly = Boolean(set && set.items.length === 1 && set.items[0]?.role === "instructions");
+  const launchLabel = assignmentOnly ? "Open assignment" : "Start work";
   const unavailable = pending || !set || !window.magic.startWork || undefined;
   const destinations = set ? destinationSummary(set) : error ? "Destinations unavailable." : "Preparing what opens…";
   return <section ref={container} className={compact ? 'magic-start-work magic-start-work--compact' : action ? 'magic-start-work magic-start-work--action' : 'magic-start-work'} aria-label={compact || action ? `Prepared work: ${resource.title}` : undefined} aria-labelledby={compact || action ? undefined : heading} data-place-anchor={compact ? `work-${resource.id}` : undefined}>
     {!compact && !action && <h3 id={heading}>Start work</h3>}
     {compact ? <div className={`home-work-card ${compact.className}`}>
-      <button className="home-work-row" data-focus-key={`work-${resource.id}`} aria-label={`Start work: ${resource.title}`} aria-describedby={described} title={set ? `Start work. Opens ${set.items.map(item => item.title).join(" + ")}` : undefined} aria-busy={pending || undefined} aria-disabled={unavailable} onClick={() => void launch()}>
+      <button className="home-work-row" data-focus-key={`work-${resource.id}`} aria-label={`${launchLabel}: ${resource.title}`} aria-describedby={described} title={set ? `${launchLabel}. ${set.items.map(item => item.title).join(" + ")}` : undefined} aria-busy={pending || undefined} aria-disabled={unavailable} onClick={() => void launch()}>
         {compact.summary}
         <span className="home-work-marks" aria-hidden="true">{pending ? <span className="home-work-opening">Opening…</span> : set ? <>
           {set.items.slice(0, 3).map(item => <span key={item.resourceId} className={`home-work-mark home-work-mark--${item.target.kind}`}><Glyph name={item.target.kind === "file" ? "school" : "external"}/></span>)}
@@ -99,7 +101,7 @@ function PreparedWork({ resource, refreshKey, compact, action }: Props) {
       <span id={described} hidden>{[compact.description, destinations].filter(Boolean).join(". ")}</span>
     </div> : action ? <>
       <Action data-focus-key={`start-${resource.id}`} pending={pending} aria-disabled={unavailable} onClick={() => void launch()}>
-        <span>Start work<small>{destinations}</small></span><Glyph name="forward"/>
+        <span>{launchLabel}{!assignmentOnly && <small>{destinations}</small>}</span><Glyph name="forward"/>
       </Action>
     </> : set ? <>
       <ol className="magic-start-work__destinations" aria-label="Destinations prepared to open">
