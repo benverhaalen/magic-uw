@@ -62,8 +62,9 @@ test("fix-ai-scrub: context() reads the resources once per roster and returns th
     assert.equal(m.payload.text.split("\n\n")[0], expected, "the same scrubbed text");
     assert.equal(m.citationProjections?.length, 1);
     // Before: 5 reads (evidence, two course-inclusion checks, and the roster twice: the scrubber and
-    // the outgoing projection). After: the projection reuses the scrubber's roster.
-    assert.equal(perContext, 4, `store.resources() reads per context(): ${perContext}`);
+    // the outgoing projection). After: the projection reuses the scrubber's roster (4). The repeat
+    // sweep then made context() read one resource list and share it (tests/repeat-sweep.test.ts).
+    assert.equal(perContext, 1, `store.resources() reads per context(): ${perContext}`);
   } finally {
     await core.close();
   }

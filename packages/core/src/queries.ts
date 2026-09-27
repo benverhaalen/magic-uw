@@ -43,10 +43,12 @@ export function codeAssignmentKind(r: Pick<Resource, "kind" | "submissionTypes">
  * evidence does not read every resource a second time.
  */
 export function resourceViews(store: Store, list: Resource[], all?: Resource[]): ResourceView[] {
-  // Inclusion and the evidence share one full resource list (the caller's, or one read here).
-  const view = readOnce(store, all ?? store.resources());
+  // Inclusion and the evidence share one full resource list (the caller's, or one read here) and
+  // one sources read.
+  const sourceList = store.sources();
+  const view = Object.create(readOnce(store, all ?? store.resources()), { sources: { value: () => sourceList } }) as Store;
   const included = courseInclusion(view);
-  const sources = new Map(store.sources().map(source => [source.id, source]));
+  const sources = new Map(sourceList.map(source => [source.id, source]));
   const permitted = (resource: Resource) => !resource.deleted && included(resource) && sources.get(resource.sourceId)?.status !== "inaccessible";
   const evidence = evidenceFor(view, permitted);
   // The last kind judgment per resource, as findLast over the list would pick it, indexed once.
