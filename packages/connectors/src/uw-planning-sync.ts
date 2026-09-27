@@ -166,7 +166,7 @@ export async function syncUwPlanning(options: UwPlanningSyncOptions): Promise<Uw
     privateCaptures.push(health("uw_dars", accountScope, { kind: "audit_program", key: "saved-audits" }, urls.audits, "partial", "audit_term_unverified", "A current academic term could not be verified. Saved audit evidence was retained."));
   }
   // Any old report not explicitly refreshed loses freshness, never its records.
-  invalidated.push({ source: "uw_dars", status: "failed", code: "audit_not_reconfirmed" });
+  invalidated.push({ source: "uw_dars", status: "failed", code: deadline?.aborted ? "refresh_failed" : "audit_not_reconfirmed" });
   const rechecked = await recheck({ kind: "student-info" });
   if (rechecked.status !== "ok" || identity(rechecked.data) !== personId) {
     captures.push(health("uw_enroll", accountScope, { kind: "student_record", key: "connection:student-info" }, urls.student, "blocked", "account_recheck_failed", "The signed-in account changed or could not be rechecked. No new private records were saved; refresh after signing in."));

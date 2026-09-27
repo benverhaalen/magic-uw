@@ -629,6 +629,11 @@ function unavailable(
       : result?.status === "unsupported"
         ? "unsupported"
         : "failed";
+  // owner: planning-perf: a read the sync deadline cut off is named as unfinished.
+  if (result?.code === "refresh_failed")
+    return capture(context, scope, sourceUrl, [], "failed", [
+      { code: "refresh_failed", message: "The saved audit read did not finish before the refresh deadline; existing audit evidence was retained." },
+    ]);
   return capture(context, scope, sourceUrl, [], status, [
     {
       code: "saved_audit_read_unavailable",
