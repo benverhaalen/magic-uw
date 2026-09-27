@@ -137,6 +137,17 @@ test("order: syllabus first, then small text before large PDFs", async () => {
   }
 });
 
+test("reference-only: a video keeps its metadata and link and is never downloaded", async () => {
+  const run = await sync(ACQUISITION_APP, { files: 5, names: { 0: "Lecture 1.mp4" } });
+  try {
+    assert.equal(run.term.counts.downloads, 4);
+    assert.ok(!run.term.order.includes("Lecture 1.mp4"));
+    assert.equal(run.causes.reference_only, 1);
+  } finally {
+    await run.close();
+  }
+});
+
 test("Windows: parallel captures of one file id never fail on the rename", async () => {
   const directory = mkdtempSync(join(tmpdir(), "magic-fix-acq-rename-"));
   try {

@@ -17,6 +17,7 @@ export type DocumentCause =
   | "needs_ocr"
   | "unsupported_type"
   | "needs_sign_in"
+  | "reference_only"
   | "locked"
   | "network_error"
   | "timeout"

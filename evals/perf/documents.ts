@@ -71,7 +71,11 @@ function makeFiles(count: number, names: Record<number, string> = {}): Synthetic
         bytes: textPdf(Array.from({ length: 8 + (i % 60) }, (_, p) => `${topic} page ${p + 1}`)), updatedAt,
       });
     else files.push({ id, course, name: `scan-${i}.pdf`, type: "application/pdf", bytes: scannedPdf(`Scanned ${i}`), updatedAt });
-    if (names[i]) files[files.length - 1]!.name = names[i]!;
+    if (names[i]) {
+      const file = files[files.length - 1]!;
+      file.name = names[i]!;
+      if (/\.mp4$/i.test(file.name)) file.type = "video/mp4";
+    }
   }
   return files;
 }

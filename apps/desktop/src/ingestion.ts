@@ -778,6 +778,28 @@ export function createIngestion(
               });
               if (file.file?.locked)
                 throw new CanvasFailure("inaccessible", "file_locked");
+              // owner: acquisition: reference-only (docs/pipeline-details.md, storage policy): video
+              // and audio, and files over the size cap, keep their metadata and link; no download.
+              const referenceOnly =
+                /^(?:video|audio)\//i.test(value["content-type"] ?? "")
+                  ? ("reference_only" as const)
+                  : (value.size ?? 0) > settings.maxFileBytes
+                    ? ("too_large" as const)
+                    : undefined;
+              if (referenceOnly) {
+                trialLogDocument(
+                  documentTrialEvent({ cause: referenceOnly }, { hostClass: "unknown", status: "skipped", ms: performance.now() - fileStarted }),
+                );
+                save({
+                  source: documentSource,
+                  observedAt: now().toISOString(),
+                  complete: true,
+                  status: "ok",
+                  resources: [file],
+                  diagnostics: [causeDiagnostic({ cause: referenceOnly })],
+                });
+                continue;
+              }
               if (typeof raw.url !== "string")
                 throw new MaterialReadError("file_metadata_invalid");
               // owner: acquisition. "session": main fetches /courses/:cid/files/:id/download in
