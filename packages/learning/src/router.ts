@@ -1376,10 +1376,12 @@ export function createLearningRouter(
           const pool = currentPool(c, ref);
           const nothingPrepared = !pool.length && !cardPool(c, ref).length;
           if (nothingPrepared) return fail(op, EMPTY_POOL_MESSAGE);
+          // owner: study-prep. An item list replaces the topic filter; the session never widens beyond it.
+          const only = request.itemIds?.length ? new Set(request.itemIds) : null;
           const at = time().toISOString();
           const sessionId = crypto.randomUUID();
           if (request.mode === "flashcards") {
-            const entries = cardEntries(c, ref, topicSet);
+            const entries = cardEntries(c, ref, only ? null : topicSet).filter((e) => !only || only.has(e.x.item.id));
             if (!entries.length)
               return fail(op, "No checked cards cover the chosen topics yet.");
             const due = entries
@@ -1436,7 +1438,7 @@ export function createLearningRouter(
           }
           const mode = request.mode;
           const inScope = pool.filter(
-            (x) => !topicSet || topicSet.has(primaryConcept(x)),
+            (x) => (only ? only.has(x.item.id) : !topicSet || topicSet.has(primaryConcept(x))), // owner: study-prep: itemIds
           );
           if (!inScope.length)
             return fail(
