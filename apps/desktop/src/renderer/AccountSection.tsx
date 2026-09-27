@@ -1,16 +1,33 @@
 // owner: accounts. The My Magic UW account on the Data & AI page: sign in with an emailed code,
-// see whether this account has bought the app, buy on the website, sign out.
+// see this account's $5-a-month subscription, subscribe or manage it on the website, sign out.
 // Status only: nothing in the app is locked by it yet. See docs/accounts-and-payments.md.
 import { useCallback, useEffect, useState } from "react";
 import type { AccountStatus } from "@magic/contracts";
 
-const PURCHASE_TEXT: Record<string, string> = {
-  paid: "Bought. Thank you!",
-  "not-bought": "Not bought yet.",
-  refunded: "Refunded. The app is no longer bought on this account.",
-  "test-only": "Test purchase only. It doesn't count as buying the app.",
-  unknown: "Couldn't confirm the purchase.",
-};
+const day = (iso?: string) => (iso ? new Date(iso).toLocaleDateString(undefined, { dateStyle: "long" }) : "");
+
+function subscriptionText(status: Extract<AccountStatus, { state: "signed-in" }>): string {
+  switch (status.subscription) {
+    case "active":
+      return status.until ? `Subscribed. Renews on ${day(status.until)}.` : "Subscribed. Thank you!";
+    case "cancelling":
+      return status.until ? `Cancelled. You have access until ${day(status.until)}.` : "Cancelled. Access continues to the end of the month.";
+    case "past-due":
+      return "Your last payment didn't go through. Update your card on the website.";
+    case "paused":
+      return "Your subscription is paused.";
+    case "on-hold":
+      return "Your subscription is on hold because payments didn't go through.";
+    case "ended":
+      return "Your subscription has ended.";
+    case "not-subscribed":
+      return "Not subscribed yet. $5 a month, cancel anytime.";
+    case "test-only":
+      return "Test subscription only. It doesn't count.";
+    default:
+      return "Couldn't confirm the subscription.";
+  }
+}
 
 export function AccountSection() {
   const bridge = window.magic?.account;
@@ -83,8 +100,8 @@ export function AccountSection() {
       {status.state === "signed-out" ? (
         <>
           <p>
-            Sign in with your My Magic UW account to see whether you've bought the app. Only your
-            email is sent to the account server; no coursework is.
+            Sign in with your My Magic UW account to see your subscription. Only your email is sent
+            to the account server; no coursework is.
           </p>
           {step === "email" ? (
             <form
@@ -153,7 +170,7 @@ export function AccountSection() {
             Signed in as <strong>{status.email || "your account"}</strong>.
           </p>
           <p>
-            <strong>{PURCHASE_TEXT[status.purchase]}</strong>
+            <strong>{subscriptionText(status)}</strong>
             {status.offline && (
               <span className="small muted">
                 {" "}
@@ -163,11 +180,15 @@ export function AccountSection() {
             )}
           </p>
           <div className="inline-actions">
-            {status.purchase !== "paid" && (
-              <button className="button primary" disabled={busy} onClick={() => void act(() => bridge.buy())}>
-                Buy on the website
-              </button>
-            )}
+            <button
+              className={status.entitled ? "button" : "button primary"}
+              disabled={busy}
+              onClick={() => void act(() => bridge.buy())}
+            >
+              {status.entitled || status.subscription === "paused" || status.subscription === "on-hold"
+                ? "Manage on the website"
+                : "Subscribe on the website"}
+            </button>
             <button className="button" disabled={busy} onClick={() => void act(refresh)}>
               Check again
             </button>

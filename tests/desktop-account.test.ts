@@ -16,8 +16,10 @@ function memoryVault() {
   };
 }
 
-/** A stand-in for Supabase Auth and the entitlements table. */
-function fakeServer(options: { entitlement?: { status: string; test_mode: boolean } | null } = {}) {
+/** A stand-in for Supabase Auth and the subscription_access view. */
+type Row = { status: string; test_mode: boolean; renews_at?: string | null; ends_at?: string | null; entitled: boolean };
+
+function fakeServer(options: { entitlement?: Row | null } = {}) {
   const state = {
     offline: false,
     entitlement: options.entitlement === undefined ? null : options.entitlement,
@@ -41,7 +43,7 @@ function fakeServer(options: { entitlement?: { status: string; test_mode: boolea
     if (url.pathname === "/auth/v1/verify") return body?.token === "123456" ? session() : json(403, { error_code: "otp_expired" });
     if (url.pathname === "/auth/v1/token") return state.refreshRejected ? json(400, { error_code: "refresh_token_not_found" }) : session();
     if (url.pathname === "/auth/v1/logout") return new Response(null, { status: 204 });
-    if (url.pathname === "/rest/v1/entitlements") {
+    if (url.pathname === "/rest/v1/subscription_access") {
       if (!headers.Authorization?.startsWith("Bearer access-")) return json(401, {});
       return json(200, state.entitlement ? [state.entitlement] : []);
     }
@@ -84,36 +86,57 @@ test("bad input never reaches the server; a wrong code is reported as such", asy
   assert.deepEqual(await account.verifyCode("student@wisc.edu", "999999"), { signedIn: false, reason: "wrong-code" });
 });
 
-test("status reads the account's own entitlement: paid, not bought, refunded, test only", async () => {
-  for (const [entitlement, purchase, entitled] of [
-    [{ status: "paid", test_mode: false }, "paid", true],
-    [null, "not-bought", false],
-    [{ status: "refunded", test_mode: false }, "refunded", false],
-    [{ status: "paid", test_mode: true }, "test-only", false],
+test("status names the account's own subscription; access comes from the server's entitled flag", async () => {
+  const renews = "2026-10-27T12:00:00.000Z";
+  for (const [entitlement, subscription, entitled, until] of [
+    [{ status: "active", test_mode: false, renews_at: renews, entitled: true }, "active", true, renews],
+    [null, "not-subscribed", false, undefined],
+    [{ status: "cancelled", test_mode: false, ends_at: renews, entitled: true }, "cancelling", true, renews],
+    [{ status: "past_due", test_mode: false, renews_at: renews, entitled: true }, "past-due", true, renews],
+    [{ status: "expired", test_mode: false, entitled: false }, "ended", false, undefined],
+    [{ status: "unpaid", test_mode: false, entitled: false }, "on-hold", false, undefined],
+    [{ status: "active", test_mode: true, entitled: false }, "test-only", false, undefined],
   ] as const) {
     const { account } = await signedIn({ entitlement });
     const status = await account.status();
     assert.equal(status.state, "signed-in");
-    assert.deepEqual(status.state === "signed-in" && { purchase: status.purchase, entitled: status.entitled, offline: status.offline }, { purchase, entitled, offline: false });
+    assert.deepEqual(
+      status.state === "signed-in" && { subscription: status.subscription, entitled: status.entitled, until: status.until, offline: status.offline },
+      { subscription, entitled, until, offline: false },
+    );
   }
 });
 
-test("offline, a confirmed purchase keeps counting for the grace period, then becomes unknown", async () => {
+test("offline, a confirmed subscription keeps counting for the grace period, then becomes unknown", async () => {
   let clock = 1_800_000_000_000;
-  const { account, server } = await signedIn({ entitlement: { status: "paid", test_mode: false } }, () => clock);
+  const { account, server } = await signedIn({ entitlement: { status: "active", test_mode: false, entitled: true } }, () => clock);
   assert.equal((await account.status()).state, "signed-in");
   server.state.offline = true;
   clock += OFFLINE_GRACE_MS - 60_000;
   const within = await account.status();
-  assert.deepEqual(within.state === "signed-in" && { purchase: within.purchase, entitled: within.entitled, offline: within.offline }, { purchase: "paid", entitled: true, offline: true });
+  assert.deepEqual(
+    within.state === "signed-in" && { subscription: within.subscription, entitled: within.entitled, offline: within.offline },
+    { subscription: "active", entitled: true, offline: true },
+  );
   clock += 120_000;
   const after = await account.status();
-  assert.deepEqual(after.state === "signed-in" && { purchase: after.purchase, entitled: after.entitled }, { purchase: "unknown", entitled: false });
+  assert.deepEqual(after.state === "signed-in" && { subscription: after.subscription, entitled: after.entitled }, { subscription: "unknown", entitled: false });
+});
+
+test("offline, a cancelled subscription stops counting at the end of its paid month", async () => {
+  let clock = Date.parse("2026-10-20T00:00:00Z");
+  const endsAt = "2026-10-27T00:00:00.000Z";
+  const { account, server } = await signedIn({ entitlement: { status: "cancelled", test_mode: false, ends_at: endsAt, entitled: true } }, () => clock);
+  await account.status();
+  server.state.offline = true;
+  clock = Date.parse("2026-10-28T00:00:00Z");
+  const after = await account.status();
+  assert.deepEqual(after.state === "signed-in" && { subscription: after.subscription, entitled: after.entitled }, { subscription: "ended", entitled: false });
 });
 
 test("an expired access token is refreshed with the stored refresh token, which rotates", async () => {
   let clock = 1_800_000_000_000;
-  const { account, vault, server } = await signedIn({ entitlement: { status: "paid", test_mode: false } }, () => clock);
+  const { account, vault, server } = await signedIn({ entitlement: { status: "active", test_mode: false, entitled: true } }, () => clock);
   clock += 2 * 60 * 60 * 1000;
   await account.status();
   assert.ok(server.state.requests.some((r) => r.path.startsWith("/auth/v1/token") && r.body?.refresh_token === "refresh-1"));
@@ -128,7 +151,7 @@ test("a sign-in the server no longer accepts is forgotten; sign-out clears every
   assert.deepEqual(await first.account.status(), { state: "signed-out" });
   assert.equal([...first.vault.values.keys()].some((k) => k.startsWith("account:")), false);
 
-  const second = await signedIn({ entitlement: { status: "paid", test_mode: false } });
+  const second = await signedIn({ entitlement: { status: "active", test_mode: false, entitled: true } });
   await second.account.status();
   await second.account.signOut();
   assert.ok(second.server.state.requests.some((r) => r.path.startsWith("/auth/v1/logout")));

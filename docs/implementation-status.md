@@ -128,7 +128,7 @@ One row per feature: its status, where it is, and the evidence behind it. **Chec
 |---|---|---|---|
 | Desktop app | integrated | `main` (`apps/desktop`) | development build; no signed installer |
 | Website (Home, Pricing, About, FAQ, account) | built | `main` (`apps/web`, `vercel.json`) | deployment not claimed here |
-| Accounts and payments (email sign-in, Supabase, Lemon Squeezy webhook) | tested in isolation | `main` (`api/lemon-webhook.ts`, `supabase/`) | stand-ins only; not connected to a live store; price decided as $5 a month; the site still shows $10 one-time ([accounts and payments](accounts-and-payments.md)) |
+| Accounts and payments (email sign-in, Supabase, Lemon Squeezy webhook) | tested in isolation | `main` (`api/lemon-webhook.ts`, `supabase/`) | email sign-in live on the website; subscriptions ($5 a month) tested with stand-ins only, the subscription migration not yet applied, no store connected ([accounts and payments](accounts-and-payments.md)) |
 
 ## Open pull requests at this check (not reflected above)
 
