@@ -12,6 +12,8 @@
   --night-cardinal: #5c0b10; /* dark tiles; headings on tinted rooms */
   --star-yellow: #f7c440; /* stars and the vivid yellow rooms */
   --blush: #faebec; /* 8% cardinal on white: pale rooms and chips */
+  --rose: #f6d9da; /* 15% cardinal on white: Know */
+  --peach: #fde6d8; /* 15% ember orange on white: Act */
   /* The wizard's whole outfit (hat, robe, sleeves) reads this one variable; set it on :root to
      theme the wizard. Dark-background marks and tiles derive from it below. */
   --wizard-robe: var(--cardinal);
@@ -255,6 +257,12 @@ button {
 .bg-sky {
   background: var(--sky);
 }
+.bg-rose {
+  background: var(--rose);
+}
+.bg-peach {
+  background: var(--peach);
+}
 .bg-butter {
   background: var(--butter);
 }
@@ -425,13 +433,43 @@ button {
   background: var(--magic-surface-raised);
   transition-delay: 0.15s;
 }
-.win-desmos {
+.win-tex {
   left: 764px;
   top: 0;
   width: 348px;
   height: 420px;
   box-shadow: 0 24px 50px -20px rgba(41, 35, 31, 0.45);
   transition-delay: 0.3s;
+}
+.tex {
+  margin: 0;
+  padding: 14px 16px 14px 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink);
+  counter-reset: line;
+  overflow: hidden;
+  white-space: pre;
+}
+.tex-line {
+  display: block;
+  counter-increment: line;
+}
+.tex-line::before {
+  content: counter(line);
+  display: inline-block;
+  width: 36px;
+  padding-right: 12px;
+  text-align: right;
+  color: var(--magic-ink-muted);
+}
+.tex-cmd {
+  color: var(--cardinal);
+}
+.tex-comment {
+  color: var(--magic-ink-muted);
+  font-style: italic;
 }
 .win-bar {
   display: flex;
@@ -470,31 +508,6 @@ button {
 .win-book .win-body strong {
   font-weight: 500;
   font-size: 19px;
-}
-.desmos {
-  display: grid;
-  grid-template-columns: 130px 1fr;
-  height: 380px;
-}
-.desmos ol {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  border-right: 1px solid var(--rule);
-  font-family: var(--mono);
-  font-size: 12px;
-}
-.desmos li {
-  padding: 12px 10px;
-  border-bottom: 1px solid var(--rule);
-  border-left: 4px solid #e4572e;
-}
-.desmos li:first-child {
-  border-left-color: var(--blue);
-}
-.desmos svg {
-  width: 100%;
-  height: 100%;
 }
 .cursor {
   position: absolute;
@@ -539,10 +552,6 @@ button {
   color: var(--navy);
   font-size: 22px;
   cursor: pointer;
-}
-.arrow.dark {
-  background: var(--dark-fill);
-  color: #fff;
 }
 .cards {
   display: flex;
@@ -621,11 +630,6 @@ button {
   width: 22px;
   height: 22px;
 }
-.chip.local {
-  background: var(--gold-fill);
-  color: var(--ink);
-  font-weight: 700;
-}
 .ai .body {
   width: 100%;
   font-size: 17px;
@@ -645,9 +649,133 @@ button {
   text-align: center;
   scroll-margin-top: 20px;
 }
+.wizard-stage {
+  position: relative;
+  width: 81px;
+  height: 130px;
+  animation: wizStroll 7s ease-in-out infinite;
+}
 .closer .wizard {
   height: 130px;
   width: auto;
+}
+.wizard-stage .arm-left {
+  animation: wizWaveLoop 7s ease-in-out infinite;
+}
+.wizard-stage .arm-right {
+  animation: wizCastLoop 7s ease-in-out infinite;
+}
+.spell {
+  position: absolute;
+  left: 58px;
+  top: 34px;
+  width: 44px;
+  height: 44px;
+  pointer-events: none;
+}
+.spell svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.spark {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  fill: var(--star-yellow);
+  stroke: var(--ink);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+.spark.s1 {
+  animation: wizSpark 7s infinite;
+  transform: translate(6px, -6px) scale(0.5);
+}
+.spark.s2 {
+  animation: wizSpark 7s 0.18s infinite;
+  fill: var(--cardinal);
+}
+.spark.s3 {
+  animation: wizSpark 7s 0.36s infinite;
+}
+/* 0-26% stroll side to side, 26-46% wave, 52-80% raise the right arm and cast, then settle. */
+@keyframes wizStroll {
+  0%,
+  100% {
+    transform: translateX(0) rotate(0);
+  }
+  6% {
+    transform: translateX(-12px) translateY(-3px) rotate(-3deg);
+  }
+  12% {
+    transform: translateX(-18px) rotate(0);
+  }
+  19% {
+    transform: translateX(12px) translateY(-3px) rotate(3deg);
+  }
+  26% {
+    transform: translateX(0) rotate(0);
+  }
+  60% {
+    transform: translateY(0);
+  }
+  64% {
+    transform: translateY(-6px);
+  }
+  68% {
+    transform: translateY(0);
+  }
+}
+@keyframes wizWaveLoop {
+  0%,
+  26%,
+  46%,
+  100% {
+    transform: rotate(-40deg);
+  }
+  30%,
+  38% {
+    transform: rotate(25deg);
+  }
+  34%,
+  42% {
+    transform: rotate(-10deg);
+  }
+}
+@keyframes wizCastLoop {
+  0%,
+  50%,
+  84%,
+  100% {
+    transform: rotate(40deg);
+  }
+  58%,
+  76% {
+    transform: rotate(-55deg);
+  }
+  64% {
+    transform: rotate(-70deg);
+  }
+}
+@keyframes wizSpark {
+  0%,
+  61% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.2) rotate(0);
+  }
+  65% {
+    opacity: 1;
+    transform: translate(4px, -10px) scale(0.55) rotate(45deg);
+  }
+  72% {
+    opacity: 1;
+    transform: translate(14px, -22px) scale(0.35) rotate(120deg);
+  }
+  78%,
+  100% {
+    opacity: 0;
+    transform: translate(20px, -30px) scale(0.1) rotate(180deg);
+  }
 }
 .closer h2 {
   font-family: var(--serif);
@@ -857,7 +985,11 @@ button {
 }
 .about-hero .lede {
   max-width: 560px;
+  font-size: 18px;
   line-height: 1.55;
+}
+.about-hero .lede + .lede {
+  margin-top: -8px;
 }
 .about-hero .hero-art .wizard {
   height: 380px;
@@ -1243,11 +1375,8 @@ button {
   .stage .today {
     grid-row: span 2;
   }
-  .win-desmos {
+  .win-tex {
     grid-column: 1 / -1;
-  }
-  .desmos {
-    height: 260px;
   }
   .cursor {
     display: none;
