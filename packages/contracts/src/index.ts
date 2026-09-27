@@ -1222,6 +1222,23 @@ export const learningRequestSchema = z.discriminatedUnion("op", [
     end: z.number().int().min(0),
     activeSeconds: z.number().int().min(0).max(86_400),
   }),
+  // owner: analytics. Practice analytics (code-only rollups, 0 tokens). Course-scoped like the
+  // practice ops: the anchors are required and each is authorized by the worker's trusted resolver.
+  learningOp("analytics.assignment", {
+    courseId: id,
+    anchorIds: z.array(id).min(1).max(50),
+    assignmentId: id,
+  }),
+  learningOp("analytics.course", {
+    courseId: id,
+    anchorIds: z.array(id).min(1).max(50),
+    sessions: z.number().int().min(1).max(20).optional(),
+  }),
+  learningOp("analytics.agendaHints", {
+    courseId: id,
+    anchorIds: z.array(id).min(1).max(50),
+  }),
+  // end owner: analytics
 ]);
 export type LearningRequest = z.infer<typeof learningRequestSchema>;
 export type LearningOp = LearningRequest["op"];
