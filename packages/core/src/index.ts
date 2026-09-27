@@ -56,7 +56,7 @@ import { createJobRegistry, enqueueOnSave, type JobRegistry } from "./jobs/regis
 import { createPipelineLoop, type PipelineTiming } from "./jobs/pipeline";
 import { createEnrichJob, judgedHash } from "./jobs/enrich";
 // end owner: drain
-import { codeAssignmentKind, resourceViews, runQuery } from "./queries"; // owner: T15
+import { codeAssignmentKind, resourceViews, runQuery, withReads } from "./queries"; // owner: T15
 import { createNotifications } from "./notifications";
 /** The Jev kind question reads the title, about 2,000 characters, and the item's own stated policy, clipped. */
 const JEV_TEXT_CHARS = 2000;
@@ -206,12 +206,14 @@ export function createCore(store: Store, options: CoreOptions) {
     // owner: T15. The full snapshot stays for debugging; views use scoped queries (queries.ts).
     // Unsearched, the list is every resource: the views' evidence reuses it (one full read).
     const listed = store.resources(search);
-    const resources = resourceViews(store, listed, search?.trim() ? undefined : listed);
+    // One sources, links and jobs read each, shared by the views, the evidence and the fields below.
     const sources = store.sources();
+    const links = store.links();
+    const jobs = store.jobs();
+    const resources = resourceViews(withReads(store, { sources, links }), listed, search?.trim() ? undefined : listed);
     // owner: course-facts. A course waiting on a queued or running `course.facts` job is pending.
     const factsQueued = new Set(
-      store
-        .jobs()
+      jobs
         .filter((j) => j.kind === "course.facts" && (j.status === "pending" || j.status === "running"))
         .map((j) => (j as { subjectId?: string }).subjectId ?? ""),
     );
@@ -239,8 +241,8 @@ export function createCore(store: Store, options: CoreOptions) {
       resources,
       sources,
       privacy: store.privacy(),
-      links: store.links(),
-      jobs: store.jobs(),
+      links,
+      jobs,
       receipts: store.receipts(),
       attempts: store.attempts(),
       fixtureMode: sources.some((s) => s.kind === "fixture"),
@@ -269,10 +271,10 @@ export function createCore(store: Store, options: CoreOptions) {
     if (!r || r.deleted) throw new Error("This item is no longer available.");
     // One call's reads: every resource once (evidence and inclusion share it), privacy and sources once.
     const all = store.resources();
-    const view = readOnce(store, all);
-    const included = courseInclusion(store, all);
-    const privacy = store.privacy();
     const sources = store.sources();
+    const view = withReads(readOnce(store, all), { sources });
+    const included = courseInclusion(view, all);
+    const privacy = store.privacy();
     // An explicit allowlist: no source URLs, cookies, credentials, account IDs, grades, or student drafts.
     const supporting =
       recipient === "jev"

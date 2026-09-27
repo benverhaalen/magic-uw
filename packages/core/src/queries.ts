@@ -42,6 +42,17 @@ export function codeAssignmentKind(r: Pick<Resource, "kind" | "submissionTypes">
  * the caller's own unsearched `store.resources()` from this call, when it has one, so the
  * evidence does not read every resource a second time.
  */
+/**
+ * The store with this call's own sources, links or jobs read reused, so the evidence and inclusion
+ * helpers don't read them again (each is read-only within one call).
+ */
+export function withReads(store: Store, reads: { sources?: ReturnType<Store["sources"]>; links?: ReturnType<Store["links"]>; jobs?: ReturnType<Store["jobs"]> }): Store {
+  return Object.create(
+    store,
+    Object.fromEntries(Object.entries(reads).filter(([, value]) => value !== undefined).map(([key, value]) => [key, { value: () => value }])),
+  ) as Store;
+}
+
 export function resourceViews(store: Store, list: Resource[], all?: Resource[]): ResourceView[] {
   const evidence = evidenceFor(all ? readOnce(store, all) : store);
   // The last kind judgment per resource, as findLast over the list would pick it, indexed once.
@@ -156,9 +167,11 @@ export function runQuery(store: Store, request: QueryRequest, context: QueryCont
     case "summary": {
       const sources = store.sources();
       const all = store.resources();
-      const views = resourceViews(store, all.filter((r) => r.kind === "assignment"), all);
+      // This call's sources read is shared with the evidence and inclusion below.
+      const shared = withReads(store, { sources });
+      const views = resourceViews(shared, all.filter((r) => r.kind === "assignment"), all);
       // Inclusion is the same for every resource of one course: built once from this call's list.
-      const included = courseInclusion(readOnce(store, all));
+      const included = courseInclusion(readOnce(shared, all));
       const courses = new Map<string, { accountScope: string; courseId: string; courseName: string; resources: number; open: number; nextDue: string | null; included: boolean }>();
       const scopeOf = new Map(sources.map((s) => [s.id, s.accountScope]));
       for (const r of all) {
@@ -217,7 +230,8 @@ export function runQuery(store: Store, request: QueryRequest, context: QueryCont
     }
     case "resources": {
       const offset = decode(request.cursor, isOffset)?.o ?? 0;
-      const scopes = new Map(store.sources().map((s) => [s.id, s.accountScope]));
+      const sources = store.sources();
+      const scopes = new Map(sources.map((s) => [s.id, s.accountScope]));
       const kinds = request.kinds ? new Set<string>(request.kinds) : undefined;
       const listed = store.resources(request.search);
       const rows = listed
@@ -228,7 +242,7 @@ export function runQuery(store: Store, request: QueryRequest, context: QueryCont
             (!kinds || kinds.has(r.kind)),
         );
       // Unsearched, the list read above is every resource: the evidence reuses it.
-      const views = resourceViews(store, rows, request.search?.trim() ? undefined : listed);
+      const views = resourceViews(withReads(store, { sources }), rows, request.search?.trim() ? undefined : listed);
       const limit = request.limit ?? 50;
       const page = views.slice(offset, offset + limit).map(summarize);
       return {
@@ -241,11 +255,13 @@ export function runQuery(store: Store, request: QueryRequest, context: QueryCont
     case "resource": {
       const r = store.resource(request.id);
       if (!r || r.deleted) throw new Error("This item is no longer available.");
-      const [view] = resourceViews(store, [r]);
+      // One links read, shared by the evidence and this item's own links.
+      const links = store.links();
+      const [view] = resourceViews(withReads(store, { links }), [r]);
       return {
         view: "resource",
         resource: view!,
-        links: store.links().filter((l) => l.fromId === r.id || l.toId === r.id),
+        links: links.filter((l) => l.fromId === r.id || l.toId === r.id),
         changes: store.changes({ resourceId: r.id, limit: 50 }),
       };
     }
