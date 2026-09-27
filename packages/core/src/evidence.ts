@@ -7,16 +7,18 @@ import type {
 } from "@magic/contracts";
 import { proseDeadlines } from "./deadline-evidence";
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
-function normalized(url: string) {
+function normalized(url: string, courseId: string) {
   try {
     const u = new URL(url);
     u.hash = "";
+    const scopedCourse = /^\/courses\/(\d+)\/files\//.exec(u.pathname)?.[1];
+    if (scopedCourse && scopedCourse !== courseId) return u.href;
     if (
       u.origin === "https://canvas.wisc.edu" &&
-      /^\/(courses\/\d+\/)?files\/\d+(\/download)?$/.test(u.pathname)
+      /^\/(courses\/\d+\/)?files\/\d+(\/(?:download|preview))?$/.test(u.pathname)
     ) {
       u.search = "";
-      u.pathname = u.pathname.replace(/\/download$/, "");
+      u.pathname = u.pathname.replace(/\/(?:download|preview)$/, "").replace(/^\/courses\/\d+/, "");
     }
     return u.href;
   } catch {
@@ -28,7 +30,7 @@ export function linkExactEvidence(store: Store) {
   const resources = store.resources().filter((r) => !r.deleted),
     sources = new Map(store.sources().map((s) => [s.id, s]));
   const key = (r: Resource, url = r.url) =>
-    `${sources.get(r.sourceId)?.accountScope}:${r.courseId}:${normalized(url)}`;
+    `${sources.get(r.sourceId)?.accountScope}:${r.courseId}:${normalized(url, r.courseId)}`;
   const byUrl = new Map<string, Resource[]>();
   for (const r of resources) {
     const k = key(r);

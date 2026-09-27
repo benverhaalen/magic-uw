@@ -17,6 +17,7 @@ import { IngestionControls, McpConnections } from "./IngestionControls";
 import { ConsentSetup, hasUwConsent, missingConsents } from "./consent/ConsentSetup";
 // owner: T81
 import { Onboarding, needsFirstRunSetup } from "./onboarding";
+import { CourseSpaceDetails } from "./CourseSpaceDetails";
 import { TodayRail } from "./TodayRail";
 
 type View =
@@ -1337,6 +1338,7 @@ function Sources({
       <IngestionControls snapshot={snapshot} busy={busy} run={run} />
       <section className="settings-section">
         <h2>Captured sources</h2>
+        <CourseSpaceDetails sources={snapshot.sources} revision={snapshot.sources.map(s => s.lastAttemptAt).join("|")} />
         <p className="muted">
           A successful check describes that capture. It does not guarantee that
           the source is still unchanged.
