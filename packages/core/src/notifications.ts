@@ -166,11 +166,18 @@ export function createNotifications(store: Store, deps: NotificationDeps) {
         .map((c) => c.resourceId),
     );
     const byId = new Map(all.map((v) => [v.id, v]));
+    // Same backfill guard as the feed: a later read can record "new" for an old message the
+    // first read missed; judging it would spend budget on something the bell never shows.
+    const windowStart = nowMs() - NOTIFICATION_WINDOW_MS;
     const fresh = [...ids]
       .map((id) => byId.get(id))
       .filter(
         (v): v is ResourceView =>
-          !!v && !v.deleted && v.kind === "message" && included(v),
+          !!v &&
+          !v.deleted &&
+          v.kind === "message" &&
+          included(v) &&
+          !(v.createdAt && Date.parse(v.createdAt) < windowStart),
       );
     const announcements = fresh.filter(
       (v) =>
@@ -272,7 +279,7 @@ export function createNotifications(store: Store, deps: NotificationDeps) {
     if (status().status !== "on") return;
     const all = resourceViews(store, store.resources());
     // One inclusion snapshot per pass: the per-call helper reloads every resource.
-    const included = courseInclusion(store);
+    const included = courseInclusion(store, all);
     // Announcements first, then the newest email; the gateway budget bounds the rest.
     for (const job of jobs(all, included).slice(0, TRIAGE_PER_WAKE)) {
       if (deps.closed()) return;
@@ -355,8 +362,9 @@ export function createNotifications(store: Store, deps: NotificationDeps) {
     }
   }
 
-  function feed(): NotificationFeed {
-    const live = resourceViews(store, store.resources());
+  /** `views`: every live resource view, when the caller has already built them (snapshot). */
+  function feed(views?: ResourceView[]): NotificationFeed {
+    const live = views ?? resourceViews(store, store.resources());
     const changes = store.changes({ since: since(), limit: 2000 });
     const liveIds = new Set(live.map((v) => v.id));
     // A removed item is no longer listed; its saved record still names what disappeared.
@@ -369,7 +377,8 @@ export function createNotifications(store: Store, deps: NotificationDeps) {
     ]
       .map((id) => store.resource(id))
       .filter((r): r is NonNullable<typeof r> => !!r);
-    const all = [...live, ...resourceViews(store, removed)];
+    // Building views reads the whole workspace, so skip it when nothing was removed.
+    const all = removed.length ? [...live, ...resourceViews(store, removed)] : live;
     const triage: Record<string, MessageTriageJudgment> = {};
     const mailTriage: Record<string, MailTriageJudgment> = {};
     const byId = new Map(live.map((v) => [v.id, v]));
@@ -388,7 +397,7 @@ export function createNotifications(store: Store, deps: NotificationDeps) {
       resources: all,
       sources: store.sources(),
       baselineReadIds: store.baselineReadIds?.() ?? [],
-      included: courseInclusion(store),
+      included: courseInclusion(store, live),
       triage,
       mailTriage,
       triageStatus,

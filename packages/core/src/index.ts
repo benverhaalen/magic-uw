@@ -204,7 +204,8 @@ export function createCore(store: Store, options: CoreOptions) {
       // owner: T06: the renderer routes on these and main's consent gate mirrors them.
       consents: store.consents?.() ?? [],
       dayPlan: store.dayPlan(),
-      notifications: notifications.feed(),
+      // Unsearched snapshots already hold every live view; the feed reuses them.
+      notifications: notifications.feed(search ? undefined : resources),
     };
   }
   function context(

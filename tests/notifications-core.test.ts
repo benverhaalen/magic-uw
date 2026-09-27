@@ -297,3 +297,24 @@ test("a failed triage stops that wake instead of sending the next message into a
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("an old announcement recorded as new by a later read is not sent to Jev", async () => {
+  const w = workspace(everything);
+  try {
+    await w.core.execute(grant("uw"));
+    await w.core.execute(grant("jev"));
+    w.store.ingest(capture([assignment], "2026-09-26T20:00:00Z", "read-1"));
+    w.store.ingest(
+      capture(
+        [assignment, { ...announcement, createdAt: "2026-08-01T12:00:00Z" }],
+        "2026-09-27T01:00:00Z",
+        "read-2",
+      ),
+    );
+    w.core.wake();
+    await w.core.settled();
+    assert.equal(w.calls.length, 0);
+  } finally {
+    await w.close();
+  }
+});
