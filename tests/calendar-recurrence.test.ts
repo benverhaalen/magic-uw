@@ -164,3 +164,31 @@ test("expansion has an overall cap, and hitting it marks the read incomplete", a
   assert.ok(resources.length <= 3000, `bounded (${resources.length})`);
   assert.ok(diagnostics.some((d) => d.code === "recurrence_truncated"));
 });
+
+test("once the feed-wide cap is full, later series are not expanded at all", async () => {
+  const series = (i: number) => [
+    "BEGIN:VEVENT", `UID:h${i}@x`, `SUMMARY:Hourly ${i}`,
+    "DTSTART:20261026T000000Z", "DTEND:20261026T001500Z", "RRULE:FREQ=HOURLY", "END:VEVENT",
+  ];
+  const ics = (n: number) => ["BEGIN:VCALENDAR", "VERSION:2.0", ...Array.from({ length: n }, (_, i) => series(i)).flat(), "END:VCALENDAR", ""].join("\r\n");
+  // Count calls into the recurrence library's date computation.
+  // The same ES-module build the connectors package imports (its CommonJS build is a separate copy).
+  // A path variable keeps TypeScript from type-checking the library's untyped ESM file.
+  const parserPath = "../packages/connectors/node_modules/node-ical/node-ical.js";
+  const ical = (await import(parserPath)).default as { async: { parseICS(text: string): Promise<Record<string, { type?: string; rrule?: object }>> } };
+  const sample = Object.values(await ical.async.parseICS(ics(1))).find((x) => x?.type === "VEVENT") as { rrule: object };
+  const proto = Object.getPrototypeOf(sample.rrule) as { between: (...a: unknown[]) => unknown };
+  const original = proto.between;
+  let calls = 0;
+  proto.between = function (this: unknown, ...a: unknown[]) { calls++; return original.apply(this, a); };
+  try {
+    await parseCalendar(ics(10), {
+      canvasOrigin: "https://canvas.wisc.edu", accountScope: "a", courseId: "574", courseName: "C", now: () => NOW,
+      expandRecurrence: true,
+    });
+  } finally {
+    proto.between = original;
+  }
+  // 400 per series: the cap of 3,000 fills during the 8th series, so the 9th and 10th are skipped.
+  assert.equal(calls, 8);
+});

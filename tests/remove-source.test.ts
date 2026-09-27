@@ -83,3 +83,31 @@ test("removing one source leaves every other source untouched, and an unknown id
     assert.equal(store.resources().filter((r) => r.sourceId === "other-calendar" && !r.deleted).length, 2);
   });
 });
+
+test("removing the last source of a course also removes its course profile and plan entries for its items", () => {
+  withStore((store) => {
+    store.ingest(batch(3, "2026-09-26T12:00:00Z"));
+    const outlookProfile = () =>
+      store.courseIntelligence().filter((p) => p.accountScope === "local" && p.courseId === OUTLOOK_CALENDAR_COURSE_ID);
+    assert.equal(outlookProfile().length, 1, "ingest compiles a profile for the calendar");
+    const today = new Date().toISOString().slice(0, 10);
+    const meetingId = live(store)[0]!.id;
+    const block = { type: "prep" as const, resourceId: meetingId, title: "Prep", courseName: "Outlook calendar", startMin: 600, endMin: 630 };
+    store.setDayPlanEntry({ key: "prep:m", date: today, status: "accepted", block });
+    store.setDayPlanEntry({ key: "prep:other", date: today, status: "accepted", block: { ...block, resourceId: "unrelated" } });
+    store.removeSource(source.id);
+    assert.deepEqual(outlookProfile(), [], "no stale profile after disconnect");
+    assert.deepEqual(store.dayPlan().map((e) => e.key), ["prep:other"]);
+  });
+});
+
+test("when another source still covers the course, its profile is rebuilt instead of deleted", () => {
+  withStore((store) => {
+    store.ingest(batch(3, "2026-09-26T12:00:00Z"));
+    store.ingest({ ...batch(2, "2026-09-26T12:00:00Z"), source: { ...source, id: "second-calendar" } });
+    store.removeSource(source.id);
+    const profiles = store.courseIntelligence().filter((p) => p.courseId === OUTLOOK_CALENDAR_COURSE_ID);
+    assert.equal(profiles.length, 1);
+    assert.equal(store.resources().filter((r) => !r.deleted && r.courseId === OUTLOOK_CALENDAR_COURSE_ID).length, 2);
+  });
+});

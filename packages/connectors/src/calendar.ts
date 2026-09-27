@@ -189,8 +189,13 @@ export async function parseCalendar(
       const durationMs =
         event.end && event.start ? event.end.getTime() - event.start.getTime() : 0;
       const exdates = new Set(Object.keys(event.exdate ?? {}));
-      const occurrences = event.rrule.between(windowStart, windowEnd, true);
       const room = Math.max(0, MAX_EXPANDED_TOTAL - resources.length);
+      if (!room) {
+        // The feed-wide cap is full: skip the date computation entirely and record the gap.
+        diagnostics.push({ code: "recurrence_truncated", path: [], severity: "warning" });
+        continue;
+      }
+      const occurrences = event.rrule.between(windowStart, windowEnd, true);
       const limit = Math.min(MAX_OCCURRENCES, room);
       if (occurrences.length > limit)
         diagnostics.push({ code: "recurrence_truncated", path: [], severity: "warning" });

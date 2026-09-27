@@ -1141,13 +1141,32 @@ export function createStore(
     },
     removeSource(sourceId) {
       return transaction(() => {
+        const source = db
+          .prepare("SELECT account_scope,course_id FROM sources WHERE id=?")
+          .get(sourceId) as Row | undefined;
+        if (!source) return 0;
         const ids = (
           db.prepare("SELECT id FROM resources WHERE source_id=?").all(sourceId) as Row[]
         ).map((r) => String(r.id));
-        // The search index is not tied to resources by a foreign key; everything else cascades.
+        // The search index, course profiles, and day plan are not tied to resources by a
+        // foreign key; everything else cascades.
         for (const id of ids)
           db.prepare("DELETE FROM resource_search WHERE resource_id=?").run(id);
         db.prepare("DELETE FROM sources WHERE id=?").run(sourceId);
+        const account = String(source.account_scope),
+          course = String(source.course_id);
+        const remaining = db
+          .prepare("SELECT 1 FROM sources WHERE account_scope=? AND course_id=? LIMIT 1")
+          .get(account, course);
+        if (remaining) rebuildIntelligence(account, course, clock().toISOString());
+        else
+          db.prepare("DELETE FROM course_intelligence WHERE id=?").run(
+            courseIntelligenceId(account, course),
+          );
+        const removed = new Set(ids);
+        const plan = readDayPlan();
+        if (plan.some((e) => removed.has(e.block.resourceId)))
+          writeDayPlan(plan.filter((e) => !removed.has(e.block.resourceId)));
         return ids.length;
       });
     },
