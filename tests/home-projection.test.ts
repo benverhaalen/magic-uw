@@ -11,8 +11,8 @@ const sources=[{id:'canonical',accountScope:'a',courseId:'c',scope:'assignments'
   {id:'todo',accountScope:'a',courseId:'c',scope:'account-todo',kind:'canvas'},{id:'events',accountScope:'a',courseId:'c',scope:'account-upcoming-events',kind:'canvas'},{id:'feed',accountScope:'a',courseId:'c',scope:'calendar_feed',kind:'calendar'}] as SourceHealth[];
 const now='2026-09-27T18:00:00Z',tz='America/Chicago';
 const due=(value:string)=>resolveDeadline([{kind:'due',value,quote:'due_at',authority:'structured',scopeConfirmed:true}]);
-function resource(id:string,patch:Partial<ResourceView>={}):ResourceView {return {id,externalId:id,sourceId:'canonical',kind:'assignment',courseId:'c',courseName:'Course',title:`Task ${id}`,url:`https://canvas.example/courses/c/assignments/${id}`,text:'',contentHash:`hash-${id}`,version:1,observedAt:now,capturedAt:now,deleted:false,completed:false,submitted:false,points:null,policy:{mode:'unknown',evidence:''},deadlines:[],deadline:due('2026-09-28T18:00:00Z'),kindLabel:null,...patch};}
-function feedEntry(id:string,uid:string,patch:Partial<ResourceView>={}):ResourceView {return resource(id,{kind:'event',sourceId:'feed',externalId:`calendar:${id}`,url:'https://canvas.example/calendar?include_contexts=course_c',deadline:resolveDeadline([]),calendar:{uid,start:'2026-09-27',end:'2026-09-28',allDay:true,lastModified:null},...patch});}
+function resource(id:string,patch:Partial<ResourceView>={}):ResourceView {return {id,externalId:id,sourceId:'canonical',kind:'assignment',courseId:'c',courseName:'Course',title:`Task ${id}`,url:`https://canvas.wisc.edu/courses/c/assignments/${id}`,text:'',contentHash:`hash-${id}`,version:1,observedAt:now,capturedAt:now,deleted:false,completed:false,submitted:false,points:null,policy:{mode:'unknown',evidence:''},deadlines:[],deadline:due('2026-09-28T18:00:00Z'),kindLabel:null,...patch};}
+function feedEntry(id:string,uid:string,patch:Partial<ResourceView>={}):ResourceView {return resource(id,{kind:'event',sourceId:'feed',externalId:`calendar:${id}`,url:'https://canvas.wisc.edu/calendar?include_contexts=course_c',deadline:resolveDeadline([]),calendar:{uid,start:'2026-09-27',end:'2026-09-28',allDay:true,lastModified:null},...patch});}
 test('canonical provider identity keeps accounts separate and preserves independent conflicts/contributors',()=>{
  const a=resource('1');const alias=resource('alias',{externalId:'1',url:a.url,sourceId:'account',deadline:due('2026-09-29T18:00:00Z')});
  const other=resource('other-id',{externalId:'1',url:a.url,sourceId:'other'});
@@ -21,8 +21,8 @@ test('canonical provider identity keeps accounts separate and preserves independ
 });
 test('three captured representations of one assignment count once in Today; equal titles in another course stay separate',()=>{
  const tonight='2026-09-28T04:59:00Z';
- const reps=[1,2,3,4,5].flatMap(n=>[resource(`${n}`,{deadline:due(tonight)}),resource(`todo-${n}`,{sourceId:'todo',externalId:`todo-${n}`,url:`https://canvas.example/courses/c/assignments/${n}#submit`,deadline:due(tonight)}),resource(`event-${n}`,{sourceId:'events',externalId:`assignment_${n}`,url:`https://canvas.example/courses/c/assignments/${n}`,deadline:due(tonight)})]);
- const sameTitle=resource('elsewhere',{courseId:'d',title:'Task 1',url:'https://canvas.example/courses/d/assignments/1',deadline:due(tonight)});
+ const reps=[1,2,3,4,5].flatMap(n=>[resource(`${n}`,{deadline:due(tonight)}),resource(`todo-${n}`,{sourceId:'todo',externalId:`todo-${n}`,url:`https://canvas.wisc.edu/courses/c/assignments/${n}#submit`,deadline:due(tonight)}),resource(`event-${n}`,{sourceId:'events',externalId:`assignment_${n}`,url:`https://canvas.wisc.edu/courses/c/assignments/${n}`,deadline:due(tonight)})]);
+ const sameTitle=resource('elsewhere',{courseId:'d',title:'Task 1',url:'https://canvas.wisc.edu/courses/d/assignments/1',deadline:due(tonight)});
  const work=homeWork(canonicalHomeResources([...reps,sameTitle],sources),sources,now,tz);
  assert.equal(reps.length,15);
  assert.deepEqual(work.today.map(r=>r.id),['1','2','3','4','5','elsewhere']);
