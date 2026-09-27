@@ -35,6 +35,7 @@ import {
 import { MaterialReadError } from "../../../packages/connectors/src/network";
 // end owner: acquisition
 import { clearSignOutSecrets, createSecretVault } from "./secrets";
+import { createAccount } from "./account";
 import { purgeHostData } from "./purge-host"; // owner: platform-fix
 import { createGoogleNotesAuth } from "./notes-google"; // owner: notes
 // owner: T30. Outlook through the app's own Microsoft sign-in (Graph); the token stays in main.
@@ -195,6 +196,16 @@ app
       encrypt: (value) => safeStorage.encryptString(value),
       decrypt: (value) => safeStorage.decryptString(Buffer.from(value)),
     });
+    // owner: accounts. My Magic UW account and purchase status (docs/accounts-and-payments.md).
+    const account = createAccount(
+      {
+        url: process.env.MAGIC_SUPABASE_URL || undefined,
+        anonKey: process.env.MAGIC_SUPABASE_ANON_KEY || undefined,
+        accountUrl: process.env.MAGIC_ACCOUNT_URL || undefined,
+      },
+      { vault },
+    );
+    // end owner: accounts
     // owner: notes. Google Docs sync: OAuth (PKCE, loopback) and the Drive proxy; the token stays here.
     const notesGoogle = createGoogleNotesAuth({
       clientId: process.env.MAGIC_GOOGLE_CLIENT_ID || undefined,
@@ -1166,6 +1177,34 @@ app
       validateSender(event);
       worker.postMessage({ kind: "local-cancel" });
     });
+    // owner: accounts. Only the student's own actions reach the account server: no course data.
+    ipcMain.handle("magic:account-status", async (event) => {
+      validateSender(event);
+      return account.status();
+    });
+    ipcMain.handle("magic:account-send-code", async (event, email: unknown) => {
+      validateSender(event);
+      if (typeof email !== "string" || email.length > 320) return { sent: false, reason: "invalid" };
+      return account.sendCode(email);
+    });
+    ipcMain.handle("magic:account-verify", async (event, email: unknown, code: unknown) => {
+      validateSender(event);
+      if (typeof email !== "string" || email.length > 320 || typeof code !== "string" || code.length > 20)
+        return { signedIn: false, reason: "invalid" };
+      return account.verifyCode(email, code);
+    });
+    ipcMain.handle("magic:account-sign-out", async (event) => {
+      validateSender(event);
+      await account.signOut();
+    });
+    ipcMain.handle("magic:account-buy", async (event) => {
+      validateSender(event);
+      const url = account.buyUrl();
+      if (!url) throw new Error("Buying isn't set up in this build.");
+      if (headless) throw new Error("External windows are disabled in headless mode.");
+      await shell.openExternal(url);
+    });
+    // end owner: accounts
     ipcMain.handle("magic:open", async (event, url) => {
       validateSender(event);
       if (headless)

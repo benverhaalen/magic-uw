@@ -1980,7 +1980,37 @@ export function localContextPayload(
     policy: payload.policy.slice(0, 2000),
   };
 }
+// owner: accounts. The My Magic UW account and whether it has bought the app
+// (docs/accounts-and-payments.md). Tokens stay in main; the renderer sees only this status.
+export type AccountPurchase = "paid" | "not-bought" | "refunded" | "test-only" | "unknown";
+export type AccountStatus =
+  | { state: "unconfigured" }
+  | { state: "signed-out" }
+  | {
+      state: "signed-in";
+      email: string;
+      purchase: AccountPurchase;
+      /** Paid, confirmed now or within the offline grace period. Nothing is locked by it yet. */
+      entitled: boolean;
+      /** When the server last confirmed the purchase state. */
+      checkedAt?: string;
+      /** The server couldn't be reached; the purchase shown is the last confirmed one. */
+      offline: boolean;
+    };
+export interface AccountBridge {
+  status(): Promise<AccountStatus>;
+  /** Emails a sign-in code. */
+  sendCode(email: string): Promise<{ sent: boolean; reason?: "invalid" | "rate-limited" | "unavailable" }>;
+  verifyCode(email: string, code: string): Promise<{ signedIn: boolean; reason?: "invalid" | "wrong-code" | "unavailable" }>;
+  signOut(): Promise<void>;
+  /** Opens the website's account page to buy, in the default browser. */
+  buy(): Promise<void>;
+}
+// end owner: accounts
+
 export interface AppBridge {
+  /** owner: accounts. Sign-in and purchase status; absent in builds without the bridge. */
+  account?: AccountBridge;
   execute(command: Command): Promise<CommandResult>;
   openExternal(url: string): Promise<void>;
   /** owner: T05b. A link card (D40): the default browser, https only. */

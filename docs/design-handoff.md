@@ -31,6 +31,14 @@ Renderer paths above are under `apps/desktop/src/renderer`. Contracts and comman
 
 ## What is verified and what remains
 
+### Account merge and team handoff · September 27, 10:08 UTC
+
+Upstream main `5f0ab02` (PR #49) is reconciled after the fresh demo launch. Nate's account service, validated main/preload IPC, Data & AI account section and website account controls are retained. The current notification module and bundled Karma assets survive the two import/build conflicts. Sixteen account/webhook tests, TypeScript, desktop and website builds pass. Live account/payment service behavior is not demonstrated, and the running fresh demo remains `b7982a5` until a safe verified update.
+
+Read the new team packets at commit `bf741c79`: `.agents/team/packets/backend/13-backend-landing.md`, `14-product-direction.md` and `15-refresh-debugging.md`. They describe an upcoming backend integration wave, feature ownership and measured refresh causes; proposed/in-flight work is not counted as merged. Packet 14 preserves this branch's shell, ConversationLauncher, wizard avatar and shared screens. Nate owns the forthcoming StudyPrep/course-query producers and enrollment/sync work. Our frontend adapters should consume those contracts rather than create competing producers.
+
+For the voice-first slice, the concrete private mic/Whisper/Stop implementation is ready for integration review; the packet's proposed `useLocalDictation` has no implementation in the fetched refs inspected so far. Preserve the same launcher and connected-agent/Jev dispatch. Before binding learning generation from Study, chat or voice, the producing owner needs an account-scoped request carrying task mode, exact selected resource IDs/content versions, effective policy evidence/version and cache/late-result invalidation. All producers must validate that context. Administrative help should remain facts-only where appropriate; graded assistance follows the specific course policy. Current private frontend capability detection alone does not implement this producer contract.
+
 ### Fresh-download demo · September 27, 10:01 UTC
 
 At the user's explicit request, published `b7982a5` (including upstream main `5372c5a`) is now running visibly from a newly created empty profile. The normal first-run screen reads **Your classes, in one place.** Startup verification returned zero resources, zero sources, no onboarding storage keys and no renderer exceptions. No previous Canvas database, cookies, provider configuration, consent or model preferences were copied. Only OS path/locale environment was inherited; installed client discovery is separate from saved app configuration.

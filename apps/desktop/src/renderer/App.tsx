@@ -48,6 +48,7 @@ import { Action, Disclosure } from "../../../../packages/ui/src";
 import { useDesktopNavigation, type DesktopView } from "./navigation";
 import { CourseSpaceDetails } from "./CourseSpaceDetails";
 import { NotificationsMenu, notificationDestination, type NotificationDestination } from "./notifications";
+import { AccountSection } from "./AccountSection"; // owner: accounts
 
 function ShellFeedback({ error, notice, view, onDismiss }: { error: string; notice: string; view: DesktopView; onDismiss: () => void }) {
   const details = useRef<HTMLDetailsElement>(null);
@@ -1546,6 +1547,7 @@ function Privacy({
           <div className="no-activity">No recorded AI data activity.</div>
         )}
       </section>
+      <AccountSection /> {/* owner: accounts */}
       <section className="settings-section danger-section">
         <h2>Delete local data</h2>
         <p>
