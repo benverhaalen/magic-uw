@@ -21,3 +21,9 @@ This is an HTML/CSS/JavaScript reference implementation. Production React/Electr
 ## Concurrent work
 
 Record the Git revision used and the files owned. One integrator edits shared tokens/contracts at a time; feature workers compose within their owned surfaces. Check upstream changes before integration. Bring conflicting human decisions to the humans directly. Do not rewrite unrelated work or load whole conversations: link the controlling decision, affected recipe and bounded evidence.
+
+## Latest audit follow-up
+
+Read [the direct-source audit](audit-v3-direct-sources.md) before transferring these components. It records the updated routing, versioned self-report, async-payload/cancellation, native navigation and identity contracts. Use current code and validation rather than the older all-family screenshot. The system remains an isolated specimen; real provider/framework integration requires a scoped adapter and journey test. Component details retain candidate status.
+
+Latest direct-source follow-up: three Opus browser workers found and informed repairs to contrast, keyboard recovery order, popover dismissal, disclosure consistency and text resizing. All ten destinations and save/cancel race repairs were rechecked by the integrator. Read the compact audit coverage/limits before relying on the system; it is not production or universal accessibility certification.

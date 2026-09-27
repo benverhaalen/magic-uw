@@ -6,17 +6,17 @@ The isolated [component lab](lab/index.html) maps several recipes to `.mc-*` HTM
 
 ## R1 · Action, navigation link and static label
 
-**Purpose/anatomy.** Make the operation predictable: an action button has a verb and optional glyph; a navigation link identifies its destination; a static tag describes time or identity. Same visual family does not mean same click handler. Map primary/secondary/quiet emphasis to the importance of the operation within its group, not to every page's first button.
+**Purpose/anatomy.** Make the operation predictable: an action button has a verb and optional glyph; a navigation link identifies its destination; a static tag describes time or identity. Same visual family does not mean same click handler. Route by stable object ID plus purpose (inspect context, review material, practice); never route a course or assignment by its color or row position. Map primary/secondary/quiet emphasis to the importance of the operation within its group, not to every page's first button.
 
 **Visual roles/content.** Use action fill + paired ink, or a visibly recognizable text link; glyph size belongs to its control role, hit area is independent. Tags inherit surrounding text size with added padding. Keep the useful verb/object readable; icon-only actions need an accessible name. A destructive operation needs explicit wording and a consequence-appropriate treatment, not merely coral identity fill.
 
-**Behavior/states.** Links have real destinations and native link behavior; commands use buttons. Default, focus, hover/press and unavailable states are distinct. Async commands show pending, prevent duplicate effects and preserve an error/retry path. A static website download link has no invented pending/failure state; verify the URL and disclose actual platform/availability constraints. A disabled control's explanation remains reachable. Do not nest another control inside a clickable row.
+**Behavior/states.** Links have real destinations and native link behavior; commands use buttons. Default, focus, hover/press and unavailable states are distinct. Async commands show pending, prevent duplicate effects and preserve an error/retry path. Capture the submitted payload at activation; later draft edits remain unsaved until submitted. Reset, cancellation and source replacement invalidate in-flight effects. A static website download link has no invented pending/failure state; verify the URL and disclose actual platform/availability constraints. A disabled control's explanation remains reachable. Do not nest another control inside a clickable row.
 
 **Reversal/check.** Inspect keyboard names, tab order, destination and repeat activation. Reverse an attractive treatment if it hides operation or makes a label look clickable. Lab seams: `.mc-action`, `.mc-link`, `.mc-time`.
 
 ## R2 · Context with an optional action
 
-**Purpose/anatomy.** Present an implication, supporting context and only the useful next operation. Anatomy: passage/title → optional metadata/evidence → optional action region. Omit the region entirely when there is no action, allowing content its full width. On narrow surfaces reflow in reading order.
+**Purpose/anatomy.** Present an implication, supporting context and only the useful next operation. Anatomy: passage/title → optional metadata/evidence → optional action region. Omit the region entirely when there is no action, allowing content its full width. On narrow surfaces reflow in reading order. At desktop, size the action region to its associated passage; a compound action shares the region. Do not universalize a fixed height from one short example. Compare competing footprint choices explicitly when they conflict with the desired wrapping.
 
 **Visual roles/content.** Reading ink on the continuous surface; selective editorial type and emphasis; bounded action color. Keep the meaning legible before the action. Use a compact group when two genuinely different operations belong together; their shared outline must not imply a shared effect.
 
@@ -87,3 +87,11 @@ The isolated [component lab](lab/index.html) maps several recipes to `.mc-*` HTM
 ## Extend one family at a time
 
 A new variant must name its purpose, differing anatomy/state and a real consumer. Add a new family only when composing existing ones loses meaning or behavior. Verify the changed family in a representative consumer plus a sibling. Keep expert source versions and notices when adopting further implementation. Agreement among reviewers, native markup, and a rendered specimen are useful evidence with different limits; none alone proves the complete journey.
+
+## Follow-up audit rules
+
+- Shared type sizes use rem so larger-text preferences apply to prose, titles and controls together; verify reflow and actual browser zoom separately.
+- Place a dynamically revealed recovery action after its initiating control in keyboard order. Keep the action region sized to the passage; status can occupy a following row.
+- A nonmodal navigation popover closes when focus leaves it. Escape restores its trigger; selecting a destination restores useful context.
+- Keep validation errors distinct from persistence failures. Associate both with the relevant field, but only invalid input receives aria-invalid.
+- Sample text contrast on the composed gradient at actual text positions. Palette acceptance does not establish accessible contrast.

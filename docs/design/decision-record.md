@@ -116,3 +116,15 @@ Ben answered the concrete checkpoint showing `foundations-v3.png`:
 > “Yes, refine the components”
 
 The question explicitly proposed keeping the foundation sheet's palette and type pairing while refining component details. This accepts that direction as the next baseline. It does not accept every provisional outline/link/tag example, establish production integration, or approve the rejected image-generated overlays. Exact timestamp not recovered; current conversation provenance. The producing path now uses the shared tokens and exact fonts behind `lab/foundations.html`; continue component refinements within that direction instead of reopening palette discovery.
+
+### D28 — Direct source reviews and actual Opus tests
+
+Ben, current conversation; exact message timestamps not recovered:
+
+> “add another one based off the applicable info from emil's tweets. i think emil's skills are really good and some might warrant their own opus.”
+
+> “spawn off subagents to test each”
+
+> “opus ones”
+
+**Application:** original-source review and scoped live testing are separate evidence. Deep Emil craft and applicable public-post mechanisms receive explicit coverage; current requests specify actual Opus5.5 workers. Keep review packets bounded by a coherent uncertainty, use independent browser sessions, verify execution identity and inspect useful output. Do not equate every source with a mandatory worker or new universal design rule. Preserve Home's accepted language and record source/date/limits; raw X research stays private. See the [direct-source audit](audit-v3-direct-sources.md).

@@ -18,6 +18,14 @@
         <symbol id="chevron" viewBox="0 0 24 24">
           <path d="m6 9 6 6 6-6" />
         </symbol>
+        <!-- Lucide v0.468.0 · ISC · see vendor/ -->
+        <symbol id="chevron-right" viewBox="0 0 24 24">
+          <path d="m9 18 6-6-6-6" />
+        </symbol>
+        <symbol id="arrow-left" viewBox="0 0 24 24">
+          <path d="m12 19-7-7 7-7" />
+          <path d="M19 12H5" />
+        </symbol>
         <symbol id="close" viewBox="0 0 24 24">
           <path d="M18 6 6 18M6 6l12 12" />
         </symbol>
@@ -70,7 +78,7 @@
             ><a href="#items-title"
               >Identity & work<small>Flat rows · long titles</small></a
             ><a href="#control-families"
-              >Controls & feedback<small>Menu · forms · recovery</small></a
+              >Controls & feedback<small>Links · forms · recovery</small></a
             >
           </div>
         </details>
@@ -114,7 +122,7 @@
         <h2 id="context-title">Context & action</h2>
         <div class="mc-context">
           <p>
-            <a class="mc-link" href="#evidence" data-source="reading"
+            <a class="mc-link" href="#evidence" data-source="cs220-lecture"
               >CS 220’s next lecture</a
             >
             has three assigned readings covering testing, APIs and debugging
@@ -123,7 +131,7 @@
               >tomorrow · 1 PM</time
             >. The lecture quizzes cover the pre-class readings.
           </p>
-          <a class="mc-action" href="#evidence" data-source="reading"
+          <a class="mc-action" href="#evidence" data-source="cs220-readings"
             >Review assigned readings
             <svg class="mc-glyph" aria-hidden="true"><use href="#arrow" /></svg
           ></a>
@@ -132,23 +140,19 @@
           <div>
             <p>
               Your
-              <a class="mc-link" href="#evidence" data-source="exam"
+              <a class="mc-link" href="#evidence" data-source="exam-context"
                 >CS 310 and CS 220 midterms</a
               >
               overlap: both are scheduled for
               <time class="mc-time" datetime="2026-11-12T17:45:00-06:00"
                 >Nov 12 · 5:45–7:15 PM</time
-              >. CS 220 lists a Nov 13 alternate; you’ll need to confirm whether
-              you can take it.
+              >. CS 220 lists a
+              <span id="exam-alternate">Nov 13</span> alternate; you’ll need to
+              confirm whether you can take it.
             </p>
-            <p
-              id="ack-status"
-              class="mc-feedback lab-status"
-              aria-live="polite"
-            ></p>
           </div>
           <div class="mc-compound">
-            <a class="mc-action" href="#evidence" data-source="exam"
+            <a class="mc-action" href="#evidence" data-source="exam-options"
               >Review exam options
               <svg class="mc-glyph" aria-hidden="true">
                 <use href="#arrow" /></svg
@@ -161,15 +165,34 @@
               /><label for="handled">I’ve handled this</label>
             </div>
           </div>
+          <p
+            id="ack-status"
+            class="mc-feedback lab-status"
+            aria-live="polite"
+          ></p>
         </div>
         <p class="mc-passage">
           The guest speaker for
-          <a class="mc-link" href="#evidence" data-source="guest"
+          <a class="mc-link" href="#evidence" data-source="design210-lecture"
             >tomorrow’s DESIGN 210 lecture</a
           >
           is joining remotely. Your class still meets in Room 210; you do not
           need to join a separate call.
         </p>
+        <div class="lab-exam-update">
+          <button id="exam-update" class="mc-action mc-action--quiet">
+            Simulate updated exam notice
+          </button>
+          <p id="exam-update-status" class="mc-meta" role="status"></p>
+          <details>
+            <summary class="mc-disclosure">
+              <svg class="mc-glyph" aria-hidden="true">
+                <use href="#chevron-right" /></svg
+              >Confirmation history for this example
+            </summary>
+            <p id="exam-history" class="mc-meta"></p>
+          </details>
+        </div>
         <p id="ack-help" class="mc-meta lab-ack-note">
           “Handled” records your choice in this browser for this example’s
           source version. It does not confirm with an instructor.
@@ -178,7 +201,11 @@
       <section class="lab-section" aria-labelledby="items-title">
         <h2 id="items-title">Work, with its identity intact</h2>
         <div class="lab-item-list">
-          <a class="mc-entity" href="#evidence" data-source="assignment"
+          <a
+            class="mc-entity"
+            href="#evidence"
+            data-source="design210-interview"
+            data-course-id="design210"
             ><span
               ><span class="mc-entity__label">DESIGN 210 · 20 points</span
               ><span class="mc-entity__title"
@@ -187,65 +214,77 @@
               ></span
             ><time class="mc-entity__time" datetime="2026-10-09T23:59:00-05:00"
               ><strong>Fri, Oct 9</strong>11:59 PM · Central</time
+            ><span class="mc-entity__provider">Canvas</span
             ><svg class="mc-glyph" aria-hidden="true">
-              <use href="#arrow" /></svg></a
+              <use href="#chevron-right" /></svg></a
           ><a
             class="mc-entity"
-            data-identity="blue"
+            data-course-id="cs220"
             href="#evidence"
-            data-source="reading"
+            data-source="cs220-interface"
             ><span
               ><span class="mc-entity__label">CS 220 · 10 points</span
               ><span class="mc-entity__title">Interface exercise</span></span
             ><time class="mc-entity__time" datetime="2026-10-07T23:59:00-05:00"
               ><strong>Tomorrow</strong>11:59 PM · Central</time
+            ><span class="mc-entity__provider">Canvas</span
             ><svg class="mc-glyph" aria-hidden="true">
-              <use href="#arrow" /></svg></a
+              <use href="#chevron-right" /></svg></a
           ><a
             class="mc-entity"
-            data-identity="coral"
+            data-course-id="design210"
             href="#evidence"
-            data-source="assignment"
+            data-source="design210-methods"
             ><span
               ><span class="mc-entity__label">DESIGN 210 · 20 points</span
               ><span class="mc-entity__title">Methods quiz</span></span
             ><time class="mc-entity__time" datetime="2026-10-09T23:59:00-05:00"
               ><strong>Fri, Oct 9</strong>11:59 PM · Central</time
-            ><svg class="mc-glyph mc-chevron" aria-hidden="true">
-              <use href="#chevron" /></svg
+            ><span class="mc-entity__provider">Canvas</span
+            ><svg class="mc-glyph" aria-hidden="true">
+              <use href="#chevron-right" /></svg
           ></a>
         </div>
       </section>
       <section class="lab-section" aria-labelledby="learning-title">
         <h2 id="learning-title">Learning & time</h2>
         <div class="lab-learning-grid">
-          <a
-            class="mc-action mc-action--learning"
-            href="#evidence"
-            data-source="reading"
-            ><span
-              ><small class="mc-entity__label">CS 310 · Midterm Nov 12</small
-              >Practice choosing a graph traversal<small class="mc-meta"
-                >From your assigned data structures readings</small
-              ></span
-            ><svg class="mc-glyph" aria-hidden="true"><use href="#arrow" /></svg
-          ></a>
+          <div class="lab-learning-activity">
+            <a
+              class="mc-action mc-action--learning"
+              href="#evidence"
+              data-source="cs310-practice"
+              data-course-id="cs310"
+              ><span
+                ><small class="mc-entity__label">CS 310 · Midterm Nov 12</small
+                >Practice choosing a graph traversal</span
+              ><svg class="mc-glyph" aria-hidden="true">
+                <use href="#arrow" /></svg
+            ></a>
+            <a
+              class="mc-link"
+              href="#evidence"
+              data-source="cs310-reading-evidence"
+              >From your assigned data structures readings</a
+            >
+          </div>
           <div class="mc-temporal">
             <p>
               <span class="mc-entity__label">Due today · DESIGN 210</span
               ><strong>Study reflection</strong
               ><time datetime="2026-10-06T23:59:00-05:00">11:59 PM</time>
             </p>
-            <p class="mc-temporal__event">
+            <p class="mc-temporal__now">
+              <time datetime="2026-10-06T09:40:00-05:00">9:40 AM</time
+              ><i aria-hidden="true"></i
+              ><span class="mc-meta">Example current time</span>
+            </p>
+            <p class="mc-temporal__event" data-course-id="cs310">
               <span class="mc-entity__label">Scheduled event · CS 310</span
               ><strong>Lecture</strong
               ><time datetime="2026-10-06T11:00:00-05:00"
                 >11–11:50 AM · Room 204</time
               >
-            </p>
-            <p class="mc-temporal__now">
-              <span>9:40 AM</span><i aria-hidden="true"></i
-              ><span class="mc-meta">Example current time</span>
             </p>
           </div>
         </div>
@@ -266,13 +305,18 @@
               <svg class="mc-glyph" aria-hidden="true">
                 <use href="#arrow" />
               </svg></button
-            ><button class="mc-action" disabled>Source unavailable</button
+            ><button
+              class="mc-action"
+              aria-disabled="true"
+              aria-describedby="unavailable-reason"
+            >
+              Source unavailable</button
             ><button
               class="mc-action mc-action--secondary"
               id="menu-trigger"
               popovertarget="view-menu"
-              aria-haspopup="menu"
               aria-expanded="false"
+              aria-controls="view-menu"
             >
               Jump to example
               <svg class="mc-glyph" aria-hidden="true">
@@ -280,6 +324,10 @@
               </svg>
             </button>
           </div>
+          <p class="mc-meta" id="unavailable-reason">
+            This synthetic source has no connected provider. Its original
+            document cannot be opened.
+          </p>
           <p class="mc-feedback lab-status" id="check-status" role="status"></p>
           <div class="lab-state">
             <label
@@ -304,7 +352,7 @@
                 name="note"
                 maxlength="160"
                 placeholder="e.g. Revisit the graph traversal example"
-                aria-describedby="note-help note-error"
+                aria-describedby="note-help note-error note-status"
               />
               <p class="mc-meta" id="note-help">
                 Only saved locally in this browser.
@@ -328,10 +376,17 @@
         aria-labelledby="evidence-title"
       >
         <button id="evidence-back" class="mc-action mc-action--quiet">
-          ← Return to your place
+          <svg class="mc-glyph" aria-hidden="true">
+            <use href="#arrow-left" />
+          </svg>
+          Return to your place
         </button>
         <h2 id="evidence-title">Example source</h2>
         <p id="evidence-copy"></p>
+        <div id="evidence-material"></div>
+        <p id="evidence-location" class="mc-meta"></p>
+        <p id="evidence-captured" class="mc-meta"></p>
+        <p id="evidence-limits" class="mc-meta"></p>
         <p class="mc-meta">
           Synthetic evidence for inspecting component behavior. No learning
           platform is connected.
@@ -343,20 +398,11 @@
         <span id="plan-status" role="status"></span>
       </footer>
     </main>
-    <div
-      id="view-menu"
-      class="mc-menu"
-      popover
-      role="menu"
-      aria-label="Example display"
-    >
-      <button role="menuitem" data-view="all" tabindex="-1">Overview</button
-      ><button role="menuitem" data-view="context" tabindex="-1">
-        Context and action</button
-      ><button role="menuitem" data-view="controls" tabindex="-1">
-        Controls and states
-      </button>
-    </div>
+    <nav id="view-menu" class="mc-menu" popover aria-label="Jump to example">
+      <a href="#main">Overview</a>
+      <a href="#context-title">Context and action</a>
+      <a href="#control-families">Controls and states</a>
+    </nav>
     <dialog
       class="mc-dialog"
       id="plan-dialog"

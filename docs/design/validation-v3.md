@@ -25,6 +25,12 @@ Claude Opus 5.5 ran through the CLI; receipt reported canonical model `claude-op
 
 A fresh scoped builder produced [a source-refresh component](lab/connection-example.html) from the compact system without a bespoke layout. The integrator independently observed failure retaining the timestamp and two saved items; retry advanced the timestamp only on fixture confirmation. Content rules now include four synthetic input/output examples with evidence checks; no live content generator was implemented. The final worker checked pending-action focus, menu selection, exact fonts, narrow reflow and updated screenshots. The integrator inspected the revised full-family sheet and independently repeated the repaired dialog recovery path. Framework integration, complete Calendar/week/month views, public website composition, real services, student usability testing and assistive-technology certification remain unproven. New feature families need their own scoped verification; the finite system does not claim universal coverage.
 
-## Final refinement review
+## Earlier refinement review
 
 A second verified Opus 5.5 pass inspected the compact source adapters, rules and component code; it did not open a live browser or re-read every upstream skill. Supported findings corrected synthetic date/source inconsistencies, shared token consumers, pending focus and stale dialog errors. The final [component sheet](assets/components-v3.png) is a candidate for feedback, not a new whole-page layout or accepted replacement for Home.
+
+## Direct original-source follow-up
+
+The [direct-source audit](audit-v3-direct-sources.md) supersedes earlier blanket impressions of completeness. It separates original-source coverage, repair evidence and independent live testing. The original 31-file review found real state/routing/identity gaps despite earlier checks. Exact source packets improve fidelity; they do not replace exercising the actual UI. Historical screenshots and the 84px action minimum are not current component specifications. The action-size comparison is a candidate for the unresolved footprint preference.
+
+The follow-up now includes three actual Opus browser workers plus integrator rechecks. See its coverage table for bounded passes, recovered reports, untested cases and rejected recommendations. Current live specimens supersede historical screenshots for repaired interaction behavior.

@@ -52,7 +52,14 @@ Example: Ben says time text should match surrounding prose. Update its recipe an
 
 Maintain lightweight evidence records: requirement ID → affected component/path → relevant state → actual screenshot/test/observation → result/limit. Leave only unresolved or high-value regression cases active. Remove stale instructions rather than stacking contradictory amendments. Keep raw chats, X captures, private coursework and local research outside commits.
 
-
 ## Reference-driven specialist checkpoints
 
 Ben explicitly requests periodic handoffs to Opus to refine the system through reference-driven design. Use meaningful boundaries (new family, supported correction, first transfer), not a timer or a review per edit. Give the reviewer one named gap, relevant exact user excerpts, Home/component images, the applicable source adapter and its pinned primary mechanism, and actual implementation/state evidence. Ask which rule should change, what output it changes, and how to test/reverse it. Read the source sufficiently to verify the recommendation rather than promote the reviewer's authority. Keep user taste and product intent controlling. Record actual model identity; browser or framework behavior still requires direct verification. This produces bounded rule improvements, not ever-growing expert commentary.
+
+### Source fidelity and live specialist tests
+
+At a meaningful source-driven audit checkpoint, give a critic the actual applicable upstream text (pinned copy or exact section), not only our paraphrase. Record which sources were read and which advice was excluded or adapted. A skill's popularity or author's reputation is a reason to inspect its mechanism, not authority to override Ben's accepted language. Select a coherent source family per reviewer; a separate reviewer is useful for a deep interaction uncertainty, not automatically per skill.
+
+Separate code/image critique from browser testing. Use fresh scoped test workers for visual consistency, state recovery and adversarial content when those are independent uncertainties. Give each the normal entry, synthetic evidence, constraints, test boundary and its own browser session; keep repo edits with the integrator. Require actual model receipts when Ben asks for Opus, fresh runtime evidence and explicit untested limits. A process exit or `success` wrapper with no useful output is a failed review. Narrow a failed handoff and retry the affected boundary; never count it as corroboration.
+
+For text/interaction robustness, challenge long names and unbroken tokens, increased text size, many items, interrupted actions, stale responses and hidden-tab feedback. These are proposed test inputs, not product copy. Fix the actual failure, then check an affected sibling. Retain useful failure cases; avoid shipping the entire research corpus into every agent context.
