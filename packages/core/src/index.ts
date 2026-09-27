@@ -13,6 +13,15 @@ import { maySend, resolveDeadline } from "@magic/domain";
 import { judgmentResultSchema, type JudgmentGateway } from "@magic/ai";
 import { contentCategories, courseIncluded } from "./access";
 import { evidenceFor } from "./evidence";
+import { suggestEvidenceLinks } from "./fuzzy-links";
+export {
+  suggestEvidenceLinks,
+  scoreEvidenceCandidates,
+  defaultFuzzyLinkParams,
+  currentLinkJudgments,
+  fuzzyLinkId,
+  type FuzzyLinkParams,
+} from "./fuzzy-links";
 import { pullGuideForSubject } from "../../connectors/src/planning-public";
 import { createPublicClient, type PublicClient } from "../../connectors/src/network";
 import { comparePlanning } from "./planning";
@@ -251,7 +260,9 @@ export function createCore(store: Store, options: CoreOptions) {
   async function execute(raw: unknown): Promise<CommandResult> {
     if (closed) throw new Error("Workspace is closed.");
     const command = commandSchema.parse(raw);
-    let message: string | undefined, manifest: ContextManifest | undefined;
+    let message: string | undefined,
+      manifest: ContextManifest | undefined,
+      linkCandidates: CommandResult["linkCandidates"];
     switch (command.type) {
       case "snapshot":
         return { snapshot: snapshot(command.search) };
@@ -370,6 +381,12 @@ export function createCore(store: Store, options: CoreOptions) {
         message = "Judgment queued.";
         break;
       }
+      case "link-candidates":
+        // Local lexical suggestions only; accept/reject goes through the existing "link" command.
+        linkCandidates = suggestEvidenceLinks(store, command.id, now(), {
+          ...(command.minScore === undefined ? {} : { minScore: command.minScore }),
+        });
+        break;
       case "link":
         store.decideLink(command.id, command.status);
         break;
@@ -384,6 +401,7 @@ export function createCore(store: Store, options: CoreOptions) {
       snapshot: snapshot(),
       ...(manifest ? { manifest } : {}),
       ...(message ? { message } : {}),
+      ...(linkCandidates ? { linkCandidates } : {}),
     };
   }
   return {
