@@ -290,7 +290,7 @@ export function createCore(store: Store, options: CoreOptions) {
       characters: JSON.stringify(payload).length,
       ...permission,
       payload,
-      ...(recipient !== "local" ? { citationProjections: [{ resourceId: r.id, contentHash: r.contentHash, field: "text" as const, projectionId: outgoingProjection(store, r, "text", { start: 0, end: Math.min(payload.text.length, rootText.length) }).id }] } : {}),
+      ...(recipient !== "local" ? { citationProjections: [{ resourceId: r.id, contentHash: r.contentHash, field: "text" as const, projectionId: outgoingProjection(store, r, "text", { start: 0, end: Math.min(payload.text.length, rootText.length) }, scrub.roster(r.courseId)).id }] } : {}),
       ...(redaction ? { redaction } : {}),
     };
   }

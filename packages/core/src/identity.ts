@@ -131,10 +131,15 @@ interface Matcher {
 }
 /** Normalizes a matched full-name form: case, whitespace, and "Last, First" spacing. */
 const fullKey = (s: string) => lower(s).replace(/\s*,\s*/g, ", ").replace(/\s+/g, " ");
-const compiled = new WeakMap<EffectiveRoster, Matcher>();
-/** One alternation per form (longest first), compiled once per roster. */
+/**
+ * Keyed by the roster's content (its people and retained names; what `version` hashes), not the
+ * object: every `rosterFor` call returns a new object, so an identity key missed on every call.
+ */
+const compiled = new Map<string, Matcher>();
+/** One alternation per form (longest first), compiled once per roster content. */
 function matcher(roster: EffectiveRoster): Matcher {
-  const cached = compiled.get(roster);
+  const key = JSON.stringify({ people: roster.people, retain: roster.retain });
+  const cached = compiled.get(key);
   if (cached) return cached;
   const fullKeys = new Map<string, Entry>(), tokenKeys = new Map<string, Entry>();
   const idKeys = new Map<string, RedactionKind>();
@@ -182,7 +187,8 @@ function matcher(roster: EffectiveRoster): Matcher {
   if (fullSources.size) m.full = new RegExp(`${B}(?:${alt(fullSources)})${E}`, "giu");
   if (tokenSources.size) m.tokens = new RegExp(`${B}(?:${alt(tokenSources)})${E}`, "gu");
   if (idSources.size) m.ids = new RegExp(`${B}(?:${alt(idSources)})${E}`, "giu");
-  compiled.set(roster, m);
+  if (compiled.size >= 64) compiled.delete(compiled.keys().next().value!);
+  compiled.set(key, m);
   return m;
 }
 function nameCandidates(text: string, m: Matcher) {
@@ -293,6 +299,8 @@ export function payloadScrubber(store: Store, hosted: boolean, accountScope?: st
     return r;
   };
   return {
+    /** The roster this manifest scrubs with, derived once per course. */
+    roster,
     field(value: string, courseId: string) {
       if (!hosted) return value;
       const result = scrubText(value, roster(courseId));
@@ -314,9 +322,9 @@ interface Projection { resourceId: string; contentHash: string; field: CitationR
 const projections = new WeakMap<Store, Map<string, Projection>>();
 /** Immutable local map of exactly the displayed outgoing range. IDs expire on restart/eviction. */
 export function clearOutgoingProjections(store: Store) { projections.delete(store); }
-export function outgoingProjection(store: Store, resource: Resource, field: CitationResult["field"] = "text", range?: { start: number; end: number }) {
-  const scope = store.sources().find((s) => s.id === resource.sourceId)?.accountScope;
-  const result = scrubText(fieldText(resource, field), rosterFor(store, resource.courseId, scope));
+export function outgoingProjection(store: Store, resource: Resource, field: CitationResult["field"] = "text", range?: { start: number; end: number }, roster?: EffectiveRoster) {
+  const scope = roster ? undefined : store.sources().find((s) => s.id === resource.sourceId)?.accountScope;
+  const result = scrubText(fieldText(resource, field), roster ?? rosterFor(store, resource.courseId, scope));
   const start = Math.max(0, range?.start ?? 0), end = Math.min(result.text.length, range?.end ?? result.text.length);
   const id = randomUUID();
   let cache = projections.get(store);
