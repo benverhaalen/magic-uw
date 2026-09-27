@@ -46,10 +46,10 @@ export function codeAssignmentKind(r: Pick<Resource, "kind" | "submissionTypes">
  * evidence does not read every resource a second time.
  */
 /**
- * The store with this call's own sources, links or jobs read reused, so the evidence and inclusion
+ * The store with this call's own sources, links, jobs, course choices, planning or judgments reads reused, so the evidence and inclusion
  * helpers don't read them again (each is read-only within one call).
  */
-export function withReads(store: Store, reads: { sources?: ReturnType<Store["sources"]>; links?: ReturnType<Store["links"]>; jobs?: ReturnType<Store["jobs"]>; courseOverrides?: ReturnType<Store["courseOverrides"]>; ingestionSettings?: ReturnType<Store["ingestionSettings"]> }): Store {
+export function withReads(store: Store, reads: { sources?: ReturnType<Store["sources"]>; links?: ReturnType<Store["links"]>; jobs?: ReturnType<Store["jobs"]>; courseOverrides?: ReturnType<Store["courseOverrides"]>; ingestionSettings?: ReturnType<Store["ingestionSettings"]>; planningRecords?: ReturnType<Store["planningRecords"]>; planningSources?: ReturnType<Store["planningSources"]>; judgments?: ReturnType<Store["judgments"]> }): Store {
   return Object.create(
     store,
     Object.fromEntries(Object.entries(reads).filter(([, value]) => value !== undefined).map(([key, value]) => [key, { value: () => value }])),
@@ -60,9 +60,11 @@ export function withReads(store: Store, reads: { sources?: ReturnType<Store["sou
 export function resourceViews(store: Store, list: Resource[], allResources?: Resource[]): ResourceView[] {
   // Inclusion and evidence both need every resource: one list read per call, shared by both.
   allResources ??= store.resources();
-  store = readOnce(store, allResources);
+  // The sources read too: inclusion, permission and evidence each need it.
+  const sourceList = store.sources();
+  store = withReads(readOnce(store, allResources), { sources: sourceList });
   const included = courseInclusion(store, allResources);
-  const sources = new Map(store.sources().map(source => [source.id, source]));
+  const sources = new Map(sourceList.map(source => [source.id, source]));
   const permitted = (resource: Resource) => !resource.deleted && included(resource) && sources.get(resource.sourceId)?.status !== "inaccessible";
   const evidence = evidenceFor(store, permitted, allResources);
   const personalDates = store.personalDeadlineChoices();

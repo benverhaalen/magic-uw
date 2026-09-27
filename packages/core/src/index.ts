@@ -216,7 +216,13 @@ export function createCore(store: Store, options: CoreOptions) {
     const sources = store.sources();
     const links = store.links();
     const jobs = store.jobs();
-    const viewStore = withReads(readOnce(store, savedResources), { sources, links, jobs });
+    // Course choices and planning are read once here; inclusion, admission and reconciliation reuse them.
+    const courseOverrides = store.courseOverrides();
+    const ingestionSettings = store.ingestionSettings();
+    const planningRecords = store.planningRecords();
+    const planningSources = store.planningSources();
+    const judgments = store.judgments();
+    const viewStore = withReads(readOnce(store, savedResources), { sources, links, jobs, courseOverrides, ingestionSettings, planningRecords, planningSources, judgments });
     const views = resourceViews(viewStore, listed, savedResources);
     const workSnapshot = store.personalWorkSnapshot(views.map(view => ({ canonicalResourceId: view.id,
       contributorIds: view.deadlineContributors?.map(e => e.resourceId) ?? [] })), savedResources);
@@ -249,9 +255,9 @@ export function createCore(store: Store, options: CoreOptions) {
         },
       })),
       planning: {
-        records: store.planningRecords(),
-        sources: store.planningSources(),
-        reconciliation: reconcileAcademicRecords(store, now()),
+        records: planningRecords,
+        sources: planningSources,
+        reconciliation: reconcileAcademicRecords(viewStore, now()),
         unreadable: store.planningUnreadable?.() ?? 0, // owner: privacy
       },
       resources,
@@ -265,8 +271,8 @@ export function createCore(store: Store, options: CoreOptions) {
       fixtureMode: sources.some((s) => s.kind === "fixture"),
       gatewayConfigured: !!options.gateway,
       generatedAt: now(),
-      ingestionSettings: store.ingestionSettings(),
-      courseOverrides: store.courseOverrides(),
+      ingestionSettings,
+      courseOverrides,
       changes: store.changes({ limit: 100 }),
       syncRuns: store.syncRuns(),
       mcpGrants: store
@@ -279,7 +285,7 @@ export function createCore(store: Store, options: CoreOptions) {
       personalReports: store.personalReports(),
       personalWorkReports: workSnapshot.reports,
       // Unsearched snapshots already hold every live view; the feed reuses them.
-      notifications: notifications.feed(search ? undefined : resources),
+      notifications: search ? notifications.feed() : notifications.feed(resources, viewStore),
       gitlabLinks: store.gitlabLinks(),
     };
   }

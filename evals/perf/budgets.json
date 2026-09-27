@@ -27,8 +27,8 @@
   "statements": {
     "store.resources": 1,
     "query.summary": 18,
-    "query.resources (course page)": 5,
-    "query.resource": 7,
+    "query.resources (course page)": 7,
+    "query.resource": 9,
     "store.searchPassages": 4,
     "core.context (local)": 11,
     "core.snapshot": 32,
