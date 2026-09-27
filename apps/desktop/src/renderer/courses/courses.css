@@ -68,7 +68,7 @@
   border-radius: var(--magic-radius-control);
   background: none;
   color: var(--magic-ink-muted-strong);
-  font: 500 var(--magic-type-meta) / 1.4 var(--magic-font-interface);
+  font: var(--magic-font-interface-weight) var(--magic-type-meta) / 1.4 var(--magic-font-interface);
   cursor: pointer;
 }
 .course-back svg {
@@ -109,7 +109,7 @@
   color: var(--magic-ink-muted-strong);
 }
 .course-count {
-  font: 400 var(--magic-type-meta) / 1.4 var(--magic-font-interface);
+  font: var(--magic-font-interface-weight) var(--magic-type-meta) / 1.4 var(--magic-font-interface);
   color: var(--magic-ink-muted);
 }
 /* Next up: Home's Upcoming language. Fill and ink come from the shared deadline recipe
@@ -143,16 +143,16 @@
    Replaces the 10/11/12px mix inherited from Home's row. */
 .course-next-meta,
 .course-next-due {
-  font: 400 var(--magic-type-meta) / 1.4 var(--magic-font-interface);
+  font: var(--magic-font-interface-weight) var(--magic-type-meta) / 1.4 var(--magic-font-interface);
 }
 .course-next-meta {
   display: block;
-  font-weight: 600;
+  font-weight: inherit;
   margin-bottom: 2px;
 }
 .course-next-meta span {
   margin-left: 10px;
-  font-weight: 400;
+  font-weight: inherit;
 }
 .course-next-title {
   display: block;
@@ -166,7 +166,7 @@
   flex-shrink: 0;
 }
 .course-next-due strong {
-  font-weight: 600;
+  font-weight: inherit;
 }
 .course-next-due em {
   font-style: normal;
@@ -218,27 +218,27 @@
   align-items: center;
   gap: 4px;
   margin: 0 0 8px;
-  font: 600 var(--magic-type-meta) / 1.4 var(--magic-font-interface);
+  font: var(--magic-font-interface-weight) var(--magic-type-meta) / 1.4 var(--magic-font-interface);
   color: var(--magic-ink-muted-strong);
 }
 .course-overview-note {
   margin: 0;
-  font: 400 var(--magic-type-meta) / 1.5 var(--magic-font-interface);
+  font: var(--magic-font-interface-weight) var(--magic-type-meta) / 1.5 var(--magic-font-interface);
   color: var(--magic-ink-muted);
 }
 .course-overview-cue {
   margin: 6px 0 0;
-  font: 400 var(--magic-type-meta) / 1.5 var(--magic-font-interface);
+  font: var(--magic-font-interface-weight) var(--magic-type-meta) / 1.5 var(--magic-font-interface);
   color: var(--magic-ink-muted-strong);
 }
 .course-class {
   display: grid;
   gap: 2px;
   margin: 0;
-  font: 400 var(--magic-type-compact-control) / 1.4 var(--magic-font-interface);
+  font: var(--magic-font-interface-weight) var(--magic-type-compact-control) / 1.4 var(--magic-font-interface);
 }
 .course-class strong {
-  font-weight: 600;
+  font-weight: inherit;
 }
 .course-overview .course-fact {
   grid-template-columns: 1fr;
@@ -286,7 +286,7 @@
 .course-fact h3 {
   margin: 0;
   font-size: var(--magic-type-meta);
-  font-weight: 600;
+  font-weight: inherit;
   color: var(--magic-ink-muted-strong);
 }
 .course-fact-body {
@@ -317,17 +317,17 @@
 }
 .course-grade-name,
 .course-grade-value {
-  font: 400 var(--magic-type-compact-control) / 1.35 var(--magic-font-interface);
+  font: var(--magic-font-interface-weight) var(--magic-type-compact-control) / 1.35 var(--magic-font-interface);
   color: var(--magic-ink);
   min-width: 0;
 }
 .course-grade-value {
-  font-weight: 600;
+  font-weight: inherit;
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
 .course-grade-value.is-missing {
-  font-weight: 400;
+  font-weight: inherit;
   color: var(--magic-ink-muted);
 }
 .course-grade-bar {
@@ -348,7 +348,7 @@
   display: inline-block;
   white-space: nowrap;
   margin-left: 8px;
-  font: 400 var(--magic-type-meta) / 1.4 var(--magic-font-interface);
+  font: var(--magic-font-interface-weight) var(--magic-type-meta) / 1.4 var(--magic-font-interface);
   color: var(--magic-ink-muted-strong);
 }
 /* The freshness cue and its info mark wrap as one unit. */
@@ -398,7 +398,7 @@
   outline-offset: 2px;
 }
 .course-index-name {
-  font: 500 var(--magic-type-control) / 1.4 var(--magic-font-interface);
+  font: var(--magic-font-interface-weight) var(--magic-type-control) / 1.4 var(--magic-font-interface);
   color: var(--magic-ink);
 }
 .course-index > .course-group {
@@ -454,11 +454,11 @@
   list-style-position: outside;
 }
 .course-group-name {
-  font: 500 var(--magic-type-control) / 1.4 var(--magic-font-interface);
+  font: var(--magic-font-interface-weight) var(--magic-type-control) / 1.4 var(--magic-font-interface);
   color: var(--magic-ink);
 }
 .course-group-counts {
-  font: 400 var(--magic-type-meta) / 1.4 var(--magic-font-interface);
+  font: var(--magic-font-interface-weight) var(--magic-type-meta) / 1.4 var(--magic-font-interface);
   color: var(--magic-ink-muted);
 }
 .course-group > ul {
@@ -521,13 +521,13 @@
 .course-module > summary {
   color: var(--magic-ink);
   font-size: var(--magic-type-control);
-  font-weight: 500;
+  font-weight: inherit;
   padding: 9px 0;
 }
 .course-module > summary .muted {
   margin-left: 6px;
   font-size: var(--magic-type-meta);
-  font-weight: 400;
+  font-weight: inherit;
 }
 
 .desktop-courses .page-heading { padding: 0 0 20px; }
@@ -575,3 +575,39 @@ details[open] > summary > .course-chevron {
 @media (prefers-reduced-motion: reduce) {
   .course-chevron { transition: none; }
 }
+
+/* Complete saved statements and source context remain reversible and readable at narrow widths. */
+.course-full-text > summary {
+  cursor: pointer;
+  padding: 6px 0;
+  font-size: var(--magic-type-meta);
+  color: var(--magic-ink-muted-strong);
+}
+.course-full-text > summary:focus-visible,
+.course-evidence > summary:focus-visible {
+  outline: 2px solid var(--magic-focus);
+  outline-offset: 2px;
+}
+.course-fact-text,
+.course-evidence,
+.course-full-text,
+.course-grade-name,
+.course-class {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.course-saved-text,
+.course-fact-text {
+  white-space: pre-wrap;
+}
+.course-saved-text {
+  font-size: var(--magic-type-meta);
+  line-height: 1.5;
+}
+.course-evidence-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin: 6px 0;
+}
+.course-grade-rule { white-space: normal; }

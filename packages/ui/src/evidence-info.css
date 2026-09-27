@@ -16,8 +16,8 @@
   position: fixed; inset: auto; margin: 0; box-sizing: border-box; max-height: calc(100dvh - 24px); overflow: auto;
   padding: 10px 12px; border: 1px solid var(--magic-line-quiet); border-radius: var(--magic-radius-control);
   background: var(--magic-surface-raised); box-shadow: var(--magic-shadow-popover); color: var(--magic-ink);
-  font: 400 var(--magic-type-compact-control)/1.5 var(--magic-font-interface); font-style: normal;
-  letter-spacing: normal; text-align: start; text-transform: none; white-space: normal; overflow-wrap: anywhere;
+  font: var(--magic-font-interface-weight) var(--magic-type-compact-control)/1.5 var(--magic-font-interface); font-style: normal;
+  letter-spacing: var(--magic-tracking); text-align: start; text-transform: none; white-space: normal; overflow-wrap: anywhere;
 }
 .magic-info-panel:popover-open { display: block; }
 .magic-info-panel a { color: var(--magic-ink-link); text-decoration: underline; text-underline-offset: 3px; }

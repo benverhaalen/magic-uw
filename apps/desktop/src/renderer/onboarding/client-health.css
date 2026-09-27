@@ -23,9 +23,9 @@
 }
 .chn-title {
   margin: 0;
-  font-family: var(--magic-font-interface);
+  font-family: var(--magic-font-interface); font-weight: var(--magic-font-interface-weight); letter-spacing: var(--magic-tracking);
   font-size: 15px;
-  font-weight: 560;
+  font-weight: inherit;
   color: var(--magic-ink);
 }
 .chn-ok .chn-mark {
@@ -84,7 +84,7 @@
   background: var(--magic-fill-confirmation);
   box-shadow: none;
   color: var(--magic-ink-review);
-  font-weight: 560;
+  font-weight: inherit;
 }
 .chn-action.primary:hover:not(:disabled) {
   background: var(--magic-fill-review-hover);
@@ -164,7 +164,7 @@
   margin-bottom: 10px;
   padding: 0;
   font-size: 14px;
-  font-weight: 560;
+  font-weight: inherit;
   color: var(--magic-ink);
 }
 .chn-segment.selected {
@@ -181,7 +181,7 @@
 }
 .chn-segment-name {
   font-size: 14px;
-  font-weight: 560;
+  font-weight: inherit;
   color: var(--magic-ink);
 }
 .chn-segment-detail {
@@ -226,7 +226,7 @@
 }
 .chn-key-label {
   font-size: 14px;
-  font-weight: 560;
+  font-weight: inherit;
   color: var(--magic-ink);
 }
 .chn-key-row {
@@ -314,7 +314,7 @@
 }
 .chn-row-name {
   font-size: 15px;
-  font-weight: 560;
+  font-weight: inherit;
   color: var(--magic-ink);
 }
 .chn-row-detail {

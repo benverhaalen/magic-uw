@@ -40,7 +40,7 @@ a.magic-inline-time--link.magic-inline-time--link:focus-visible, .magic-inline-e
 
 .magic-inline-entity > a {
   font: inherit;
-  font-weight: 500;
+  font-weight: inherit;
   color: var(--magic-ink-link);
   text-decoration: underline;
   text-decoration-thickness: 1px;

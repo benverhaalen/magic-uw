@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import type { AuditNode, Command, CommandResult, PlanningComparison, Snapshot, StoredPlanningRecord } from "@magic/contracts";
 import { decodeUwTerm } from "../../../../../packages/domain/src/planning";
 import { planningPolicies } from "../../../../../packages/domain/src/planning-policy";
-import { Disclosure } from "../../../../../packages/ui/src";
+import { Action, Disclosure } from "../../../../../packages/ui/src";
 import { Icon, type IconName } from "./Icon";
 import { myUwMemory, type PlanStyle } from "./memory";
 import {
@@ -21,7 +21,7 @@ export type MyUwProps = {
   run: (command: Command) => Promise<CommandResult | undefined>;
   open: (url: string) => void;
   signIn: (service: Service) => void;
-  refresh: () => void;
+  refresh: () => Promise<CommandResult | undefined>;
 };
 type ObjectRef = Extract<BriefPart, { target: string }>;
 type Target = ObjectRef["target"];
@@ -35,7 +35,7 @@ const styles: { value: PlanStyle; label: string }[] = [
   { value: "compact", label: "Compact days" }, { value: "lighter", label: "Fewer credits per course" },
 ];
 const sourceStateLabel: Record<SourceSummary["state"], string> = {
-  current: "Current", partial: "Partly read", stale: "Needs refresh", failed: "Couldn’t refresh", blocked: "Sign-in needed", unsupported: "Not supported yet",
+  current: "Current", partial: "Partly read", stale: "Needs refresh", failed: "Couldn’t refresh", blocked: "Blocked", unsupported: "Not supported yet",
 };
 
 /** Scroll only the workspace pane; scrollIntoView would also shift the fixed desktop frame. */
@@ -85,7 +85,10 @@ export function MyUwPage({ snapshot, busy, run, open, signIn, refresh }: MyUwPro
   const [openRequirements, setOpenRequirements] = useState(() => new Set(myUwMemory.openRequirements));
   const [pending, setPending] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState<{ before: Record<string, string>; sawBusy: boolean; done: boolean } | null>(null);
+  const [refreshing, setRefreshing] = useState<{ pending: boolean; outcome: ReturnType<typeof refreshOutcome> | null; unconfirmed: boolean } | null>(null);
+  const operation = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   const termCode = model.terms.some((term) => term.code === termChoice) ? termChoice : model.defaultPlanTerm;
   const sources = snapshot.planning?.sources ?? [];
@@ -98,25 +101,28 @@ export function MyUwPage({ snapshot, busy, run, open, signIn, refresh }: MyUwPro
     const scroller = root.current?.closest<HTMLElement>(".desktop-workspace");
     if (scroller && myUwMemory.scrollTop) scroller.scrollTop = myUwMemory.scrollTop;
     const focusId = myUwMemory.focusId;
-    if (focusId && myUwMemory.scrollTop) document.getElementById(focusId)?.focus({ preventScroll: true });
+    if (focusId) document.getElementById(focusId)?.focus({ preventScroll: true });
     return () => {
       myUwMemory.scrollTop = scroller?.scrollTop ?? 0;
       const active = document.activeElement;
       myUwMemory.focusId = active instanceof HTMLElement && root.current?.contains(active) && active.id ? active.id : null;
     };
   }, []);
-  useEffect(() => {
-    if (!refreshing || refreshing.done) return;
-    if (busy && !refreshing.sawBusy) setRefreshing({ ...refreshing, sawBusy: true });
-    else if (!busy && refreshing.sawBusy) setRefreshing({ ...refreshing, done: true });
-  }, [busy, refreshing]);
-
   async function act(key: string, command: Command, onResult?: (result: CommandResult) => void) {
+    if (operation.current || busy) return;
+    operation.current = true;
     setPending(key); setFailure(null);
-    const result = await run(command);
-    setPending(null);
-    if (!result) { setFailure(key); return; }
-    onResult?.(result);
+    try {
+      const result = await run(command);
+      if (!mounted.current) return;
+      if (!result) { setFailure(key); return; }
+      onResult?.(result);
+    } catch {
+      if (mounted.current) setFailure(key);
+    } finally {
+      operation.current = false;
+      if (mounted.current) setPending(null);
+    }
   }
   const compare = () => {
     const request = input;
@@ -126,9 +132,19 @@ export function MyUwPage({ snapshot, busy, run, open, signIn, refresh }: MyUwPro
     });
   };
   const loadOfferings = (code: string) => void act(`offerings:${code}`, { type: "planning-search", subjectCode: code, termCode, page: 1 });
-  const startRefresh = () => {
-    setRefreshing({ before: Object.fromEntries(model.sources.map((source) => [source.id, source.observedAt])), sawBusy: false, done: false });
-    refresh();
+  const startRefresh = async () => {
+    if (operation.current || busy) return;
+    operation.current = true;
+    const before = Object.fromEntries(model.sources.map((source) => [source.id, source.observedAt]));
+    setRefreshing({ pending: true, outcome: null, unconfirmed: false });
+    try {
+      const result = await refresh();
+      if (mounted.current) setRefreshing({ pending: false, outcome: result ? refreshOutcome(before, projectMyUw(result.snapshot).sources) : null, unconfirmed: !result });
+    } catch {
+      if (mounted.current) setRefreshing({ pending: false, outcome: null, unconfirmed: true });
+    } finally {
+      operation.current = false;
+    }
   };
   const toggleRequirement = (id: string, isOpen: boolean) => setOpenRequirements((previous) => {
     if (previous.has(id) === isOpen) return previous;
@@ -143,25 +159,32 @@ export function MyUwPage({ snapshot, busy, run, open, signIn, refresh }: MyUwPro
     } else if (!(part.ref && reach(part.target === "term" ? courseDomId(part.ref) : attentionDomId(part.ref)))) go(part.target);
   };
   const canSignIn = Boolean(window.magic.signInUW);
-  const outcome = refreshing?.done ? refreshOutcome(refreshing.before, model.sources) : null;
+  const outcome = refreshing?.outcome;
+  // A failed first attempt creates source rows too. Historical success distinguishes setup
+  // from returning-session recovery; the latter belongs to the shell notification.
+  const establishedEnroll = sources.some((source) => (source.source === "uw_enroll" || source.source === "uw_dars") && (source.lastSuccessAt || (source.status === "complete" && source.completeness === "complete")));
+  const hasAcademicRecords = Boolean(model.summary || model.audits.length || model.thisTerm || model.history.length || model.attention.length || model.advisors.length);
+  const firstConnection = model.state !== "multiple_accounts" && !establishedEnroll && !hasAcademicRecords;
   const problems = model.privateSources.filter((source) => source.state !== "current");
 
-  return <div className="myuw-page" ref={root}>
+  return <div className={`myuw-page${firstConnection ? " myuw-page--connect" : ""}`} ref={root}>
     <div className="myuw-main">
-      <Briefing model={model} busy={busy} canSignIn={canSignIn} signIn={signIn} reveal={reveal} />
-      <div className="myuw-status" role="status">
+      {firstConnection ? <ConnectionEntry busy={busy} canSignIn={canSignIn} signIn={signIn} />
+        : <Briefing model={model} establishedEnroll={establishedEnroll} busy={busy} canSignIn={canSignIn} signIn={signIn} reveal={reveal} />}
+      {!firstConnection || model.checkedAt ? <div className="myuw-status" role="status">
         {model.checkedAt ? <span>{problems.length ? `Checked ${stamp(model.checkedAt)} · ${problems.length} ${problems.length === 1 ? "source needs" : "sources need"} attention` : `Checked ${stamp(model.checkedAt)}`}</span> : <span>Nothing checked from UW yet</span>}
-        {window.magic.syncPlanning && model.state !== "not_connected" ? <button type="button" id="myuw-refresh" className="myuw-quiet" disabled={busy} onClick={startRefresh}><Icon name="refresh" />{refreshing && !refreshing.done ? "Refreshing…" : "Refresh"}</button> : null}
+        {window.magic.syncPlanning && model.state !== "not_connected" ? <Action id="myuw-refresh" tone="quiet" disabled={busy} pending={refreshing?.pending} onClick={() => void startRefresh()}><Icon name="refresh" />{refreshing?.pending ? "Refreshing" : "Refresh"}</Action> : null}
         {problems.length ? <button type="button" className="myuw-quiet" onClick={() => go("sources")}>See sources</button> : null}
         {outcome ? <span className="myuw-outcome">{outcome.checked === 0 ? "Refresh finished without new UW information. Saved records are unchanged." : `${outcome.current} of ${outcome.checked} sources updated${outcome.problems.length ? `; ${outcome.problems.map((source) => `${source.label} ${sourceStateLabel[source.state].toLowerCase()}`).join(", ")}` : ""}.`}</span> : null}
-      </div>
+        {refreshing?.unconfirmed ? <span className="myuw-outcome">The refresh didn’t finish. Your saved records remain available; try again.</span> : null}
+      </div> : null}
 
       {model.attention.length ? <section className="myuw-section" id="myuw-attention" aria-labelledby="myuw-attention-title">
         <h2 id="myuw-attention-title" tabIndex={-1}>Needs attention</h2>
         <div className="myuw-attention">{model.attention.map((item) => <Attention key={item.key} item={item} open={open} />)}</div>
       </section> : null}
 
-      <section className="myuw-section" id="myuw-degree" aria-labelledby="myuw-degree-title">
+      {!firstConnection ? <section className="myuw-section" id="myuw-degree" aria-labelledby="myuw-degree-title">
         <div className="myuw-section-head"><h2 id="myuw-degree-title" tabIndex={-1}>Degree progress</h2>{model.audits.length ? <Source url={model.audits[0].record.provenance.sourceUrl} label="Degree audit" open={open} /> : null}</div>
         {!model.audits.length ? <p className="myuw-lead">{model.state === "not_connected"
           ? "After you connect Course Search & Enroll, your saved degree audits appear here with what remains. Catalog descriptions alone can’t show degree progress."
@@ -169,14 +192,14 @@ export function MyUwPage({ snapshot, busy, run, open, signIn, refresh }: MyUwPro
           {model.state !== "not_connected" ? <> <Source url={UW.dars} label="Open degree audit" open={open} /></> : null}</p>
           : model.audits.map((audit) => <Audit key={audit.record.localId} audit={audit} model={model} termCode={termCode} busy={busy} pending={pending}
             openIds={openRequirements} onToggle={toggleRequirement} onLoad={loadOfferings} open={open} snapshot={snapshot} />)}
-      </section>
+      </section> : null}
 
-      <section className="myuw-section" id="myuw-plan" aria-labelledby="myuw-plan-title">
+      {!firstConnection ? <section className="myuw-section" id="myuw-plan" aria-labelledby="myuw-plan-title">
         <div className="myuw-section-head"><h2 id="myuw-plan-title" tabIndex={-1}>Plan next term</h2><Source url={UW.enroll} label="Course Search & Enroll" open={open} /></div>
         <p className="myuw-lead">Courses that may count toward an open requirement, each checked on its own against your saved schedule. You choose and enroll in Course Search & Enroll.</p>
         {model.state === "not_connected" ? <p className="myuw-note">Comparing needs your degree audit and current enrollment, so it starts after you sign in to Course Search & Enroll.</p> : <Planner model={model} termCode={termCode} style={style} busy={busy} pending={pending} failure={failure}
           setTerm={setTerm} setStyle={setStyle} compare={compare} loadOfferings={loadOfferings} comparison={comparison} current={current} open={open} />}
-      </section>
+      </section> : null}
 
       <section className="myuw-section myuw-more" aria-label="Records and sources">
         {model.history.length ? <Disclosure label={`Course history · ${model.history.length} source records`}>
@@ -187,7 +210,7 @@ export function MyUwPage({ snapshot, busy, run, open, signIn, refresh }: MyUwPro
             <Checked record={course} snapshot={snapshot} open={open} now={model.now} />
           </article>)}
         </Disclosure> : null}
-        {model.state !== "not_connected" ? <Reconciliation snapshot={snapshot} model={model} open={open} /> : null}
+        {!firstConnection && model.state !== "not_connected" ? <Reconciliation snapshot={snapshot} model={model} open={open} /> : null}
         {model.subjects.length ? <Disclosure label="Browse the course catalog">
           <p className="myuw-note">Public Guide descriptions. Term availability, seats and eligibility need their own records.</p>
           <div className="myuw-controls">
@@ -216,7 +239,6 @@ export function MyUwPage({ snapshot, busy, run, open, signIn, refresh }: MyUwPro
               {source.notes.map((note) => <p className="myuw-note" key={note}>{note}</p>)}
               <div className="myuw-inline">
                 <Source url={source.url} label="Open source" open={open} />
-                {source.state !== "current" && source.service && canSignIn && source.label !== "Canvas account match" ? <button type="button" className="myuw-quiet" disabled={busy} onClick={() => signIn(source.service!)}>Sign in again</button> : null}
               </div>
             </article>)}
           </Disclosure> : null}
@@ -224,8 +246,8 @@ export function MyUwPage({ snapshot, busy, run, open, signIn, refresh }: MyUwPro
       </section>
     </div>
 
-    <aside className="myuw-rail" aria-label="This term and contacts">
-      <section id="myuw-term" aria-labelledby="myuw-term-title">
+    <aside className="myuw-rail" aria-label={firstConnection ? "UW tools" : "This term and contacts"}>
+      {!firstConnection ? <section id="myuw-term" aria-labelledby="myuw-term-title">
         <h2 id="myuw-term-title" tabIndex={-1}>{model.thisTerm ? model.thisTerm.label : "This term"}</h2>
         {!model.thisTerm ? <p className="myuw-note">Your current enrollment appears here after Course Search & Enroll is connected.</p> : <>
           {!model.thisTerm.complete ? <p className="myuw-caution"><Icon name="alert" />Saved enrollment may be out of date. Refresh to confirm.</p> : null}
@@ -237,7 +259,7 @@ export function MyUwPage({ snapshot, busy, run, open, signIn, refresh }: MyUwPro
             <span className="myuw-note">Section {course.record.sections.join(", ")}</span>
           </article>)}
         </>}
-      </section>
+      </section> : null}
       {model.advisors.length ? <section aria-labelledby="myuw-advisors-title"><h2 id="myuw-advisors-title">Advisors</h2>
         {model.advisors.map((advisor) => <article className="myuw-rail-row" key={advisor.localId}>
           <strong>{advisor.displayName}</strong><span className="myuw-note">{advisor.role}</span>
@@ -245,10 +267,10 @@ export function MyUwPage({ snapshot, busy, run, open, signIn, refresh }: MyUwPro
         </article>)}
       </section> : null}
       <section aria-labelledby="myuw-tools-title"><h2 id="myuw-tools-title">UW tools</h2>
-        <p className="myuw-note">Enrollment, holds and audits change only in UW’s own tools. My Magic UW reads what they report.</p>
+        <p className="myuw-note">Open UW’s tools to enroll, manage your record or run a new degree audit.</p>
         <div className="myuw-rail-links">
           <Source url={UW.enroll} label="Course Search & Enroll" open={open} />
-          <Source url={UW.myuw} label="My UW" open={open} />
+          <Source url={UW.myuw} label="Open My UW" open={open} />
           <Source url={UW.dars} label="Degree audit" open={open} />
         </div>
       </section>
@@ -256,14 +278,29 @@ export function MyUwPage({ snapshot, busy, run, open, signIn, refresh }: MyUwPro
   </div>;
 }
 
-function Briefing({ model, busy, canSignIn, signIn, reveal }: { model: MyUwModel; busy: boolean; canSignIn: boolean; signIn: MyUwProps["signIn"]; reveal: (part: ObjectRef) => void }) {
+function ConnectionEntry({ busy, canSignIn, signIn }: Pick<MyUwProps, "busy" | "signIn"> & { canSignIn: boolean }) {
+  return <section className="myuw-connect" aria-labelledby="myuw-title">
+    <h1 id="myuw-title" tabIndex={-1}>Where you stand</h1>
+    <p className="myuw-connect-intro">Bring your UW records together to see what remains in your degree audit and compare courses for next term.</p>
+    <div className="myuw-connect-action">
+      <Action id="myuw-connect-enroll" disabled={busy || !canSignIn} onClick={() => signIn("enroll")} aria-describedby="myuw-connect-scope">
+        <span><span className="myuw-connect-title">Connect Course Search &amp; Enroll</span><span className="myuw-connect-description">Saved degree audits, current enrollment and student records.</span></span>
+        <Icon name="arrow" />
+      </Action>
+    </div>
+    {!canSignIn ? <p className="myuw-note">UW sign-in is available in the desktop app.</p> : null}
+    <p className="myuw-note" id="myuw-connect-scope">Records are read on this device. You choose and enroll in UW’s own tools.</p>
+  </section>;
+}
+
+function Briefing({ model, establishedEnroll, busy, canSignIn, signIn, reveal }: { model: MyUwModel; establishedEnroll: boolean; busy: boolean; canSignIn: boolean; signIn: MyUwProps["signIn"]; reveal: (part: ObjectRef) => void }) {
   return <section className="myuw-brief" aria-labelledby="myuw-title">
     <h1 id="myuw-title" tabIndex={-1}>Where you stand</h1>
     <div className="myuw-brief-body">
       <div className="myuw-brief-text">
         {model.state === "multiple_accounts" ? <p>Records from more than one student are saved on this device, so personal planning is hidden to keep them apart. Clear local data in Data & AI before connecting a different student.</p>
           : model.state === "not_connected" ? <>
-            <p>Connect your UW accounts to see your degree progress, holds, enrollment window and next-term options in one place.</p>
+            <p>Connect Course Search & Enroll to read your saved degree audits, current enrollment and student records.</p>
             <p>My Magic UW reads these records on this device. It never enrolls, drops or submits anything for you.</p>
             {!canSignIn ? <p className="myuw-note">UW sign-in is available in the desktop app.</p> : null}
           </>
@@ -272,8 +309,8 @@ function Briefing({ model, busy, canSignIn, signIn, reveal }: { model: MyUwModel
                 : <button type="button" key={at} className="myuw-object-link" onClick={() => reveal(part)}>{part.text}</button>)}</p>)}
       </div>
       <div className="myuw-brief-actions">
-        {canSignIn && model.state !== "multiple_accounts" ? model.signIn.map((service) => <Tile key={service} tone={service === "myuw" ? "blue" : "coral"} disabled={busy} onClick={() => signIn(service)}>
-          {service === "myuw" ? "Sign in to My UW" : "Sign in to Course Search & Enroll"}</Tile>) : null}
+        {canSignIn && model.state !== "multiple_accounts" ? model.signIn.filter((service) => service === "enroll" && !establishedEnroll).map((service) => <Tile key={service} tone="blue" disabled={busy} onClick={() => signIn(service)}>
+          {"Connect Course Search & Enroll"}</Tile>) : null}
         {model.state !== "multiple_accounts" && model.state !== "not_connected" && model.defaultPlanTerm ? <Tile tone="amber" onClick={() => go("plan")}>Compare {termLabel(model.defaultPlanTerm)} courses</Tile> : null}
       </div>
     </div>

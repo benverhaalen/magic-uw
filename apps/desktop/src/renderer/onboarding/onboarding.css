@@ -11,7 +11,7 @@
   padding: 0 10px 10px;
   background: var(--magic-fill-shell);
   color: var(--magic-ink);
-  font-family: var(--magic-font-interface);
+  font-family: var(--magic-font-interface); font-weight: var(--magic-font-interface-weight); letter-spacing: var(--magic-tracking);
   font-size: 14px;
 }
 .onb-bar {
@@ -136,7 +136,7 @@
   background: var(--magic-fill-review);
   color: var(--magic-ink-review);
   font-size: 14px;
-  font-weight: 560;
+  font-weight: inherit;
 }
 .onb-primary:hover:not(:disabled) {
   background: var(--magic-fill-review-hover);
@@ -284,7 +284,7 @@
 }
 .onb-tile-name {
   font-size: 15px;
-  font-weight: 560;
+  font-weight: inherit;
 }
 .onb-tile-meta {
   font-size: 13px;
@@ -311,7 +311,7 @@
 }
 .onb-connection.ok {
   color: var(--magic-ink);
-  font-weight: 560;
+  font-weight: inherit;
 }
 
 /* Connect: disclosure and terminal */
@@ -328,7 +328,7 @@
   border-top: 1px solid var(--magic-line-quiet);
 }
 .onb-facts dt {
-  font-weight: 560;
+  font-weight: inherit;
 }
 .onb-facts dd {
   margin: 0;
@@ -370,10 +370,10 @@
   display: none;
 }
 .onb-consent .consent-title {
-  font-family: var(--magic-font-interface);
+  font-family: var(--magic-font-interface); font-weight: var(--magic-font-interface-weight); letter-spacing: var(--magic-tracking);
   font-size: 16px;
-  font-weight: 560;
-  letter-spacing: normal;
+  font-weight: inherit;
+  letter-spacing: var(--magic-tracking);
   color: var(--magic-ink);
 }
 .onb-consent .settings-section {
@@ -413,7 +413,7 @@
   background: var(--magic-fill-review);
   color: var(--magic-ink-review);
   font-size: 14px;
-  font-weight: 560;
+  font-weight: inherit;
 }
 .onb-consent .button.primary:hover:not(:disabled) {
   background: var(--magic-fill-review-hover);
@@ -477,7 +477,7 @@
   min-width: 0;
 }
 .onb-source-label {
-  font-weight: 500;
+  font-weight: inherit;
   overflow-wrap: anywhere;
 }
 .onb-source-reason {

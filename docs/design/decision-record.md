@@ -166,3 +166,12 @@ Ben supplied `Lora-Medium.ttf` with its OFL, relayed verbatim by the driver:
 > “replace the cooper font with this font across everything in the app including website and everything mentioning cooper and then push the changes”
 
 **Decision:** supplied, unmodified Lora Medium at its true weight 500 replaces Cooper Light BT in the same editorial roles: wordmark, page title and selective section, work and study titles. It also replaces the marketing drafts' display faces. Geist, sizes, geometry, color, icons and branding are unchanged. The binary and OFL live in `packages/ui/assets/fonts`; bundling follows the OFL (unmodified, copyright and license retained). This supersedes D04's private-font arrangement for the editorial face; D04 and D05 quotes remain the record of serif scope. Screenshots, receipts and the Home reference JPEG made before this change show Cooper; they remain composition and color evidence, not Lora evidence. Recapture before claiming Lora wrapping or fit.
+
+
+## Uniform Geist — September 27, 2026
+
+Ben's exact correction in the active build conversation: “ensure the whole app only uses one font weight and spacing etc for geist. keep it consistent”. Recorded September 27, 2026; exact message time unavailable.
+
+Implementation interpretation: the existing reading baseline is Geist 400. Every app-authored Geist role now consumes `--magic-font-interface-weight: 400` with existing `--magic-tracking: normal`; role-specific sizes and line heights preserve hierarchy. This supersedes earlier examples of 500/550/560/600/700 controls, metadata, dates and emphasis. Semantic `strong`/`b` remain semantic and inherit the surrounding visual weight. Lora Medium stays 500, and the variable Geist asset retains its truthful 100–900 font-face descriptor. Monospace and external source frames are outside this correction.
+
+Adoption gate: remove conflicting owning declarations and inline overrides, then inspect computed weight/tracking and actual loaded fonts across normal entry plus controls, menus, notices, checkbox/Undo, Settings, onboarding and new-page states. Compare metadata and shared controls at native scale and 200% text. A source scan or this rule alone does not establish integrated adoption; late parallel consumers must pass the same computed-style sweep after integration. Record observed coverage and limitations in the task handoff.

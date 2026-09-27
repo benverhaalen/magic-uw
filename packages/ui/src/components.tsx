@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import { markAnchor } from './motion/anchor';
 
@@ -43,19 +43,20 @@ export interface ConfirmationChange { issueId: string; sourceVersion: string; ha
 /** Controlled self-report, scoped to source version. Parent owns persistence, error and old history.
  * A changed source shows unchecked; an unrelated wording edit does not change sourceVersion.
  */
-export function Confirmation({ issueId, sourceVersion, record, onChange, pending = false, error }:
-  { issueId: string; sourceVersion: string; record: ConfirmationRecord | null;
+export function Confirmation({ issueId, sourceVersion, record, onChange, pending = false, error, compactWhenHandled = false, summary }:
+  { compactWhenHandled?: boolean; summary?: ReactNode; issueId: string; sourceVersion: string; record: ConfirmationRecord | null;
     onChange: (change: ConfirmationChange) => void; pending?: boolean; error?: string }) {
   const id = useId(), input = useRef<HTMLInputElement>(null);
   const checked = record?.issueId === issueId && record.sourceVersion === sourceVersion;
   const change = (handled: boolean) => { if (!pending) onChange({ issueId, sourceVersion, handled }); };
-  return <div className="magic-ui-confirmation">
-    <label><input ref={input} type="checkbox" checked={checked} aria-disabled={pending || undefined}
+  const compact = compactWhenHandled && checked;
+  return <div className={`magic-ui-confirmation${compact ? ' magic-ui-confirmation--compact' : ''}`}>
+    <label hidden={compact}><input ref={input} type="checkbox" checked={checked} aria-disabled={pending || undefined}
       aria-describedby={`${id}-help ${id}-status`} onChange={() => change(!checked)} /> I’ve handled this</label>
-    <p id={`${id}-help`} className="magic-ui-meta">Your report for this source version; not verification from the course.</p>
+    <p id={`${id}-help`} hidden={compact} className="magic-ui-meta">Your report for this source version; not verification from the course.</p>
     <div id={`${id}-status`} role="status" className="magic-ui-meta">
-      {error || (pending ? 'Saving your choice…' : checked ? 'Reported handled. ' : '')}
-      {checked && <Action tone="quiet" pending={pending} onClick={() => { change(false); input.current?.focus(); }}>Undo</Action>}
+      {!compact && <span className="magic-ui-confirmation__reserve" aria-hidden="true">Not confirmed. Try again.</span>}
+      <span className="magic-ui-confirmation__content">{compact ? <><span>{summary ?? 'Reported handled.'}</span>{' '}<Action data-report-undo tone="quiet" pending={pending} onClick={() => change(false)}>Undo</Action><span className="magic-ui-confirmation__feedback">{error || (pending ? 'Saving…' : '')}</span></> : <>{error || (pending ? 'Saving…' : checked ? 'Reported handled. ' : '')}{checked && <Action data-report-undo tone="quiet" pending={pending} onClick={() => { change(false); input.current?.focus(); }}>Undo</Action>}</>}</span>
     </div>
   </div>;
 }

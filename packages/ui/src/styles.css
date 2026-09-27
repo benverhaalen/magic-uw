@@ -2,10 +2,10 @@
 @import '../../../docs/design/tokens.css';
 @import './fonts.css';
 .magic-ui-action, .magic-ui-confirmation, .magic-ui-popover, .magic-ui-link, .magic-ui-disclosure {
-  font-family: var(--magic-font-interface); color: var(--magic-ink); box-sizing: border-box;
+  font-family: var(--magic-font-interface); font-weight: var(--magic-font-interface-weight); letter-spacing: var(--magic-tracking); color: var(--magic-ink); box-sizing: border-box;
 }
-.magic-ui-action { border: 0; border-radius: var(--magic-radius-control); min-height: 42px; padding: 10px 14px; font-size: var(--magic-type-control); line-height: 1.4; color: var(--magic-ink-action); background: var(--magic-fill-action); cursor: pointer; }
-.magic-ui-action--quiet { background: transparent; color: var(--magic-ink-link); text-decoration: underline; text-underline-offset: 3px; }
+.magic-ui-action { display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; transition: background-color var(--magic-motion-overlay-enter) var(--magic-motion-ease-out); border: 0; border-radius: var(--magic-radius-control); min-height: 42px; padding: 10px 14px; font-size: var(--magic-type-control); line-height: 1.4; color: var(--magic-ink-action); background: var(--magic-fill-action); cursor: pointer; }
+.magic-ui-action--quiet { background: transparent; color: var(--magic-ink-link); text-decoration: none; }
 .magic-ui-action:disabled, .magic-ui-action[aria-disabled=true] { background: var(--magic-fill-disabled); color: var(--magic-ink-disabled); cursor: default; }
 .magic-ui-action[aria-busy=true] { cursor: progress; }
 .magic-ui-action:active:not(:disabled):not([aria-disabled=true]) { box-shadow: inset 0 0 0 999px var(--magic-fill-pressed-overlay); }
@@ -27,5 +27,16 @@
 }
 
 /* Confirmation support and its inline undo share one readable semantic role. */
-.magic-ui-confirmation [role=status] { font: 400 12px/1.5 var(--magic-font-interface); }
+.magic-ui-confirmation [role=status] { font: var(--magic-font-interface-weight) .8125rem/1.5 var(--magic-font-interface); min-height: 3em; margin: 0; }
 .magic-ui-confirmation [role=status] .magic-ui-action { font: inherit; min-width: 32px; min-height: 32px; vertical-align: baseline; }
+
+.magic-ui-confirmation [hidden] { display: none; }
+.magic-ui-confirmation--compact [role=status] { min-height: 0; }
+.magic-ui-confirmation__feedback { display: block; min-height: 1.5em; }
+
+
+.magic-ui-confirmation [role=status] { display: grid; }
+.magic-ui-confirmation__reserve, .magic-ui-confirmation__content { grid-area: 1 / 1; }
+.magic-ui-confirmation__reserve { visibility: hidden; pointer-events: none; }
+
+@media (prefers-reduced-motion: reduce) { .magic-ui-action { transition: none; } }
