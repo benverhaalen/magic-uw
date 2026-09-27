@@ -44,34 +44,91 @@ export const NOTIFICATION_RULES = {
   /** Submission workflow states that count as turned in. */
   submittedStates: ["submitted", "pending_review", "graded"],
   /**
-   * Announcement phrases that make a course message important. Case-insensitive, whole words;
-   * a space matches any whitespace. "final" skips "final project/paper/..." like the Today rail.
+   * Announcement change test, judged per sentence (case-insensitive, whole words; a space
+   * matches any whitespace). A sentence signals a change when it has a change phrase, or a
+   * topic word together with a change word — so "the exam will be held in Room 1100" counts
+   * and "exam review slides are posted" does not — unless a negation says nothing changed
+   * ("the deadline was not extended", "the exam is still Friday as scheduled").
+   * Exam mentions are the exception: they always count (messageAlwaysImportant).
+   * "final" skips "final project/paper/..." like the Today rail.
    */
-  messageKeywords: [
+  messageChangePhrases: [
     "cancell?ed",
-    "no class",
+    "cancel+ing",
+    "no class(?:es)?",
     "won['’]t meet",
     "will not meet",
+    "not meeting",
     "postponed",
     "rescheduled",
     "moved to",
+    "pushed (?:back|to)",
     "room change",
     "new room",
-    "location",
+  ],
+  /** Any exam mention is important on its own (Aidan, Sep 27): exams are never routine news. */
+  messageAlwaysImportant: [
     "exams?",
     "midterms?",
     "finals?(?!\\s+(?:project|paper|essay|report|presentation|draft|thoughts)\\b)",
+  ],
+  messageTopics: [
     "quiz(?:zes)?",
-    "due date",
+    "due dates?",
     "deadlines?",
+    "location",
+    "room",
+    "homework",
+    "hw ?\\d*",
+    "problem sets?",
+    "psets?",
+    "assignments?",
+    "projects?",
+    "labs?",
+    "papers?",
+    "lectures?",
+    "class",
+    "discussion sections?",
+    "office hours",
+  ],
+  messageChangeWords: [
     "extended",
-    "extension",
+    "extensions?",
+    "moved",
+    "moving",
+    "changed",
+    "changes?",
+    "now",
+    "instead",
+    "new (?:date|time|deadline|location|room|due date)",
+    "earlier",
+    "later",
+    "delayed",
+    "shifted",
+    "revised",
+    "updated",
+    "will be (?:held|in|on|at|due)",
+    "bring",
+    "allowed",
+    "not allowed",
+    "covers?",
+    "also includes?",
+    "no longer",
+  ],
+  messageNegations: [
+    "not (?:be )?(?:extended|moved|changed|cancell?ed|postponed|rescheduled)",
+    "no changes?",
+    "unchanged",
+    "still (?:on|due|scheduled|at|in)",
+    "as (?:scheduled|planned|usual)",
+    "remains?",
+    "has not changed",
   ],
   // ── email (Outlook mail: kind "message" with `mail`) ──
   /** Link rel and category-reason prefix that mark Canvas's own notification mail (the Canvas change notifies instead). */
   canvasMailRel: "canvas-item",
   canvasMailReasonPrefix: "Canvas notification",
-  /** University-office phrases that make an admin email important. Same matching as messageKeywords. */
+  /** University-office phrases that make an admin email important. Whole words, case-insensitive. */
   mailOfficeKeywords: [
     "holds?",
     "registration",
@@ -173,7 +230,20 @@ const RANK: Record<NotificationLevel, number> = { urgent: 0, important: 1, info:
 const higher = (a: NotificationLevel, b: NotificationLevel) => (RANK[a] <= RANK[b] ? a : b);
 const words = (list: readonly string[]) =>
   new RegExp(`\\b(?:${list.map((k) => k.replaceAll(" ", "\\s+")).join("|")})\\b`, "i");
-const KEYWORD = words(NOTIFICATION_RULES.messageKeywords);
+const EXAM = words(NOTIFICATION_RULES.messageAlwaysImportant);
+const CHANGE_PHRASE = words(NOTIFICATION_RULES.messageChangePhrases);
+const TOPIC = words(NOTIFICATION_RULES.messageTopics);
+const CHANGE_WORD = words(NOTIFICATION_RULES.messageChangeWords);
+const NEGATION = words(NOTIFICATION_RULES.messageNegations);
+const sentences = (text: string) => text.split(/(?<=[.!?])\s+|\n+/).map((x) => x.replace(/\s+/g, " ").trim()).filter(Boolean);
+/** Does one sentence say something changed? See NOTIFICATION_RULES.messageChangePhrases. */
+function changeSentence(sentence: string) {
+  if (EXAM.test(sentence)) return true;
+  if (NEGATION.test(sentence)) return false;
+  return CHANGE_PHRASE.test(sentence) || (TOPIC.test(sentence) && CHANGE_WORD.test(sentence));
+}
+/** The announcement change test as a matcher: true when any sentence of the text signals a change. */
+const KEYWORD = { test: (text: string) => sentences(text).some(changeSentence) };
 const OFFICE = words(NOTIFICATION_RULES.mailOfficeKeywords);
 const INTERVIEW = words([NOTIFICATION_RULES.mailInterviewWord]);
 const INTERVIEW_CONTEXT = words(NOTIFICATION_RULES.mailInterviewContext);
@@ -265,7 +335,7 @@ function scoreText(s: Submission | null, points: number | null) {
   if (s?.score != null) return `${num(s.score)} points`;
   return "Grade posted";
 }
-function quoteFor(title: string, text: string, pattern: RegExp = KEYWORD): string | null {
+function quoteFor(title: string, text: string, pattern: { test(s: string): boolean } = KEYWORD): string | null {
   const max = NOTIFICATION_RULES.quoteMaxChars;
   const cut = (s: string) => (s.length <= max ? s : `${s.slice(0, max - 1).trimEnd()}…`);
   // Prefer the sentence that says what changed; the title is already shown as the row title.
@@ -517,7 +587,7 @@ export function buildNotifications(input: NotificationInput): NotificationFeed {
     const subject = r.title;
     const preview = mail.preview ?? "";
     const text = `${subject}\n${preview}`;
-    const quote = (pattern: RegExp) => quoteFor(subject, preview, pattern) ?? undefined;
+    const quote = (pattern: { test(s: string): boolean }) => quoteFor(subject, preview, pattern) ?? undefined;
     // The Canvas course code matched this mail to; mail about an excluded course is suppressed.
     const course = mail.courseId
       ? [...input.resources].sort((x, y) => x.id.localeCompare(y.id)).find((x) => x.courseId === mail.courseId && !x.mail)
