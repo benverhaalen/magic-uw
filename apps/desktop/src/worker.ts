@@ -25,6 +25,7 @@ const core = createCore(store, {
   fixture: captureBatchSchema.parse(fixture),
   courseExtractor: createLocalCourseExtractor(),
   planningHttp: { read: (request, signal) => hostRead("planning-public-read", { request }, signal) },
+  madgrades: { read: (request, signal) => hostRead("madgrades-read", { request }, signal) },
   ...(process.env.MAGIC_GATEWAY_URL
     ? {
         gateway: {

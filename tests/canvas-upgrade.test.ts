@@ -79,7 +79,11 @@ test("synthetic university selects five classes, records exclusions, captures wh
   for (const secret of [
     "SYNTHETIC_CAPABILITY",
     "SYNTHETIC_DOWNLOAD_SECRET",
-    "never-store@example.test",
+    // Profile and classmate identities only reach the local scrubbing roster.
+    "aquinlan@wisc.edu",
+    "Avery Quinlan",
+    "Quinlan, Avery",
+    "Rowan Tessier",
     "author_id",
   ])
     assert.ok(!stored.includes(secret), secret);

@@ -15,7 +15,7 @@ A context register, not an implementation backlog. No ownership is assigned.
 | Current technical focus | Data access, local records, provenance, linking, and freshness                                                                                                               |
 | Computation             | Code for exact facts; Jev for typed judgments; language models for prose and deeper reasoning                                                                                |
 | Jev billing             | Company gateway pays for Claude/Codex/Gemini; OpenRouter users pay through their own key. Our TypeSafe key stays server-side. OpenRouter route is not built |
-| Identity scrubbing      | Before hosted processing, remove student identities and unnecessary personal identifiers; retain relevant instructor/author names. Policy accepted; scrubber not implemented |
+| Identity scrubbing      | Before hosted processing, remove student identities and unnecessary personal identifiers; retain relevant instructor/author names. Policy accepted; known-identity scrubber implemented |
 | School actions          | Read only: no submitting, enrolling, or posting                                                                                                                              |
 | Learning policy         | Course policy first; coach when vague or silent                                                                                                                              |
 | Honesty                 | No false reassurance or unsupported readiness, speed, or reliability claims                                                                                                  |

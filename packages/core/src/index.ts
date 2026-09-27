@@ -20,15 +20,28 @@ import {
   type Job,
 } from "@magic/contracts";
 import { maySend, resolveDeadline } from "@magic/domain";
-import { judgmentResultSchema, type JudgmentGateway } from "@magic/ai";
+import { JudgmentBudgetError, judgmentResultSchema, type JudgmentGateway } from "@magic/ai";
 import { contentCategories, courseIncluded } from "./access";
 import { evidenceFor } from "./evidence";
+import { suggestEvidenceLinks } from "./fuzzy-links";
+export {
+  suggestEvidenceLinks,
+  scoreEvidenceCandidates,
+  defaultFuzzyLinkParams,
+  currentLinkJudgments,
+  fuzzyLinkId,
+  type FuzzyLinkParams,
+} from "./fuzzy-links";
+import { payloadScrubber, validateCitations } from "./identity";
+export { scrubText, rosterFor, toOriginalSpan, validateCitations } from "./identity";
 import { pullGuideForSubject } from "../../connectors/src/planning-public";
 import {
   createPublicClient,
   type PublicClient,
 } from "../../connectors/src/network";
 import { comparePlanning } from "./planning";
+import { planningIdentityTable, summarizePlanningGrades } from "./planning-grades";
+import { pullMadgradesGrades, type MadgradesTransport } from "../../connectors/src/madgrades";
 import { reconcileAcademicRecords } from "./academic-reconciliation";
 import type { UwPlanningHttp } from "../../connectors/src/uw-planning-http";
 import {
@@ -56,6 +69,8 @@ export interface CoreOptions {
   now?: () => Date;
   planningPublicClient?: PublicClient;
   planningHttp?: Pick<UwPlanningHttp, "read">;
+  /** Host-owned Madgrades reads; the workspace never receives the token. */
+  madgrades?: MadgradesTransport;
 }
 export function createCore(store: Store, options: CoreOptions) {
   const planningReads = new Set<AbortController>();
@@ -107,7 +122,10 @@ export function createCore(store: Store, options: CoreOptions) {
             : null;
         return {
           ...r,
-          deadline: resolveDeadline(evidence.deadlines(r)),
+          deadline: resolveDeadline(
+            evidence.deadlines(r),
+            evidence.unresolvedDeadlines(r),
+          ),
           kindLabel: label,
         };
       })
@@ -176,6 +194,10 @@ export function createCore(store: Store, options: CoreOptions) {
                   (c) => maySend(store.privacy(), recipient, [c]).allowed,
                 ),
             );
+    // Hosted recipients get identity-scrubbed free text; this payload is both
+    // the preview and the exact outgoing body. Each field is scrubbed on its own
+    // so citations can be re-validated per source field.
+    const scrub = payloadScrubber(store, recipient !== "local");
     const profile = recipient === "jev" ? undefined : profileFor(r);
     const effectivePolicy = effectiveCoursePolicy(profile, r);
     if (
@@ -196,16 +218,22 @@ export function createCore(store: Store, options: CoreOptions) {
         ),
     );
     const payload = {
-      course: r.courseName.slice(0, 200),
-      title: r.title.slice(0, 500),
-      text: [r.text, ...supporting.map((s) => `${s.title}\n${s.text}`)]
+      course: scrub.field(r.courseName, r.courseId).slice(0, 200),
+      title: scrub.field(r.title, r.courseId).slice(0, 500),
+      text: [
+        scrub.field(r.text, r.courseId),
+        ...supporting.map((s) => `${scrub.field(s.title, s.courseId)}\n${scrub.field(s.text, s.courseId)}`),
+      ]
         .join("\n\n")
         .slice(0, 12000),
-      policy: (policyAllowed
-        ? effectivePolicy.evidence
-        : "Policy evidence is withheld by data-sharing settings; use coaching only."
+      policy: scrub.field(
+        policyAllowed
+          ? effectivePolicy.evidence
+          : "Policy evidence is withheld by data-sharing settings; use coaching only.",
+        r.courseId,
       ).slice(0, 4000),
     };
+    const redaction = scrub.summary(r.courseId);
     const categories = [
       ...new Set(
         [r, ...supporting, ...(policyAllowed ? policyResources : [])].flatMap(
@@ -246,6 +274,7 @@ export function createCore(store: Store, options: CoreOptions) {
       characters: JSON.stringify(payload).length,
       ...permission,
       payload,
+      ...(redaction ? { redaction } : {}),
     };
   }
   function receipt(
@@ -377,9 +406,14 @@ export function createCore(store: Store, options: CoreOptions) {
       if (generation !== version) break;
     }
   }
+  // While the gateway reports its budget spent, the whole queue waits: sending the
+  // remaining jobs would only collect refusals and exhaust their attempts.
+  let budgetUntil = 0;
+  let budgetTimer: ReturnType<typeof setTimeout> | undefined;
   async function drain() {
     if (
       closed ||
+      Date.now() < budgetUntil ||
       !options.gateway ||
       !maySend(store.privacy(), "jev", ["course_text"]).allowed
     )
@@ -432,9 +466,21 @@ export function createCore(store: Store, options: CoreOptions) {
           createdAt: now(),
         });
         store.finish(job, undefined, now());
-      } catch {
+      } catch (error) {
         if (!closed && generation === version) {
           receipt(manifest, "failed");
+          if (error instanceof JudgmentBudgetError) {
+            budgetUntil = Date.now() + error.retryAfterMs;
+            store.defer(
+              job,
+              new Date(budgetUntil).toISOString(),
+              "Judgment budget reached; waiting to retry. Local data is still usable.",
+            );
+            clearTimeout(budgetTimer);
+            budgetTimer = setTimeout(wake, error.retryAfterMs);
+            budgetTimer.unref?.();
+            break;
+          }
           store.finish(
             job,
             "Judgment unavailable; local data is still usable",
@@ -470,7 +516,9 @@ export function createCore(store: Store, options: CoreOptions) {
   async function execute(raw: unknown): Promise<CommandResult> {
     if (closed) throw new Error("Workspace is closed.");
     const command = commandSchema.parse(raw);
-    let message: string | undefined, manifest: ContextManifest | undefined;
+    let message: string | undefined,
+      manifest: ContextManifest | undefined,
+      linkCandidates: CommandResult["linkCandidates"];
     switch (command.type) {
       case "snapshot":
         return { snapshot: snapshot(command.search) };
@@ -604,6 +652,31 @@ export function createCore(store: Store, options: CoreOptions) {
             now(),
           ),
         };
+      case "planning-grades": {
+        let refresh: { status: string; message: string } | null = null;
+        if (command.refresh) {
+          if (!options.madgrades) throw new Error("Madgrades refresh is available through the desktop app.");
+          const table = planningIdentityTable(store);
+          if (!table) refresh = { status: "unverified_crosslist", message: "Saved cross-list mappings disagree. Refresh subject and cross-list evidence before loading grades." };
+          else {
+            const controller = new AbortController(), version = generation;
+            planningReads.add(controller);
+            try {
+              const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(25_000)]);
+              const result = await pullMadgradesGrades(options.madgrades, { courseKey: command.courseKey, table, observedAt: now() }, signal)
+                .catch(() => signal.aborted
+                  ? { status: "cancelled" as const, message: "Madgrades read cancelled or timed out; no data was saved.", capture: null }
+                  : { status: "error" as const, message: "Madgrades could not be reached. Saved evidence was kept.", capture: null });
+              if (closed || version !== generation) throw new Error("Madgrades read cancelled; no data was saved.");
+              if (result.capture) store.ingestPlanning(result.capture);
+              refresh = { status: result.status, message: result.message };
+            } finally { planningReads.delete(controller); }
+          }
+        }
+        return { snapshot: snapshot(), planningGrades: summarizePlanningGrades(store, command.courseKey, now(), refresh), ...(refresh ? { message: refresh.message } : {}) };
+      }
+      case "madgrades-token":
+        throw new Error("Madgrades tokens are stored by the desktop app, not the local workspace.");
       case "planning-import": {
         store.ingestPlanning(command.batch);
         message = "Planning capture saved on this device.";
@@ -668,6 +741,18 @@ export function createCore(store: Store, options: CoreOptions) {
         message = "Judgment queued.";
         break;
       }
+      case "link-candidates":
+        // Local lexical suggestions only; accept/reject goes through the existing "link" command.
+        linkCandidates = suggestEvidenceLinks(store, command.id, now(), {
+          ...(command.minScore === undefined ? {} : { minScore: command.minScore }),
+        });
+        break;
+      case "identity-roster":
+        store.setIdentityRoster(command.value);
+        message = "Names to remove saved on this device. Future hosted requests use them; earlier requests are unchanged.";
+        break;
+      case "validate-citations":
+        return { snapshot: snapshot(), citations: validateCitations(store, command.claims) };
       case "link":
         store.decideLink(command.id, command.status);
         break;
@@ -683,6 +768,7 @@ export function createCore(store: Store, options: CoreOptions) {
       snapshot: snapshot(),
       ...(manifest ? { manifest } : {}),
       ...(message ? { message } : {}),
+      ...(linkCandidates ? { linkCandidates } : {}),
     };
   }
   return {
@@ -695,6 +781,7 @@ export function createCore(store: Store, options: CoreOptions) {
     },
     async close() {
       closed = true;
+      clearTimeout(budgetTimer);
       interrupt();
       await working;
       store.close();

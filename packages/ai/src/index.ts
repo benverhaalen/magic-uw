@@ -27,6 +27,17 @@ export interface JudgmentGateway {
     signal: AbortSignal,
   ): Promise<KindJudgment>;
 }
+/** The gateway refused for budget or rate reasons; nothing was judged, so the caller should wait, not retry. */
+export class JudgmentBudgetError extends Error {
+  constructor(readonly retryAfterMs: number) {
+    super("Judgment budget reached. Try later.");
+  }
+}
+function retryAfterMs(header: string | null) {
+  const seconds = Number(header);
+  // Unknown or unusable values wait fifteen minutes; bounded to one minute .. one day.
+  return Math.min(86_400_000, Math.max(60_000, Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 900_000));
+}
 export interface DeviceCredentialStore {
   read(): Promise<string | null>;
   write(token: string): Promise<void>;
@@ -97,11 +108,11 @@ export function gatewayClient(
           signal,
         },
       );
+      if (r.status === 429)
+        throw new JudgmentBudgetError(retryAfterMs(r.headers.get("retry-after")));
       if (!r.ok)
         throw new Error(
-          r.status === 429
-            ? "Judgment budget reached. Try later."
-            : r.status === 503
+          r.status === 503
               ? "The judgment gateway is not configured."
               : "The judgment gateway could not complete this request.",
         );
