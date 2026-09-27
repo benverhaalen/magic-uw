@@ -16,7 +16,8 @@
     "fixture": "tsx scripts/inspect-fixture.ts",
     "preview": "tsx scripts/preview.ts",
     "test:desktop": "pnpm build && tsx scripts/desktop-smoke.ts",
-    "magic:perf": "tsx evals/perf/run.ts"
+    "magic:perf": "tsx evals/perf/run.ts",
+    "eval:items": "tsx evals/items/run.ts"
   },
   "devDependencies": {
     "@types/node": "24.10.1",

@@ -17,6 +17,12 @@ export interface GenerationInput {
   topics: string[];
   /** Topics the student chose ("quiz me on"); empty for the whole scope. */
   focus: string[];
+  /**
+   * The course's subject family, derived by code from the UW subject code and course title
+   * (plan D35; `subjectFamily` in packages/notes). It picks the item-type mix the prompt asks
+   * for (D52). Absent when code can't tell.
+   */
+  subject?: string;
 }
 
 export interface Draft {
@@ -39,6 +45,8 @@ export interface Draft {
   quote: string;
   /** A structural problem code found while reading the output; the item is dropped for it. */
   problem: string | null;
+  /** Set on an item code derived from another draft (a language card's reverse direction). */
+  derivedFrom?: number;
 }
 
 const collapse = (text: string) => text.replace(/\s+/g, " ").trim();
@@ -74,14 +82,53 @@ export function batchCheck<O>(drafts: (output: O) => Draft[]): PackCheck<Generat
 
 export const OPTION_IDS = ["a", "b", "c", "d", "e", "f"] as const;
 
-/** The prompt part both packs share: sections and topics, and the grounding rules. */
-export function sharedRules(input: GenerationInput): string {
+/**
+ * The item-type mix per subject family (plan D35: "the profile picks the generation pack's
+ * variant, the item-type mix and the verifiers"). Families code can't tell get no line.
+ */
+const QUANTITATIVE = {
+  quiz: "Prefer numeric questions wherever a passage works a calculation (the value, its unit and the passage's formula, so code can recompute it); use multiple choice for definitions, theorems and rules.",
+  cards: "Term cards for definitions, theorems and rules; cloze cards that blank the key term or quantity in a stated result.",
+};
+const DISCURSIVE = {
+  quiz: "Ask about claims, causes, sources and dates with multiple choice and true/false; a numeric question only for a year or figure the passage states.",
+  cards: "Concept, argument, source and date cards: a term with its definition as the course states it, and cloze cards that blank a year, name or key term.",
+};
+export const SUBJECT_MIX: Record<string, { quiz: string; cards: string }> = {
+  languages: {
+    quiz: "Test meaning and form: multiple choice on what a word means or which form is correct, and true/false on usage. No numeric questions.",
+    cards: "Vocabulary term cards with the target-language word or phrase on the front and its meaning as the course gives it on the back (the app adds the reverse direction), and cloze cards that blank one whole conjugated or agreeing word (never part of a word) in a sentence from the passage.",
+  },
+  math: QUANTITATIVE,
+  physical_science: QUANTITATIVE,
+  engineering: QUANTITATIVE,
+  computing: {
+    quiz: "Ask about behaviour and cost: multiple choice on what a structure, algorithm or line of code does, and numeric questions for counts, sizes and running-time arithmetic the passage works.",
+    cards: "Term cards for structures, algorithms and definitions; cloze cards that blank the key property (ordering, complexity, invariant).",
+  },
+  life_science: {
+    quiz: "Multiple choice and true/false on structures, processes and their causes; numeric questions only for quantities the passage works out.",
+    cards: "Term cards for structures and processes; cloze cards that blank the key step or term in a stated process.",
+  },
+  humanities: DISCURSIVE,
+  social_science: DISCURSIVE,
+  arts: DISCURSIVE,
+  business: {
+    quiz: "Multiple choice on concepts and how they apply to the passage's cases; numeric questions for figures the passage computes.",
+    cards: "Term cards for concepts and frameworks; cloze cards that blank the key term in a stated principle.",
+  },
+};
+
+/** The prompt part both packs share: sections and topics, the subject's item mix, and the grounding rules. */
+export function sharedRules(input: GenerationInput, pack?: "quiz" | "cards"): string {
   const list = (xs: string[]) => (xs.length ? xs.map((x) => `- ${x}`).join("\n") : "- (none yet)");
+  const mix = pack && input.subject ? SUBJECT_MIX[input.subject]?.[pack] : undefined;
   return [
     `Sections already on the course map (use one of these when it fits; otherwise name the module or chapter the passage belongs to):\n${list(input.sections)}`,
     `Topics already on the course map (reuse these labels before inventing a new one):\n${list(input.topics)}`,
     input.focus.length ? `Only write about these topics:\n${list(input.focus)}` : "",
-    "Rules: every item cites exactly one passage by its id in `sourceId` and copies a `quote` of 12 to 400 characters from that passage, character for character, that supports the answer. Tag each item with 1 to 3 short topic labels, the first being the main one, and one section. Never write about anything the passages don't state.",
+    mix ? `Subject profile (${input.subject}): ${mix}` : "",
+    "Rules: every item cites exactly one passage by its id in `sourceId` and copies a `quote` of 12 to 400 characters from that passage, character for character, that supports the answer. Spread the items across the passages rather than drawing several from one. Tag each item with 1 to 3 short topic labels, the first being the main one, and one section. Never write about anything the passages don't state.",
   ]
     .filter(Boolean)
     .join("\n\n");

@@ -1,0 +1,85 @@
+{
+  "registered": "2026-09-27",
+  "registeredBy": "the item-quality harness builder (branch feat/item-eval), before the first scored run",
+  "decision": "A metric meets its threshold when its point estimate does. Every rate is reported with n and a Wilson 95% interval; a met threshold whose interval crosses it is reported as 'met, not established at 95%'. A missed threshold is reported in the same table, never dropped. Changing a threshold after a run is a new registration with its own date.",
+  "metrics": {
+    "parse": {
+      "min": 0.99,
+      "population": "model responses, excluding planted unparseable responses",
+      "definition": "The response parses against the pack's JSON schema (zod, strict)."
+    },
+    "verbatimQuote": {
+      "min": 1.0,
+      "population": "sources of stored items (including code-derived cards)",
+      "definition": "The stored quote equals the stored resource text sliced at the stored offsets."
+    },
+    "modelQuoteFidelity": {
+      "population": "items the model wrote",
+      "definition": "Diagnostic, no threshold: the model's own quote occurs verbatim (whitespace collapsed) in the passage it cites, among the passages it was sent."
+    },
+    "singleKey": {
+      "min": 0.95,
+      "population": "multiple-choice and true/false items the model wrote",
+      "definition": "Exactly one option is keyed (MC) or the statement's truth is set (TF), before any check."
+    },
+    "flawRate": {
+      "max": 0.05,
+      "population": "well-formed items the model wrote",
+      "definition": "At least one cue-flaw rule of packages/learning/src/flaws.ts (the pipeline's stage 4) fires."
+    },
+    "plantedCatch": {
+      "min": 0.9,
+      "population": "planted defects that code can catch (cases/planted.json, requiresJudge false), plus planted unparseable responses",
+      "definition": "The defect never reaches a stored item: it is dropped, or (answer leaks) the stored item hides its answer; an unparseable response is retried to a parsed one. Offline only."
+    },
+    "falseDrop": {
+      "max": 0.05,
+      "population": "items the offline model wrote (correct and grounded by construction), excluding drops by the cue-flaw rules (counted in flawRate) and near-duplicate drops (counted in duplicate)",
+      "definition": "A correct, grounded item dropped by a correctness or grounding check (schema, quote, executed, tags, explanation, policy). Offline only: live items carry no labels."
+    },
+    "duplicate": {
+      "max": 0.03,
+      "population": "items the model wrote",
+      "definition": "Dropped as a near-duplicate (trigram Jaccard >= 0.8 against an earlier item of the course), or stored while a near-duplicate of an earlier stored item of the same scope."
+    },
+    "repeatZeroTokens": {
+      "min": 1.0,
+      "population": "repeat requests of a completed pack with unchanged content",
+      "definition": "The repeat is a cache hit, costs 0 tokens and makes no model call."
+    },
+    "subjectFit": {
+      "min": 1.0,
+      "population": "whole-course runs of courses whose subject family code knows; offline, synthetic courses only (the offline model extracts too few facts from OCW text to hold a family's mix)",
+      "definition": "The stored items meet every rule in subjectRules for the course's family."
+    },
+    "promptSubject": {
+      "min": 1.0,
+      "population": "model calls for courses whose subject family code knows",
+      "definition": "The prompt sent carries the course's subject profile line (plan D35, D52)."
+    },
+    "moduleCoverage": {
+      "min": 0.9,
+      "population": "materials in whole-course scopes; offline, synthetic courses only (same reason)",
+      "definition": "The material is cited by at least one stored item of the quiz and cards runs together."
+    },
+    "goldTopicCoverage": {
+      "min": 0.6,
+      "population": "gold topics of the synthetic courses (cases/*.json), whole-course scope",
+      "definition": "A stored item's source span overlaps the gold topic's quote. Gold topics are builder-written, not independent."
+    }
+  },
+  "subjectRules": {
+    "languages": "Vocabulary cards in both directions (at least one reverse pair); cloze cards present; no numeric quiz items.",
+    "math, physical_science, engineering": "Numeric items are at least 25% of stored quiz items; at least one numeric item recomputed by code; at least 90% of the numeric items the model wrote are kept.",
+    "computing": "Term cards, cloze cards and multiple-choice items present.",
+    "humanities, social_science, arts": "Term cards and cloze cards present; every numeric item is a year (1000-2100) or a figure recomputed by code."
+  },
+  "amendments": [
+    {
+      "date": "2026-09-27",
+      "after": "the first offline baseline run (harness at commit 10eeb2d plus the uncommitted harness)",
+      "change": "falseDrop now excludes cue-flaw drops (already counted in flawRate); subjectFit and moduleCoverage count synthetic courses only in offline runs.",
+      "reason": "The offline model can write items with cue flaws (a key longer than distractors when the course has few same-kind terms); dropping those is the rule working, not a false drop. The offline model's regex extraction from OCW captions is sparse, so OCW subject fit and coverage measured the offline model, not the app. Thresholds are unchanged."
+    }
+  ]
+}

@@ -1,0 +1,140 @@
+{
+  "synthetic": true,
+  "note": "A synthetic course for the item-quality harness (evals/items). Written by the harness builder, not independent gold; not real course material.",
+  "family": "humanities",
+  "batch": {
+    "source": {
+      "id": "syn-hist101-source",
+      "kind": "canvas",
+      "accountScope": "synthetic",
+      "courseId": "SYN-HIST101",
+      "scope": "course",
+      "label": "HISTORY 101 Synthetic Revolutions and Empires (Synthetic)"
+    },
+    "observedAt": "2026-09-20T15:00:00.000Z",
+    "complete": true,
+    "status": "ok",
+    "resources": [
+      {
+        "externalId": "syn-hist101-course",
+        "kind": "course",
+        "courseId": "SYN-HIST101",
+        "courseName": "HISTORY 101 Synthetic Revolutions and Empires",
+        "title": "HISTORY 101 Synthetic Revolutions and Empires",
+        "url": "https://example.edu/synthetic/syn-hist101",
+        "text": "",
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "course": {
+          "courseCode": "FA26 HISTORY 101 001"
+        }
+      },
+      {
+        "externalId": "syn-hist101-m1",
+        "kind": "material",
+        "courseId": "SYN-HIST101",
+        "courseName": "HISTORY 101 Synthetic Revolutions and Empires",
+        "title": "Module 1: The age of revolutions (Synthetic)",
+        "url": "https://example.edu/synthetic/syn-hist101/m1",
+        "text": "Module 1 (synthetic): the age of revolutions. This synthetic lesson is written for automated tests and is not real course material. In 1789, the French Revolution began with the storming of the Bastille. In 1848, revolutions spread across many European states. A revolution is a sudden and fundamental change in political power. The Enlightenment was an intellectual movement that emphasized reason and individual rights.",
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "policy": {
+          "mode": "coaching",
+          "evidence": "Synthetic: AI help is allowed for practice in this synthetic course."
+        }
+      },
+      {
+        "externalId": "syn-hist101-m2",
+        "kind": "material",
+        "courseId": "SYN-HIST101",
+        "courseName": "HISTORY 101 Synthetic Revolutions and Empires",
+        "title": "Module 2: Industry and empire (Synthetic)",
+        "url": "https://example.edu/synthetic/syn-hist101/m2",
+        "text": "Module 2 (synthetic): industry and empire. In 1769, James Watt patented an improved steam engine. The Industrial Revolution was the shift from hand production to machine manufacturing. Imperialism is the policy of extending a nation's power over other territories. In 1885, the Berlin Conference set rules for the colonization of Africa.",
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "policy": {
+          "mode": "coaching",
+          "evidence": "Synthetic: AI help is allowed for practice in this synthetic course."
+        }
+      },
+      {
+        "externalId": "syn-hist101-m3",
+        "kind": "material",
+        "courseId": "SYN-HIST101",
+        "courseName": "HISTORY 101 Synthetic Revolutions and Empires",
+        "title": "Module 3: Reading primary sources (Synthetic)",
+        "url": "https://example.edu/synthetic/syn-hist101/m3",
+        "text": "Module 3 (synthetic): reading primary sources. A primary source is a document created at the time of the events it describes. A secondary source is an account written later by someone who did not witness the events. Historians compare several sources to test a claim. In 1455, Gutenberg printed his Bible with movable type.",
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "policy": {
+          "mode": "coaching",
+          "evidence": "Synthetic: AI help is allowed for practice in this synthetic course."
+        }
+      }
+    ]
+  },
+  "gold": [
+    {
+      "label": "French Revolution",
+      "resource": "syn-hist101-m1",
+      "quote": "In 1789, the French Revolution began with the storming of the Bastille."
+    },
+    {
+      "label": "1848 revolutions",
+      "resource": "syn-hist101-m1",
+      "quote": "In 1848, revolutions spread across many European states."
+    },
+    {
+      "label": "revolution",
+      "resource": "syn-hist101-m1",
+      "quote": "A revolution is a sudden and fundamental change in political power."
+    },
+    {
+      "label": "Enlightenment",
+      "resource": "syn-hist101-m1",
+      "quote": "The Enlightenment was an intellectual movement that emphasized reason and individual rights."
+    },
+    {
+      "label": "steam engine",
+      "resource": "syn-hist101-m2",
+      "quote": "In 1769, James Watt patented an improved steam engine."
+    },
+    {
+      "label": "Industrial Revolution",
+      "resource": "syn-hist101-m2",
+      "quote": "The Industrial Revolution was the shift from hand production to machine manufacturing."
+    },
+    {
+      "label": "imperialism",
+      "resource": "syn-hist101-m2",
+      "quote": "Imperialism is the policy of extending a nation's power over other territories."
+    },
+    {
+      "label": "Berlin Conference",
+      "resource": "syn-hist101-m2",
+      "quote": "In 1885, the Berlin Conference set rules for the colonization of Africa."
+    },
+    {
+      "label": "primary source",
+      "resource": "syn-hist101-m3",
+      "quote": "A primary source is a document created at the time of the events it describes."
+    },
+    {
+      "label": "secondary source",
+      "resource": "syn-hist101-m3",
+      "quote": "A secondary source is an account written later by someone who did not witness the events."
+    },
+    {
+      "label": "printing press",
+      "resource": "syn-hist101-m3",
+      "quote": "In 1455, Gutenberg printed his Bible with movable type."
+    }
+  ]
+}
