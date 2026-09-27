@@ -797,6 +797,8 @@ function ResourceDetail({
       ) : null}
       {resource.kind === "assignment" ? (
         <StartWork
+          // Remount per assignment so an in-flight launch cannot block the next one.
+          key={resource.id}
           resource={resource}
           refreshKey={`${resource.contentHash}:${snapshot.links
             .map((link) => `${link.id}:${link.status}`)
