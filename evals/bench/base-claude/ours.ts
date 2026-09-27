@@ -224,7 +224,13 @@ export async function runOursSession(options: {
     // sync result: a drain that has not settled within the cap is recorded as null.
     let derivationMs: number | null = null;
     const cap = options.derivationCapMs ?? 120_000;
-    const settled = await Promise.race([core.settled().then(() => true), new Promise<false>((r) => setTimeout(() => r(false), cap))]);
+    // The cap timer is cleared when the drain settles first; left running it kept the process alive
+    // for the whole cap after the run had finished (the dry run's apparent hang).
+    let capTimer: NodeJS.Timeout | undefined;
+    const settled = await Promise.race([
+      core.settled().then(() => true),
+      new Promise<false>((r) => (capTimer = setTimeout(() => r(false), cap))),
+    ]).finally(() => clearTimeout(capTimer));
     if (settled) derivationMs = Math.round(performance.now() - started);
     const targetDb = join(options.directory, "target.sqlite");
     rmSync(targetDb, { force: true });
