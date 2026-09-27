@@ -23,6 +23,7 @@ import { evidenceFor } from "./evidence";
 import { courseIncluded } from "./access";
 import { createHash } from "node:crypto";
 import { guideQuery } from "../../packs/guide/src/query"; // owner: guides
+import { runPageView } from "./views/index"; // owner: page-views
 
 /** Canvas submission types that name the kind exactly; code decides these, Jev never sees them. */
 const EXACT_KINDS: Record<string, "quiz" | "discussion"> = { online_quiz: "quiz", discussion_topic: "discussion" };
@@ -328,5 +329,12 @@ export function runQuery(store: Store, request: QueryRequest, context: QueryCont
     // owner: intent. Answered by core's intent seam before runQuery; reaching here means no seam.
     case "intent.preview":
       throw new Error("The command bar isn't built yet.");
+    // owner: page-views. One composite read per page (packages/core/src/views): 0 tokens, reads only.
+    case "assignment.workspace":
+    case "lecture.session":
+    case "assessment.page":
+    case "study.offers":
+      return runPageView(store, request, context.now());
+    // end owner: page-views
   }
 }

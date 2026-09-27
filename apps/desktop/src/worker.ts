@@ -48,6 +48,8 @@ const publicClients = createWorkerClients(store);
 import { createClaudeBackend, createCodexBackend, type ModelRunner } from "../../../packages/runner/src/index";
 import { createPackRuntime, DEFAULT_PACK_CONFIG } from "../../../packages/packs/core/src/index";
 import { createPackHandler } from "../../../packages/core/src/pack-handler";
+import { APPROACH_PACK, createApproachHandler } from "../../../packages/core/src/views/index"; // owner: page-views
+import type { PackScope } from "@magic/contracts"; // owner: page-views
 import { isIsolated, isProfileReady, profileEnv, readClientSettings, resolveClient, workDir } from "./clients/profiles";
 const generationUserData = dirname(process.env.MAGIC_DB_PATH!);
 let generationRuntime: { client: string; runner: ModelRunner } | null = null;
@@ -71,6 +73,17 @@ async function generationRunner(): Promise<ModelRunner | null> {
 }
 const generation = createPackHandler({ store, runner: generationRunner });
 // end owner: generation
+// owner: page-views. The "page-approach" pack (the pages' optional "how to approach it"
+// paragraph) answers through the same pack seam; every other pack name goes on unchanged.
+{
+  const approach = createApproachHandler({ store, runner: generationRunner });
+  const packs = generation.pack;
+  Object.assign(generation, {
+    pack: (name: string, scope: PackScope, signal: AbortSignal): Promise<unknown> =>
+      name === APPROACH_PACK ? approach.run(scope, signal) : packs(name, scope, signal),
+  });
+}
+// end owner: page-views
 // owner: intent. The command bar's router. Claude answers through a warm session pool (lane
 // interactive:intent, tools off, the byte-stable catalogue prefix) so the AI fallback skips the
 // CLI's start-up after the first call; Codex stays one-shot (its app-server is unmeasured, S9).
