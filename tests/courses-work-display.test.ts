@@ -21,7 +21,7 @@ test('no arbitrary overdue cutoff and full-term future rows remain in reachable 
   const old=row('old');if(old.time.state==='dated')old.time={...old.time,date:'2026-01-02'};
   const future=row('future');if(future.time.state==='dated')future.time={...future.time,date:'2026-12-14'};
   const buckets=groupCourseWork([old,future],today,initialWorkListState());
-  assert.equal(buckets[0]!.groups[0]!.label,'Past due');assert.equal(buckets[1]!.section,'later');
+  assert.equal(buckets[0]!.groups[0]!.label,'Today');assert.equal(buckets.find(b=>b.section==='overdue')!.groups[0]!.label,'Past due');assert.ok(buckets.some(b=>b.section==='later'));
 });
 test('past lecture is earlier context and never past due homework',()=>{
   const lecture=row('l',{mode:'commitment',kind:'lecture',report:null});if(lecture.time.state==='dated')lecture.time={...lecture.time,date:'2026-09-26',role:'starts'};
@@ -44,12 +44,27 @@ test('forty rows in one day stay bounded and all slices can be reached',()=>{
 });
 test('day arithmetic survives year transition without invented clock time',()=>{
   const next=row('next');if(next.time.state==='dated')next.time={...next.time,date:'2027-01-01',minute:null,at:'2027-01-01'};
-  assert.equal(groupCourseWork([next],'2026-12-31',initialWorkListState())[0]!.groups[0]!.label,'Tomorrow');
+  assert.equal(groupCourseWork([next],'2026-12-31',initialWorkListState())[0]!.groups[1]!.label,'Tomorrow');
   assert.equal(workTimeLabel(next,'2026-12-31'),'Due that day');
 });
 
 test('new unresolved conflict overrides a previous date pin, including submitted work',()=>{
   const state=initialWorkListState();state.pins.x={section:'current',date:today};
   const conflict=row('x',{sourceState:'submitted',time:{state:'conflict',needsReview:true}});
-  assert.equal(groupCourseWork([conflict],today,state)[0]!.section,'conflict');
+  assert.equal(groupCourseWork([conflict],today,state).find(b=>b.section==='conflict')?.count,1);
+});
+
+
+test('Today stays visible and empty with a large overdue backlog; overdue pagination is independent',()=>{
+  const backlog=Array.from({length:45},(_,i)=>{const item=row(`old-${i}`);if(item.time.state==='dated')item.time={...item.time,date:'2026-09-01'};return item;});
+  const buckets=groupCourseWork(backlog,today,initialWorkListState());
+  assert.equal(buckets[0]?.section,'current');assert.equal(buckets[0]?.groups[0]?.label,'Today');assert.equal(buckets[0]?.groups[0]?.rows.length,0);
+  const overdue=buckets.find(b=>b.section==='overdue')!;assert.equal(overdue.count,45);assert.equal(workPageSize(overdue.groups),20);assert.equal(workPageSize(overdue.groups,60),45);
+  const withToday=groupCourseWork([...backlog,row('today')],today,initialWorkListState());assert.equal(withToday[0]?.groups[0]?.rows[0]?.key,'today');assert.equal(workPageSize(withToday[0]!.groups),1);
+});
+
+
+test('calendar-only due dates remain overdue deadlines rather than earlier classes',()=>{
+ const feed=row('feed',{mode:'commitment',report:null});if(feed.time.state==='dated')feed.time={...feed.time,date:'2026-09-26',role:'due'};
+ assert.equal(workPlacement(feed,today).section,'overdue');
 });

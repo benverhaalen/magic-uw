@@ -44,7 +44,7 @@ The reference image was rendered with the supplied **Cooper Light BT**. The curr
 
 The observed scale is compact: 19 px wordmark, 18 px centered page title, 21 px section headings, 19 px work titles, 18 px study titles, and 16 px briefing prose with 1.72 line height. Interface metadata generally uses 10–13 px; Today heading is 16 px. Cooper used weight 400 in the image; Karma uses its true 500; normal prose is 400 with selective 500/550 emphasis. Tracking ends at normal in the reference, and Geist tracking remains adjustable. Serif can appear in briefing/section/action roles as well as identity; it is not confined by a blanket headings-only rule.
 
-Lucide is the chosen icon family. The seed stroke weight is 1.65 with round caps/joins in the mock; apparent glyph size still needs refinement. Keep glyph weight coherent across the shell, course dropdown, actions and nested pages. Judge the visible glyph separately from its interactive hit area and retain keyboard names/focus. Third-party destination marks are separate from the Lucide interface system.
+The original Home image used Lucide with a 1.65 stroke seed. Current production uses the MIT licensed Hugeicons free Stroke Rounded family at a 1.35 stroke role; inspect the rendered glyph weight at control size. Keep glyph weight coherent across the shell, course dropdown, actions and nested pages. Judge the visible glyph separately from its interactive hit area and retain keyboard names/focus. Third-party destination marks are separate from the UI icon family.
 
 ## Color, surfaces and boundaries
 
@@ -60,7 +60,7 @@ Verify text, small metadata, focus and icons over the relevant lightest/darkest 
 
 ## Accepted anchors and local comparisons still needed
 
-Accepted anchors are the recognizable composition, warm shell, continuous ivory workspace, editorial serif/Geist direction (now Karma Medium), Lucide family, briefing hierarchy, flat Upcoming, specific study actions, right Today rail, and the newer four-destination sidebar. The image preserves the current candidate details; it does not settle all of them.
+Accepted anchors are the recognizable composition, warm shell, continuous ivory workspace, editorial serif/Geist direction (now Karma Medium), current Hugeicons family, briefing hierarchy, flat Upcoming, specific study actions, right Today rail, and the newer four-destination sidebar. The image preserves the current candidate details; it does not settle all of them.
 
 Compare **action outlines, time-tag treatment, entity-link backing, smaller glyphs, and combined review/confirmation footprint** locally. In particular, Ben wants the combined review/handled region to feel the same size as the reading-review region and match its associated text area. Paragraph lengths vary, so a universal fixed height is not settled. Preserve separate review and confirmation actions and demonstrate a concrete comparison before fixing their shared geometry. Border and tag properties marked `candidate` in the seed are deliberately provisional.
 

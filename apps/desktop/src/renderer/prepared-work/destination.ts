@@ -8,7 +8,7 @@ import type { WorkItem, WorkTarget } from "@magic/contracts";
  * terminal targets, so none are shown.
  */
 export type DestinationCategory = "pdf" | "document" | "slides" | "spreadsheet" | "canvas" | "gitlab" | "web";
-/** Official MIT Canvas mark; other glyphs are Lucide v0.468.0 (see adjacent source/license). */
+/** Official MIT Canvas mark; generic glyphs use the shared Hugeicons free Stroke Rounded family. */
 export type DestinationIcon = "file-text" | "file" | "presentation" | "file-spreadsheet" | "canvas" | "git-branch" | "globe";
 
 export interface Destination {

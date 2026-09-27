@@ -7,4 +7,4 @@ Source: Instructure's own UI icon, `packages/ui-icons/svg/Custom/canvas-logo.svg
 - Retrieved September 27, 2026. Path geometry and currentColor fill unchanged. Added class, 16px dimensions and decorative aria-hidden attribute for React use.
 - Used only to identify the actual Canvas browser destination at the connector's exact origin. It does not imply endorsement, installation or successful launch.
 
-GitLab's current trademark guidelines do not grant logo use for this interface: https://handbook.gitlab.com/handbook/marketing/brand-experience/trademark-guidelines/ . The UI therefore uses accurate destination text with the existing Lucide git-branch operation glyph. No third-party favicon service or lookalike mark is used.
+GitLab's current trademark guidelines do not grant logo use for this interface: https://handbook.gitlab.com/handbook/marketing/brand-experience/trademark-guidelines/ . The UI therefore uses accurate destination text with the shared Hugeicons git-branch operation glyph. No third-party favicon service or lookalike mark is used.

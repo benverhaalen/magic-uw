@@ -1,3 +1,4 @@
+import { MagicGlyph } from '../../../../../packages/ui/src/glyph';
 import {useEffect, useId, useLayoutEffect, useRef, useState} from 'react';
 import {Action} from '../../../../../packages/ui/src';
 import {markAnchor} from '../../../../../packages/ui/src/motion/anchor';
@@ -58,12 +59,12 @@ export function DateChoicePopover({options, focusKey, sourceVersion, savedKey, p
   const close=(returnFocus=false)=>{panel.current?.hidePopover();if(returnFocus) trigger.current?.focus({preventScroll:true});};
   const status=error || (pending ? 'Saving your planning date…' : unavailable || (saved ? `Using ${saved.dateLabel} for your planning.` : needsReview ? `Sources changed${previousLabel ? ` since you chose ${previousLabel}` : ''}. Review the current dates.` : options.length === 1 ? 'These sources show the same date.' : 'Choose a date above. You can change or undo it later.'));
   return <span className="magic-date-review">
-    <button ref={trigger} type="button" className="magic-ui-action" popoverTarget={id} aria-expanded={open} aria-controls={id} aria-haspopup="dialog"
+    <button ref={trigger} type="button" className="magic-ui-action magic-ui-action--primary" data-action-intent="review" popoverTarget={id} aria-expanded={open} aria-controls={id} aria-haspopup="dialog"
       data-focus-key={focusKey ?? `date-review-${id}`} onClick={event=>{
         event.preventDefault();
         if(panel.current?.matches(':popover-open')) close();
         else {setDraft(savedKey);panel.current?.showPopover();place();panel.current?.querySelector<HTMLElement>(savedKey ? 'input:checked' : 'input, button')?.focus({preventScroll:true});}
-      }}>{saved ? 'Change planning date' : 'Review dates'} <svg className="magic-ui-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+      }}>{saved ? 'Change planning date' : 'Review dates'} <MagicGlyph className="magic-ui-glyph" name="chevron" size={16}/></button>
     <div ref={panel} id={id} popover="auto" role="dialog" aria-labelledby={`${id}-title`} aria-describedby={`${id}-help`} className="magic-ui-popover magic-date-popover" data-magic-motion="anchored"
       onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close(true);}}}
       onBlur={event=>{if(event.relatedTarget && !event.currentTarget.contains(event.relatedTarget) && event.relatedTarget!==trigger.current) close();}}>
@@ -83,7 +84,7 @@ export function DateChoicePopover({options, focusKey, sourceVersion, savedKey, p
         if(latestVersion.current!==sourceVersion)return;
         const option=options.find(item=>item.key===draft);if(option)onCommit(option);
       }}>Use this date</Action>{saved && <Action tone="quiet" pending={pending} onClick={()=>{onCommit(null);panel.current?.querySelector<HTMLInputElement>('input')?.focus({preventScroll:true});}}>Undo</Action>}</div>
-      <button className="magic-date-sources" type="button" onClick={()=>{close();onInspect();}}>View date evidence <svg className="magic-ui-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+      <button className="magic-date-sources" type="button" onClick={()=>{close();onInspect();}}>View date evidence <MagicGlyph className="magic-ui-glyph" name="chevron" size={16}/></button>
     </div>
   </span>;
 }

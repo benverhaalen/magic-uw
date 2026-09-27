@@ -17,7 +17,7 @@
   border-radius: 8px;
   background: var(--magic-ink-on-shell);
   color: var(--magic-color-status-problem-ink);
-  font: 600 10px/16px var(--magic-font-interface);
+  font: var(--magic-font-interface-weight) 10px/16px var(--magic-font-interface);
   text-align: center;
   font-variant-numeric: tabular-nums;
   pointer-events: none;
@@ -109,7 +109,7 @@
   border-radius: var(--magic-radius-control);
 }
 .notif-title-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 7px; min-width: 0; }
-.notif-title { font-size: var(--magic-type-control); font-weight: 500; line-height: 1.35; color: var(--magic-ink); overflow-wrap: anywhere; }
+.notif-title { font-size: var(--magic-type-control); font-weight: var(--magic-font-interface-weight); line-height: 1.35; color: var(--magic-ink); overflow-wrap: anywhere; }
 .notif-row.read .notif-title { font-weight: 400; color: var(--magic-ink-prose); }
 /* Unread marker: the Today list's small colored bullet. Words ("Unread.") carry the meaning. */
 .notif-dot { flex-shrink: 0; align-self: center; width: 6px; height: 6px; border-radius: 50%; background: var(--magic-accent-current-time); }

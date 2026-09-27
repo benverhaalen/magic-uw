@@ -1,3 +1,4 @@
+import { MagicGlyph } from '../../../../../packages/ui/src/glyph';
 import { useEffect, useId, useRef, useState } from "react";
 import type { AppNotification, Command, NotificationFeed } from "@magic/contracts";
 import { markAnchor } from "../../../../../packages/ui/src/motion";
@@ -377,10 +378,7 @@ function NotificationRow({
         disabled={busy}
         onClick={onDismiss}
       >
-        <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-          <path d="M18 6 6 18" />
-          <path d="m6 6 12 12" />
-        </svg>
+        <MagicGlyph name="close" size={14} />
       </button>
     </li>
   );
@@ -425,28 +423,6 @@ function relativeTime(value: string, now = new Date()): string {
   }).format(date);
 }
 
-// Lucide v0.468.0 nodes (ISC, packages/ui/LICENSE.icons), drawn like the shell's Glyph.
-function BellGlyph() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M10.268 21a2 2 0 0 0 3.464 0" />
-      <path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326" />
-    </svg>
-  );
-}
-function ChevronGlyph() {
-  return (
-    <svg className="notif-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="m9 18 6-6-6-6" />
-    </svg>
-  );
-}
-function ExternalGlyph() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M15 3h6v6" />
-      <path d="M10 14 21 3" />
-      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-    </svg>
-  );
-}
+function BellGlyph() { return <MagicGlyph name="bell" size={16} />; }
+function ChevronGlyph() { return <MagicGlyph name="chevron" size={14} className="notif-chevron" />; }
+function ExternalGlyph() { return <MagicGlyph name="external" size={12} />; }

@@ -24,6 +24,7 @@
 @media (hover: hover) {
  .magic-ui-action:not(:disabled):not([aria-disabled=true]):hover { background: var(--magic-fill-action-hover); }
  .magic-ui-action--quiet:not(:disabled):not([aria-disabled=true]):hover, .magic-ui-popover a:hover { background: var(--magic-fill-secondary-hover); }
+ .magic-ui-action--quiet:has(> svg):not(:disabled):not([aria-disabled=true]):hover:not(:focus-visible) { box-shadow: inset 0 0 0 1px var(--magic-line-quiet); }
 }
 
 /* Confirmation support and its inline undo share one readable semantic role. */
@@ -40,3 +41,14 @@
 .magic-ui-confirmation__reserve { visibility: hidden; pointer-events: none; }
 
 @media (prefers-reduced-motion: reduce) { .magic-ui-action { transition: none; } }
+
+/* Command purpose is explicit; quiet, pending and disabled retain their existing meaning. */
+.magic-ui-action--primary[data-action-intent=review] { --_purpose-fill:var(--magic-fill-review); --_purpose-ink:var(--magic-ink-review); }
+.magic-ui-action--primary[data-action-intent=coursework] { --_purpose-fill:var(--magic-fill-action-coursework); --_purpose-ink:var(--magic-ink-action-coursework); }
+.magic-ui-action--primary[data-action-intent=study] { --_purpose-fill:var(--magic-fill-action-study); --_purpose-ink:var(--magic-ink-action-study); }
+.magic-ui-action--primary[data-action-intent]:not(:disabled):not([aria-disabled=true]) { background:var(--_purpose-fill); color:var(--_purpose-ink); box-shadow:inset 0 0 0 999px transparent; transition:box-shadow var(--magic-fb-duration) var(--magic-fb-ease); }
+@media (hover:hover) and (pointer:fine) {
+  .magic-ui-action--primary[data-action-intent]:hover:not(:disabled):not([aria-disabled=true]) { box-shadow:inset 0 0 0 999px var(--magic-fill-pressed-overlay); }
+}
+.magic-ui-action--primary[data-action-intent]:active:not(:disabled):not([aria-disabled=true]) { box-shadow:inset 0 0 0 999px var(--magic-fill-pressed-overlay); transition-duration:0s; }
+@media (prefers-reduced-motion: reduce) { .magic-ui-action--primary[data-action-intent] { transition:none; } }

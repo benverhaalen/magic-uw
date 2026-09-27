@@ -126,3 +126,5 @@
   .source-connection-details { padding-left: 0; }
   .sources-runs li { grid-template-columns: 1fr auto; }
 }
+
+.source-tile .magic-prepared__icon--canvas { width: 18px; height: 18px; }

@@ -92,6 +92,7 @@ let sync: AbortController | undefined;
 let quitting = false;
 const root = __dirname;
 const rendererURL = pathToFileURL(join(root, "renderer/index.html")).toString();
+const appIconPath = join(root, "app-icon.png");
 function validateSender(event: IpcMainInvokeEvent) {
   if (
     !window ||
@@ -163,6 +164,7 @@ function allowedLogin(input: string) {
 app
   .whenReady()
   .then(async () => {
+    if (!headless) app.dock?.setIcon(appIconPath);
     const data = app.getPath("userData");
     await mkdir(data, { recursive: true, mode: 0o700 });
     const studentSession = session.fromPartition("persist:uw");
@@ -1691,6 +1693,7 @@ app
       minHeight: 620,
       show: !headless,
       title: "My Magic UW",
+      icon: appIconPath,
       backgroundColor: "#fbfbfa",
       webPreferences: {
         preload: join(root, "preload.cjs"),

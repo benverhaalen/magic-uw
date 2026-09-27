@@ -10,6 +10,7 @@
 :root {
   --magic-fb-duration: 160ms;
   --magic-fb-ease: cubic-bezier(0.23, 1, 0.32, 1);
+  --magic-fb-pill-rest: color-mix(in srgb, var(--magic-ink) 3%, transparent);
   --magic-fb-pill-hover: color-mix(in srgb, var(--magic-ink) 6%, transparent);
   --magic-fb-pill-press: color-mix(in srgb, var(--magic-ink) 11%, transparent);
   --magic-fb-pill-inset: 8px;
@@ -35,6 +36,7 @@
  * (negative margin), so the label keeps its resting position and nothing around it moves. */
 .magic-fb-pill {
   border-radius: 999px;
+  background-color: var(--magic-fb-pill-rest);
   padding-inline: calc(var(--magic-fb-pill-inset) + 2px);
   margin-inline: calc(var(--magic-fb-pill-inset) * -1);
   text-decoration: none;
@@ -42,7 +44,12 @@
   transition-duration: var(--magic-fb-duration);
   transition-timing-function: var(--magic-fb-ease);
 }
+.magic-fb-pill:focus-visible { outline: 2px solid var(--magic-focus); outline-offset: 2px; }
 .magic-fb-pill:active:not(:disabled, [aria-disabled=true]) { background-color: var(--magic-fb-pill-press); transition-duration: 0s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .magic-fb-pill { transition: none; }
+}
 
 /* Card: .magic-fb-card is the visible tile and reacts as one surface (title, date, body, arrow).
  * The tint is an inset shadow, painted under the text, so the title never changes. Pressing the

@@ -1,3 +1,4 @@
+import { MagicGlyph } from '../../../../../packages/ui/src/glyph';
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import {
   beginSubmit, collapse, edit, expand, initialLauncher, isBlank, rebase, settleSubmit,
@@ -6,16 +7,9 @@ import {
 import "./launcher.css";
 
 // owner: conversation-launcher leaf. One shell-level instance; the integrator keeps it mounted across pages.
-// Lucide v1.48.0 nodes (lucide-react); ISC attribution: packages/ui/LICENSE.icons.
-const paths = {
-  message: <path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"/>,
-  mic: <><path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/></>,
-  close: <><path d="M18 6 6 18"/><path d="m6 6 12 12"/></>,
-  send: <><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></>,
-  stop: <rect width="18" height="18" x="3" y="3" rx="2"/>,
-};
-const Glyph = ({ name }: { name: keyof typeof paths }) =>
-  <svg className="cl-glyph" viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>;
+type LauncherGlyphName = 'message' | 'mic' | 'close' | 'send' | 'stop';
+const Glyph = ({ name }: { name: LauncherGlyphName }) =>
+  <MagicGlyph className="cl-glyph" name={name} />;
 
 /** Where the student is now. Cheap and reactive; the full origin is only captured when a draft starts. */
 export interface LauncherHere { key: string; label: string }

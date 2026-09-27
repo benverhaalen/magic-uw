@@ -1,3 +1,5 @@
+import type { ResourceView, SourceHealth } from "@magic/contracts";
+import { courseKey } from "../../../../../packages/domain/src/course-page";
 import type { CourseCard } from "../../../../../packages/domain/src/course-page";
 import { IDENTITY_HUES, type IdentityHue } from "../../../../../packages/ui/src/deadline-emphasis";
 
@@ -34,7 +36,7 @@ function fnv1a(text: string): number {
 export function sharedTerm(cards: readonly CourseCard[]): string | null {
   const terms = new Set(cards.map((c) => c.term?.trim() || null));
   const [only] = terms;
-  return terms.size === 1 && only ? only : null;
+  return terms.size === 1 && only ? compactCourseTerm(only) : null;
 }
 
 export type Coverage = CourseCard["freshness"];
@@ -73,3 +75,41 @@ export function emptyNextText(card: Pick<CourseCard, "freshness" | "assignments"
 
 export const undatedText = (count: number) =>
   count === 1 ? "1 assignment has no due date" : `${count} assignments have no due date`;
+
+
+/** Presentation only for the captured UW Fall academic-year label. Membership keeps its raw term. */
+export function compactCourseTerm(term: string): string {
+  const match = /^Fall\s+(\d{4})\s*[-–]\s*(\d{4})$/i.exec(term.trim());
+  return match && Number(match[2]) === Number(match[1]) + 1 ? `Fall ${match[1]}` : term;
+}
+
+export interface CanvasCurrentGrade { score: number; observedAt: string }
+/** Exact saved LMS evidence, never a calculated average, final score, planning grade or cross-account match. */
+export function canvasCurrentGrades(cards: readonly CourseCard[], resources: readonly ResourceView[], sources: readonly SourceHealth[], now: string): Map<string, CanvasCurrentGrade> {
+  const result = new Map<string, CanvasCurrentGrade>();
+  const bySource = new Map(sources.map(source => [source.id, source]));
+  const currentCards = new Set(cards.filter(card => card.freshness === "current_capture").map(card => card.key));
+  const records = new Map<string, ResourceView[]>();
+  for (const record of resources) {
+    const source = bySource.get(record.sourceId);
+    if (record.deleted || record.kind !== "course" || source?.kind !== "canvas" || !source.accountScope) continue;
+    const key = courseKey(source.accountScope, record.courseId);
+    if (!currentCards.has(key)) continue;
+    records.set(key, [...(records.get(key) ?? []), record]);
+  }
+  for (const [key, courses] of records) {
+    const evidence = courses.flatMap(course => course.course?.gradeEvidence ?? []);
+    // Reuse the course read model's one-day current-capture horizon, and check the exact grade
+    // record too: a successful assignment fetch cannot make an older course score current.
+    const fresh = courses.every(course => {
+      const source = bySource.get(course.sourceId)!;
+      const age = Date.parse(now) - Date.parse(course.observedAt);
+      return source.status === "ok" && source.complete && Number.isFinite(age) && age >= 0 && age <= 86_400_000;
+    });
+    if (!fresh || !evidence.length || courses.some(course => !course.course?.gradeEvidence?.length) || evidence.some(grade => typeof grade.currentScore !== "number" || !Number.isFinite(grade.currentScore))) continue;
+    const scores = new Set(evidence.map(grade => grade.currentScore!));
+    if (scores.size !== 1) continue;
+    result.set(key, { score: [...scores][0]!, observedAt: courses.map(course => course.observedAt).sort()[0]! });
+  }
+  return result;
+}

@@ -556,9 +556,12 @@ button {
   border: 0;
   background: #fff;
   color: var(--navy);
-  font-size: 22px;
+  display: grid;
+  place-items: center;
   cursor: pointer;
 }
+.arrow img { width: 20px; height: 20px; }
+@media (hover: hover) and (pointer: fine) { .arrow:hover { box-shadow: inset 0 0 0 1px var(--magic-line-quiet); } }
 .cards {
   display: flex;
   gap: 16px;

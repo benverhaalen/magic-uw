@@ -3,6 +3,9 @@
 .home-work-meta { display:block; font-size:var(--magic-type-meta); line-height:1.4; margin-bottom:3px; font-weight: inherit; }
 .home-work-due { text-align:right; display:grid; gap:3px; flex-shrink:0; font-size:var(--magic-type-meta); line-height:1.3; }
 .home-work-due strong { font-size:var(--magic-type-compact-control); font-weight: inherit; }
+.home-work-summary .home-work-due { flex:0 0 106px; min-width:0; }
+.magic-start-work--compact .home-work-typed--source .home-work-row { padding-right:138px; }
+.home-work-typed--source .home-work-summary>svg { position:absolute; right:12px; top:50%; transform:translateY(-50%); width:14px; height:14px; }
 .home-work-flag { font-size:12px; font-weight: inherit; }
 .home-work-details { flex:0 0 38px; display:flex; align-items:center; justify-content:center; color:inherit; border-radius:0 var(--magic-radius-card) var(--magic-radius-card) 0; }
 .home-work-details svg { width:var(--magic-glyph-trailing); height:var(--magic-glyph-trailing); }
@@ -20,7 +23,7 @@
 .home-more>p { margin:4px 0 8px; font-size:12px; }
 .home-more>.home-work-list { margin-top:8px; }
 .briefing-context { display:block; font-size:var(--magic-type-prose); line-height:1.5; margin-bottom:5px; color:var(--magic-ink-muted-strong); }
-.briefing-passage q { quotes:none; }
+.briefing-passage q { quotes:"“" "”" "‘" "’"; }
 .home-provenance { justify-content:flex-start; margin-top:0; }
 .home-study-action { display:flex; flex-direction:column; }
 .home-study-action>span { font-size:var(--magic-type-meta); }
@@ -31,9 +34,13 @@
 .home-reading .briefing-review .magic-ui-confirmation>p.magic-ui-meta { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
 .home-reading .briefing-review>.magic-ui-action { min-height:42px; }
 .home-reading .briefing-review .magic-ui-confirmation { padding:7px 10px; }
-@media (max-width:650px) { .home-work-summary { flex-wrap:wrap; } .home-work-summary .home-work-due { text-align:left; } }
+@media (max-width:650px) { .home-work-summary { flex-wrap:wrap; } .home-work-summary .home-work-due { flex:1 0 100%; text-align:left; } .magic-start-work--compact .home-work-typed--source .home-work-row { padding-right:44px; } }
 
 /* Today on Home: every due item and all-day entry keeps a readable, independently reachable row. */
+.home-today { display:flex; flex-direction:column; height:calc(100vh - 125px); }
+.desktop-shell .home-today .today-rail { flex:1 0 auto; height:auto; min-height:620px; }
+.home-today .rail-heading--schedule { margin-top:auto; }
+@media (max-width:980px) { .home-today { display:block; height:auto; } .desktop-shell .home-today .today-rail { flex:none; min-height:0; height:auto; } .home-today .rail-heading--schedule { margin-top:18px; } }
 .home-today .rail-due--home { flex-shrink:0; margin-bottom:12px; }
 .home-today .rail-due--home .rail-row { display:flex; align-items:flex-start; gap:8px; padding:8px 0; }
 .home-today .rail-due--home .rail-time { order:2; flex:0 0 auto; font-size:12px; padding-top:1px; }
@@ -53,7 +60,7 @@
 .home-today .rail-allday--home:focus-visible { outline:2px solid var(--magic-focus); outline-offset:1px; }
 .home-today .rail-empty-schedule { flex-shrink:0; }
 
-.home-show-next { margin-top:10px; border:0; border-radius:var(--magic-radius-control); background:transparent; padding:6px 2px; color:var(--magic-ink-muted-strong); font: var(--magic-font-interface-weight) 12px/1.5 var(--magic-font-interface); cursor:pointer; }
+.home-show-next { margin-top:10px; border:0; padding-block:6px; color:var(--magic-ink-muted-strong); font: var(--magic-font-interface-weight) 12px/1.5 var(--magic-font-interface); cursor:pointer; }
 .home-show-next:focus-visible { outline:2px solid var(--magic-focus); outline-offset:2px; }
 
 /* Home feedback, using the shared families in packages/ui/src/motion/feedback.css. Small actions are
@@ -65,18 +72,15 @@
 .home-today .rail-more>summary { width:fit-content; }
 /* Show next + Show less side by side: both fills overhang 8px, so the second starts 12px after the first (4px between fills). */
 .home-show-next+.home-show-next { margin-inline-start:12px; }
-.home-show-next,.home-group-more>summary,.home-more>summary,.home-upcoming .home-section-heading button,.home-reading .home-provenance button,.home-today .rail-more>summary {
-  border-radius:999px; text-decoration:none;
-  transition-property:background-color,color; transition-duration:var(--magic-fb-duration); transition-timing-function:var(--magic-fb-ease);
-}
+.home-upcoming .home-section-heading button,.home-reading .home-provenance button,.home-today .rail-more>summary { background-color:var(--magic-fb-pill-rest); }
 .home-study-action { box-shadow:var(--magic-fb-card-rest); transition:box-shadow var(--magic-fb-duration) var(--magic-fb-ease); }
 @media (hover:hover) and (pointer:fine) {
-  .home-show-next:hover,.home-group-more>summary:hover,.home-more>summary:hover,.home-upcoming .home-section-heading button:hover,.home-reading .home-provenance button:hover,.home-today .rail-more>summary:hover { background-color:var(--magic-fb-pill-hover); color:var(--magic-ink); }
+  .home-upcoming .home-section-heading button:hover,.home-reading .home-provenance button:hover,.home-today .rail-more>summary:hover { background-color:var(--magic-fb-pill-hover); color:var(--magic-ink); }
   .home-study-action:hover { box-shadow:var(--magic-fb-card-hover); }
   .home-work-details:hover { background-color:rgba(255,255,255,.28); }
   .home-today .rail-allday--home:hover { box-shadow:inset 0 0 0 999px var(--magic-fb-hover-overlay); }
 }
-.home-show-next:active,.home-group-more>summary:active,.home-more>summary:active,.home-upcoming .home-section-heading button:active,.home-reading .home-provenance button:active,.home-today .rail-more>summary:active { background-color:var(--magic-fb-pill-press); transition-duration:0s; }
+.home-upcoming .home-section-heading button:active,.home-reading .home-provenance button:active,.home-today .rail-more>summary:active { background-color:var(--magic-fb-pill-press); transition-duration:0s; }
 .home-study-action:active { box-shadow:var(--magic-fb-card-press); transition-duration:0s; }
 .home-work-details:active { background-color:rgba(255,255,255,.42); transition-duration:0s; }
 .home-today .rail-allday--home:active { box-shadow:inset 0 0 0 999px var(--magic-fb-press-overlay); transition-duration:0s; }
@@ -110,3 +114,23 @@
 .home-reading[data-home-motion] .magic-handled-briefing__body,
 .home-reading[data-home-motion] .magic-handled-briefing__action { transition: none; }
 .home-reading[data-home-motion] .home-upcoming > .home-work-list { overflow-clip-margin: 4px; }
+
+/* Briefing row contract: one prose measure and one bounded action column. */
+.home-briefing { --briefing-action-width:174px; --briefing-action-height:48px; }
+.home-reading .briefing-passage { display:grid; grid-template-columns:minmax(0,1fr) var(--briefing-action-width); gap:24px; align-items:center; }
+.home-reading .briefing-passage:not(:has(.briefing-action,.magic-handled-briefing__aside)) { grid-template-columns:minmax(0,1fr); }
+.home-briefing .briefing-passage p { font:var(--magic-font-interface-weight) var(--magic-type-prose)/var(--magic-leading-prose) var(--magic-font-interface); letter-spacing:var(--magic-tracking); }
+.home-briefing .briefing-passage p :is(a,q) { font:inherit; }
+.home-briefing .briefing-action { width:100%; min-width:0; }
+.home-briefing .briefing-review,
+.home-briefing .magic-date-review { display:block; width:100%; min-width:0; }
+.home-briefing .briefing-action > .magic-ui-action,
+.home-briefing .magic-date-review > .magic-ui-action,
+.home-briefing .magic-prepared-action > .magic-ui-action { width:100%; min-height:var(--briefing-action-height); padding:10px 12px; font:var(--magic-font-interface-weight) var(--magic-type-control)/1.4 var(--magic-font-interface); gap:12px; align-items:center; justify-content:space-between; }
+.home-briefing .briefing-action .magic-ui-action > svg { flex:none; width:14px; height:14px; }
+/* Give each reading section a little more air while keeping the fine rules centered in the gaps. */
+.home-reading .home-upcoming { margin-top:8px; }
+.home-reading .home-study { margin-top:33px; }
+.home-upcoming::before,.home-study::before { top:-17px; }
+@media(max-width:1170px) { .home-reading .briefing-passage { gap:16px; } }
+@media(max-width:650px) { .home-reading .briefing-passage { grid-template-columns:minmax(0,1fr); gap:12px; } .home-briefing .briefing-action { width:min(100%,240px); } }

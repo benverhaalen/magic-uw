@@ -1,6 +1,7 @@
 import { schedulePlanning, scheduleRailResources } from './schedule-projection';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { createOperationScope } from "../../../../packages/ui/src/operation-scope";
+import { MOTION_EASE, MOTION_MS } from "../../../../packages/ui/src/motion/tokens";
 import { requirePlanSave } from "./today-plan-save";
 import type {
   Command,
@@ -28,8 +29,6 @@ const RESPONSE_LABEL = {
   pending: "Not answered",
   organizer: "You're organizing",
 } as const;
-/** Home shows every due item up to this count; beyond it, one fewer plus an explicit "more". */
-const HOME_DUE_ALL = 6;
 const HOME_ALL_DAY_ALL = 3;
 
 /** Saved capture coverage is not a promise that no unobserved event exists. */
@@ -118,7 +117,9 @@ function TodayRailContent({
   const due = homeDueItems ? homeDueItems.map(r => { const date=schedulePlanning(r,timeZone)!; return {id:r.id,title:r.title,courseName:r.courseName,dueMin:date.minute,conflict:date.conflict,personal:date.personal,needsReview:date.needsReview}; }) : rail.due.map(d=>({...d,personal:false,needsReview:false}));
   const notes = useMemo(() => changeNotes(changes, now, timeZone), [changes, now, timeZone]);
   // Home keeps crowded days scannable without hiding a lone item behind a control.
-  const dueShown = homeDueItems ? Math.min(homeDueCount, due.length) : due.length;
+  const dueShown = homeDueItems ? Math.min(Math.max(3, homeDueCount), due.length) : due.length;
+  const dueRemaining = due.length - dueShown;
+  const dueNext = Math.min(3, dueRemaining);
   const allDayShown = homeDueItems && rail.allDay.length > HOME_ALL_DAY_ALL ? HOME_ALL_DAY_ALL - 1 : rail.allDay.length;
   const dueRow = (d: (typeof due)[number]) => (
     <li key={d.id}>
@@ -172,6 +173,18 @@ function TodayRailContent({
   recoveryDates.current.add(rail.date);
   const undoEntries = plan.filter(p => p.status === "skipped" && recoveryDates.current.has(p.date));
   const railRoot = useRef<HTMLElement>(null);
+  const dueList = useRef<HTMLUListElement>(null);
+  const dueReveal = useRef<{ height: number; shown: number; next: number; ids: string[]; scroll: number; focus: string } | null>(null);
+  const dueAnimation = useRef<{ animation: Animation; overflow: string; ids: string[] } | null>(null);
+  const captureDueReveal = (next: number, focus: string) => {
+    const pane = railRoot.current?.closest<HTMLElement>('.desktop-workspace');
+    dueReveal.current = {
+      height: dueList.current?.getBoundingClientRect().height ?? 0,
+      shown: dueShown, next, ids: due.slice(0, dueShown).map(item => item.id),
+      scroll: pane?.scrollTop ?? 0, focus,
+    };
+    onHomeDueCountChange?.(next);
+  };
   const operationScope = useRef(createOperationScope());
   const pendingRef = useRef(false);
   const [pending, setPending] = useState("");
@@ -181,7 +194,63 @@ function TodayRailContent({
     operationScope.current.invalidate();
     pendingRef.current = false;
     focusAfterSave.current = null;
+    dueAnimation.current?.animation.cancel();
   }, []);
+  useLayoutEffect(() => {
+    const pending = dueReveal.current;
+    if (!pending) {
+      const running = dueAnimation.current;
+      if (running && (running.ids.length !== dueShown || running.ids.some((id, index) => due[index]?.id !== id))) {
+        running.animation.cancel();
+        if (dueList.current) dueList.current.style.overflow = running.overflow;
+        dueAnimation.current = null;
+      }
+      return;
+    }
+    dueReveal.current = null;
+    const list = dueList.current;
+    if (!list) return;
+    const previous = dueAnimation.current;
+    previous?.animation.cancel();
+    if (previous) list.style.overflow = previous.overflow;
+    dueAnimation.current = null;
+    const pane = railRoot.current?.closest<HTMLElement>('.desktop-workspace');
+    if (pane) pane.scrollTop = pending.scroll;
+    const focus = railRoot.current?.querySelector<HTMLElement>(`[data-focus-key="${pending.focus}"]`);
+    (focus ?? railRoot.current)?.focus({ preventScroll: true });
+    // Animate only a deliberate reveal/collapse with the same retained items. A source refresh
+    // must show its new truth immediately rather than replaying removed coursework.
+    const ids = due.slice(0, dueShown).map(item => item.id);
+    const stable = dueShown === pending.next && (dueShown > pending.shown
+      ? pending.ids.every((id, index) => ids[index] === id)
+      : ids.every((id, index) => pending.ids[index] === id));
+    if (!stable || window.matchMedia('(prefers-reduced-motion: reduce)').matches || !list.animate) {
+      focus?.scrollIntoView({ block: 'nearest' });
+      return;
+    }
+    const height = list.getBoundingClientRect().height;
+    if (Math.abs(height - pending.height) < 1) {
+      focus?.scrollIntoView({ block: 'nearest' });
+      return;
+    }
+    const overflow = list.style.overflow;
+    list.style.overflow = 'clip';
+    const animation = list.animate([{ height: `${pending.height}px` }, { height: `${height}px` }],
+      { duration: MOTION_MS.disclosure, easing: MOTION_EASE.out });
+    dueAnimation.current = { animation, overflow, ids };
+    if (dueShown > pending.shown) {
+      for (const node of Array.from(list.children).slice(pending.shown))
+        (node as HTMLElement).animate([{ opacity: 0.45 }, { opacity: 1 }],
+          { duration: MOTION_MS.disclosure, easing: MOTION_EASE.out });
+    }
+    focus?.scrollIntoView({ block: 'nearest' });
+    void animation.finished.then(() => {
+      if (dueAnimation.current?.animation !== animation) return;
+      list.style.overflow = overflow;
+      dueAnimation.current = null;
+      focus?.scrollIntoView({ block: 'nearest' });
+    }, () => {});
+  });
   useLayoutEffect(() => {
     const target = focusAfterSave.current;
     if (!target) return;
@@ -364,29 +433,22 @@ function TodayRailContent({
         <span>Due today</span>
         <span>{due.length || ""}</span>
       </div>
-      <ul className={`rail-due${homeDueItems ? " rail-due--home" : ""}`}>
+      <ul ref={dueList} className={`rail-due${homeDueItems ? " rail-due--home" : ""}`}>
         {due.length ? (
           due.slice(0, dueShown).map(dueRow)
         ) : (
           <li className="rail-empty-line">{dueEmpty}</li>
         )}
       </ul>
-      {due.length > dueShown ? (
-        <button className="home-show-next" data-focus-key="today-next" aria-label={`Show next ${Math.min(3,due.length-dueShown)} due today; ${dueShown} of ${due.length} shown`} onClick={event => {
-          const pane=event.currentTarget.closest('.desktop-workspace') as HTMLElement | null;
-          const scroll=pane?.scrollTop ?? 0;
-          const next=Math.min(due.length,dueShown+3);
-          onHomeDueCountChange?.(next);
-          requestAnimationFrame(()=>{ if(pane) pane.scrollTop=scroll; if(next===due.length) pane?.querySelector<HTMLElement>('.rail-due--home li:last-child button')?.focus({preventScroll:true}); });
-        }}>Show next {Math.min(3,due.length-dueShown)}</button>
+      {homeDueItems && dueRemaining > 0 ? (
+        <button type="button" className="home-show-next magic-fb-pill" data-focus-key="today-next" aria-label={`Show next ${dueNext} due today; ${dueShown} of ${due.length} shown`} onClick={() => {
+          const next=dueShown+dueNext;
+          captureDueReveal(next, next===due.length ? 'today-less' : 'today-next');
+        }}>Show next {dueNext}</button>
       ) : null}
       {homeDueItems && dueShown > 3 ? (
-        <button className="home-show-next" data-focus-key="today-less" aria-label={`Show fewer due today; ${dueShown} of ${due.length} shown`} onClick={event => {
-          const pane=event.currentTarget.closest('.desktop-workspace') as HTMLElement | null;
-          const rail=event.currentTarget.closest('.today-rail') as HTMLElement | null;
-          const scroll=pane?.scrollTop ?? 0;
-          onHomeDueCountChange?.(3);
-          requestAnimationFrame(()=>{ if(pane) pane.scrollTop=scroll; const next=rail?.querySelector<HTMLElement>('[data-focus-key="today-next"]'); next?.focus({preventScroll:true}); next?.scrollIntoView({block:"nearest"}); });
+        <button type="button" className="home-show-next magic-fb-pill" data-focus-key="today-less" aria-label={`Show less due today; ${dueShown} of ${due.length} shown`} onClick={() => {
+          captureDueReveal(3, 'today-next');
         }}>Show less</button>
       ) : null}
 
@@ -499,20 +561,20 @@ function TodayRailContent({
         </div>
       ) : null}
 
-      <div className="rail-heading">
+      <div className="rail-heading rail-heading--schedule">
         <span>Schedule</span>
         <span>{heading}</span>
       </div>
       {rail.allDay.slice(0, allDayShown).map(allDayEntry)}
       {rail.allDay.length > allDayShown ? (
         <details className="rail-more" data-place-disclosure="today-allday-more">
-          <summary data-focus-key="today-allday-more">{rail.allDay.length - allDayShown} more all day</summary>
+          <summary className="magic-fb-pill" data-focus-key="today-allday-more">{rail.allDay.length - allDayShown} more all day</summary>
           {rail.allDay.slice(allDayShown).map(allDayEntry)}
         </details>
       ) : null}
       {isCompactEmpty ? <div className="rail-empty-schedule" role="status">
         <p>{emptyScheduleMessage(sources, rail.allDay.length > 0, now)}</p>
-        {onInspectSources && calendarCoverageNeedsCheck(sources, now) && <button onClick={onInspectSources}>Check sources</button>}
+        {onInspectSources && calendarCoverageNeedsCheck(sources, now) && <button type="button" className="home-show-next magic-fb-pill" onClick={onInspectSources}>Check sources</button>}
       </div> : <div className="rail-grid" ref={grid}>
         <div
           className="rail-grid-inner"

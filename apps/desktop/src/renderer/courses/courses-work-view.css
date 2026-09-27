@@ -48,7 +48,10 @@
 .cw-list .cw-disclosure, .cw-list .cw-page-control { display: flex; align-items: center; gap: 6px; min-height: 36px; padding: 6px 8px; color: var(--magic-ink-muted-strong, var(--magic-ink-muted)); font: var(--magic-font-interface-weight, 400) var(--magic-type-control) / 1.4 var(--magic-font-interface); background: transparent; border: 0; border-radius: var(--magic-radius-control); cursor: pointer; }
 .cw-disclosure svg { width: 15px; height: 15px; transition: transform 160ms ease-out; }
 .cw-disclosure[aria-expanded=true] svg { transform: rotate(90deg); }
-.cw-list .cw-page-control { text-decoration: underline; text-underline-offset: 4px; margin-inline: auto; }
+.cw-list .cw-disclosure, .cw-list .cw-page-control { text-decoration: none; background: var(--magic-fb-pill-rest); }
+.cw-list .cw-page-control { margin-inline: auto; }
+@media (hover:hover) and (pointer:fine) { .cw-list :is(.cw-disclosure,.cw-page-control):hover { background: var(--magic-fb-pill-hover); } }
+.cw-list :is(.cw-disclosure,.cw-page-control):active { background: var(--magic-fb-pill-press); }
 .cw-uncertainty { margin: 0 8px 18px; font-size: var(--magic-type-control); color: var(--magic-ink-muted-strong, var(--magic-ink-muted)); }
 .cw-uncertainty button { padding: 0; border: 0; background: transparent; color: var(--magic-ink-action); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .cw-footer { padding: 18px 8px 10px; color: var(--magic-ink-muted-strong, var(--magic-ink-muted)); font-size: var(--magic-type-meta); line-height: 1.6; }

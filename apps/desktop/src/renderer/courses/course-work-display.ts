@@ -1,6 +1,6 @@
 import type { CourseWorkRow, CourseWorkModel } from './course-work-model';
 
-export type WorkSection = 'current' | 'earlier' | 'later' | 'conflict' | 'undated' | 'done';
+export type WorkSection = 'current' | 'overdue' | 'earlier' | 'later' | 'conflict' | 'undated' | 'done';
 export type WorkListState = {
   expanded: Partial<Record<WorkSection, boolean>>;
   visible: Partial<Record<WorkSection, number>>;
@@ -26,7 +26,7 @@ export function workPlacement(row: CourseWorkRow, today: string, rows: CourseWor
     if (meeting) return workPlacement(meeting, today);
     return { section: 'undated', date: null };
   }
-  if (date < today && row.mode === 'commitment') return { section: 'earlier', date };
+  if (date < today) return { section: row.mode === 'commitment' && row.time.state === 'dated' && row.time.role === 'starts' ? 'earlier' : 'overdue', date };
   if (date >= dateAfter(today, 7)) return { section: 'later', date };
   return { section: 'current', date };
 }
@@ -36,18 +36,19 @@ export function workDateLabel(date: string, today: string): string {
   return new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`));
 }
 export function groupCourseWork(rows: CourseWorkRow[], today: string, state: WorkListState): WorkBucket[] {
-  const names: Record<WorkSection, string> = { current: 'Upcoming work', earlier: 'Earlier classes', later: 'Later', conflict: 'Dates to confirm', undated: 'No date', done: 'Done' };
-  const buckets = new Map<WorkSection, Map<string, WorkGroup>>();
+  const names: Record<WorkSection, string> = { current: 'Upcoming work', overdue: 'Past due', earlier: 'Earlier classes', later: 'Later', conflict: 'Dates to confirm', undated: 'No date', done: 'Done' };
+  // Today stays first, even empty; overdue work has an independent reachable budget.
+  const buckets = new Map<WorkSection, Map<string, WorkGroup>>([['current', new Map([[today, { key: `current:${today}`, label: 'Today', date: today, rows: [] }]])]]);
   for (const row of rows) {
     const placement = row.time.state === 'conflict' ? workPlacement(row, today, rows) : state.pins[row.key] ?? workPlacement(row, today, rows);
     const section = placement.section, date = placement.date;
-    const groupKey = section === 'current' && date && date < today ? 'past-due' : date ?? section;
+    const groupKey = section === 'overdue' ? 'past-due' : date ?? section;
     const groups = buckets.get(section) ?? new Map<string, WorkGroup>();
     const group = groups.get(groupKey) ?? { key: `${section}:${groupKey}`, date: groupKey === 'past-due' ? null : date,
       label: groupKey === 'past-due' ? 'Past due' : date ? workDateLabel(date, today) : names[section], rows: [] };
     group.rows.push(row); groups.set(groupKey, group); buckets.set(section, groups);
   }
-  return (['current', 'later', 'conflict', 'undated', 'done', 'earlier'] as WorkSection[]).flatMap(section => {
+  return (['current', 'overdue', 'later', 'conflict', 'undated', 'done', 'earlier'] as WorkSection[]).flatMap(section => {
     const bucket = buckets.get(section); if (!bucket) return [];
     const groups = [...bucket.values()].sort((a, b) => a.key.endsWith(':past-due') ? -1 : b.key.endsWith(':past-due') ? 1 : (a.date ?? '').localeCompare(b.date ?? ''));
     for (const group of groups) group.rows.sort((a, b) => {

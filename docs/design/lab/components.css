@@ -1045,7 +1045,7 @@ h3 {
   color: var(--magic-ink-feedback);
 }
 
-/* Disclosure keeps native keyboard semantics and the shared Lucide geometry. */
+/* Disclosure keeps native keyboard semantics and the shared Hugeicons geometry. */
 .mc-disclosure {
   display: flex;
   align-items: center;

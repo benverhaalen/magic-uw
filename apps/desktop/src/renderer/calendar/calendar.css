@@ -67,8 +67,9 @@
 .mc-calendar-empty { font-size:12px; color:var(--magic-ink-muted); margin:12px 0 0; }
 @media (max-width:1000px) { .mc-calendar { padding:18px 16px 12px; } .mc-calendar h2 { font-size:21px; } .mc-calendar-view { margin-left:0; } }
 @media (prefers-reduced-motion:reduce) { .mc-calendar * { scroll-behavior:auto!important; } }
-.mc-calendar-more { padding:5px 7px; border:0; background:transparent; color:var(--magic-ink-link)!important; text-align:left; font-size:11px!important; border-radius:4px; }
-.mc-calendar-more:hover { background:var(--magic-surface-quiet); text-decoration:underline; }
+.mc-calendar-more { margin-inline:0; padding:5px 7px; border:0; background:var(--magic-fb-pill-rest); color:var(--magic-ink-link)!important; text-align:left; font-size:11px!important; border-radius:999px; }
+@media (hover:hover) and (pointer:fine) { .mc-calendar-more:hover { background:var(--magic-fb-pill-hover); } }
+.mc-calendar-more:active { background:var(--magic-fb-pill-press); }
 .mc-calendar-day-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:8px; padding-top:12px; }
 .mc-calendar-day-list .mc-calendar-event { min-height:70px; }
 .mc-calendar-month .mc-calendar-event--compact { display:grid; grid-template-columns:45px minmax(0,1fr); gap:4px; min-height:24px; padding:5px; align-items:start; }

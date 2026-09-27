@@ -25,11 +25,19 @@ Use Node 24 and the repository's pnpm version. [Development](development.md) cov
 | Bell → notification → item, course, Outlook or Sources → Back | `notifications/NotificationsMenu.tsx`, `notifications/destination.ts`, bell in `DesktopShell` `trailing` | Code rules decide levels; Jev may only raise announcements and email; it runs in builds carrying the embedded key or with `MAGIC_GATEWAY_URL`. Preview with `MAGIC_PREVIEW_NOTIFICATION_FIXTURE=1`. Email destinations are proven only on synthetic mail. |
 | Message pill → full chat → return | `conversation-launcher/`, `chat/`, `App.tsx`, `navigation.ts` | Drafts retain captured origin and destination across navigation; current included-course access is rechecked. Canonical text dispatch and saved due/search paths are source-integrated; native submission/routing/Back are demonstrated, while a completed model answer, voice and external control remain unverified. |
 | First run → agreements / provider setup | `onboarding/`, `consent/`, existing desktop client bridge | Main `4cadd8d` is reconciled: typed UW sign-in outcomes, client health, default terminal and personalized onboarding. Requires current main/preload, not just a renderer reload. |
-| Shared frame and components | `DesktopShell.tsx`, `navigation.ts`, `packages/ui/src/` | Karma/Geist, Lucide, evidence info, inline context and motion are shared. App binds provider, navigation and persistence behavior. |
+| Shared frame and components | `DesktopShell.tsx`, `navigation.ts`, `packages/ui/src/` | Karma/Geist, Hugeicons, evidence info, inline context and motion are shared. App binds provider, navigation and persistence behavior. |
 
 Renderer paths above are under `apps/desktop/src/renderer`. Contracts and commands live in `packages/contracts` and `packages/core`; preserve those boundaries when adapting a leaf.
 
 ## What is verified and what remains
+
+### September 27 09:41 UTC frontend integration checkpoint
+
+The current bundle integrates Daily Brief with aligned action units, anchored Schedule, consistent Upcoming date columns, subtle reveal buttons and measured Today expansion; Hugeicons with the shared 1.35 stroke; the wizard app icon; launcher divider/shadow; centered Courses cards, verified-current-only grade tabs labeled `Current grade: x%`, per-mode navigation and Today-first coursework. Main `2f4cc27` and Aidan PR #39 remain integrated, including embedded-Jev startup, worker URL propagation and notification routing. New main `5372c5a` dedup semantics and feature-branch previews are pending reconciliation; fetching them does not expose their journeys.
+
+Full integrated build/typecheck and 72 focused checks pass. A closed copied-data Electron run demonstrated Home, all five current course cards, course detail and exact Back focus, Today-first work list, mode return and Home Back with no renderer exceptions. The run caught a notification badge weight outside the single-Geist-weight rule; badge and notification title now consume the shared weight. The app icon is wired to the native window and macOS Dock; installer packaging is not claimed. Private evidence remains in the established recovery area, outside Git. Original `2fb19e1` processes were absent at the final promotion preflight; the next launch reuses the original user data, not the QA copy.
+
+Teammate ownership is feature-specific: Nate also owns frontend previews and onboarding. Adapt his existing UI/contracts where applicable; do not assign all frontend work to this branch's design workers. Learning prompt review must follow the user's requirement that all learning system prompts follow course AI policy. Apply policy to each request's actual source/account/version scope, surface missing or conflicting policy, and inventory the real prompt paths with Nate before duplicating backend logic. The local learning-harness reference review is a proposed behavioral input, not an adopted dependency.
 
 ### September 27 source and runtime reconciliation
 

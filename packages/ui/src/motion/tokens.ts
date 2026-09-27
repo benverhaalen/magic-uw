@@ -13,7 +13,9 @@ export const MOTION_MS = {
   /** Drill in or out of a course, an item, or history Back/Forward. */
   page: 200,
   /** Same-level destination (Home to Calendar, one course to another). */
-  pageLateral: 120,
+  pageLateral: 180,
+  /** Reduced motion retains a short opacity cue without travel. */
+  pageReduced: 120,
   /** Anchored popover or note, opening. */
   overlayEnter: 150,
   /** Closing is a system response, so it is quicker than opening. */
@@ -27,4 +29,5 @@ export const MOTION_MS = {
 /** Horizontal travel for a directional page entrance, in CSS px. Small enough not to blur text. */
 export const PAGE_SHIFT_PX = 12;
 /** Starting opacity for a same-level page change. The new content is readable at once. */
-export const LATERAL_FROM_OPACITY = 0.5;
+export const LATERAL_FROM_OPACITY = 0.3;
+export const REDUCED_FROM_OPACITY = 0.5;

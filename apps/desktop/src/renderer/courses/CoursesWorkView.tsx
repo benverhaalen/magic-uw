@@ -158,13 +158,13 @@ function WorkSectionView({ bucket, state, onStateChange, onExpand, children }: {
     requestAnimationFrame(() => { if (currentAnchor && trigger.current) currentAnchor.scrollTop += trigger.current.getBoundingClientRect().top - position; });
   }
   return <section ref={section} className="cw-bucket" data-work-section={bucket.section}>
-    {bucket.section !== 'current' && <button ref={trigger} type="button" className="cw-disclosure" aria-expanded={open} aria-controls={id}
+    {bucket.section !== 'current' && <button ref={trigger} type="button" className="cw-disclosure magic-fb-pill" aria-expanded={open} aria-controls={id}
       data-focus-key={`course-work-section-${bucket.section}`} onClick={() => open ? collapse() : onExpand(bucket.section, true)}><WorkGlyph name="chevron"/>{bucket.label}{!open ? ` · ${bucket.count}` : ''}</button>}
     {open && <div id={id}>{groups.map(group => <section className="cw-day" key={group.key}>
       {(bucket.section === 'current' || group.date) && <header className="cw-day-header"><h2>{group.label}</h2>{group.date && ['Today', 'Tomorrow'].includes(group.label) && <time className="cw-day-date" dateTime={group.date}>{new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(`${group.date}T12:00:00Z`))}</time>}</header>}
       <ul className="cw-rows">{group.rows.map(children)}</ul></section>)}
-      {limit < bucket.count && <button className="cw-page-control" data-focus-key={`course-work-more-${bucket.section}`} onClick={() => onStateChange({ ...state, visible: { ...state.visible, [bucket.section]: limit + 20 } })}>Show {Math.min(20, bucket.count - limit)} more</button>}
-      {limit > 30 && <button className="cw-page-control" data-focus-key={`course-work-less-${bucket.section}`} onClick={event => {
+      {limit < bucket.count && <button className="cw-page-control magic-fb-pill" data-focus-key={`course-work-more-${bucket.section}`} onClick={() => onStateChange({ ...state, visible: { ...state.visible, [bucket.section]: limit + 20 } })}>Show {Math.min(20, bucket.count - limit)} more</button>}
+      {limit > 30 && <button className="cw-page-control magic-fb-pill" data-focus-key={`course-work-less-${bucket.section}`} onClick={event => {
         const pane = event.currentTarget.closest('.desktop-workspace'), top = section.current?.getBoundingClientRect().top ?? 0;
         // Focus a persistent section trigger before removing the later rows and this button.
         (trigger.current ?? section.current?.querySelector<HTMLElement>('.cw-open'))?.focus({ preventScroll: true });

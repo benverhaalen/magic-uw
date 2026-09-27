@@ -42,6 +42,11 @@
   --magic-fill-review: var(--magic-fill-action);
   --magic-fill-review-hover: var(--magic-fill-action-hover);
   --magic-ink-review: var(--magic-ink-action);
+  /* Operation purpose, independent of work identity and completion state. */
+  --magic-fill-action-coursework: linear-gradient(110deg, var(--magic-hue-teal-strong), var(--magic-hue-teal-pale));
+  --magic-ink-action-coursework: var(--magic-hue-teal-ink);
+  --magic-fill-action-study: var(--magic-fill-study);
+  --magic-ink-action-study: var(--magic-ink-study);
   --magic-fill-confirmation: #eef3fa;
   --magic-line-confirmation: #7894b44d;
   --magic-fill-backdrop: #29231f40;
@@ -126,7 +131,7 @@
  *   packages/ui/src/deadline-emphasis.css (IDENTITY_HUES order; mint and sky need the 13-hue mapper
  *   patch). Proximity changes the fill level of the same hue; ink never fades (>= 5.58:1 worst case).
  *   Course identity is the course code text, not a hue. Unverified type renders neutral.
- * --magic-color-status-*: meaning carried by Lucide glyph + words; "done" is deliberately not green.
+ * --magic-color-status-*: meaning carried by Hugeicons glyph + words; "done" is deliberately not green.
  * --magic-color-selected-*: selection inside ivory content, with aria-current/aria-pressed.
  * --magic-color-action-*: richer action blue; ink stays >= 4.5:1 under the pressed overlay (the
  *   existing --magic-ink-action measures 4.47:1 pressed).

@@ -1,3 +1,5 @@
+import { CanvasMark } from '../prepared-work/canvas-mark';
+import { MagicGlyph } from '../../../../../packages/ui/src/glyph';
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AppBridge, Command, CommandResult, Snapshot } from "@magic/contracts";
 import { Action } from "../../../../../packages/ui/src";
@@ -60,26 +62,14 @@ export interface SourcesPageProps {
   now?: () => Date;
 }
 
-// Lucide nodes (lucide-react 1.48 / lucide-static paths); ISC attribution: packages/ui/LICENSE.icons.
-const glyphs = {
-  canvas: <><path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z" /><path d="M22 10v6" /><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5" /></>,
-  outlook: <><path d="M8 2v3" /><path d="M16 2v3" /><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M8 13h.01" /><path d="M12 13h.01" /><path d="M16 13h.01" /><path d="M8 17h.01" /><path d="M12 17h.01" /></>,
-  myuw: <><path d="M14 21v-3a2 2 0 0 0-4 0v3" /><path d="M18 4.933V21" /><path d="m4 6 7.106-3.79a2 2 0 0 1 1.788 0L20 6" /><path d="M6 4.933V21" /><circle cx="12" cy="9" r="2" /></>,
-  file: <><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" /><path d="M14 2v5a1 1 0 0 0 1 1h5" /><path d="M12 12v6" /><path d="m15 15-3-3-3 3" /></>,
-  refresh: <><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></>,
-  signin: <><path d="m10 17 5-5-5-5" /><path d="M15 12H3" /><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" /></>,
-  chevron: <path d="m6 9 6 6 6-6" />,
-  lock: <><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></>,
-  check: <><circle cx="12" cy="12" r="10" /><path d="m16 9-5.5 5.5L8 12" /></>,
-  alert: <><circle cx="12" cy="12" r="10" /><line x1="12" x2="12" y1="8" y2="12" /><line x1="12" x2="12.01" y1="16" y2="16" /></>,
-  clock: <><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></>,
-  unplug: <><path d="m19 5 3-3" /><path d="m2 22 3-3" /><path d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z" /><path d="M7.5 13.5 10 11" /><path d="M10.5 16.5 13 14" /><path d="m12 6 6 6 2.3-2.3a2.4 2.4 0 0 0 0-3.4l-2.6-2.6a2.4 2.4 0 0 0-3.4 0Z" /></>,
-};
-function Glyph({ name, size = 16 }: { name: keyof typeof glyphs; size?: number }) {
-  return <svg className="sources-glyph" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{glyphs[name]}</svg>;
+type SourceGlyphName = 'canvas' | 'outlook' | 'myuw' | 'file' | 'refresh' | 'signin' | 'chevron' | 'lock' | 'check' | 'alert' | 'clock' | 'unplug';
+function Glyph({ name, size = 16 }: { name: SourceGlyphName; size?: number }) {
+  if (name === 'canvas') return <CanvasMark />;
+  return <MagicGlyph className="sources-glyph" name={name === 'chevron' ? 'chevronDown' : name} size={size} />;
 }
 
-const tones: Record<string, { tone: string; glyph: keyof typeof glyphs }> = {
+
+const tones: Record<string, { tone: string; glyph: SourceGlyphName }> = {
   canvas: { tone: "coral", glyph: "canvas" },
   outlook: { tone: "blue", glyph: "outlook" },
   myuw: { tone: "amber", glyph: "myuw" },
@@ -102,7 +92,7 @@ function settleFocus(...targets: (() => HTMLElement | null | undefined)[]) {
     for (const target of targets) { const el = target(); if (el?.isConnected) { el.focus(); return; } }
   }));
 }
-const stateGlyph = (state: ConnectionState): keyof typeof glyphs => state === "connected" ? "check" : state === "stale" ? "clock" : state === "not_connected" || state === "sample" ? "unplug" : "alert";
+const stateGlyph = (state: ConnectionState): SourceGlyphName => state === "connected" ? "check" : state === "stale" ? "clock" : state === "not_connected" || state === "sample" ? "unplug" : "alert";
 
 export function SourcesPage(props: SourcesPageProps) {
   const { snapshot, busy } = props;

@@ -1,22 +1,22 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import { markAnchor } from './motion/anchor';
+import { MagicGlyph } from './glyph';
 
-// Lucide chevron-right, ISC; attribution in ../LICENSE.icons.
 function Chevron() {
-  return <svg className="magic-ui-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>;
+  return <MagicGlyph className="magic-ui-glyph" name="chevron" />;
 }
 
 /** Command, never navigation. Pending prevents repeated activation without dropping focus.
  * Native `disabled` blurs a focused button, so the control stays focusable (aria-disabled, click
  * guarded) while pending or while it holds focus; otherwise `disabled` stays native.
  */
-export function Action({ tone = 'primary', pending = false, disabled = false, children, onClick, ...props }:
-  Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'className'> & { tone?: 'primary' | 'quiet'; pending?: boolean }) {
+export function Action({ intent, tone = 'primary', pending = false, disabled = false, children, onClick, ...props }:
+  Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'className'> & { intent?: 'review' | 'coursework' | 'study'; tone?: 'primary' | 'quiet'; pending?: boolean }) {
   const button = useRef<HTMLButtonElement>(null);
   const holdsFocus = !!button.current && button.current === button.current.ownerDocument.activeElement;
   const blocked = pending || disabled;
-  return <button {...props} ref={button} type={props.type ?? 'button'} className={`magic-ui-action magic-ui-action--${tone}`}
+  return <button {...props} data-action-intent={intent} ref={button} type={props.type ?? 'button'} className={`magic-ui-action magic-ui-action--${tone}`}
     disabled={disabled && !pending && !holdsFocus} aria-busy={pending || undefined} aria-disabled={blocked || undefined}
     onClick={event => { if (blocked) { event.preventDefault(); return; } onClick?.(event); }}>
     {children}{pending && <span aria-hidden="true"> …</span>}

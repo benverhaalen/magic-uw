@@ -1,8 +1,9 @@
+import { playCourseModeEnter, settleCourseMode } from './courses/course-view-motion';
 import { initialWorkListState, type WorkListState } from './courses/course-work-display';
 import type { CoursesMode } from './courses/CoursesViewToggle';
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { CalendarState } from './calendar/model';
-import { pageDirection, playPageEnter, type PageDirection } from '../../../../packages/ui/src/motion';
+import { pageDirection, playPageEnter, settlePage, type PageDirection } from '../../../../packages/ui/src/motion';
 export type DesktopView = 'chat' | 'today' | 'courses' | 'myuw' | 'calendar' | 'resource' | 'sources' | 'privacy' | 'consent' | 'notebook' | 'practice' | 'insights' | 'settings';
 type Place = { coursesMode?: CoursesMode; courseWorkState?: WorkListState; homeTodayCount?: number; homeUpcomingCount?: number; calendarState?: CalendarState; calendarFocus?: string; view: DesktopView; resourceId: string | null; courseKey: string | null; disclosures: Record<string, boolean>; scroll: number; focus: string | null; anchor: string | null; offset: number };
 const initial: Place = { view: 'today', resourceId: null, courseKey: null, disclosures: {}, scroll: 0, focus: null, anchor: null, offset: 0 };
@@ -15,6 +16,16 @@ export function useDesktopNavigation() {
   const pending = useRef<Place | null>(null);
   const direction = useRef<PageDirection>('lateral');
   const current = stack[index]!;
+  const courseModeMotion = useRef(false);
+  const coursePlaces = useRef<Partial<Record<CoursesMode, Place>>>({});
+  const isCourseIndex = (place: Place) => place.view === 'courses' && !place.courseKey && !place.resourceId;
+  function rememberCoursePlace(place: Place) {
+    if (isCourseIndex(place)) coursePlaces.current[place.coursesMode ?? 'cards'] = place;
+  }
+  useLayoutEffect(() => () => {
+    const pane = document.querySelector<HTMLElement>('.desktop-workspace');
+    if (pane) settleCourseMode(pane);
+  }, []);
   const lastWorkspaceFocus = useRef<string | null>(null);
   useLayoutEffect(() => {
     lastWorkspaceFocus.current = current.focus;
@@ -43,6 +54,7 @@ export function useDesktopNavigation() {
     if (current.view === view && current.resourceId === resourceId && current.courseKey === courseKey) return;
     const next = { ...initial, ...arrive, view, resourceId, courseKey };
     const saved = stack.slice(0, index + 1); saved[index] = { ...capture(), ...origin };
+    rememberCoursePlace(saved[index]!); courseModeMotion.current = false;
     direction.current = pageDirection(depth(current), depth(next), 'push');
     pending.current = next; setStack([...saved, next]); setIndex(saved.length);
   }
@@ -50,6 +62,8 @@ export function useDesktopNavigation() {
     const nextIndex = index + delta;
     if (nextIndex < 0 || nextIndex >= stack.length) return;
     const saved = [...stack]; saved[index] = capture();
+    rememberCoursePlace(saved[index]!);
+    courseModeMotion.current = isCourseIndex(current) && isCourseIndex(saved[nextIndex]!) && (current.coursesMode ?? 'cards') !== (saved[nextIndex]!.coursesMode ?? 'cards');
     direction.current = delta < 0 ? 'back' : 'forward';
     pending.current = saved[nextIndex]!; setStack(saved); setIndex(nextIndex);
   }
@@ -79,16 +93,26 @@ export function useDesktopNavigation() {
       destination.focus({ preventScroll: true });
     }
     // Scroll, disclosures and focus are already the destination's; only then does it appear.
-    playPageEnter(pane, direction.current);
+    if (courseModeMotion.current) {
+      courseModeMotion.current = false;
+      settlePage(pane);
+      playCourseModeEnter(pane, place.coursesMode ?? 'cards');
+    } else {
+      settleCourseMode(pane);
+      playPageEnter(pane, direction.current);
+    }
   }, [index, current.view, current.resourceId, current.courseKey]);
   function updateCalendar(calendarState: CalendarState) {
     setStack(previous => previous.map((place, i) => i === index ? { ...place, calendarState } : place));
   }
   function switchCoursesMode(coursesMode: CoursesMode) {
     if ((current.coursesMode ?? 'cards') === coursesMode) return;
-    const saved=stack.slice(0,index+1);saved[index]=capture();
-    const next:Place={...initial,view:'courses',coursesMode};
-    pending.current=next;direction.current='lateral';setStack([...saved,next]);setIndex(saved.length);
+    const saved = stack.slice(0, index + 1); saved[index] = capture();
+    rememberCoursePlace(saved[index]!);
+    const next: Place = { ...(coursePlaces.current[coursesMode] ?? initial), view: 'courses', coursesMode,
+      focus: `courses-view-${coursesMode}` };
+    courseModeMotion.current = true;
+    pending.current = next; direction.current = 'lateral'; setStack([...saved, next]); setIndex(saved.length);
   }
   return { coursesMode: current.coursesMode ?? 'cards', switchCoursesMode,
     courseWorkState: current.courseWorkState ?? initialWorkListState(),

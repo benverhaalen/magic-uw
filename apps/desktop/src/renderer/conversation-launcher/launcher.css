@@ -5,6 +5,8 @@
   --cl-ease: cubic-bezier(0.23, 1, 0.32, 1);
   --cl-open: 240ms;
   --cl-close: 180ms;
+  --cl-color-duration: 160ms;
+  --cl-color: background-color var(--cl-color-duration) var(--cl-ease), color var(--cl-color-duration) var(--cl-ease), border-color var(--cl-color-duration) var(--cl-ease);
   --cl-collapsed: 40px;
   position: absolute; inset: auto 0 16px 0; z-index: 20; container-type: inline-size;
   display: flex; flex-direction: column; align-items: center; gap: 6px;
@@ -18,12 +20,12 @@
   width: fit-content; max-width: 100%; height: var(--cl-collapsed); padding: 3px;
   overflow: hidden; border-radius: 20px;
   border: 1px solid var(--magic-line-quiet); background: var(--magic-surface-raised);
-  box-shadow: var(--magic-shadow-popover);
-  transition: width var(--cl-close) var(--cl-ease), height var(--cl-close) var(--cl-ease), border-radius var(--cl-close) var(--cl-ease);
+  box-shadow: var(--magic-shadow-launcher, 0 3px 8px #29231f14, 0 10px 28px #29231f24);
+  transition: var(--cl-color), width var(--cl-close) var(--cl-ease), height var(--cl-close) var(--cl-ease), border-radius var(--cl-close) var(--cl-ease);
 }
 .conversation-launcher[data-open] {
   width: min(34rem, 100%); height: auto; border-radius: 16px;
-  transition: width var(--cl-open) var(--cl-ease), height var(--cl-open) var(--cl-ease), border-radius var(--cl-open) var(--cl-ease);
+  transition: var(--cl-color), width var(--cl-open) var(--cl-ease), height var(--cl-open) var(--cl-ease), border-radius var(--cl-open) var(--cl-ease);
 }
 .conversation-launcher:has(.cl-field:focus) { border-color: var(--magic-focus); }
 
@@ -31,7 +33,25 @@
   position: relative; flex: none; display: grid; place-items: center;
   width: 32px; height: 32px; padding: 0; border: 0; border-radius: 16px;
   background: transparent; color: var(--magic-ink-muted-strong); cursor: pointer;
+  transition: var(--cl-color);
 }
+/* Optical separator uses the existing flex gap; it never adds layout width or a hit target. */
+.cl-mic::before {
+  content: ""; position: absolute; left: -2px; top: 7px;
+  width: 1px; height: 18px; border-radius: 1px; pointer-events: none;
+  background: var(--magic-line-quiet);
+  transition: background-color var(--cl-color-duration) var(--cl-ease);
+}
+/* The coral role is a gradient, so fade that fill as a layer while the glyph ink interpolates. */
+.cl-mic::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: var(--magic-fill-identity-coral); opacity: 0;
+  transition: opacity var(--cl-color-duration) var(--cl-ease);
+}
+.cl-mic > .cl-glyph { position: relative; z-index: 1; }
+/* Explicit color properties keep focus outlines immediate and reversals interruptible. */
+.cl-field, .cl-field::placeholder, .cl-text-button, .cl-origin, .cl-error, .cl-note,
+.cl-voice-text, .cl-levels > span, .cl-draft-dot { transition: var(--cl-color); }
 /* Inset: the surface clips overflow while it animates. */
 .cl-icon:focus-visible { outline: 2px solid var(--magic-focus); outline-offset: -2px; }
 .cl-text-button:focus-visible { outline: 2px solid var(--magic-focus); outline-offset: 1px; border-radius: 2px; }
@@ -72,7 +92,8 @@
 }
 
 /* Voice: colored only while a session the student started is active. */
-[data-voice] > .cl-mic { background: var(--magic-fill-identity-coral); color: var(--magic-ink-identity-coral); }
+[data-voice] > .cl-mic { color: var(--magic-ink-identity-coral); }
+[data-voice] > .cl-mic::after { opacity: 1; }
 .cl-voice-text { flex: none; align-self: center; padding: 0 4px 0 2px; font-size: var(--magic-type-meta); color: var(--magic-ink-identity-coral); }
 .cl-levels { flex: none; align-self: center; display: flex; align-items: center; gap: 2px; height: 18px; padding: 0 4px 0 2px; }
 .cl-levels > span { width: 3px; height: 18px; border-radius: 2px; background: var(--magic-accent-current-time); }
@@ -80,10 +101,17 @@
 @media (hover: hover) {
   .cl-icon:not([aria-disabled=true]):not(.cl-send):hover { background: var(--magic-fill-secondary); color: var(--magic-ink-secondary); }
   .cl-send:not([aria-disabled=true]):hover { background: var(--magic-fill-action-hover); }
+  [data-voice] > .cl-mic:not([aria-disabled=true]):hover {
+    background: transparent;
+    color: var(--magic-ink-identity-coral);
+  }
+  [data-voice] > .cl-mic:not([aria-disabled=true]):hover::after { opacity: .86; }
 }
-/* Reduced motion: settle geometry immediately; keep only the short composer fade. */
+/* Reduced motion: immediate geometry/focus; a brief color blend carries state without travel. */
 @media (prefers-reduced-motion: reduce) {
-  .conversation-launcher, .conversation-launcher[data-open] { transition: none; }
+  .conversation-launcher-dock { --cl-color-duration: 80ms; }
+  .conversation-launcher, .conversation-launcher[data-open] { transition: var(--cl-color); }
+  .cl-composer, [data-open] > .cl-composer { transition: opacity 80ms linear, visibility 0s; }
 }
 
 /* Shell integration: the dock contributes its actual height to measured clearance. */

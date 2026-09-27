@@ -535,7 +535,7 @@
 .desktop-course-list button.active { background: var(--magic-fill-shell-selected); }
 @media(max-width:650px) { .course-fact { grid-template-columns: 1fr; gap: 6px; } .course-next-row { flex-wrap: wrap; } .course-next-due { text-align: left; } }
 
-/* Disclosure summaries use the shared Lucide chevron instead of the platform triangle. */
+/* Disclosure summaries use the shared Hugeicons chevron instead of the platform triangle. */
 .course-group > summary,
 .course-module > summary,
 .course-past > summary,

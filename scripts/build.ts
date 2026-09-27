@@ -30,6 +30,9 @@ await build({
 console.log(embeddedKey
   ? "Embedded Jev: this build carries the TypeSafe key. Do not commit or publish dist/ publicly."
   : "Embedded Jev: no key embedded; Jev needs MAGIC_GATEWAY_URL.");
+// Runtime window/Dock icon; editable vector and packaging assets stay in source.
+for (const extension of ["png", "icns", "ico"])
+  await copyFile(join("apps/desktop/assets", `app-icon.${extension}`), join("apps/desktop/dist", `app-icon.${extension}`));
 // owner: acquisition: the extraction thread (extract-pool.ts), beside the utility bundle.
 await build({
   entryPoints: ["packages/connectors/src/extract-worker.ts"],

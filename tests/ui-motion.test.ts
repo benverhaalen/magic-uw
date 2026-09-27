@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { anchorSide, LATERAL_FROM_OPACITY, MOTION_EASE, MOTION_MS, PAGE_SHIFT_PX, pageDirection, pageEnterPlan, playPageEnter, PAGE_MOTION_ATTRIBUTE } from '../packages/ui/src/motion';
+import { anchorSide, LATERAL_FROM_OPACITY, REDUCED_FROM_OPACITY, MOTION_EASE, MOTION_MS, PAGE_SHIFT_PX, pageDirection, pageEnterPlan, playPageEnter, PAGE_MOTION_ATTRIBUTE } from '../packages/ui/src/motion';
 
 test('history travel keeps its arrow direction; a push compares hierarchy depth', () => {
   assert.equal(pageDirection(0, 1, 'push'), 'forward', 'Home to a course');
@@ -24,11 +24,15 @@ test('directional entrances travel a little, fade from nothing, and never scale 
   for (const plan of [forward, back, pageEnterPlan('lateral')!]) assert.doesNotMatch(JSON.stringify(plan.keyframes), /scale|blur/);
 });
 
-test('same-level changes and reduced motion only fade, starting readable', () => {
-  for (const plan of [pageEnterPlan('lateral')!, pageEnterPlan('forward', { reduced: true })!, pageEnterPlan('back', { reduced: true })!]) {
-    assert.deepEqual(plan.keyframes, [{ opacity: LATERAL_FROM_OPACITY }, { opacity: 1 }]);
+test('same-level changes have a readable fade; reduced motion keeps a shorter quiet cue', () => {
+  const lateral = pageEnterPlan('lateral')!;
+  assert.deepEqual(lateral.keyframes, [{ opacity: LATERAL_FROM_OPACITY }, { opacity: 1 }]);
+  assert.equal(lateral.shift, 0);
+  assert.equal(lateral.options.duration, MOTION_MS.pageLateral);
+  for (const plan of [pageEnterPlan('forward', { reduced: true })!, pageEnterPlan('back', { reduced: true })!]) {
+    assert.deepEqual(plan.keyframes, [{ opacity: REDUCED_FROM_OPACITY }, { opacity: 1 }]);
     assert.equal(plan.shift, 0);
-    assert.equal(plan.options.duration, MOTION_MS.pageLateral);
+    assert.equal(plan.options.duration, MOTION_MS.pageReduced);
   }
 });
 
@@ -81,7 +85,7 @@ test('a newer navigation cancels the running entrance and carries its opacity; n
 test('reduced motion plays opacity only', () => {
   const { pane, made } = fakePane(1);
   playPageEnter(pane, 'forward', true);
-  assert.deepEqual(made[0]!.keyframes, [{ opacity: LATERAL_FROM_OPACITY }, { opacity: 1 }]);
+  assert.deepEqual(made[0]!.keyframes, [{ opacity: REDUCED_FROM_OPACITY }, { opacity: 1 }]);
 });
 
 test('an anchored panel knows whether it opened below or above its trigger', () => {

@@ -1,3 +1,4 @@
+import { MagicGlyph } from '../../../../packages/ui/src/glyph';
 import { CoursesViewHeader } from './courses/CoursesViewToggle';
 import { CoursesWorkList, type WorkReportResult } from './courses/CoursesWorkView';
 import { projectCourseWork, isCourseWorkActionCurrent, type CourseWorkRow } from './courses/course-work-model';
@@ -22,6 +23,7 @@ import { SourcesPage } from "./sources";
 import { MyUw, PlanningAlerts } from "./MyUw";
 import { CoursePageView } from "./courses/CoursePage";
 import { CoursesIndex } from "./courses/CoursesIndex";
+import { compactCourseTerm } from "./courses/course-index-view";
 import { buildCourseCards, buildCoursePage, courseKey } from "../../../../packages/domain/src/course-page";
 import { LocalAiPanel } from "./LocalAiPanel";
 import { LearningPanel } from "./LearningPanel";
@@ -145,65 +147,10 @@ function formatDate(value: string | null, full = false): string {
   ).format(date);
 }
 
-function Icon({
-  name,
-}: {
-  name: "today" | "courses" | "myuw" | "sources" | "privacy" | "search" | "arrow" | "file" | "check";
-}) {
+function Icon({ name }: { name: "today" | "courses" | "myuw" | "sources" | "privacy" | "search" | "arrow" | "file" | "check" }) {
   if (name === "myuw") return <img className="uw-nav-mark" src={new URL("./assets/uw-crest.svg", import.meta.url).href} alt="" aria-hidden="true" />;
-  const paths = {
-    courses: <><path d="M3 4h6v13H3zM11 4h6v13h-6zM5 7h2m6 0h2" /></>,
-    myuw: <><path d="m2 7 8-4 8 4-8 4-8-4Zm3 3v5c3 3 7 3 10 0v-5M18 7v8" /></>,
-    today: (
-      <>
-        <rect x="3" y="5" width="14" height="12" rx="2" />
-        <path d="M6 3v4m8-4v4M3 9h14M7 12h3m-3 3h5" />
-      </>
-    ),
-    sources: (
-      <>
-        <path d="m10 2 7 4-7 4-7-4 7-4Zm-7 8 7 4 7-4m-14 4 7 4 7-4" />
-      </>
-    ),
-    privacy: (
-      <>
-        <path d="M10 2 3 5v5c0 4 7 8 7 8s7-4 7-8V5l-7-3Z" />
-        <path d="m7 10 2 2 4-4" />
-      </>
-    ),
-    search: (
-      <>
-        <circle cx="8.5" cy="8.5" r="5.5" />
-        <path d="m13 13 4 4" />
-      </>
-    ),
-    arrow: (
-      <>
-        <path d="M5 15 15 5M5 5h10v10" />
-      </>
-    ),
-    file: (
-      <>
-        <path d="M5 2h6l4 4v12H5V2Zm6 0v5h4M8 11h4m-4 3h4" />
-      </>
-    ),
-    check: <path d="m4 10 4 4 8-8" />,
-  };
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      width="18"
-      height="18"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.35"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      {paths[name]}
-    </svg>
-  );
+  const semantic = { today: 'calendar', courses: 'book', sources: 'sources', privacy: 'privacy', search: 'search', arrow: 'upRight', file: 'file', check: 'check' } as const;
+  return <MagicGlyph name={semantic[name]} size={18} />;
 }
 
 export function App() {
@@ -582,7 +529,7 @@ export function App() {
             signIn={(service) => uwConsented /* owner: T06 */ ? void perform(async () => { const outcome = await window.magic.signInUW?.(service); if (outcome?.status !== "confirmed") { setNotice(outcome ? signInMessage(outcome) : "Sign-in was not confirmed. Try again."); return; } return window.magic.syncPlanning?.(); }) : openConsent()} />
         ) : view === "courses" ? (
           <section className="desktop-courses">
-            {navigation.courseKey ? coursePage ? <CoursePageView typeHueOf={typeHueOf} key={coursePage.key} page={coursePage} selectedId={null} onSelect={setSelectedId} onBack={() => navigation.navigate("courses")} open={open} detail={null}/> : <><h1 tabIndex={-1}>Course unavailable</h1><p>This course is no longer included in the saved workspace.</p><Action onClick={() => navigation.navigate("courses")}>View courses</Action></> : <><CoursesViewHeader termLabel={courseWorkModel?.scope.term.label ?? "Courses"} mode={navigation.coursesMode} onChange={navigation.switchCoursesMode}/>{navigation.coursesMode === 'list' && courseWorkModel ? <CoursesWorkList model={courseWorkModel} state={navigation.courseWorkState} onStateChange={navigation.updateCourseWorkState} timeZone={Intl.DateTimeFormat().resolvedOptions().timeZone} onOpen={openCourseWork} onAction={openCourseWork} onReport={reportCourseWork} onSources={()=>setView('sources')}/> : <CoursesIndex showHeader={false} cards={courseCards} now={courseInput.now} typeHueOf={typeHueOf} onOpen={key => navigation.navigate("courses", null, key)} onSources={() => setView("sources")}/>}</>}
+            {navigation.courseKey ? coursePage ? <CoursePageView typeHueOf={typeHueOf} key={coursePage.key} page={coursePage} selectedId={null} onSelect={setSelectedId} onBack={() => navigation.navigate("courses")} open={open} detail={null}/> : <><h1 tabIndex={-1}>Course unavailable</h1><p>This course is no longer included in the saved workspace.</p><Action onClick={() => navigation.navigate("courses")}>View courses</Action></> : <><CoursesViewHeader termLabel={compactCourseTerm(courseWorkModel?.scope.term.label ?? "Courses")} mode={navigation.coursesMode} onChange={navigation.switchCoursesMode}/>{navigation.coursesMode === 'list' && courseWorkModel ? <CoursesWorkList model={courseWorkModel} state={navigation.courseWorkState} onStateChange={navigation.updateCourseWorkState} timeZone={Intl.DateTimeFormat().resolvedOptions().timeZone} onOpen={openCourseWork} onAction={openCourseWork} onReport={reportCourseWork} onSources={()=>setView('sources')}/> : <CoursesIndex showHeader={false} resources={resources} sources={snapshot.sources} cards={courseCards} now={courseInput.now} typeHueOf={typeHueOf} onOpen={key => navigation.navigate("courses", null, key)} onSources={() => setView("sources")}/>}</>}
           </section>
         ) : view === "consent" ? (
           // owner: T06. Consent route: setup, a new recipient's consent, or Agreements.

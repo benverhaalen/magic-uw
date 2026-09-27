@@ -1,3 +1,4 @@
+import { MagicGlyph } from '../../../../../packages/ui/src/glyph';
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ComponentType, type ReactNode } from "react";
 import { localContextPayload, type ContextManifest } from "@magic/contracts";
 import { Action } from "../../../../../packages/ui/src";
@@ -29,17 +30,9 @@ export interface ChatPaneProps extends ChatRuntime {
   Info?: ChatInfo;
 }
 
-// Lucide v0.468.0 nodes (ISC); attribution: packages/ui/LICENSE.icons.
 type IconName = "back" | "x" | "external" | "file" | "chevron";
 function Icon({ name }: { name: IconName }) {
-  const paths: Record<IconName, ReactNode> = {
-    back: <><path d="m12 19-7-7 7-7" /><path d="M19 12H5" /></>,
-    x: <><path d="M18 6 6 18" /><path d="m6 6 12 12" /></>,
-    external: <><path d="M15 3h6v6" /><path d="M10 14 21 3" /><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /></>,
-    file: <><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M10 9H8" /><path d="M16 13H8" /><path d="M16 17H8" /></>,
-    chevron: <path d="m9 18 6-6-6-6" />,
-  };
-  return <svg className="magic-chat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
+  return <MagicGlyph className="magic-chat-icon" name={name} />;
 }
 
 const itemHref = (id: string) => `#resource/${encodeURIComponent(id)}`;

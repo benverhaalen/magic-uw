@@ -1,3 +1,4 @@
+import { MagicGlyph } from '../../../../packages/ui/src/glyph';
 import { projectScheduleResources, type ScheduleAlias } from './schedule-projection';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Command, DayPlanEntry, ResourceView, SourceHealth, Link } from '@magic/contracts';
@@ -28,7 +29,7 @@ export interface CalendarPageProps {
   formatCourseLabel?: (resourceId: string, courseName: string) => string;
 }
 function Chevron({ next = false }: { next?: boolean }) {
-  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={next ? 'm9 18 6-6-6-6' : 'm15 18-6-6 6-6'} /></svg>;
+  return <MagicGlyph name={next ? 'chevron' : 'chevronLeft'} size={16} />;
 }
 const focusId = (date: string, key: string) => `calendar-item-${encodeURIComponent(date + ':' + key)}`;
 export function CalendarPage({ resources, sources, links = [], aliases = [], plan, state, onStateChange, onSelect, onPlan, timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone, now: fixedNow, restoreFocusId, formatCourseLabel = (_id, name) => name }: CalendarPageProps) {
@@ -119,7 +120,7 @@ export function CalendarPage({ resources, sources, links = [], aliases = [], pla
     if (restoreTrigger && date) document.getElementById(`calendar-more-${date}`)?.focus({ preventScroll: true });
   }
   function dayDisclosure(date: string, count: number) {
-    return <button id={`calendar-more-${date}`} className="mc-calendar-more" aria-expanded={detailDate === date} aria-controls="calendar-day-panel" aria-haspopup="dialog" aria-label={`View all ${count} items for ${dayLabel(date, { weekday: 'long', month: 'long', day: 'numeric' })}`} onClick={() => { setDetailDate(date); setRequestDate(null); setSelectedPlan(null); }}>{current.view === 'month' ? 'All' : 'View all'} {count}</button>;
+    return <button id={`calendar-more-${date}`} className="mc-calendar-more magic-fb-pill" aria-expanded={detailDate === date} aria-controls="calendar-day-panel" aria-haspopup="dialog" aria-label={`View all ${count} items for ${dayLabel(date, { weekday: 'long', month: 'long', day: 'numeric' })}`} onClick={() => { setDetailDate(date); setRequestDate(null); setSelectedPlan(null); }}>{current.view === 'month' ? 'All' : 'View all'} {count}</button>;
   }
   const detailItems = detailDate ? calendarItems(scopedResources, plan, detailDate, timeZone, links) : [];
   const eventButton = (item: CalendarItem, date: string, compact = false) => <button key={item.key} id={focusId(date, item.key)} className={`mc-calendar-event mc-calendar-event--${item.kind}${compact ? ' mc-calendar-event--compact' : ''}${item.submitted ? ' mc-calendar-event--submitted' : ''}`} onClick={() => open(item, date)} title={`${item.title} · ${item.courseName} · ${item.detail}`}><span className="mc-calendar-event-title">{item.title}</span><span className="mc-calendar-event-detail">{item.kind === 'deadline' ? calendarItemLabel(item, compact) : compact && current.view === 'month' ? item.allDay ? 'All day' : clock(item.startMin) : item.detail}</span><span className="mc-calendar-event-course">{formatCourseLabel(item.resourceId, item.courseName)}</span></button>;

@@ -1,3 +1,4 @@
+import { MagicGlyph } from '../../../../../packages/ui/src/glyph';
 import { useEffect, useId, useRef, useState, type ComponentType, type ReactNode, type RefObject } from "react";
 import type { ResourceView } from "@magic/contracts";
 import { Action, Disclosure } from "../../../../../packages/ui/src";
@@ -8,27 +9,10 @@ import "../StartWork.css";
 import "./PreparedWork.css";
 import { CanvasMark } from "./canvas-mark";
 
-// Lucide v0.468.0 nodes, ISC; attribution in packages/ui/LICENSE.icons.
-// file-text, refresh-cw, x and arrow-right match docs/design/lab/vendor; the others are copied from lucide-react 0.468.0.
 type IconName = DestinationIcon | "retry" | "close" | "forward" | "alert" | "info";
 function Icon({ name }: { name: IconName }) {
   if (name === "canvas") return <CanvasMark/>;
-  const sheet = <><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></>;
-  const paths = {
-    globe: <><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></>,
-    "file-text": <>{sheet}<path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></>,
-    file: sheet,
-    "file-spreadsheet": <>{sheet}<path d="M8 13h2"/><path d="M14 13h2"/><path d="M8 17h2"/><path d="M14 17h2"/></>,
-    presentation: <><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></>,
-
-    "git-branch": <><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></>,
-    retry: <><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></>,
-    close: <><path d="M18 6 6 18"/><path d="m6 6 12 12"/></>,
-    forward: <><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></>,
-    alert: <><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></>,
-    info: <><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></>,
-  };
-  return <svg className="magic-prepared__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
+  return <MagicGlyph className="magic-prepared__icon" name={name} size={16} />;
 }
 
 export type PreparedWorkProps = {
@@ -114,7 +98,7 @@ function Tile({ resource, work, anchor, container, compact, action, onInspect, o
   </section>;
   const multi = !!set && set.items.length > 1;
   return <section ref={container as RefObject<HTMLElement>} className="magic-start-work magic-start-work--action magic-prepared-action" aria-label={`Prepared work: ${resource.title}`} data-place-anchor={anchor}>
-    <Action data-focus-key={anchor} aria-describedby={described} title={titles} pending={pending} aria-disabled={target.disabled || undefined} onClick={activate}>
+    <Action intent="coursework" data-focus-key={anchor} aria-describedby={described} title={titles} pending={pending} aria-disabled={target.disabled || undefined} onClick={activate}>
       <span>{target.label}{multi && target.label === "Start work" && <small>{sendsLine(set)}</small>}</span><Icon name="forward"/>
     </Action>
     {slot}
