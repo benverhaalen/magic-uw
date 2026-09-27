@@ -1887,7 +1887,8 @@ export interface AppBridge {
   /** owner: pipeline. Graph reads: an assignment's references, the agenda, a course's graph and coverage. */
   graph?<Q extends GraphQuery>(request: Q): Promise<GraphResult<Q>>;
   importFile(): Promise<CommandResult | null>;
-  signInUW?(service?: "canvas" | "gitlab" | "enroll" | "myuw"): Promise<void>;
+  /** owner: client-health (FDB-002). Resolves with how the window ended; `confirmed` is the only success. */
+  signInUW?(service?: SignInService): Promise<SignInOutcome>;
   syncPlanning?(): Promise<CommandResult>;
   syncCanvas?(): Promise<CommandResult>;
   signOutUW?(): Promise<void>;
@@ -1925,8 +1926,12 @@ export interface AppBridge {
 }
 /** T80. The AI command-line clients Magic Canvas can host in an app-owned profile. */
 export type ClientId = "claude" | "codex" | "gemini";
-/** Sign-in only for now; an interactive session needs its own threat model first (T81). */
-export type TerminalPurpose = "signin";
+/**
+ * `signin`: the client's own sign-in. `chat` (owner: client-health, D50): the client started in
+ * the student's chosen mode with tools, MCP and user customisations off, so the student can
+ * check their own account (plan, usage) themselves. No course content is sent to it.
+ */
+export type TerminalPurpose = "signin" | "chat";
 export interface ClientStatus {
   id: ClientId;
   /** A binary was found. With `problem` set it exists but isn't usable. */
@@ -1949,6 +1954,18 @@ export interface ClientsBridge {
   prepare(id: ClientId): Promise<ClientStatus>;
   authStatus(id: ClientId): Promise<ClientStatus>;
   choose(id: ClientId): Promise<void>;
+  // owner: client-health (D50). Optional so an older main still satisfies the bridge.
+  /** Checks the client in the given mode (default: its saved mode), before offering or running it. */
+  health?(id: ClientId, mode?: ClientMode): Promise<ClientHealth>;
+  /** Saves how the app reaches this client. Refused for a mode the client can't use here. */
+  setMode?(id: ClientId, mode: ClientMode): Promise<ClientHealth>;
+  /** Gemini's only route (D36): the student's own key, stored with safeStorage. Presence only. */
+  geminiKey?: {
+    status(): Promise<ApiKeyStatus>;
+    save(key: string): Promise<ApiKeyStatus>;
+    remove(): Promise<ApiKeyStatus>;
+  };
+  // end owner: client-health
   terminal: {
     open(id: ClientId, purpose: TerminalPurpose): Promise<{ sessionId: string }>;
     write(sessionId: string, data: string): void;
@@ -1958,6 +1975,12 @@ export interface ClientsBridge {
     onExit(cb: (sessionId: string, code: number | null) => void): () => void;
   };
 }
+// owner: client-health (D50, FDB-002)
+export * from "./client-health";
+export * from "./sign-in";
+import type { ApiKeyStatus, ClientHealth, ClientMode } from "./client-health";
+import type { SignInOutcome, SignInService } from "./sign-in";
+// end owner: client-health
 export type StoredPlanningRecord = PlanningRecord & {
   localId: string;
   sourceId: string;
