@@ -51,6 +51,8 @@ import {
   courseOverrideSchema,
   mcpGrantSchema,
   dayPlanEntrySchema,
+  emptyNotificationState,
+  notificationStateSchema,
   gitlabLinkSchema,
   type GitlabLink,
   syncRunSchema,
@@ -1662,6 +1664,39 @@ export function createStore(
       writeDayPlan(
         readDayPlan().filter((e) => !(e.key === key && e.date === date)),
       );
+    },
+    notificationState() {
+      const row = db
+        .prepare("SELECT value FROM preferences WHERE key = 'notifications'")
+        .get();
+      if (!row) return { ...emptyNotificationState };
+      try {
+        const parsed = notificationStateSchema.safeParse(
+          JSON.parse(String(row.value)),
+        );
+        return parsed.success ? parsed.data : { ...emptyNotificationState };
+      } catch {
+        return { ...emptyNotificationState };
+      }
+    },
+    setNotificationState(value) {
+      // Newest ids are appended last; keep the most recent within the schema's bound.
+      const keep = (ids: string[]) => [...new Set(ids)].slice(-1000);
+      const next = notificationStateSchema.parse({
+        readIds: keep(value.readIds),
+        dismissedIds: keep(value.dismissedIds),
+      });
+      db.prepare(
+        "INSERT INTO preferences VALUES ('notifications', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      ).run(JSON.stringify(next));
+    },
+    baselineReadIds() {
+      // The read that first captured each source: its "new" records are the starting point, not news.
+      return (
+        prepare(
+          "SELECT read_id FROM resource_changes WHERE rowid IN (SELECT MIN(rowid) FROM resource_changes GROUP BY source_id)",
+        ).all() as Row[]
+      ).map((r) => String(r.read_id));
     },
     removeSource(sourceId) {
       return transaction(() => {

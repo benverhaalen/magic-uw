@@ -136,3 +136,41 @@ Implementation choices, in code at `packages/domain/src/today-rail.ts`:
 - **Storage:** decisions are one local `preferences` entry (`dayPlan`), chosen over a new table to avoid changing the shared schema version during the event. Revisit with a dedicated table if the plan grows beyond a day view.
 
 Open for Ben: styling within the Home visual direction, whether the cap/cutoff should become settings, and multi-day planning.
+
+## 2026-09-27: Today rail meeting details from the Microsoft calendar
+
+Merged in [PR #15](https://github.com/benverhaalen/magic-uw/pull/15). The Graph calendar ([#12](https://github.com/benverhaalen/magic-uw/pull/12)) supplies each meeting's join link, provider, and the student's response; before this, the rail ignored all three and a declined meeting still blocked study suggestions. Rules, in code at `packages/domain/src/today-rail.ts` and `apps/desktop/src/renderer/TodayRail.tsx`:
+
+- **Declined** meetings stay on the schedule, struck through, so the student can see what they turned down. They hold no busy time, get no prep block, and do not trigger an overlap warning when a study block is edited over them.
+- **Tentative and unanswered** meetings still hold their time. This is the cautious choice: a suggestion placed over a meeting the student later accepts is worse than a missed free slot. They are outlined dashed and dotted.
+- **Join** appears only for a plain https link with no embedded credentials, checked in the rail and again by the https-only `openLink` bridge, and never for a declined meeting. Opening it is always the student's own click.
+- **Provider badges** name Teams, Zoom, Webex, or Meet from the calendar's own field, not a guess from the title.
+
+Proposed for Ben's review, not yet accepted direction: whether declined meetings should disappear instead of showing struck through.
+
+## 2026-09-27: Manual UW GitLab project links
+
+Merged in [PR #18](https://github.com/benverhaalen/magic-uw/pull/18). GitLab projects were discovered only when Canvas material linked them, so a course that names its repository in prose or in class had no way to connect it. The fallback:
+
+- A student pastes a project link; the existing `gitlabProjectFromUrl` accepts only `git.doit.wisc.edu` group/project paths, not user pages or the API. Anything else is refused with a message saying what to paste.
+- The course must be in the student's saved coursework for that account, so a link cannot attach to a course the app does not know.
+- Links are local preferences, capped at 200 and cleared by Delete local data. No new network access: a linked project is read by the existing GitLab connector with the app-owned GitLab session.
+
+Open for Ben: where the "link a GitLab project" input belongs on screen (Sources, or the course page). Until it has a screen, students cannot use it.
+
+## 2026-09-27 — Notifications and Jev announcement triage
+
+Implemented on `feat/notifications` (Aidan's session). A bell in the top bar opens a notifications dropdown built from stored changes. Source: Aidan, this project conversation, September 26–27 (original timestamps unavailable). Exact requests:
+
+> lets think through all of our data sources and what new information should be flagged as important enough to warrant a notification … This should be in some way evaluated by our deterministic model.
+
+> we are going to implement jev to run through announcements … we trust that we can train the model to work so we want to follow through with this as a feature
+
+Decisions and their reasons:
+
+- **Code decides every level** (urgent, important, info) from typed changes, current Canvas state and source health. Rules and thresholds live in one file, `packages/domain/src/notifications.ts`. A source's first import is a baseline, never news.
+- **Jev triages new course messages only** (announcements and discussions), through a new `message.triage.v1` gateway question. It may only **raise** a message's level, never lower, hide or dismiss one. It never receives grades, comments, planning records, URLs or account identifiers. It runs only with selective cloud, Jev enabled, a Jev consent record, and permission to share communications and course text.
+- **Deviation from the proposed Jev rules:** [Jev usage](notes/jev-usage.md) proposes shadow mode and 20–30 labelled examples per question before enforcing. By Aidan's decision above, triage is enforced from the start, raise-only, with provisional uncalibrated thresholds (Choice top ≥ 0.70 with a 0.15 lead; yes ≥ 0.70). Consequence: early false alarms are possible; nothing can be hidden. Refit the thresholds on labelled announcements and record the evaluation before calling triage accurate.
+- **Grades show the score in the row** (“Research outline: 18/20”), by Aidan's choice over score-on-open. The grade is visible whenever the dropdown is open; it stays local.
+- **Email (added after main gained Graph mail, #12).** Aidan chose which email can notify: advisor mail, course staff, university offices, meeting cancellations, job-interview invitations, clubs and publication updates, and relevant campus events; mail already read in Outlook never counts toward the badge. Canvas notification emails are dropped because the Canvas change already notifies. Code sets every level from the mail's code category and literal subject/preview rules. Jev (`mail.triage.v1`) may raise, never lower; it receives only the code's sender role, the subject and Outlook's ≤255-character preview (identity-scrubbed), plus a matched course's upcoming work, never a sender name or address. Mail reading itself has not yet run against Microsoft or UW (E1 pending), so email notifications are demonstrated on synthetic mail only.
+- **Placement:** mounted in the current top bar; Ben's Home layout owns the final position.

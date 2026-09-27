@@ -11,8 +11,18 @@ import {
   readProgress,
   summarize,
   writeProgress,
+  steps,
   type OnboardingProgress,
 } from "../apps/desktop/src/renderer/onboarding/model";
+import {
+  ACCENTS,
+  appearanceKey,
+  applyAppearance,
+  defaultAppearance,
+  readAppearance,
+  resolveTheme,
+  writeAppearance,
+} from "../apps/desktop/src/renderer/appearance";
 
 // Synthetic snapshots only.
 function snapshot(parts: Partial<Snapshot> = {}): Snapshot {
@@ -54,62 +64,68 @@ const resource = (kind: ResourceView["kind"], deleted = false) =>
   ({ id: `${kind}-${Math.random()}`, kind, deleted }) as unknown as ResourceView;
 const progress = (parts: Partial<OnboardingProgress>) => ({ ...emptyProgress, ...parts });
 
-test("first run starts at Welcome; an existing populated, agreed workspace skips onboarding", () => {
+// owner: client-health (D51): the step order is Agreement → UW sign-in → Your AI → Appearance →
+// Connections → done; these three replace T81's Welcome → Your AI → Connect → UW → Populating.
+test("first run starts at the agreement; an existing populated, agreed workspace skips onboarding", () => {
   assert.equal(needsOnboarding(snapshot(), emptyProgress, hasCurrentConsent), true);
-  assert.equal(firstIncompleteStep(snapshot(), emptyProgress, hasCurrentConsent), "welcome");
+  assert.equal(firstIncompleteStep(snapshot(), emptyProgress, hasCurrentConsent), "consent");
+  assert.deepEqual(steps.map((s) => s.id), ["consent", "uw", "client", "appearance", "connections", "done"]);
   const existing = snapshot({ consents: uwAgreed, resources: [resource("assignment")] });
   assert.equal(needsOnboarding(existing, emptyProgress, hasCurrentConsent), false);
-  assert.equal(needsOnboarding(existing, progress({ welcomed: true }), hasCurrentConsent), true);
+  assert.equal(needsOnboarding(existing, progress({ started: true }), hasCurrentConsent), true);
   assert.equal(needsOnboarding(snapshot(), progress({ done: true }), hasCurrentConsent), false);
 });
 
-test("a relaunch resumes at the first incomplete step", () => {
-  const s = snapshot();
-  assert.equal(firstIncompleteStep(s, progress({ welcomed: true }), hasCurrentConsent), "ai");
-  assert.equal(
-    firstIncompleteStep(s, progress({ welcomed: true, client: "codex" }), hasCurrentConsent),
-    "connect",
-  );
-  assert.equal(
-    firstIncompleteStep(s, progress({ welcomed: true, client: "later" }), hasCurrentConsent),
-    "uw",
-  );
-  assert.equal(
-    firstIncompleteStep(
-      snapshot({ consents: uwAgreed }),
-      progress({ welcomed: true, client: "claude", clientConnected: true }),
-      hasCurrentConsent,
-    ),
-    "uw",
-  );
-  assert.equal(
-    firstIncompleteStep(
-      snapshot({ consents: uwAgreed }),
-      progress({ welcomed: true, client: "claude", clientConnected: true, uwStarted: true }),
-      hasCurrentConsent,
-    ),
-    "populating",
-  );
-  assert.equal(
-    firstIncompleteStep(
-      snapshot({ sources: [source({})] }),
-      progress({ welcomed: true, client: "later" }),
-      hasCurrentConsent,
-    ),
-    "populating",
-  );
+test("a relaunch resumes at the first incomplete step; only a confirmed or skipped UW sign-in moves on", () => {
+  const agreed = snapshot({ consents: uwAgreed });
+  const at = (s: Snapshot, parts: Partial<OnboardingProgress>) => firstIncompleteStep(s, progress(parts), hasCurrentConsent);
+  assert.equal(at(snapshot(), { started: true, client: "claude", clientConnected: true }), "consent");
+  assert.equal(at(agreed, { started: true }), "uw");
+  // FDB-002: a closed or failed sign-in window is not a sign-in.
+  assert.equal(at(agreed, { started: true, uw: "cancelled" }), "uw");
+  assert.equal(at(agreed, { started: true, uw: "failed" }), "uw");
+  assert.equal(at(agreed, { started: true, uw: "confirmed" }), "client");
+  assert.equal(at(agreed, { started: true, uw: "skipped" }), "client");
+  assert.equal(at(snapshot({ consents: uwAgreed, sources: [source({})] }), { started: true }), "client");
+  assert.equal(at(agreed, { uw: "confirmed", client: "codex" }), "client");
+  assert.equal(at(agreed, { uw: "confirmed", client: "codex", clientConnected: true }), "appearance");
+  assert.equal(at(agreed, { uw: "confirmed", client: "later" }), "appearance");
+  assert.equal(at(agreed, { uw: "confirmed", client: "later", appearanceDone: true }), "connections");
+  assert.equal(at(agreed, { uw: "confirmed", client: "later", appearanceDone: true, connectionsDone: true }), "done");
 });
 
-test("saved progress round-trips and rejects malformed values", () => {
+test("saved progress round-trips, rejects malformed values, and reads T81's record once", () => {
   const data = new Map<string, string>();
   const store = { getItem: (k: string) => data.get(k) ?? null, setItem: (k: string, v: string) => void data.set(k, v) };
-  writeProgress(progress({ welcomed: true, client: "codex", clientConnected: true }), store);
-  assert.deepEqual(readProgress(store), progress({ welcomed: true, client: "codex", clientConnected: true }));
-  data.set("magic.onboarding.v1", JSON.stringify({ welcomed: "yes", client: "other", clientConnected: true }));
+  const saved = progress({ started: true, uw: "confirmed", client: "codex", clientConnected: true, appearanceDone: true });
+  writeProgress(saved, store);
+  assert.deepEqual(readProgress(store), saved);
+  data.set("magic.onboarding.v2", JSON.stringify({ started: "yes", uw: "maybe", client: "other", clientConnected: true }));
   assert.deepEqual(readProgress(store), emptyProgress);
-  data.set("magic.onboarding.v1", "{not json");
+  data.set("magic.onboarding.v2", "{not json");
   assert.deepEqual(readProgress(store), emptyProgress);
   assert.deepEqual(readProgress(null), emptyProgress);
+  data.delete("magic.onboarding.v2");
+  data.set("magic.onboarding.v1", JSON.stringify({ welcomed: true, client: "claude", clientConnected: true, uwStarted: true, done: false }));
+  assert.deepEqual(readProgress(store), progress({ started: true, client: "claude", clientConnected: true }));
+});
+
+test("appearance: the choice persists, bad values fall back, and only root attributes are set", () => {
+  const data = new Map<string, string>();
+  const store = { getItem: (k: string) => data.get(k) ?? null, setItem: (k: string, v: string) => void data.set(k, v) };
+  assert.deepEqual(readAppearance(store), defaultAppearance);
+  writeAppearance({ theme: "dark", accent: "rose" }, store);
+  assert.deepEqual(readAppearance(store), { theme: "dark", accent: "rose" });
+  data.set(appearanceKey, JSON.stringify({ theme: "sepia", accent: "#ff00ff" }));
+  assert.deepEqual(readAppearance(store), defaultAppearance);
+  const attrs = new Map<string, string>();
+  const root = { setAttribute: (k: string, v: string) => void attrs.set(k, v) };
+  assert.equal(applyAppearance({ theme: "system", accent: "blue" }, root, true), "dark");
+  assert.deepEqual(Object.fromEntries(attrs), { "data-theme": "dark", "data-theme-preference": "system", "data-accent": "blue" });
+  assert.equal(applyAppearance({ theme: "light", accent: "warm" }, root, true), "light");
+  assert.equal(resolveTheme("system", false), "light");
+  // Accents are named token references, never colour values.
+  for (const a of ACCENTS) assert.match(a.swatch, /^--magic-[a-z-]+$/);
 });
 
 test("client tiles keep the fixed order and fill an omitted client as not installed", () => {
