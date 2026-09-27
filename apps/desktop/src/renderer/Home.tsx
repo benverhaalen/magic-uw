@@ -18,8 +18,9 @@ export function dueLabel(value: string | null) {
   return value ? new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(value)) : 'Due date not found';
 }
 /** Rows shown before Upcoming's disclosure; later work stays one click away. */
-const UPCOMING_ROWS = 4;
-export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPlan, onJoin, report }: {
+const UPCOMING_BATCH = 3;
+export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPlan, onJoin, upcomingCount = UPCOMING_BATCH, onUpcomingCountChange, report }: {
+  upcomingCount?: number; onUpcomingCountChange?: (count: number) => void;
   snapshot: Snapshot; resources: ResourceView[]; onSelect: (id: string) => void; onCourses: () => void; onSources: () => void;
   onPlan: (command: Command) => Promise<unknown>; onJoin?: (url: string) => void; report?: (resource: ResourceView) => ReactNode;
 }) {
@@ -43,7 +44,8 @@ export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPl
   const tomorrow=localTime(new Date(Date.parse(`${today}T12:00:00Z`)+86_400_000).toISOString(),'UTC').date;
   const when=(value:string)=>{const date=localTime(value,timeZone).date;return date===today?'Today':date===tomorrow?'Tomorrow':day(value);};
   const whenInline=(value:string)=>{const label=when(value);return label==='Today'||label==='Tomorrow'?label.toLowerCase():label;};
-  const shown=work.upcoming.slice(0,UPCOMING_ROWS), later=work.upcoming.slice(UPCOMING_ROWS);
+  const shown=work.upcoming.slice(0,upcomingCount);
+  const remaining=Math.max(0,work.upcoming.length-upcomingCount);
   // One visible launch per assignment: a briefing action only where no Upcoming row already offers it.
   const launchable=new Set(shown.map(g=>g.items[0]!.id));
   function workRow(resource:ResourceView) {
@@ -60,7 +62,16 @@ export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPl
   }
   const group=(g:UpcomingGroup)=>g.items.length===1 ? workRow(g.items[0]!) : <div className="home-work-group" key={g.key}>{workRow(g.items[0]!)}
     <details className="home-group-more" data-place-disclosure={`upcoming-${g.key}`}><summary data-focus-key={`group-${g.key}`}><Glyph name="chevron"/>{g.items.length-1} more {g.category}, also due {whenInline(g.at)} {time(g.at)}</summary><div className="home-work-list">{g.items.slice(1).map(workRow)}</div></details></div>;
-  const laterCount=later.reduce((n,g)=>n+g.items.length,0);
+  function showNext(event: React.MouseEvent<HTMLButtonElement>) {
+    const pane=event.currentTarget.closest('.desktop-workspace') as HTMLElement | null;
+    const scroll=pane?.scrollTop ?? 0;
+    const next=Math.min(work.upcoming.length,upcomingCount+UPCOMING_BATCH);
+    onUpcomingCountChange?.(next);
+    requestAnimationFrame(()=>{
+      if(pane) pane.scrollTop=scroll;
+      if(next===work.upcoming.length) pane?.querySelector<HTMLElement>('.home-upcoming .magic-start-work:last-child .home-work-details')?.focus({preventScroll:true});
+    });
+  }
   return <div className="home-layout"><div className="home-reading">
     <section className="home-briefing" aria-labelledby="briefing-title" data-place-anchor="briefing"><h1 id="briefing-title" tabIndex={-1}>Briefing</h1>
       {conflict && <div className="briefing-passage"><p>{conflictHandled ? <>You reported handling the date disagreement for <ObjectLink resource={conflict}/>. The saved dates are still available to inspect.</> : <>The saved dates for <ObjectLink resource={conflict}/> disagree. {conflict.deadline.planningAt && <>Plan for <strong>{dueLabel(conflict.deadline.planningAt)}</strong> until you confirm the date.</>}</>}</p><div className="briefing-action briefing-review"><Action data-focus-key={`review-${conflict.id}`} onClick={() => onSelect(conflict.id)}>Review dates <Glyph name="forward"/></Action>{reportable && report?.(originalConflict!)}</div></div>}
@@ -76,9 +87,7 @@ export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPl
     <section className="home-upcoming" aria-labelledby="upcoming-title" data-place-anchor="upcoming"><div className="home-section-heading"><h2 id="upcoming-title">Upcoming</h2><button onClick={onCourses}>All coursework</button></div>
       <div className="home-work-list">{shown.map(group)}</div>
       {!work.upcoming.length && <p className="home-empty">No future dated work in this saved capture.{work.today.length?' Today’s deadlines are in Today.':''}</p>}
-      {laterCount>0 && <div className="home-more-list">
-        {laterCount>0 && <details className="home-more" data-place-disclosure="upcoming-later"><summary data-focus-key="upcoming-later"><Glyph name="chevron"/>{laterCount} more upcoming</summary><div className="home-work-list">{later.map(group)}</div></details>}
-      </div>}
+      {remaining>0 && <button className="home-show-next" data-focus-key="upcoming-next" onClick={showNext}>Show next {Math.min(UPCOMING_BATCH,remaining)}</button>}
     </section>
     <section className="home-study" aria-labelledby="study-title" data-place-anchor="study"><h2 id="study-title">Study &amp; Learn</h2><div className="home-study-grid">{study.map(({material,context})=><a className="home-study-action" href={resourceHref(material.id)} data-focus-key={`study-${material.id}`} key={material.id}><span title={label(material).raw}>{course(material)}</span><h3>Review {material.title}</h3><p>Referenced in {context.title}</p><div><span>Open saved material</span><Glyph name="forward"/></div></a>)}</div>
       {!study.length && <p className="home-empty">No specific review material is supported by the current saved instructions.</p>}

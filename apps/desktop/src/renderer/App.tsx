@@ -438,7 +438,7 @@ export function App() {
                 onSample={() => run({ type: "fixture" })}
               />
             ) : (
-              <Home snapshot={snapshot} resources={resources} onSelect={setSelectedId} onCourses={() => { setQuery(""); setView("courses"); }} onSources={() => setView("sources")} onPlan={command => run(command)} onJoin={window.magic.openLink ? url => { void perform(() => window.magic.openLink!(url)); } : undefined} report={resource => <PersonalReport resource={resource} snapshot={snapshot} run={run}/>} />
+              <Home upcomingCount={navigation.homeUpcomingCount} onUpcomingCountChange={navigation.updateHomeUpcomingCount} snapshot={snapshot} resources={resources} onSelect={setSelectedId} onCourses={() => { setQuery(""); setView("courses"); }} onSources={() => setView("sources")} onPlan={command => run(command)} onJoin={window.magic.openLink ? url => { void perform(() => window.magic.openLink!(url)); } : undefined} report={resource => <PersonalReport resource={resource} snapshot={snapshot} run={run}/>} />
             )}
           </>
         ) : view === "resource" ? (

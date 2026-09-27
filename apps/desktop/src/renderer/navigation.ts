@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { CalendarState } from './calendar/model';
 export type DesktopView = 'today' | 'courses' | 'myuw' | 'calendar' | 'resource' | 'sources' | 'privacy' | 'consent' | 'notebook' | 'practice' | 'insights' | 'settings';
-type Place = { calendarState?: CalendarState; calendarFocus?: string; view: DesktopView; resourceId: string | null; courseKey: string | null; disclosures: Record<string, boolean>; scroll: number; focus: string | null; anchor: string | null; offset: number };
+type Place = { homeUpcomingCount?: number; calendarState?: CalendarState; calendarFocus?: string; view: DesktopView; resourceId: string | null; courseKey: string | null; disclosures: Record<string, boolean>; scroll: number; focus: string | null; anchor: string | null; offset: number };
 const initial: Place = { view: 'today', resourceId: null, courseKey: null, disclosures: {}, scroll: 0, focus: null, anchor: null, offset: 0 };
 export const resourceHref = (id: string) => `#resource/${encodeURIComponent(id)}`;
 export function useDesktopNavigation() {
@@ -47,7 +47,7 @@ export function useDesktopNavigation() {
   function updateCalendar(calendarState: CalendarState) {
     setStack(previous => previous.map((place, i) => i === index ? { ...place, calendarState } : place));
   }
-  return { calendarState: current.calendarState, calendarFocus: current.calendarFocus, updateCalendar,
+  return { homeUpcomingCount: current.homeUpcomingCount ?? 3, updateHomeUpcomingCount: (homeUpcomingCount: number) => setStack(previous => previous.map((place, i) => i === index ? { ...place, homeUpcomingCount } : place)), calendarState: current.calendarState, calendarFocus: current.calendarFocus, updateCalendar,
     openCalendarResource: (id: string, calendarState: CalendarState, calendarFocus: string) => navigate('resource', id, null, { calendarState, calendarFocus }),
     view: current.view, selectedId: current.resourceId, courseKey: current.courseKey, navigate, back: () => travel(-1), forward: () => travel(1), canBack: index > 0, canForward: index < stack.length - 1 };
 }

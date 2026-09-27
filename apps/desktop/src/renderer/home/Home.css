@@ -51,3 +51,7 @@
 .home-today .rail-allday--home:hover { text-decoration:underline; }
 .home-today .rail-allday--home:focus-visible { outline:2px solid var(--magic-focus); outline-offset:1px; }
 .home-today .rail-empty-schedule { flex-shrink:0; }
+
+.home-show-next { margin-top:10px; border:0; border-radius:var(--magic-radius-control); background:transparent; padding:6px 2px; color:var(--magic-ink-muted-strong); font:400 12px/1.5 var(--magic-font-interface); cursor:pointer; }
+.home-show-next:hover { color:var(--magic-ink); text-decoration:underline; }
+.home-show-next:focus-visible { outline:2px solid var(--magic-focus); outline-offset:2px; }
