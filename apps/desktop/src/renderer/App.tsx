@@ -19,6 +19,7 @@ import { ConsentSetup, hasUwConsent, missingConsents } from "./consent/ConsentSe
 import { Onboarding, needsFirstRunSetup } from "./onboarding";
 import { CourseSpaceDetails } from "./CourseSpaceDetails";
 import { TodayRail } from "./TodayRail";
+import { NotificationsMenu } from "./NotificationsMenu";
 
 type View =
   | "today"
@@ -440,6 +441,15 @@ export function App() {
             ) : (
               <span className="muted">Local workspace</span>
             )}
+            <NotificationsMenu
+              feed={snapshot?.notifications}
+              busy={busy}
+              run={run}
+              canOpenResource={(id) => resources.some((resource) => resource.id === id)}
+              onOpenResource={(id) => { setQuery(""); setSelectedId(id); setView("today"); }}
+              onOpenSources={() => setView("sources")}
+              onOpenPrivacy={() => setView("privacy")}
+            />
           </div>
         </header>
         <div className="feedback-region">
