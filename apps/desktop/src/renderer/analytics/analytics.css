@@ -1,0 +1,310 @@
+/* Uniform Geist 400 (docs/design/decision-record.md, September 27): emphasis by size and colour, not weight. */
+.course-analytics strong,
+.course-analytics th {
+  font-weight: var(--magic-font-interface-weight);
+}
+/* Course Analytics tab. Design tokens only (docs/design/tokens.css), via the chart tokens in
+   ../charts/charts.css for anything that changes in dark mode. */
+.ca-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 28px;
+  border-bottom: 1px solid var(--chart-grid);
+}
+.ca-tab {
+  border: 0;
+  background: none;
+  padding: 10px 12px;
+  color: var(--chart-muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.ca-tab.is-active {
+  color: var(--chart-ink);
+  border-bottom-color: var(--chart-ink);
+  font-weight: var(--magic-font-interface-weight);
+}
+.ca-panel {
+  padding: 20px 28px 40px;
+  background: var(--magic-surface-workspace);
+  min-height: 100%;
+}
+:root[data-theme="dark"] .ca-panel {
+  background: var(--chart-surface-quiet);
+}
+.course-analytics {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 1180px;
+  margin: 0 auto;
+  color: var(--chart-ink);
+  font-family: var(--magic-font-interface);
+}
+.ca-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.ca-eyebrow {
+  margin: 0 0 4px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--chart-muted);
+}
+.ca-title {
+  margin: 0;
+  font-family: var(--magic-font-editorial);
+  font-size: var(--magic-type-section);
+  font-weight: 500;
+}
+.ca-headline {
+  margin: 6px 0 0;
+  color: var(--chart-muted);
+  font-variant-numeric: tabular-nums;
+}
+.ca-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  gap: 16px;
+}
+.ca-card {
+  background: var(--chart-surface);
+  border: 1px solid var(--chart-grid);
+  border-radius: var(--magic-radius-workspace);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.ca-card--wide {
+  grid-column: 1 / -1;
+}
+@media (max-width: 900px) {
+  .ca-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.ca-grade {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.ca-grade-figure {
+  font-size: 26px;
+  font-weight: var(--magic-font-interface-weight);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.ca-letter {
+  display: inline-grid;
+  place-items: center;
+  min-width: 30px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: var(--magic-radius-control);
+  background: var(--chart-band);
+  color: var(--chart-line);
+  font-weight: var(--magic-font-interface-weight);
+}
+.ca-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+}
+.ca-notes p {
+  margin: 0;
+}
+.ca-whatif {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--chart-muted);
+}
+.ca-dash {
+  width: 18px;
+  border-top: 2px dashed var(--chart-band-edge);
+}
+.ca-cite {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--chart-muted);
+  line-height: 1.45;
+}
+.ca-meta {
+  margin: 0;
+  font-size: 12px;
+  color: var(--chart-muted);
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ca-count {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.ca-completion {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.ca-completion-bars {
+  flex: 1;
+  min-width: 0;
+}
+.ca-prep,
+.ca-actions,
+.ca-topics {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ca-prep {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.ca-prep-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ca-prep-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.ca-prep-title {
+  margin-left: 8px;
+}
+.ca-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: middle;
+  padding: 1px 7px;
+  border-radius: var(--magic-radius-tag-candidate);
+  background: var(--chart-surface-quiet);
+  border: 1px solid var(--chart-grid);
+  font-size: 11px;
+  color: var(--chart-muted);
+}
+.ca-chip--sample {
+  color: var(--magic-ink-status-warning-candidate);
+  background: var(--magic-fill-status-warning-candidate);
+}
+.ca-due {
+  color: var(--chart-late);
+  font-weight: var(--magic-font-interface-weight);
+}
+.ca-topics {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px 24px;
+}
+.ca-topic {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ca-topic-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+.ca-topic-head .ca-meta {
+  font-size: 11px;
+}
+.ca-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.ca-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ca-action {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  border-radius: var(--magic-radius-card);
+  background: var(--chart-surface-quiet);
+}
+.ca-action:first-child {
+  background: var(--chart-band);
+}
+.ca-rank {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--chart-grid);
+  background: var(--chart-surface);
+  font-size: 11.5px;
+  font-weight: var(--magic-font-interface-weight);
+  font-variant-numeric: tabular-nums;
+}
+.ca-action-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+  min-width: 0;
+}
+.ca-action-body .ca-meta {
+  display: block;
+}
+.ca-primary,
+.ca-secondary {
+  border-radius: var(--magic-radius-control);
+  padding: 6px 12px;
+  font-weight: var(--magic-font-interface-weight);
+  font-size: 12.5px;
+}
+.ca-primary {
+  border: 0;
+  background: var(--chart-line);
+  color: var(--chart-surface);
+}
+.ca-secondary {
+  border: 1px solid var(--chart-grid);
+  background: var(--chart-surface);
+  color: var(--chart-ink);
+}
+.ca-primary:focus-visible,
+.ca-secondary:focus-visible {
+  outline: 2px solid var(--magic-focus);
+}
+.ca-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 18px 0 6px;
+}
+.ca-empty p {
+  margin: 0;
+  color: var(--chart-muted);
+}
+.ca-notice,
+.ca-loading {
+  color: var(--chart-muted);
+}
+.ca-footnote {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--chart-muted);
+  text-align: center;
+}

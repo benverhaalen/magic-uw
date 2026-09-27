@@ -128,6 +128,11 @@ export const NOTIFICATION_RULES = {
   /** Link rel and category-reason prefix that mark Canvas's own notification mail (the Canvas change notifies instead). */
   canvasMailRel: "canvas-item",
   canvasMailReasonPrefix: "Canvas notification",
+  /**
+   * Category-reason prefix graph.ts writes when only the subject names a course. Anyone can put a
+   * course code in a subject, so such mail is never labelled course staff and never keyword-urgent.
+   */
+  subjectOnlyReasonPrefix: "Subject names",
   /** University-office phrases that make an admin email important. Whole words, case-insensitive. */
   mailOfficeKeywords: [
     "holds?",
@@ -594,12 +599,18 @@ export function buildNotifications(input: NotificationInput): NotificationFeed {
       : undefined;
     if (course && !input.included(course)) return null;
     type Decision = { level: NotificationLevel | null; label: string; quote?: string };
+    // Course staff: a known staff address (graph.ts), not a subject that merely names the course.
+    const staff = mail.category === "course" && !mail.categoryReason.startsWith(rules.subjectOnlyReasonPrefix);
     let decision: Decision;
     switch (mail.category) {
       case "advisor":
         decision = { level: "important", label: "Advisor" };
         break;
       case "course": {
+        if (!staff) {
+          decision = { level: "important", label: course ? `Mentions ${course.courseName}` : "Mentions a course" };
+          break;
+        }
         const label = course ? `Course staff · ${course.courseName}` : "Course staff";
         decision = KEYWORD.test(text) ? { level: "urgent", label, quote: quote(KEYWORD) } : { level: "important", label };
         break;
@@ -643,9 +654,14 @@ export function buildNotifications(input: NotificationInput): NotificationFeed {
       const strong = JEV_MAIL_RAISING_KINDS.includes(top);
       if ((strong || JEV_MAIL_INFO_KINDS.includes(top)) && gated(p, margin, j.result.actionRequired)) {
         const jev = strong ? affectedLevel(j) : { level: "info" as NotificationLevel, affects: [] };
-        if (level === null || RANK[jev.level] < RANK[level]) {
-          raisedBy = { by: "jev", from: level ?? "info", kind: top, affects: jev.affects, model: j.result.model };
-          level = jev.level;
+        // A raise moves at most one level (unnotified counts as info), and never past important
+        // unless the sender is course staff: a judgment cannot make an unknown sender urgent.
+        const from = level ?? "info";
+        const cap = Math.max(RANK[from] - 1, staff ? RANK.urgent : RANK.important);
+        const to = RANK[jev.level] < cap ? (Object.keys(RANK) as NotificationLevel[]).find((l) => RANK[l] === cap)! : jev.level;
+        if (level === null || RANK[to] < RANK[level]) {
+          raisedBy = { by: "jev", from, kind: top, affects: jev.affects, model: j.result.model };
+          level = to;
         }
       }
     }

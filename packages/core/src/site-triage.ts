@@ -87,8 +87,9 @@ function locationOf(r: Resource, source: SourceHealth | undefined): LinkLocation
   if (r.externalId === "syllabus" || scope === "syllabus") return "syllabus";
   if (r.moduleItem || scope === "module-items") return "module";
   if (r.kind === "assignment" || scope === "quizzes") return "assignment";
-  if (r.kind === "message" || scope === "announcements") return "announcement";
+  // Before the message check: a discussion topic is stored as a message but is not an announcement.
   if (scope === "discussions") return "discussion";
+  if (r.kind === "message" || scope === "announcements") return "announcement";
   if (scope === "page" || scope === "pages" || scope === "linked-page" || /\/pages\//.test(r.url)) return "page";
   return "other";
 }
@@ -167,6 +168,7 @@ const EXTRA: { match: string; decision: HostDecision; reason: string }[] = [
 const MEDIA = /\.(?:png|jpe?g|gif|svg|webp|ico|bmp|tiff?|mp3|mp4|m4a|mov|webm|wav|ogg|woff2?|ttf|css|js)$/i;
 const CDN = /(?:^|\.)(?:cdn|cdnapisec|static|assets?|media|img|images?)[.-]|(?:^|\.)s3[.-][a-z0-9.-]*amazonaws\.com$|^upload\.wikimedia\.org$|(?:^|\.)cloudfront\.net$/i;
 const SITE_WORDS = /\b(?:course (?:web ?site|web ?page|page|site|home ?page)|class (?:web ?site|page|site)|schedule|calendar|lecture (?:notes|slides)|slides|homework|assignments?)\b/i;
+const STUDENT_WRITABLE: LinkLocation[] = ["discussion"];
 const CONTENT: LinkLocation[] = ["module", "assignment", "announcement", "page", "discussion"];
 const matchHost = (m: string, host: string) => (m.startsWith(".") ? host === m.slice(1) || host.endsWith(m) : host === m);
 
@@ -206,6 +208,10 @@ export function decideByCode(signals: HostSignals, id: CourseIdentity): { decisi
   if (extra) return { decision: extra.decision, reason: extra.reason };
   if (CDN.test(host) || s.urls.every((u) => MEDIA.test(new URL(u).pathname)))
     return { decision: "ignore", reason: "embedded media or files, shown where Canvas embeds them" };
+  // Discussions are student-writable, and the app does not record who posted, so a link seen only
+  // there is never taken for the course's own site, whatever its address names.
+  if (linkLocations.every((l) => !s.locations[l] || STUDENT_WRITABLE.includes(l)))
+    return { decision: "link_only", reason: `linked only from a discussion, where students post; ${where(s)}` };
   const owned = s.urls.map((u) => namesCourse(u, id)).find(Boolean);
   if (owned) return { decision: "sync", reason: `the course's own site: its address names ${owned}; ${where(s)}` };
   const locations = linkLocations.filter((l) => s.locations[l]);

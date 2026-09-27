@@ -77,7 +77,7 @@ export const quizMe: ActionSpec<WithCourse> = {
 export const flashcardsDue: ActionSpec<WithCourse> = {
   name: "practice.flashcards",
   description: "Review the course's flashcards that are due.",
-  slots: { course: "required", topics: "optional" },
+  slots: { course: "required", topics: "optional", count: "optional" },
   argsSchema: withCourse,
   examples: ["flashcards due for math 234", "review my cards"],
   patterns: [
@@ -91,7 +91,7 @@ export const flashcardsDue: ActionSpec<WithCourse> = {
 export const learnRound: ActionSpec<WithCourse> = {
   name: "practice.learn",
   description: "Start a Learn round (mixed practice that adapts to what the student misses).",
-  slots: { course: "required", topics: "optional" },
+  slots: { course: "required", topics: "optional", count: "optional" },
   argsSchema: withCourse,
   examples: ["start a learn round for econ", "help me learn recursion"],
   patterns: [
@@ -116,7 +116,8 @@ export const generate: ActionSpec<z.infer<typeof withKind>> = {
   async run(a, ctx) {
     const pack = ctx.host.pack;
     if (!pack) return { status: "not_built", message: "Generation isn't available yet." };
-    return pack(a.kind, { courseId: a.course.courseId, ...(a.topicIds?.length ? { topicIds: a.topicIds } : {}) }, ctx.signal);
+    // The count the student asked for goes to the pack; without one the pack's default applies.
+    return pack(a.kind, { courseId: a.course.courseId, ...(a.topicIds?.length ? { topicIds: a.topicIds } : {}) }, ctx.signal, a.count ? { count: a.count } : undefined);
   },
 };
 

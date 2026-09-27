@@ -28,6 +28,10 @@ import type { GraphQuery, GraphResult } from "./course-core"; // owner: pipeline
 export * from "./page-views";
 import { pageViewRequestSchemas, type PageViewResult } from "./page-views";
 // end owner: page-views
+// owner: study-prep
+export * from "./study-prep";
+import { ITEM_TYPES, studyPrepRequestSchema, type StudyPrepResult } from "./study-prep";
+// end owner: study-prep
 import type {
   CourseIntelligence,
   CourseIntelligenceView,
@@ -1115,6 +1119,13 @@ export interface Store {
   resources(search?: string): Resource[];
   resource(id: string): Resource | undefined;
   /**
+   * fix/sync-events. A token that changes whenever the stored workspace is replaced rather than
+   * refreshed: an import, the sample fixture, or Delete local data (which clears it). Derived
+   * state (the refresh baselines) compares it to tell its store apart.
+   */
+  generation?(): string;
+  bumpGeneration?(): void;
+  /**
    * fix/current-courses-only. Earlier stored versions of one resource, newest first (read-only);
    * lets a caller put back a version a later observation overwrote, instead of deleting.
    */
@@ -1434,6 +1445,9 @@ export const learningRequestSchema = z.discriminatedUnion("op", [
     difficulty: z.enum(["warmup", "normal", "push"]).optional(),
     ...practiceScope,
     operationId: id.optional(),
+    // owner: study-prep. Exactly these items (the cards or questions linked to an exam, an assignment
+    // or a module, as code resolved them); the pool never widens beyond them.
+    itemIds: ids(200).optional(),
   }),
   // T53 (spec H3): an assessment quiz sectioned by its chapters and modules.
   learningOp("practice.assessmentQuiz", {
@@ -1597,6 +1611,15 @@ export const correctionSchema = z.discriminatedUnion("subject", [
     })
     .strict(),
   // end owner: agenda
+  // owner: study-prep. The student's correction of an item's type (it wins over code and their AI).
+  z
+    .object({
+      subject: z.literal("item_type"),
+      courseId: id,
+      itemId: id,
+      type: z.enum(ITEM_TYPES),
+    })
+    .strict(),
 ]);
 export type Correction = z.infer<typeof correctionSchema>;
 export const packScopeSchema = z
@@ -1788,6 +1811,7 @@ export const queryRequestSchema = z.discriminatedUnion("view", [
   // owner: page-views. One composite read per page: assignment.workspace, lecture.session, assessment.page.
   ...pageViewRequestSchemas,
   // end owner: page-views
+  studyPrepRequestSchema, // owner: study-prep: one composite read per assessment, 0 tokens
 ]);
 export type QueryRequest = z.infer<typeof queryRequestSchema>;
 // owner: agenda. D49 result shapes; the ranking and every number in them are code's.
@@ -1982,8 +2006,11 @@ export type QueryResult =
   // end owner: guides
   | AgendaQueryResult // owner: agenda
   | { view: "intent.preview"; preview: IntentCommandResult } // owner: intent
-  | PageViewResult; // owner: page-views
+  | PageViewResult // owner: page-views
+  | StudyPrepResult; // owner: study-prep
 // end owner: T15
+/** Opt-in on learning, notes and ui_event commands: answer with the result only (no snapshot). */
+const replySchema = z.literal("result").optional();
 export const commandSchema = z.discriminatedUnion("type", [
   z
     .object({
@@ -2138,22 +2165,28 @@ export const commandSchema = z.discriminatedUnion("type", [
       scope: packScopeSchema,
     })
     .strict(),
-  z.object({ type: z.literal("ui_event"), value: uiEventSchema }).strict(),
+  z.object({ type: z.literal("ui_event"), value: uiEventSchema, reply: replySchema }).strict(),
   z
     .object({ type: z.literal("workspace"), value: workspaceCommandSchema })
     .strict(),
   z
-    .object({ type: z.literal("learning"), request: learningRequestSchema })
+    .object({ type: z.literal("learning"), request: learningRequestSchema, reply: replySchema })
     .strict(),
   // end owner: T05b
   // owner: intent
   z.object({ type: z.literal("command"), value: intentCommandSchema }).strict(),
   // end owner: intent
   // owner: notes
-  z.object({ type: z.literal("notes"), request: notesRequestSchema }).strict(),
+  z.object({ type: z.literal("notes"), request: notesRequestSchema, reply: replySchema }).strict(),
   // end owner: notes
 ]);
 export type Command = z.infer<typeof commandSchema>;
+/**
+ * A learning, notes or ui_event command sent with `reply: "result"` answers with its own result
+ * only: no workspace snapshot is built, cloned or sent. Without it, the reply is unchanged.
+ */
+export type ResultOnlyCommand = Extract<Command, { type: "learning" | "notes" | "ui_event" }> & { reply: "result" };
+export type ResultOnlyCommandResult = Omit<CommandResult, "snapshot">;
 /**
  * What "Start work" opens for one assignment, rebuilt from the local store.
  * The renderer supplies only an ID; it never chooses URLs or file paths.
@@ -2291,7 +2324,13 @@ export interface AppBridge {
   cancelIntent?(operationId: string): Promise<void>;
   /** owner: accounts. Sign-in and purchase status; absent in builds without the bridge. */
   account?: AccountBridge;
+  execute(command: ResultOnlyCommand): Promise<ResultOnlyCommandResult>;
   execute(command: Command): Promise<CommandResult>;
+  /**
+   * owner: stall-audit. Called when the workspace changed (at most once a second, never while
+   * idle); returns the unsubscribe. The window re-reads its snapshot then instead of polling.
+   */
+  onChanged?(listener: () => void): () => void;
   openExternal(url: string): Promise<void>;
   /** owner: T05b. A link card (D40): the default browser, https only. */
   openLink?(url: string): Promise<void>;

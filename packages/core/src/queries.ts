@@ -27,6 +27,7 @@ import { courseIncluded, courseInclusion } from "./access";
 import { readOnce } from "./graph/read-once";
 import { createHash } from "node:crypto";
 import { guideQuery } from "../../packs/guide/src/query"; // owner: guides
+import { studyPrepQuery } from "./study-prep/query"; // owner: study-prep
 import { agendaRankedView, workspaceBootstrapView } from "./priority/query"; // owner: agenda
 import { runPageView } from "./views/index"; // owner: page-views
 
@@ -378,5 +379,8 @@ export function runQuery(store: Store, request: QueryRequest, context: QueryCont
     case "study.offers":
       return runPageView(store, request, context.now());
     // end owner: page-views
+    // owner: study-prep. One composite read per assessment: coverage, overview, materials, mastery; 0 tokens.
+    case "study.prep":
+      return studyPrepQuery(store, request, context.now());
   }
 }

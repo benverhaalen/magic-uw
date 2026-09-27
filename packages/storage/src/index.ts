@@ -238,6 +238,12 @@ export type LocalStore = Store &
     importReaderReceipts(): number;
     /** Per-day receipt counts for receipts older than the detail window. */
     receiptCounts(): ReceiptCount[];
+    /**
+     * Rows this connection has written since it opened (SQLite `total_changes()`): one statement,
+     * no table read. The worker compares it to tell the window "something changed" instead of the
+     * window polling the whole snapshot. -1 once closed.
+     */
+    dataVersion(): number;
   } & DeriveMethods & {
     // owner: drain
     /** Runs `operation` in one write transaction; the store's own writes inside it join it. */
@@ -1193,6 +1199,7 @@ export function createStore(
       );
     },
     ...planning,
+    dataVersion: () => (closed ? -1 : Number((prepare("SELECT total_changes() AS n").get() as Row).n)),
     close() {
       if (!closed) {
         db.close();
@@ -1661,6 +1668,19 @@ export function createStore(
     resource(id) {
       const row = resourceRow(id);
       return row ? readResource(row) : undefined;
+    },
+    // fix/sync-events: kept in preferences, so Delete local data clears it and a new one follows.
+    generation() {
+      const row = prepare("SELECT value FROM preferences WHERE key='store_generation'").get();
+      if (row) return String(row.value);
+      const value = randomUUID();
+      prepare("INSERT INTO preferences VALUES ('store_generation',?) ON CONFLICT(key) DO NOTHING").run(value);
+      return String((prepare("SELECT value FROM preferences WHERE key='store_generation'").get() as Row).value);
+    },
+    bumpGeneration() {
+      prepare(
+        "INSERT INTO preferences VALUES ('store_generation',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      ).run(randomUUID());
     },
     resourceHistory(id) {
       assertText(id, "resourceId");

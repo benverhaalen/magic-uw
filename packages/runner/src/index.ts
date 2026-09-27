@@ -45,6 +45,7 @@ export {
   claudeSessionArgs,
   unionSchema,
   POOL_PROTOCOL,
+  promptCacheMinimum,
   type SessionPool,
   type WarmRequest,
   type PoolOptions,

@@ -26,7 +26,7 @@ const chat = { id: "chat", version: "v2" };
 const SYSTEM = "Role and synthetic course brief for Example 101.";
 
 type Log = { argv: string[]; stdin: string | null; event?: string };
-async function harness(responses: unknown[], extra: { rotateAtTokens?: number; maxLive?: number } = {}) {
+async function harness(responses: unknown[], extra: { rotateAtTokens?: number; maxLive?: number; turns?: "fresh" | "conversation" } = {}) {
   const dir = await mkdtemp(join(tmpdir(), "pool-"));
   const workDir = join(dir, "work");
   await mkdir(workDir);
@@ -49,8 +49,8 @@ async function harness(responses: unknown[], extra: { rotateAtTokens?: number; m
 const ok = (kind: string, data: unknown, usage?: unknown) => ({ output: { kind, data }, ...(usage ? { usage } : {}) });
 const forbidden = ["--dangerously-skip-permissions", "--bare"];
 
-test("a warm interactive lane answers follow-ups in one process, with the header and the union schema", async () => {
-  const h = await harness([ok("chat", { text: "one" }), ok("chat", { text: "two" })]);
+test("conversation turns: a warm interactive lane answers follow-ups in one process, with the header and the union schema", async () => {
+  const h = await harness([ok("chat", { text: "one" }), ok("chat", { text: "two" })], { turns: "conversation" });
   try {
     const ask = { pack: chat, systemPrompt: SYSTEM, schema: answer, tier: "pass" as const, lane: "interactive" as const, courseId: "c1" };
     const a = await h.runner.run({ ...ask, input: "SYNTH-Q1", context: { course: "Example 101", intent: "chat", sources: ["r1"] } });
@@ -86,8 +86,34 @@ test("a warm interactive lane answers follow-ups in one process, with the header
   }
 });
 
+test("fresh turns (the default): each follow-up goes to a spare started after the last ask, with the byte-identical prefix and no earlier turns", async () => {
+  const h = await harness([ok("chat", { text: "one" }), ok("chat", { text: "two" }), ok("chat", { text: "three" })]);
+  try {
+    const ask = { pack: chat, systemPrompt: SYSTEM, schema: answer, tier: "pass" as const, lane: "interactive" as const, courseId: "c1" };
+    for (const input of ["SYNTH-Q1", "SYNTH-Q2", "SYNTH-Q3"]) await h.runner.run({ ...ask, input });
+    const log = await h.log();
+    // Every message is the first one its process receives: nothing earlier is re-sent.
+    let sinceSpawn = 0;
+    for (const l of log) {
+      if (l.event === "spawn") sinceSpawn = 0;
+      else if (l.event === "message") assert.equal(++sinceSpawn, 1, `a session answered a second message: ${l.stdin}`);
+    }
+    const spawns = log.filter((l) => l.event === "spawn");
+    assert.ok(spawns.length >= 3, `${spawns.length} spawns`);
+    assert.ok(spawns.every((s) => JSON.stringify(s.argv) === JSON.stringify(spawns[0]!.argv)), "the same prefix file and schema for every session");
+    // Each ask after the first finds its session already started (the spare), so it waits on no start-up.
+    const order = h.events.filter((e) => e.type === "session_start" || e.type === "ask_start").map((e) => e.type);
+    assert.deepEqual(order.slice(0, 6), ["session_start", "ask_start", "session_start", "ask_start", "session_start", "ask_start"]);
+    assert.equal(h.events.filter((e) => e.type === "rotate" && e.reason === "turn").length, 3);
+    const start = h.events.find((e) => e.type === "session_start");
+    assert.ok(start && start.type === "session_start" && start.prefixTokens > 0 && start.cacheable === false, "a short synthetic prefix is reported as not cacheable");
+  } finally {
+    await h.pool.close();
+  }
+});
+
 test("each course has its own interactive lane; a new batch rotates the background lane", async () => {
-  const h = await harness([ok("chat", { text: "x" }), ok("chat", { text: "y" }), ok("cards", { front: "Q", back: "A" })]);
+  const h = await harness([ok("chat", { text: "x" }), ok("chat", { text: "y" }), ok("cards", { front: "Q", back: "A" })], { turns: "conversation" });
   try {
     const base = { systemPrompt: SYSTEM, tier: "pass" as const };
     await h.runner.run({ ...base, pack: chat, schema: answer, input: "a", lane: "interactive", courseId: "c1" });
@@ -106,7 +132,7 @@ test("each course has its own interactive lane; a new batch rotates the backgrou
 
 test("past the history limit the next ask goes to a pre-warmed spare with the byte-identical prefix", async () => {
   const big = { input_tokens: 10, cache_read_input_tokens: 150, output_tokens: 20 };
-  const h = await harness([ok("chat", { text: "1" }, big), ok("chat", { text: "2" })], { rotateAtTokens: 150 });
+  const h = await harness([ok("chat", { text: "1" }, big), ok("chat", { text: "2" })], { rotateAtTokens: 150, turns: "conversation" });
   try {
     const ask = { pack: chat, systemPrompt: SYSTEM, schema: answer, tier: "pass" as const, lane: "interactive" as const, courseId: "c1" };
     await h.runner.run({ ...ask, input: "first" });
