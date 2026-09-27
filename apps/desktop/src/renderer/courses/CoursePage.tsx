@@ -57,7 +57,7 @@ export function CoursesOverview({
             data-focus-key={`course-card-${card.key}`} data-place-anchor={`course-card-${card.key}`}
             onClick={() => onOpen(card.key)}
           >
-            <span className="course-card-name">{card.courseName}</span>
+            <span className="course-card-name" title={card.rawCourseName}>{card.courseName}</span>
             {card.code ? <span className="course-card-code">{card.code}</span> : null}
             <span className="course-card-cue">
               {card.cue}
@@ -226,7 +226,7 @@ export function CoursePageView({
           <button className="subtle-button course-back" onClick={onBack}>
             ← Courses
           </button>
-          <h1 tabIndex={-1}>{page.courseName}</h1>
+          <h1 tabIndex={-1} title={page.rawCourseName}>{page.courseName}</h1>
           <p className="course-subline">
             {[page.code, page.term].filter(Boolean).join(" · ")}
             {page.code || page.term ? " · " : ""}

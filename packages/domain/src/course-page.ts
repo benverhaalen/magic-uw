@@ -5,6 +5,8 @@ import type {
   SourceHealth,
 } from "@magic/contracts";
 
+import { projectCourseLabel } from "./course-label";
+
 /**
  * The course page's read model. Pure code over saved evidence: no model call, no network.
  * It groups exact Canvas records and surfaces course-intelligence claims with their sources.
@@ -56,6 +58,7 @@ export interface CoursePage {
   accountScope: string;
   courseId: string;
   courseName: string;
+  rawCourseName: string;
   code: string | null;
   term: string | null;
   freshness: "current_capture" | "partial" | "stale" | "unknown";
@@ -78,6 +81,7 @@ export interface CourseCard {
   key: string;
   courseId: string;
   courseName: string;
+  rawCourseName: string;
   code: string | null;
   cue: string;
   next: ResourceView | null;
@@ -129,6 +133,8 @@ export function buildCoursePage(input: CoursePageInput, key: string): CoursePage
   );
   if (!resources.length) return null;
   const first = resources.find((r) => r.kind === "course") ?? resources[0]!;
+  const source = sources.get(first.sourceId);
+  const label = source ? projectCourseLabel({ resource: first, source }) : null;
   const accountScope = scopeOf(first, sources);
   const courseId = first.courseId;
   const now = Date.parse(input.now);
@@ -294,8 +300,9 @@ export function buildCoursePage(input: CoursePageInput, key: string): CoursePage
     key,
     accountScope,
     courseId,
-    courseName: first.courseName,
-    code: courseCode(first),
+    courseName: label?.displayTitle ?? first.courseName,
+    rawCourseName: first.courseName,
+    code: label?.displayCode ?? courseCode(first),
     term: first.course?.termName ?? null,
     freshness,
     lastSuccessAt,
@@ -335,6 +342,7 @@ export function buildCourseCards(input: CoursePageInput): CourseCard[] {
         key: page.key,
         courseId: page.courseId,
         courseName: page.courseName,
+        rawCourseName: page.rawCourseName,
         code: page.code,
         cue,
         next,

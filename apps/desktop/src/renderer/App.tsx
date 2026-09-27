@@ -10,7 +10,7 @@ import type {
 } from "@magic/contracts";
 import { MyUw, PlanningAlerts } from "./MyUw";
 import { CoursePageView, CoursesOverview } from "./courses/CoursePage";
-import { buildCourseCards, buildCoursePage } from "../../../../packages/domain/src/course-page";
+import { buildCourseCards, buildCoursePage, courseKey } from "../../../../packages/domain/src/course-page";
 import { LocalAiPanel } from "./LocalAiPanel";
 import { LearningPanel } from "./LearningPanel";
 import { ProviderGuidance } from "./ProviderGuidance";
@@ -19,7 +19,7 @@ import { IngestionControls, McpConnections } from "./IngestionControls";
 import { ConsentSetup, hasUwConsent, missingConsents } from "./consent/ConsentSetup";
 // owner: T81
 import { Onboarding, needsFirstRunSetup } from "./onboarding";
-import { TodayRail } from "./TodayRail";
+import { CalendarPage } from "./CalendarPage";
 import { DesktopShell, Glyph } from "./DesktopShell";
 import { Home, ObjectLink } from "./Home";
 import { SnapshotGate } from "./snapshot-gate";
@@ -482,7 +482,9 @@ export function App() {
           selected ? <ResourceDetail key={selected.id} resource={selected} snapshot={snapshot} busy={busy} run={run} open={open} onClose={navigation.back} />
             : <section className="initial-state"><h1 tabIndex={-1}>This item is no longer available.</h1><p>The saved item may have been removed or excluded. Your previous page is still available.</p><button className="button" onClick={navigation.back}>Go back</button></section>
         ) : view === "calendar" ? (
-          <section className="desktop-calendar"><h1 tabIndex={-1}>Today’s calendar</h1><p className="muted">Saved commitments and accepted study blocks. Week and month views are not connected yet.</p><TodayRail resources={resources} sources={snapshot.sources} plan={snapshot.dayPlan} changes={snapshot.changes} onSelect={setSelectedId} onPlan={command => run(command)} /></section>
+          <section className="desktop-calendar"><CalendarPage resources={resources} sources={snapshot.sources} plan={snapshot.dayPlan ?? []}
+            state={navigation.calendarState} onStateChange={navigation.updateCalendar} restoreFocusId={navigation.calendarFocus}
+            onSelect={navigation.openCalendarResource} formatCourseLabel={(id, fallback) => { const resource = resources.find(r => r.id === id); const account = resource && accountBySource.get(resource.sourceId); const card = resource && courseCards.find(c => c.key === courseKey(account ?? resource.sourceId, resource.courseId)); return card?.code ?? card?.courseName ?? fallback; }} onPlan={async command => { const result = await run(command); if (!result) throw new Error("Calendar change was not saved"); return result; }}/></section>
         ) : view === "myuw" ? (
           <MyUw snapshot={snapshot} busy={busy} run={run} open={open}
             refresh={() => void perform(async () => window.magic.syncPlanning?.())}

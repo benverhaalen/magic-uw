@@ -1,6 +1,6 @@
 # Calendar page integration
 
-Status: isolated desktop leaf; not yet imported into the normal App route. The driver owns that integration. No navigation, Today rail, shared tokens, core mutation, or school-system writes are included here.
+Status: integrated on `codex/desktop-design-integration` after the isolated leaf. The normal sidebar route now uses CalendarPage and stores view/date/scroll/expanded-day/selected-study return state per history entry. No school-system write is involved.
 
 ## Bind the page
 
@@ -44,3 +44,10 @@ Requested suggestions reuse the existing Today/domain planner and its persistenc
 Accepted blocks currently use the existing key/date removal and replacement API, without revision compare-and-swap. This leaf adds no new backend ownership or cross-device conflict protocol. Persisted block times have no timezone field; changing device timezone needs an upstream policy before claiming timezone-portable study scheduling.
 
 After integrating, verify Calendar from the real sidebar, week/month/date navigation, an actual ResourceDetail/source-open/Back route, and the same acceptance/restart/Undo path. Preserve Home's compact Today rail and suggestions-on-request contract.
+
+
+## Integrated checkpoint, September 27
+
+Hidden native Electron on an independent backup of real captured data passed: sidebar Calendar entry, week/month, actual ResourceDetail and Back focus, expanded month-day return, explicit Add to calendar → app restart, accepted-study detail and return, Remove → Undo. The integrated `onPlan` adapter rejects a failed command instead of announcing success. Calendar event IDs are restored explicitly; navigation no longer treats a missing href as a valid focus match. Eleven calendar model checks and the mutation/poll gate checks pass.
+
+The separate Home-only healthy-empty native check verifies no hour grid, no unnecessary recovery button and a retained due-today region. Full Calendar grids remain. Source access/freshness is displayed honestly; the private test copy has no login credentials. Screenshots and synthetic accepted plan records remain outside Git. Original-source external opening is still unverified in headless mode. Course labels now use the shared conservative course-resource projection, with raw name retained in tooltips/evidence and identity unchanged.

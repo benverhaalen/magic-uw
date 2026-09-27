@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
+import type { CalendarState } from './calendar/model';
 export type DesktopView = 'today' | 'courses' | 'myuw' | 'calendar' | 'resource' | 'sources' | 'privacy' | 'consent' | 'notebook' | 'practice' | 'insights' | 'settings';
-type Place = { view: DesktopView; resourceId: string | null; courseKey: string | null; disclosures: Record<string, boolean>; scroll: number; focus: string | null; anchor: string | null; offset: number };
+type Place = { calendarState?: CalendarState; calendarFocus?: string; view: DesktopView; resourceId: string | null; courseKey: string | null; disclosures: Record<string, boolean>; scroll: number; focus: string | null; anchor: string | null; offset: number };
 const initial: Place = { view: 'today', resourceId: null, courseKey: null, disclosures: {}, scroll: 0, focus: null, anchor: null, offset: 0 };
 export const resourceHref = (id: string) => `#resource/${encodeURIComponent(id)}`;
 export function useDesktopNavigation() {
@@ -18,10 +19,10 @@ export function useDesktopNavigation() {
     const disclosures = Object.fromEntries(Array.from(pane?.querySelectorAll<HTMLDetailsElement>('details[data-place-disclosure]') ?? []).map(node => [node.dataset.placeDisclosure!, node.open]));
     return { ...current, disclosures, scroll: pane?.scrollTop ?? 0, focus, anchor: anchor?.dataset.placeAnchor ?? null, offset: anchor ? anchor.getBoundingClientRect().top - top : 0 };
   }
-  function navigate(view: DesktopView, resourceId: string | null = null, courseKey: string | null = view === 'resource' ? current.courseKey : null) {
+  function navigate(view: DesktopView, resourceId: string | null = null, courseKey: string | null = view === 'resource' ? current.courseKey : null, origin?: Partial<Place>) {
     if (current.view === view && current.resourceId === resourceId && current.courseKey === courseKey) return;
     const next = { ...initial, view, resourceId, courseKey };
-    const saved = stack.slice(0, index + 1); saved[index] = capture();
+    const saved = stack.slice(0, index + 1); saved[index] = { ...capture(), ...origin };
     pending.current = next; setStack([...saved, next]); setIndex(saved.length);
   }
   function travel(delta: number) {
@@ -40,8 +41,13 @@ export function useDesktopNavigation() {
     }
     const anchor = Array.from(pane.querySelectorAll<HTMLElement>('[data-place-anchor]')).find(node => node.dataset.placeAnchor === place.anchor);
     pane.scrollTop = anchor ? pane.scrollTop + anchor.getBoundingClientRect().top - pane.getBoundingClientRect().top - place.offset : place.scroll;
-    const focus = Array.from(document.querySelectorAll<HTMLElement>('[data-focus-key], a[href]')).find(node => node.dataset.focusKey === place.focus || node.getAttribute('href') === place.focus);
+    const focus = (place.calendarFocus ? document.getElementById(place.calendarFocus) : null) ?? (place.focus ? Array.from(document.querySelectorAll<HTMLElement>('[data-focus-key], a[href]')).find(node => node.dataset.focusKey === place.focus || node.getAttribute('href') === place.focus) : null);
     (focus ?? pane.querySelector<HTMLElement>('h1, h2'))?.focus({ preventScroll: true });
   }, [index, current.view, current.resourceId, current.courseKey]);
-  return { view: current.view, selectedId: current.resourceId, courseKey: current.courseKey, navigate, back: () => travel(-1), forward: () => travel(1), canBack: index > 0, canForward: index < stack.length - 1 };
+  function updateCalendar(calendarState: CalendarState) {
+    setStack(previous => previous.map((place, i) => i === index ? { ...place, calendarState } : place));
+  }
+  return { calendarState: current.calendarState, calendarFocus: current.calendarFocus, updateCalendar,
+    openCalendarResource: (id: string, calendarState: CalendarState, calendarFocus: string) => navigate('resource', id, null, { calendarState, calendarFocus }),
+    view: current.view, selectedId: current.resourceId, courseKey: current.courseKey, navigate, back: () => travel(-1), forward: () => travel(1), canBack: index > 0, canForward: index < stack.length - 1 };
 }

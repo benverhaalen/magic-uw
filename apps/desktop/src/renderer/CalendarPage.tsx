@@ -77,7 +77,7 @@ export function CalendarPage({ resources, sources, plan, state, onStateChange, o
   const label = current.view === 'month' ? dayLabel(current.date, { month: 'long', year: 'numeric' }) : `${dayLabel(dates[0], { month: 'long', day: 'numeric' })}–${dayLabel(dates[6], { ...(dates[0].slice(0, 7) !== dates[6].slice(0, 7) ? { month: 'short' as const } : {}), day: 'numeric' })}`;
   return <section className="mc-calendar" aria-label="Calendar">
     <header className="mc-calendar-toolbar">
-      <h2>{label}</h2><button className="mc-calendar-control" onClick={() => navigate({ date: today })}>Today</button>
+      <h2 tabIndex={-1}>{label}</h2><button className="mc-calendar-control" onClick={() => navigate({ date: today })}>Today</button>
       <div className="mc-calendar-arrows"><button className="mc-calendar-control" aria-label={`Previous ${current.view}`} onClick={() => navigate({ date: shiftPeriod(current.date, current.view, -1) })}><Chevron /></button><button className="mc-calendar-control" aria-label={`Next ${current.view}`} onClick={() => navigate({ date: shiftPeriod(current.date, current.view, 1) })}><Chevron next /></button></div>
       <div className="mc-calendar-view" aria-label="Calendar view">{(['week', 'month'] as const).map(view => <button key={view} aria-pressed={current.view === view} onClick={() => navigate({ view })}>{view === 'week' ? 'Week' : 'Month'}</button>)}</div>
       <button ref={requestButton} className="mc-calendar-find" onClick={() => { setDetailDate(null); setRequestDate(current.date); setSelectedPlan(null); setError(null); setNotice(''); }}>Find study time <span aria-hidden="true">→</span></button>
