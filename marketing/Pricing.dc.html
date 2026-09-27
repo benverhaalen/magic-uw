@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Young+Serif&family=DM+Sans:wght@400;500;700&family=DM+Mono&family=Fredoka:wght@600&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#fff;font-family:'DM Sans',sans-serif;color:#1b1d33}a{color:inherit;text-decoration:none}a:hover{opacity:.8}@keyframes wizWaveL{0%,100%{transform:rotate(-40deg)}50%{transform:rotate(25deg)}}@keyframes wizWaveR{0%,100%{transform:rotate(40deg)}50%{transform:rotate(-25deg)}}</style>
+</helmet>
+<div data-screen-label="Pricing" style="max-width:1280px;margin:0 auto;padding:20px;display:flex;flex-direction:column;gap:20px;box-sizing:border-box">
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 20px;gap:24px;flex-wrap:wrap">
+    <a href="Website Directions.dc.html#2a" style="display:flex;align-items:center;gap:10px"><img src="logo/head-color.svg" alt="" style="height:38px"></img><div style="font-family:Fredoka,sans-serif;font-size:24px;color:#2c55b8">Magic Canvas</div></a>
+    <div style="display:flex;gap:28px;font-size:16px;font-weight:500;flex-wrap:wrap"><div>How it works</div><div style="color:#2c55b8;border-bottom:2px solid #2c55b8">Pricing</div><div>For devs</div><div>About us</div><div>FAQ</div></div>
+    <div style="background:#2c55b8;color:#fff;padding:12px 22px;border-radius:999px;font-weight:700;font-size:15px">Download</div>
+  </div>
+
+  <div style="background:#e8eefc;border-radius:36px;padding:64px 64px 56px;display:flex;flex-direction:column;gap:40px">
+    <div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:18px">
+      <div style="font-family:'DM Mono',monospace;font-size:13px;letter-spacing:.08em;background:#fff;border-radius:999px;padding:8px 14px">PLANNED PRICING · BUILDFEST PROTOTYPE</div>
+      <div style="font-family:'Young Serif',serif;font-size:72px;line-height:1.02;letter-spacing:-.015em;color:#1e2757;max-width:880px;text-wrap:balance">Pay once. Bring your own AI.</div>
+      <div style="font-size:20px;line-height:1.5;max-width:620px;text-wrap:pretty">One download, $10. You connect your own AI and pay your provider directly.</div>
+    </div>
+
+    <div style="position:relative;background:#1e2757;color:#fff;border-radius:32px;padding:48px 56px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:40px;align-items:start">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="font-family:'DM Mono',monospace;font-size:13px;letter-spacing:.08em;color:#f7c440">ONE-TIME PURCHASE</div>
+        <div style="font-family:'Young Serif',serif;font-size:44px;line-height:1.05">Magic Canvas app</div>
+        <div style="display:flex;align-items:baseline;gap:12px"><div style="font-family:'Young Serif',serif;font-size:88px;line-height:1">$10</div><div style="font-size:17px">one-time</div></div>
+        <div style="font-size:18px;line-height:1.5;max-width:440px">The desktop app and the Wiz study agent, built on top of our free data pipeline.</div>
+        <div style="display:flex;flex-direction:column;gap:12px;margin-top:16px;max-width:360px">
+          <div onMouseEnter="{{ hoverOn }}" onMouseLeave="{{ hoverOff }}" style="position:relative;cursor:pointer;margin-top:112px">
+            <div style="position:absolute;left:50%;bottom:0;width:180px;height:180px;margin-left:-90px;overflow:hidden;pointer-events:none">
+              <div style="position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:center;transition:transform .4s cubic-bezier(.3,1.4,.5,1);transform:{{ wizTf }}">{{ wizSvg }}</div>
+            </div>
+            <div style="position:relative;background:#f7c440;color:#1b1d33;padding:18px 24px;border-radius:999px;font-weight:700;font-size:18px;text-align:center">{{ btnLabel }}</div>
+          </div>
+          <div style="font-size:14px;line-height:1.5">Mac and Windows. All you need is Claude Code, Codex or Gemini CLI running on your machine.</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:16px;font-size:17px;line-height:1.45">
+        <div style="display:flex;gap:12px"><div style="color:#f7c440;font-weight:700">✓</div><div>The desktop app: Day, Spaces and Calendar</div></div>
+        <div style="display:flex;gap:12px"><div style="color:#f7c440;font-weight:700">✓</div><div>The Wiz study agent: practice exams, flashcards, lecture digests and more</div></div>
+        <div style="display:flex;gap:12px"><div style="color:#f7c440;font-weight:700">✓</div><div>Assignment spaces that open everything in one click</div></div>
+        <div style="display:flex;gap:12px"><div style="color:#f7c440;font-weight:700">✓</div><div>Works with Claude Code, Codex or Gemini CLI on your machine, or a local model</div></div>
+        <div style="display:flex;gap:12px"><div style="color:#f7c440;font-weight:700">✓</div><div>Jev processing included, on us</div></div>
+        <div style="display:flex;gap:12px"><div style="color:#f7c440;font-weight:700">✓</div><div>Everything in the free pipeline</div></div>
+      </div>
+    </div>
+
+    <div style="background:#f3f3f1;border-radius:28px;padding:36px 44px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:36px;align-items:start;color:#3a3d52">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-family:'DM Mono',monospace;font-size:12px;letter-spacing:.08em">FREE · OPEN SOURCE</div>
+        <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><div style="font-size:24px;font-weight:700;color:#1b1d33">Data pipeline</div><div style="font-size:20px">$0</div></div>
+        <div style="font-size:15px;line-height:1.5">For developers who want the course data without the app. Bring your own interface.</div>
+        <div style="margin-top:8px;align-self:flex-start;border:1.5px solid #8a8d9c;padding:10px 18px;border-radius:999px;font-weight:500;font-size:15px">View on GitHub</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;font-size:15px;line-height:1.45">
+        <div style="display:flex;gap:10px"><div>✓</div><div>Reads Canvas modules, pages, files, quizzes, discussions and announcements</div></div>
+        <div style="display:flex;gap:10px"><div>✓</div><div>Calendar feeds and UW GitLab</div></div>
+        <div style="display:flex;gap:10px"><div>✓</div><div>Stored locally on your device</div></div>
+        <div style="display:flex;gap:10px"><div>✓</div><div>Local MCP server, so your own AI app can read your courses</div></div>
+        <div style="display:flex;gap:10px"><div>✓</div><div>Exact quotes from course files, with page numbers</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;padding:12px 20px 20px;font-size:14px">
+    <div>Magic Canvas · Built for Badger BuildFest 2026</div>
+    <div style="display:flex;gap:24px"><div>GitHub</div><div>Privacy</div><div>About us</div></div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { hover: false, idle: null, wave: null };
+  componentDidMount() {
+    fetch('logo/mark-on-dark.svg').then(r => r.text()).then(t => {
+      t = t.replace(/<metadata>[\s\S]*?<\/metadata>/, '').replace('<svg ', '<svg width="81" height="130" ');
+      const wave = t
+        .replace('id="arm-left" style="transform-origin:80px 159px"', 'id="arm-left" style="transform-origin:80px 159px;animation:wizWaveL .24s .3s ease-in-out infinite"')
+        .replace('id="arm-right" style="transform-origin:120px 159px"', 'id="arm-right" style="transform-origin:120px 159px;animation:wizWaveR .24s .3s ease-in-out infinite"');
+      const el = h => React.createElement('div', { style: { display: 'flex' }, dangerouslySetInnerHTML: { __html: h } });
+      this.setState({ idle: el(t), wave: el(wave) });
+    });
+  }
+  renderVals() {
+    const { hover, idle, wave } = this.state;
+    return {
+      hoverOn: () => this.setState({ hover: true }),
+      hoverOff: () => this.setState({ hover: false }),
+      btnLabel: hover ? 'Get with Wiz' : 'Download for $10',
+      wizTf: hover ? 'translateY(-30px)' : 'translateY(100%)',
+      wizSvg: hover ? wave : idle
+    };
+  }
+}
+</script>
+</body>
+</html>

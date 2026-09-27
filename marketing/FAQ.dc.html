@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Young+Serif&family=DM+Sans:wght@400;500;700&family=DM+Mono&family=Fredoka:wght@600&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#fff;font-family:'DM Sans',sans-serif;color:#1b1d33}a{color:inherit;text-decoration:none}a:hover{opacity:.8}</style>
+</helmet>
+<div data-screen-label="FAQ" style="max-width:1280px;margin:0 auto;padding:20px;display:flex;flex-direction:column;gap:20px;box-sizing:border-box">
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 20px;gap:24px;flex-wrap:wrap">
+    <a href="Website Directions.dc.html#2a" style="display:flex;align-items:center;gap:10px"><img src="logo/head-color.svg" alt="" style="height:38px"></img><div style="font-family:Fredoka,sans-serif;font-size:24px;color:#2c55b8">Magic Canvas</div></a>
+    <div style="display:flex;gap:28px;font-size:16px;font-weight:500;flex-wrap:wrap"><div>How it works</div><a href="Pricing.dc.html">Pricing</a><div>For devs</div><div>About us</div><div style="color:#2c55b8;border-bottom:2px solid #2c55b8">FAQ</div></div>
+    <div style="background:#2c55b8;color:#fff;padding:12px 22px;border-radius:999px;font-weight:700;font-size:15px">Download</div>
+  </div>
+
+  <div style="background:#e8eefc;border-radius:36px;padding:64px;display:flex;flex-direction:column;gap:40px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:32px;flex-wrap:wrap">
+      <div style="display:flex;flex-direction:column;gap:16px;max-width:720px">
+        <div style="font-family:'DM Mono',monospace;font-size:13px;letter-spacing:.08em">FAQ</div>
+        <div style="font-family:'Young Serif',serif;font-size:72px;line-height:1.02;letter-spacing:-.015em;color:#1e2757">Questions, answered.</div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <sc-for list="{{ cats }}" as="c" hint-placeholder-count="4">
+          <div onClick="{{ c.pick }}" style="cursor:pointer;padding:12px 20px;border-radius:999px;font-weight:700;font-size:15px;background:{{ c.bg }};color:{{ c.fg }}">{{ c.label }}</div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:20px;align-items:start">
+      <div style="grid-column:span 2;min-width:0;display:flex;flex-direction:column;gap:10px">
+        <sc-for list="{{ items }}" as="q" hint-placeholder-count="6">
+          <div style="background:#fff;border-radius:24px;overflow:hidden">
+            <div onClick="{{ q.toggle }}" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:20px;padding:24px 28px">
+              <div style="font-family:'Young Serif',serif;font-size:22px;line-height:1.25;color:#1e2757">{{ q.q }}</div>
+              <div style="flex-shrink:0;width:36px;height:36px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-size:22px;transition:transform .2s,background .2s;background:{{ q.btnBg }};color:{{ q.btnFg }};transform:{{ q.rot }}">+</div>
+            </div>
+            <sc-if value="{{ q.open }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:0 28px 26px;font-size:17px;line-height:1.6;max-width:680px;text-wrap:pretty">{{ q.a }}</div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="background:#1e2757;color:#fff;border-radius:28px;padding:32px;display:flex;flex-direction:column;gap:16px;align-items:flex-start;position:sticky;top:20px">
+        <img src="logo/mark-on-dark.svg" alt="" style="height:130px;align-self:center"></img>
+        <div style="font-family:'Young Serif',serif;font-size:28px;line-height:1.15">Still have a question?</div>
+        <div style="font-size:16px;line-height:1.5">We're a team of four building Magic Canvas for Badger BuildFest 2026. Ask us anything.</div>
+        <div style="background:#f7c440;color:#1b1d33;padding:14px 22px;border-radius:999px;font-weight:700;font-size:16px">Email the team</div>
+        <div style="font-size:15px;text-decoration:underline">Open an issue on GitHub</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;padding:12px 20px 20px;font-size:14px">
+    <div>Magic Canvas · Built for Badger BuildFest 2026</div>
+    <div style="display:flex;gap:24px"><div>GitHub</div><div>Privacy</div><div>About us</div></div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const FAQ = [
+  ['Getting started', 'What is Magic Canvas?', "An AI workspace that already knows your classes. It brings in Canvas, your calendar and UW GitLab, keeps every assignment with its instructions, opens what you need next, and builds practice in the style of your course."],
+  ['Getting started', 'What do I need to run it?', "A Mac or Windows computer and your UW sign-in. For the AI, all you need is Claude Code, Codex or Gemini CLI running on your machine. Or let Magic Canvas pick a local model that fits your computer."],
+  ['Getting started', 'Does it work outside computer science?', "Yes. It reads whatever your courses publish in Canvas: modules, pages, files, quizzes, discussions and announcements. How much it can do depends on what your instructors post."],
+  ['Getting started', 'Can I download it today?', "Magic Canvas is being built for Badger BuildFest 2026. The download will be on this site as soon as it's ready."],
+  ['AI & privacy', 'Where is my course data stored?', "On your device. When a feature needs your AI, only the context for that request is sent, such as the relevant course excerpt and your question, and Magic Canvas shows you what's included."],
+  ['AI & privacy', 'Does my UW password ever go to an AI?', "Never. Passwords, cookies and sign-in tokens are never sent to any AI provider."],
+  ['AI & privacy', 'Can it submit or post for me?', "No. Magic Canvas reads your school systems. It never submits assignments, enrolls you in anything or posts on your behalf."],
+  ['AI & privacy', 'Will it help me break my course\u2019s AI rules?', "It checks your course's AI policy before helping. If the policy limits a request, it quotes the policy and suggests something that is allowed."],
+  ['AI & privacy', 'What is Jev?', "Jev makes the small judgments behind the scenes, like what matters most today. We pay for it and run it through our own server, and it gets only what it needs for each decision. A fully local mode turns it off, with some features limited."],
+  ['Pricing', 'How much does it cost?', "The Magic Canvas app is a one-time $10. The data pipeline underneath it is free and open source. This is planned pricing for the prototype."],
+  ['Pricing', 'Do I also pay for AI?', "You pay your AI provider directly for your own usage. A local model costs nothing. Jev processing is on us."],
+  ['Pricing', 'Can I use the data pipeline without the app?', "Yes. It's open source on GitHub, and its local MCP server lets your own AI app read your course data."]
+];
+const CATS = ['All', 'Getting started', 'AI & privacy', 'Pricing'];
+class Component extends DCLogic {
+  state = { cat: 'All', open: 0 };
+  renderVals() {
+    const { cat, open } = this.state;
+    return {
+      cats: CATS.map(label => {
+        const on = label === cat;
+        return { label, bg: on ? '#1e2757' : '#fff', fg: on ? '#fff' : '#1e2757', pick: () => this.setState({ cat: label, open: null }) };
+      }),
+      items: FAQ.map(([c, q, a], i) => ({ c, q, a, i })).filter(x => cat === 'All' || x.c === cat).map(x => {
+        const isOpen = open === x.i;
+        return {
+          q: x.q, a: x.a, open: isOpen,
+          btnBg: isOpen ? '#f7c440' : '#e8eefc', btnFg: '#1e2757', rot: isOpen ? 'rotate(45deg)' : 'rotate(0deg)',
+          toggle: () => this.setState({ open: isOpen ? null : x.i })
+        };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>
