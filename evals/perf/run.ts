@@ -12,10 +12,12 @@ import { DatabaseSync } from "node:sqlite";
 import { canvasFirstSync, runBaseline } from "./baseline";
 import { renderMarkdown } from "./report";
 import { documentStage } from "./documents"; // owner: acquisition
+import { runSyncAccount } from "./sync-account";
 
 /** `canvas`: only the first full Canvas sync (T17), for quick before/after runs. */
 /** `documents` (owner: acquisition): the course-file stage, earlier loop against the app's. */
-const SUITES = ["baseline", "canvas", "documents"] as const;
+/** `sync`: the whole ingestion on a live-shaped account: first sync, relaunch, probes, change signals. */
+const SUITES = ["baseline", "canvas", "documents", "sync"] as const;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 function parseSuite(argv: string[]): string | undefined {
@@ -71,7 +73,9 @@ async function main() {
       ? { metrics: { canvasFirstSync: await canvasFirstSync() }, recording: undefined }
       : suite === "documents"
         ? { metrics: { documentStage: await documentStage() }, recording: undefined }
-        : await runBaseline();
+        : suite === "sync"
+          ? { metrics: { syncAccount: await runSyncAccount() }, recording: undefined }
+          : await runBaseline();
   const report = {
     schema: "magic-perf/1",
     suite,
