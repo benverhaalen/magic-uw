@@ -1,6 +1,6 @@
 # My Magic UW desktop handoff
 
-Latest fetch before publication: main `48bc3bf` adds the team backend status packet; this trial includes main `5f0ab02`. The new documentation commit is fetched, not yet merged.
+Published application checkpoint: `e7746ca`. The actual visible trial uses that application code (Electron 54767, monitor 54552), built immediately before its commit. Main `48bc3bf` has now been merged; it adds only `docs/status-2026-09-27.md`, so the visible application code remains current. The separate Nate integration wave is fetched but still requires conflict reconciliation.
 
 ## 2026-09-27 10:43 UTC — usable local voice trial opened
 
