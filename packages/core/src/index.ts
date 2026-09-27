@@ -73,9 +73,19 @@ export interface CoreSeams {
   pack?(pack: string, scope: PackScope, signal: AbortSignal): Promise<unknown>;
   /** ui_events (schema v5). */
   uiEvent?(value: UiEvent, at: string): void;
+  // owner: intent. The command bar's intent router (packages/core/src/intent). Core hands it
+  // its own workspace verbs and seams; the router adds no new path to data or the network.
+  intent?: {
+    handle(command: IntentCommand, host: IntentHost, signal: AbortSignal): Promise<IntentCommandResult>;
+  };
+  // end owner: intent
 }
 export type { JobRegistry } from "./jobs/registry";
 // end owner: T05b
+// owner: intent
+import type { IntentCommand, IntentCommandResult } from "@magic/contracts";
+import type { IntentHost } from "./intent/types";
+// end owner: intent
 export interface CoreOptions {
   fixture: CaptureBatch;
   courseExtractor?: {
@@ -607,7 +617,7 @@ export function createCore(store: Store, options: CoreOptions) {
     const command = commandSchema.parse(raw);
     let message: string | undefined, manifest: ContextManifest | undefined;
     // owner: T05b
-    let seamResult: Partial<Pick<CommandResult, "learning" | "map" | "pack" | "workspace">> = {};
+    let seamResult: Partial<Pick<CommandResult, "learning" | "map" | "pack" | "workspace" | "command">> = {};
     // end owner: T05b
     switch (command.type) {
       case "snapshot":
@@ -892,6 +902,21 @@ export function createCore(store: Store, options: CoreOptions) {
         };
         break;
       }
+      // owner: intent. The command bar: code resolves first; only language goes on to the model.
+      case "command": {
+        const intent = seams.intent;
+        if (!intent) {
+          seamResult = { command: { status: "unavailable", reason: "The command bar isn't built yet.", path: "none", latencyMs: 0, tokens: { in: 0, cached: 0, out: 0 } } };
+          break;
+        }
+        const host: IntentHost = { workspace, learning: seams.learning, pack: seams.pack };
+        const mode = command.value.mode ?? "run";
+        seamResult = {
+          command: mode === "run" ? await seamCall((signal) => intent.handle(command.value, host, signal)) : await intent.handle(command.value, host, new AbortController().signal),
+        };
+        break;
+      }
+      // end owner: intent
       default: {
         // An unknown Command is a type error here (T05b).
         const unhandled: never = command;

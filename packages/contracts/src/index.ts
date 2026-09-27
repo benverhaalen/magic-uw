@@ -1240,6 +1240,63 @@ export interface WorkspaceResult {
   }[];
   message?: string;
 }
+// owner: intent. The command bar's plain-language request (typed with Ctrl+K or dictated into the
+// same bar). `run` resolves and runs one registered action; `preview` runs only the code resolver
+// (0 tokens, never the model) for a live hint; `prewarm` readies the AI fallback when the bar opens.
+export const intentCommandSchema = z
+  .object({
+    text: z.string().max(500),
+    context: z
+      .object({ courseId: id.optional(), view: z.string().max(100).optional() })
+      .strict()
+      .optional(),
+    mode: z.enum(["run", "preview", "prewarm"]).optional(),
+  })
+  .strict();
+export type IntentCommand = z.infer<typeof intentCommandSchema>;
+/** Surface arguments: what the student said, before code resolves them to IDs and dates. */
+export interface IntentSlots {
+  course?: string | null;
+  assignment?: string | null;
+  topics?: string[] | null;
+  date?: string | null;
+  query?: string | null;
+  kind?: "cards" | "quiz" | null;
+  count?: number | null;
+  scope?: "course" | "all" | null;
+}
+export interface IntentCandidate {
+  action: string;
+  args: IntentSlots;
+  /** What the choice does, in the student's words. */
+  label: string;
+}
+export interface IntentCitation {
+  sourceId: string;
+  resourceId: string;
+  title: string;
+  url: string;
+  /** Exactly as it appears in the resource text; code checked it. */
+  quote: string;
+  start: number | null;
+  end: number | null;
+}
+/** How the request was understood: code (0 tokens), the model, the model's cached answer, or neither. */
+export type IntentPath = "code" | "ai" | "cache" | "none";
+export type CommandOutcome =
+  | { status: "ran"; action: string; args: Record<string, unknown>; result: unknown }
+  | { status: "clarify"; question: string; candidates: IntentCandidate[] }
+  | { status: "answer"; text: string; citations: IntentCitation[]; notFound: boolean; dropped: number }
+  | { status: "unavailable"; reason: string }
+  | { status: "preview"; hint: string | null; action: string | null; slots: IntentSlots }
+  /** prewarm: whether the AI fallback is connected and ready. */
+  | { status: "ready"; ai: boolean };
+export type IntentCommandResult = CommandOutcome & {
+  path: IntentPath;
+  latencyMs: number;
+  tokens: { in: number; cached: number; out: number };
+};
+// end owner: intent
 // owner: T15. Scoped queries (O1): a view asks for what it shows instead of the whole workspace.
 export const queryRequestSchema = z.discriminatedUnion("view", [
   z.object({ view: z.literal("summary") }).strict(),
@@ -1436,6 +1493,9 @@ export const commandSchema = z.discriminatedUnion("type", [
     .object({ type: z.literal("learning"), request: learningRequestSchema })
     .strict(),
   // end owner: T05b
+  // owner: intent
+  z.object({ type: z.literal("command"), value: intentCommandSchema }).strict(),
+  // end owner: intent
 ]);
 export type Command = z.infer<typeof commandSchema>;
 export type CommandResult = {
@@ -1449,6 +1509,7 @@ export type CommandResult = {
   pack?: unknown;
   workspace?: WorkspaceResult;
   // end owner: T05b
+  command?: IntentCommandResult; // owner: intent
 };
 export const localQuestionSchema = z
   .object({
