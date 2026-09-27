@@ -21,6 +21,7 @@ import {
 } from "../packages/runner/src/index.ts";
 import {
   CLAUDE_REQUIRED_FLAGS,
+  CODEX_OPTIONAL_FLAGS,
   CODEX_REQUIRED_FLAGS,
   HEALTH_EVIDENCE,
   chatArgs,
@@ -65,7 +66,7 @@ async function setup() {
   return { userData, home, env };
 }
 const claudeHelp = `Usage: claude [options]\n${CLAUDE_REQUIRED_FLAGS.join("\n")}\n`;
-const codexHelp = `Run Codex non-interactively\n${CODEX_REQUIRED_FLAGS.join("\n")}\n`;
+const codexHelp = `Run Codex non-interactively\n${[...CODEX_REQUIRED_FLAGS, ...CODEX_OPTIONAL_FLAGS].join("\n")}\n`;
 const featureList = [
   "shell_tool                               stable             true",
   "apps                                     stable             true",
@@ -82,6 +83,7 @@ const kindFor: Record<string, string> = {
   plan_insufficient: "plan_insufficient",
   model_unavailable: "model_unavailable",
   offline: "offline",
+  keychain_locked: "keychain_locked", // owner: client-detection
 };
 
 test("every observed and binary-sourced run message maps to its health state", () => {
@@ -162,15 +164,17 @@ test("instant argv: Claude adds --safe-mode to the spec flags; nothing points at
   assert.ok(argv[argv.indexOf("--system-prompt-file") + 1].startsWith(userData));
   for (const a of argv) {
     assert.ok(!a.includes(studentConfig) && !a.includes(join(home, ".claude")) && !a.includes(profileDir(userData, "claude")), a);
-    assert.ok(!/--bare|--dangerously|--settings\b|--mcp-config/.test(a), a);
+    assert.ok(!/--bare|--dangerously|--mcp-config/.test(a), a);
   }
+  // client-detection: --settings carries only the app's own deny-every-tool hook, from the app's folder.
+  assert.ok(argv[argv.indexOf("--settings") + 1].startsWith(userData));
 });
 
 test("instant argv: Codex skips rules, git check, user instructions and tools; state stays in the app folder", async () => {
   const { userData, home, env } = await setup();
   const plan = await instantSupport("codex", "0.156.1", { userData, env, resolve: resolveFake, help: async () => codexHelp, features: async () => featureList, exists: noFile });
   assert.equal(plan.support.available, true);
-  assert.deepEqual(plan.features, ["shell_tool", "apps", "memories"]);
+  assert.deepEqual(plan.features, ["shell_tool", "apps", "multi_agent_v2", "memories"]);
   const options = await instantRunOptions("codex", fake("codex"), plan, { userData, env });
   const args = options.extraArgs;
   assert.ok(args.includes("--ignore-rules"));
@@ -179,7 +183,7 @@ test("instant argv: Codex skips rules, git check, user instructions and tools; s
   assert.ok(configs.some((c) => c.startsWith("model_instructions_file=") && c.includes(JSON.stringify(userData).slice(1, -1))));
   assert.ok(configs.some((c) => c.startsWith("sqlite_home=") && c.includes(JSON.stringify(userData).slice(1, -1))));
   assert.ok(configs.includes("project_doc_max_bytes=0") && configs.includes('web_search="disabled"'));
-  assert.deepEqual(args.filter((_, i) => args[i - 1] === "--disable"), ["shell_tool", "apps", "memories"]);
+  assert.deepEqual(args.filter((_, i) => args[i - 1] === "--disable"), ["shell_tool", "apps", "multi_agent_v2", "memories"]);
   const log = join(userData, "fake.log");
   const backend = createCodexBackend({ ...options, env: { ...options.env, FAKE_CLI_LOG: log, FAKE_CLI_STATE: join(userData, "st"), FAKE_CLI_RESPONSES: JSON.stringify([{ output: { ok: true } }]) } });
   await backend.call({ pack: { id: "p", version: "v1" }, systemPrompt: "S", input: "ask", jsonSchema: { type: "object" }, tier: "pass", lane: "interactive", timeoutMs: 20_000 } as BackendCall);
@@ -197,9 +201,9 @@ test("instant mode is offered only when this version was checked and keeps the s
   const noSafe = await instantSupport("claude", "2.1.283", { ...deps, help: async () => claudeHelp.replace("--safe-mode", "") });
   assert.equal(noSafe.support.available, false);
   assert.match(noSafe.support.reason!, /--safe-mode/);
+  // client-detection: capability, not version. An older version that lists every flag is offered.
   const old = await instantSupport("claude", "2.0.1", { ...deps, help: async () => claudeHelp });
-  assert.equal(old.support.available, false);
-  assert.match(old.support.reason!, /2\.1\.283/);
+  assert.deepEqual(old.support, { available: true, testedWith: "2.1.283" });
   // Codex always sends a global AGENTS.md; instant is still the default (operator), with a note.
   const agents = await instantSupport("codex", "0.157.0", { ...deps, help: async () => codexHelp, exists: async (p) => p.endsWith("AGENTS.md") });
   assert.equal(agents.support.available, true);
@@ -309,7 +313,7 @@ test("Gemini refuses without the student's key and never exposes it", async () =
 test("setMode saves a mode only when the client can use it here", async () => {
   const { userData, env } = await setup();
   const runtime = createClientHealth({ userData, env: { ...env, USERPROFILE: userData }, vault: memoryVault(), resolve: resolveFake, help: async () => "", online: async () => true });
-  await assert.rejects(runtime.setMode("claude", "instant"), /doesn't offer/);
+  await assert.rejects(runtime.setMode("claude", "instant"), /didn't answer --help/);
   const h = await runtime.setMode("claude", "isolated");
   assert.equal(h.mode, "isolated");
   assert.deepEqual(JSON.parse(await readFile(join(userData, "client-modes.json"), "utf8")), { modes: { claude: "isolated" } });

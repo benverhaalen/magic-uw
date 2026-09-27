@@ -72,6 +72,16 @@ export function recommendedClient(health: Partial<Record<ClientId, ClientHealth>
   const installed = clientOrder.find((id) => id !== "gemini" && health[id] && health[id]!.state !== "not_installed");
   return installed ?? "gemini";
 }
+/**
+ * owner: client-detection. When exactly one command-line client is installed, it is the one to
+ * use; the chooser is skipped (operator: "Claude Code is the best choice"; D35 order otherwise,
+ * via `recommendedClient`, so Claude Code wins when both are signed in). Gemini needs a key the
+ * student chooses to add, so it is never picked for them.
+ */
+export function autoPick(health: Partial<Record<ClientId, ClientHealth>>): ClientId | null {
+  const installed = clientOrder.filter((id) => id !== "gemini" && health[id] && health[id]!.state !== "not_installed");
+  return installed.length === 1 ? installed[0] : null;
+}
 /** Health from T80's status alone, for a main without `clients.health` (isolated profile, no instant check). */
 export function healthFromStatus(status: ClientStatus, checkedAt = new Date().toISOString()): ClientHealth {
   const gemini = status.id === "gemini";
