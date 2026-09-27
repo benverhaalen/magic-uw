@@ -40,6 +40,8 @@ Home is approximately 95% desired in Ben's judgment. Preserve its structure. New
 | Why external advice was adopted or rejected | [Reference selection](docs/design/reference-selection.md) and [system research](docs/design/system-research.md) |
 | Independent generation, critique and repair | [Iteration and review](.agents/skills/magic-design/references/iteration-and-review.md) |
 
+The [intent-to-output audit trail](docs/design/validation-v2.md#intent-to-output-audit-trail) connects your source decisions and inspected references to the affected rule and the observation that should catch drift. It is a scoped check set, not an instruction to load every source.
+
 ## Extend without drifting
 
 For a new feature, choose its student job and nearest existing recipe; provide source/identity, all consequential states, destination and return behavior. Change an existing recipe only when the new case shows it is insufficient. Keep new geometry provisional until an actual render and complete journey support it. Show Ben a concrete comparison at a new visual family or consequential workflow choice; routine repairs need no approval ceremony.

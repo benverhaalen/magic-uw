@@ -25,3 +25,24 @@ A deterministic sRGB calculation of the seed values found these sampled text/bac
 Ready to guide the next scoped design task: governing principles, source authority, visual reference, type/color/boundary roles, interaction contracts, product-surface status and review method are connected. **Not ready to claim a fully validated universal component library.** Fonts are still private, responsive policies are proposals, and implementation accessibility/behavior must be demonstrated in the actual framework.
 
 Next validation, when authorized: one complete unfamiliar-surface journey from these inputs, including error and return, followed by a website-specific transfer. Evaluate actual artifacts and student effort; model agreement or image similarity alone is insufficient. This remains a future validation step after Ben's explicit system-only scope correction.
+
+## Intent-to-output audit trail
+
+This table is the small regression set for future UI work. The IDs point to exact words and scope in the [decision record](decision-record.md); references point to inspected mechanisms in [reference selection](reference-selection.md) or [system research](system-research.md). Read only rows affected by the task. These are required checks when implementing, not claims they already pass.
+
+| Original evidence | Governing decision and artifact | Drift-catching observation |
+| --- | --- | --- |
+| D01, D03; Codex screenshots | Preserve near-approved composition; clean implementation from visual/behavior spec; baseline asset stays immutable | Side-by-side whole-surface render, including header, sidebar and profile; reject an unsolicited new layout or exploratory CSS inheritance |
+| D04, D05; later Cooper upload | Cooper/Geist roles in baseline/tokens; readable tracking; no external headings-only ban | Verify actual loaded faces and long/wrapped text; inspect permitted serif in brief/action contexts |
+| D06, D07, D17, D22 | One navigation sidebar; Home time context; Calendar week/month with easy requested suggestions | Check every navigation destination and collapsed state; ensure suggested blocks require request and acceptance |
+| D08, D09, D18 | Shared evidence pattern and distinct verified/student-reported/knowledge states | Open a reading, return, regenerate text and Undo a confirmation: no false reading completion or mastery, correct source identity remains |
+| D10, D12 | Optional right action and separately operable confirmation in component contracts | Mixed short/long/no-action passages; compare combined footprint without fusing review and handled handlers |
+| D11, D13; refined palette references | Compact flat work rows, visible deadlines, controlled vibrant colors and blue action role | Due date visible without hover; no window previews; identity color does not change when reordered |
+| D14; Atlassian semantic roles | Repeated type/material/ink/focus values in tokens; distinct status candidates | Trace an actual consumer to its role; reject copied palettes and unnecessary one-use abstraction |
+| D15; Emil / image-to-code methods | Independent scoped review, useful generation, interruptible purposeful motion | Creator and reviewer inspect actual output; rapid reversal/reduced motion; no judge score or generated screenshot substituted for a working journey |
+| D19; Canvas reference | Preferred one-card/course overview and coherent nested navigation | Many/long/empty/stale courses, active/focus states and exact return position; reject a different dropdown visual language |
+| D20; briefing scenario | Useful time-aware synthesis with factual inputs | Before/near/during lecture changes useful action without inventing reading association, completion or preferences |
+| GOV.UK contribution evidence; user's portability requirement | Surface maturity map and scoped contribution rule | A new framework/page must demonstrate its actual journey; do not mark all surfaces validated because Home looks right |
+| Carbon component documentation; user's interaction-depth example | Selection, states, useful destination, return and recovery in each recipe | Back restores semantic place/focus/draft; removed source and partial launch recover without opening a wrong resource |
+
+When feedback invalidates a rule, preserve its quote/scope, name what supersedes it, change the affected contract and this observation, then inspect the actual output. Do not append an instruction to a distant memory file and call the problem fixed. A local preference is not automatically a universal ban.
