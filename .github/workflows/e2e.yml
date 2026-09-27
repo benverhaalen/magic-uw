@@ -1,0 +1,41 @@
+name: End-to-end (Tier 1, fake clients)
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  e2e:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.29.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Tier 1 (Linux, virtual display)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a pnpm test:e2e
+        env:
+          MAGIC_E2E_ARTIFACTS: ${{ runner.temp }}/e2e-artifacts
+      - name: Tier 1 (Windows)
+        if: runner.os == 'Windows'
+        run: pnpm test:e2e
+        env:
+          MAGIC_E2E_ARTIFACTS: ${{ runner.temp }}/e2e-artifacts
+      - name: Traces, videos and client call logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-${{ matrix.os }}
+          path: ${{ runner.temp }}/e2e-artifacts
+          retention-days: 7
