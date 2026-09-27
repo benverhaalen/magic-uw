@@ -223,7 +223,7 @@ export function formulaFacts(text: string): Fact[] {
 
 const coversPhrase =
   /\b(?:covers?|covering|will cover|material from|topics? (?:on|for) (?:the )?(?:exam|midterm|quiz|final))\b[^.\n]{0,160}?\b(?:chapters?|ch\.|sections?|lectures?|weeks?|modules?|units?|topics?)\b[^.\n]{0,80}/gi;
-const assessmentName = /\b(midterm|exam|final exam|quiz|test)\s*#?\s*(\d{1,2})?\b/i;
+const assessmentName = /\b(midterm|exam|final exam|quiz|test)(?:\s*#?\s*(\d{1,2}))?\b/i;
 
 /** The course's assessments: assignment and quiz resources whose role is exam. */
 export function assessmentsOf(index: CourseIndex, roleOf: (r: Res) => Role | undefined): Res[] {

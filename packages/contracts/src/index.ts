@@ -9,6 +9,7 @@ export * from "./planning";
 export * from "./course-intelligence";
 // owner: T05b. The data builder's course core (schema v5) replaces the placeholder module.
 export * from "./course-core";
+import type { GraphQuery, GraphResult } from "./course-core"; // owner: pipeline
 import type {
   CourseIntelligence,
   CourseIntelligenceView,
@@ -1613,6 +1614,8 @@ export interface AppBridge {
   openLink?(url: string): Promise<void>;
   /** owner: T15. A scoped query (O1); reads only, never a command. */
   query?(request: QueryRequest): Promise<QueryResult>;
+  /** owner: pipeline. Graph reads: an assignment's references, the agenda, a course's graph and coverage. */
+  graph?<Q extends GraphQuery>(request: Q): Promise<GraphResult<Q>>;
   importFile(): Promise<CommandResult | null>;
   signInUW?(service?: "canvas" | "gitlab" | "enroll" | "myuw"): Promise<void>;
   syncPlanning?(): Promise<CommandResult>;

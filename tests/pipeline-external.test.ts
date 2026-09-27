@@ -48,7 +48,7 @@ test("external links: one compact record per course and URL, first and last seen
     const graph = courseGraph(store, course);
     assert.ok(graph.coverage.unresolvedLinks.some((l) => l.target.includes("/files/5999")));
     assert.equal(graph.references.externalRecords, refs.length);
-    assert.ok(graph.modules.length === 2 && graph.modules[0]!.items.length > 0);
+    assert.ok(graph.modules.length === 3 && graph.modules[0]!.items.length > 0);
 
     // Purge clears every new row.
     store.purge();

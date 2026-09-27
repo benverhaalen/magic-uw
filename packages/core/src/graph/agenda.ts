@@ -10,36 +10,12 @@
  */
 import { OUTLOOK_CALENDAR_COURSE_ID, type Resource, type SourceHealth } from "@magic/contracts";
 import { courseInclusion } from "../access";
+import type { Agenda, AgendaEntry, AgendaGroup } from "../../../contracts/src/course-core";
 import type { PipelineStore } from "./course-index";
-import { references, type Reference } from "./references";
+import { references } from "./references";
 
-export type AgendaGroup = "overdue" | "today" | "week" | "later";
-export interface AgendaEntry {
-  key: string;
-  kind: "assignment" | "quiz" | "exam" | "event" | "class";
-  title: string;
-  accountScope: string;
-  courseId: string;
-  courseName: string;
-  /** ISO instant; an all-day item is placed at its local midnight. */
-  at: string;
-  allDay: boolean;
-  dateKind: "due" | "closes" | "starts";
-  group: AgendaGroup;
-  /** The source scope the date came from (the most authoritative copy with a date). */
-  authority: string;
-  resourceIds: string[];
-  submitted: boolean | null;
-  references: Reference[];
-}
-export interface Agenda {
-  date: string;
-  tz: string;
-  from: string;
-  to: string;
-  entries: AgendaEntry[];
-  groups: Record<AgendaGroup, AgendaEntry[]>;
-}
+export type { Agenda, AgendaEntry, AgendaGroup };
+
 export interface AgendaInput {
   date: string;
   tz: string;

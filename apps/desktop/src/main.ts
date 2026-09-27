@@ -55,6 +55,7 @@ import {
   planningCaptureSchema,
   localQuestionSchema,
   queryRequestSchema, // owner: T15
+  graphQuerySchema, // owner: pipeline
   type CommandResult,
 } from "@magic/contracts";
 const headless = process.env.MAGIC_HEADLESS === "1";
@@ -892,6 +893,23 @@ app
       });
     });
     // end owner: T15
+    // owner: pipeline. Graph reads (references, agenda, a course's graph): sender-checked, parsed
+    // here and again in the worker, answered on the same response channel as queries.
+    ipcMain.handle("magic:graph", async (event, request) => {
+      validateSender(event);
+      const parsed = graphQuerySchema.parse(request);
+      await ready;
+      const id = randomUUID();
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          calls.delete(id);
+          reject(new Error("Local workspace request timed out."));
+        }, 30000);
+        calls.set(id, { resolve, reject, timer });
+        worker.postMessage({ kind: "graph", id, query: parsed });
+      });
+    });
+    // end owner: pipeline
     // owner: T05b. Link cards (D40): the default browser, https only.
     ipcMain.handle("magic:open-link", async (event, url) => {
       validateSender(event);

@@ -442,7 +442,8 @@ export const lifeItemSchema = z
 export type LifeItem = z.infer<typeof lifeItemSchema>;
 
 // ---------- The course graph (v9, the material pipeline) ----------
-export const referenceStrengths = ["direct", "named", "module", "syllabus"] as const;
+/** `covers`: a material whose covers fact names this assessment (quoted facts rank above structural ones). */
+export const referenceStrengths = ["direct", "named", "module", "syllabus", "covers"] as const;
 export type ReferenceStrength = (typeof referenceStrengths)[number];
 export const referenceKinds = [
   "page", "file", "assignment", "quiz", "discussion", "module", "syllabus", "announcement", "external", "unresolved",
@@ -567,6 +568,94 @@ export interface GraphStore {
   /** Upserts by (course, url): first seen is kept, last seen and title move forward. */
   putExternalRef(value: ExternalRefInput, at: string): string;
   externalRefs(course: CourseRef): ExternalRef[];
+  /** Current `covers` facts whose value is one of these assessment resource IDs (live materials only). */
+  coveringFacts(assessmentIds: readonly string[]): MaterialFact[];
   /** Per live resource of the course: passage, current fact and current reference counts. */
   graphCounts(course: CourseRef): GraphCounts[];
 }
+
+// ---------- Graph queries (the material pipeline): reads only, over IPC as `magic:graph` ----------
+export interface Reference {
+  resourceId: string | null;
+  externalUrl: string | null;
+  kind: ReferenceKind;
+  title: string;
+  reason: string;
+  strength: ReferenceStrength;
+  weight: number;
+}
+export type AgendaGroup = "overdue" | "today" | "week" | "later";
+export interface AgendaEntry {
+  key: string;
+  kind: "assignment" | "quiz" | "exam" | "event" | "class";
+  title: string;
+  accountScope: string;
+  courseId: string;
+  courseName: string;
+  /** ISO instant; an all-day item is placed at its local midnight. */
+  at: string;
+  allDay: boolean;
+  dateKind: "due" | "closes" | "starts";
+  group: AgendaGroup;
+  /** The source scope the date came from (the most authoritative copy with a date). */
+  authority: string;
+  resourceIds: string[];
+  submitted: boolean | null;
+  references: Reference[];
+}
+export interface Agenda {
+  date: string;
+  tz: string;
+  from: string;
+  to: string;
+  entries: AgendaEntry[];
+  groups: Record<AgendaGroup, AgendaEntry[]>;
+}
+export interface CourseGraph {
+  course: CourseRef;
+  modules: {
+    id: string;
+    title: string;
+    position: number;
+    items: { itemId: string; title: string; type: string; resourceId: string | null; externalUrl: string | null; passages: number; role: string | null }[];
+  }[];
+  resources: { total: number; materials: number; withText: number; passages: number; byType: Record<string, number> };
+  assessments: { resourceId: string; title: string; type: string; dueAt: string | null; role: string | null }[];
+  references: { direct: number; named: number; external: number; unresolved: number; externalRecords: number };
+  coverage: {
+    /** Materials with text but no passage of their current version. */
+    withoutPassages: string[];
+    /** Materials without a role fact (not yet analysed, or left for judgment). */
+    withoutRole: string[];
+    needsJudgment: string[];
+    assignmentsWithoutReferences: string[];
+    unresolvedLinks: { fromResourceId: string; target: string; kind: string }[];
+  };
+}
+export const graphQuerySchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("references"), assignmentId: idText }).strict(),
+  z
+    .object({
+      type: z.literal("agenda"),
+      date: z.iso.date(),
+      tz: z.string().min(1).max(100).refine((tz) => {
+        try {
+          new Intl.DateTimeFormat("en-US", { timeZone: tz });
+          return true;
+        } catch {
+          return false;
+        }
+      }, "Unknown time zone."),
+      days: z.number().int().min(1).max(60).optional(),
+    })
+    .strict(),
+  z.object({ type: z.literal("courseGraph"), accountScope: idText, courseId: idText }).strict(),
+]);
+export type GraphQuery = z.infer<typeof graphQuerySchema>;
+export type GraphResult<Q extends GraphQuery = GraphQuery> = Q extends { type: "references" }
+  ? Reference[]
+  : Q extends { type: "agenda" }
+    ? Agenda
+    : Q extends { type: "courseGraph" }
+      ? CourseGraph
+      : never;

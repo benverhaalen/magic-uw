@@ -32,7 +32,7 @@ test("references: direct links always kept, module material only, other modules 
   const syllabus = refs.find((r) => r.strength === "syllabus");
   assert.match(syllabus!.reason, /Homework 1 is due/);
   // Ordered by strength, and each target once.
-  const rank = { direct: 0, named: 1, module: 2, syllabus: 3 };
+  const rank = { direct: 0, named: 1, module: 2, syllabus: 3, covers: 4 };
   assert.deepEqual(refs.map((r) => rank[r.strength]), [...refs.map((r) => rank[r.strength])].sort((a, b) => a - b));
   assert.equal(new Set(refs.map((r) => r.resourceId ?? r.externalUrl)).size, refs.length);
 

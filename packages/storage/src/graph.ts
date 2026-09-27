@@ -12,6 +12,7 @@ import {
   type ExternalRef,
   type GraphCounts,
   type GraphStore,
+  type MaterialFact,
   type ResourceRef,
   type WriteResult,
 } from "../../contracts/src/course-core";
@@ -169,6 +170,29 @@ export function graphRepository(
           foundInResourceId: str(r.found_in_resource_id),
           firstSeen: String(r.first_seen),
           lastSeen: String(r.last_seen),
+        }),
+      );
+    },
+    coveringFacts(assessmentIds) {
+      if (!assessmentIds.length) return [];
+      return (
+        prepare(
+          `SELECT f.* FROM material_facts f JOIN resources r ON r.id = f.resource_id
+           WHERE f.kind = 'covers' AND f.value IN (SELECT value FROM json_each(?))
+             AND r.deleted = 0 AND r.text_hash = f.text_hash ORDER BY f.resource_id, f.start`,
+        ).all(JSON.stringify(assessmentIds)) as Row[]
+      ).map(
+        (r): MaterialFact => ({
+          id: Number(r.id),
+          resourceId: String(r.resource_id),
+          textHash: String(r.text_hash),
+          kind: "covers",
+          start: Number(r.start),
+          end: Number(r.end),
+          value: String(r.value),
+          analyzerVersion: String(r.analyzer_version),
+          basis: (r.basis ?? "text") as MaterialFact["basis"],
+          quote: str(r.quote),
         }),
       );
     },

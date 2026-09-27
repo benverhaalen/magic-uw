@@ -9,7 +9,6 @@ import { randomUUID } from "node:crypto";
 import { createLocalService } from "./local-service";
 import { createIngestion } from "./ingestion";
 import { createLearningRouter, type StudyContext } from "../../../packages/learning/src/router";
-import { createCurrentReferences } from "../../../packages/learning/src/analytics"; // owner: analytics
 import { createStudyContextResolver } from "./learning-context";
 import { dirname } from "node:path";
 import {
@@ -20,10 +19,10 @@ import { createWorkerClients } from "./worker-clients"; // owner: T06
 import { pullPublicSubjects, pullPublicTerms } from "../../../packages/connectors/src/planning-public";
 import type { UwPlanningSyncResult } from "../../../packages/connectors/src/uw-planning-sync";
 // owner: pipeline
-import { z } from "zod";
 import { pipelineJobRegistry } from "../../../packages/core/src/jobs/default-registry";
 import { createPipelineLoop } from "../../../packages/core/src/jobs/pipeline";
-import { agenda, courseGraph, references } from "../../../packages/core/src/graph/index";
+import { agenda, courseGraph, createPipelineReferences, references } from "../../../packages/core/src/graph/index";
+import { graphQuerySchema } from "../../../packages/contracts/src/course-core";
 // end owner: pipeline
 const port = process.parentPort;
 if (!port) throw new Error("Workspace must be started by the desktop app.");
@@ -70,9 +69,10 @@ const core = createCore(store, {
   seams: { learning: createLearningRouter({
     store: store.learning,
     resolveContext: (resourceId): StudyContext | null => resolveStudyContext(resourceId),
-    // owner: analytics. One references port per analytics request, over the coursework store; the
-    // material pipeline's adapter replaces this factory when it lands.
-    analyticsReferences: () => createCurrentReferences(store),
+    // owner: analytics. One references port per analytics request, over the coursework store.
+    // owner: pipeline: the material pipeline's adapter (it reuses analytics' adapter for exam dates
+    // and course-map assessment rows).
+    analyticsReferences: () => createPipelineReferences(store),
     // end owner: analytics
   }), pack: generation.pack /* owner: generation */ },
   ...(process.env.MAGIC_GATEWAY_URL
@@ -200,16 +200,6 @@ const pipelineTimer = setInterval(() => pipeline.wake(), 60_000);
 pipelineTimer.unref();
 const pipelineBackfill = setTimeout(() => void pipeline.backfill().then(() => pipeline.wake()), 20_000);
 pipelineBackfill.unref();
-const graphQuerySchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("references"), assignmentId: z.string().min(1).max(500) }).strict(),
-  z.object({
-    type: z.literal("agenda"),
-    date: z.iso.date(),
-    tz: z.string().min(1).max(100),
-    days: z.number().int().min(1).max(60).optional(),
-  }).strict(),
-  z.object({ type: z.literal("courseGraph"), accountScope: z.string().min(1).max(500), courseId: z.string().min(1).max(500) }).strict(),
-]);
 // end owner: pipeline
 const planningPublicClient = publicClients.planning; // owner: T06
 let planningAccountScope = /^uw-session:[a-f0-9-]{36}$/.test(process.env.MAGIC_PLANNING_SCOPE ?? "")

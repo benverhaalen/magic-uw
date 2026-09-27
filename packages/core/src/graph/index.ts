@@ -15,5 +15,6 @@ export {
   type PipelineStore,
   type Res,
 } from "./course-index";
-export { canonicalAssessment, references, strengthWeight, type Reference } from "./references";
+export { canonicalAssessment, references, strengthWeight, STRUCTURE_COVERS_WEIGHT, type Reference } from "./references";
+export { createPipelineReferences } from "./references-port";
 export { compileCourse, hasLinks, isMaterial, linkResource, type WriteReport } from "./write";

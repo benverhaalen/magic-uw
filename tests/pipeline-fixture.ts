@@ -49,6 +49,11 @@ export function batches(): CaptureBatch[] {
     batch("modules", [
       item({ externalId: "m1", kind: "material", title: "Week 1: Vectors", url: `${base}/modules/m1`, module: { id: "m1", position: 1 } }),
       item({ externalId: "m2", kind: "material", title: "Week 2: Matrices", url: `${base}/modules/m2`, module: { id: "m2", position: 2 } }),
+      item({ externalId: "m3", kind: "material", title: "Week 3: Review", url: `${base}/modules/m3`, module: { id: "m3", position: 3 } }),
+    ]),
+    batch("module-items:m3", [
+      moduleItem("921", "Assignment", "Midterm Exam", 1, { contentId: "1003" }),
+      moduleItem("922", "Page", "Practice problems", 2, { pageUrl: "practice-problems" }),
     ]),
     batch("module-items:m1", [
       moduleItem("901", "SubHeader", "This week", 0),
@@ -67,6 +72,8 @@ export function batches(): CaptureBatch[] {
     batch("page:vectors", [item({ externalId: "p1", kind: "material", title: "Vectors notes", url: `${base}/pages/vectors-notes`, text: VECTORS_TEXT })]),
     batch("page:office", [item({ externalId: "p2", kind: "material", title: "Office hours and staff", url: `${base}/pages/office-hours`, text: "Office hours are Monday 2-3pm in the library." })]),
     batch("page:matrix", [item({ externalId: "p3", kind: "material", title: "Matrix notes", url: `${base}/pages/matrix-notes`, text: "Matrix notes\nA matrix is a rectangular array of numbers." })]),
+    batch("page:practice", [item({ externalId: "p5", kind: "material", title: "Practice problems", url: `${base}/pages/practice-problems`, text: "Practice problems\nInvert each matrix." })]),
+    batch("page:review", [item({ externalId: "p6", kind: "material", title: "Midterm review sheet", url: `${base}/pages/midterm-review-sheet`, text: "Midterm review sheet\nEigenvalues and determinants." })]),
     batch("page:unlisted", [item({ externalId: "p4", kind: "material", title: "Determinant tricks", url: `${base}/pages/determinant-tricks`, text: "Determinant tricks\nExpand along a row with many zeros." })]),
     batch("folders", [
       item({ externalId: "fold1", kind: "material", title: "Worksheets", url: `${base}/files/folder/worksheets` }),

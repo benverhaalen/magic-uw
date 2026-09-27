@@ -4,21 +4,15 @@
  * or page named in the body is always kept. Module siblings only when they're course material (not
  * admin, not another task). Nothing from another module unless the body links or names it.
  */
-import type { ReferenceKind, ReferenceStrength } from "../../../contracts/src/course-core";
+import type { Reference, ReferenceStrength } from "../../../contracts/src/course-core";
 import { analyzeLinks, classifyRole } from "./analyze";
 import { courseIndex, courseOfSource, type CourseIndex, type PipelineStore, type Res } from "./course-index";
 import { hasLinks } from "./write";
 
-export interface Reference {
-  resourceId: string | null;
-  externalUrl: string | null;
-  kind: ReferenceKind;
-  title: string;
-  reason: string;
-  strength: ReferenceStrength;
-  weight: number;
-}
-export const strengthWeight: Record<ReferenceStrength, number> = { direct: 1, named: 0.8, module: 0.5, syllabus: 0.4 };
+export type { Reference };
+export const strengthWeight: Record<ReferenceStrength, number> = { direct: 1, named: 0.8, module: 0.5, syllabus: 0.4, covers: 0.45 };
+/** A covers fact read from structure (the same module), not quoted from a title or text: ranked last. */
+export const STRUCTURE_COVERS_WEIGHT = 0.3;
 const taskTypes = new Set(["Assignment", "Quiz", "Discussion", "SubHeader"]);
 
 /** The assignment behind an ID: the canonical copy, whichever captured copy (or module item) was named. */
@@ -66,11 +60,11 @@ export function references(store: PipelineStore, assignmentId: string): Referenc
   const out: Reference[] = [];
   const seen = new Set<string>();
   const externals = new Map(store.externalRefs(course).map((e) => [e.id, e]));
-  const add = (ref: Omit<Reference, "weight">) => {
+  const add = (ref: Omit<Reference, "weight">, weight = strengthWeight[ref.strength]) => {
     const key = ref.resourceId ?? ref.externalUrl ?? "";
     if (!key || seen.has(key) || (ref.resourceId && own.has(ref.resourceId))) return;
     seen.add(key);
-    out.push({ ...ref, weight: strengthWeight[ref.strength] });
+    out.push({ ...ref, weight });
   };
   const moduleMaterial = (moduleId: string, why: string) => {
     const m = index.modules.get(moduleId);
@@ -132,6 +126,31 @@ export function references(store: PipelineStore, assignmentId: string): Referenc
       });
     }
   }
-  const rank: Record<ReferenceStrength, number> = { direct: 0, named: 1, module: 2, syllabus: 3 };
-  return out.map((r, i) => ({ r, i })).sort((x, y) => rank[x.r.strength] - rank[y.r.strength] || x.i - y.i).map((x) => x.r);
+  // 5. Materials whose covers fact names this assessment: quoted (title or text) first, structural last.
+  const covering = store
+    .coveringFacts([...own])
+    .filter((f) => index.resources.has(f.resourceId))
+    .sort((x, y) => Number(x.basis === "structure") - Number(y.basis === "structure"));
+  for (const f of covering) {
+    const target = index.resources.get(f.resourceId)!;
+    const quoted = f.basis !== "structure";
+    add(
+      {
+        resourceId: target.id,
+        externalUrl: null,
+        kind: index.contentType(target) ?? "page",
+        title: target.title,
+        reason: quoted
+          ? `covers it: "${(f.quote ?? "").slice(0, 120)}"`
+          : `covers it by module, "${(f.quote ?? "").slice(0, 120)}" (structure, not quoted)`,
+        strength: "covers",
+      },
+      quoted ? strengthWeight.covers : STRUCTURE_COVERS_WEIGHT,
+    );
+  }
+  const rank: Record<ReferenceStrength, number> = { direct: 0, named: 1, module: 2, syllabus: 3, covers: 4 };
+  return out
+    .map((r, i) => ({ r, i }))
+    .sort((x, y) => rank[x.r.strength] - rank[y.r.strength] || y.r.weight - x.r.weight || x.i - y.i)
+    .map((x) => x.r);
 }

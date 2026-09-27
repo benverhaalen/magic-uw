@@ -2,32 +2,12 @@
  * `courseGraph(course)`: modules → items → resources → passage counts, the course's assessments,
  * the references between them, and a coverage report of what the pipeline could not connect.
  */
-import type { CourseRef } from "../../../contracts/src/course-core";
+import type { CourseGraph, CourseRef } from "../../../contracts/src/course-core";
 import { courseIndex, type PipelineStore } from "./course-index";
 import { references } from "./references";
 import { hasLinks, isMaterial } from "./write";
 
-export interface CourseGraph {
-  course: CourseRef;
-  modules: {
-    id: string;
-    title: string;
-    position: number;
-    items: { itemId: string; title: string; type: string; resourceId: string | null; externalUrl: string | null; passages: number; role: string | null }[];
-  }[];
-  resources: { total: number; materials: number; withText: number; passages: number; byType: Record<string, number> };
-  assessments: { resourceId: string; title: string; type: string; dueAt: string | null; role: string | null }[];
-  references: { direct: number; named: number; external: number; unresolved: number; externalRecords: number };
-  coverage: {
-    /** Materials with text but no passage of their current version. */
-    withoutPassages: string[];
-    /** Materials without a role fact (not yet analysed, or left for judgment). */
-    withoutRole: string[];
-    needsJudgment: string[];
-    assignmentsWithoutReferences: string[];
-    unresolvedLinks: { fromResourceId: string; target: string; kind: string }[];
-  };
-}
+export type { CourseGraph };
 
 export function courseGraph(store: PipelineStore, course: CourseRef): CourseGraph {
   const index = courseIndex(store, course);
