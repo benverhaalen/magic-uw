@@ -17,6 +17,7 @@ import { LocalAiPanel } from "./LocalAiPanel";
 import { LearningPanel } from "./LearningPanel";
 import { ProviderGuidance } from "./ProviderGuidance";
 import { IngestionControls, McpConnections } from "./IngestionControls";
+import { WorkspaceTools } from "./backend"; // owner: ui-wiring: backend wiring previews
 // owner: T06
 import { ConsentSetup, hasUwConsent, missingConsents } from "./consent/ConsentSetup";
 // owner: T81
@@ -397,7 +398,7 @@ export function App() {
     );
   // end owner: T81
   return (
-    <DesktopShell view={view} title={view === "resource" ? selected?.title ?? "Saved item" : view === "courses" && coursePage ? coursePage.code || coursePage.courseName : ({today:"Home", courses:"Courses", myuw:"My UW", calendar:"Calendar", sources:"Connected sources", privacy:"Data & AI", consent:"Agreements"} as Partial<Record<View,string>>)[view] ?? "Workspace"}
+    <DesktopShell view={view} title={view === "resource" ? selected?.title ?? "Saved item" : view === "courses" && coursePage ? coursePage.code || coursePage.courseName : ({today:"Home", courses:"Courses", myuw:"My UW", calendar:"Calendar", sources:"Connected sources", privacy:"Data & AI", consent:"Agreements", tools:"Workspace tools"} as Partial<Record<View,string>>)[view] ?? "Workspace"}
       courses={courseCards} selectedCourseKey={navigation.courseKey} sample={snapshot?.fixtureMode ?? false} busy={busy && signInStage === "idle"}
       canBack={navigation.canBack} canForward={navigation.canForward} onBack={navigation.back} onForward={navigation.forward}
       onNavigate={setView} onCourse={key => navigation.navigate("courses", null, key)}
@@ -518,6 +519,8 @@ export function App() {
           <InsightsSlot snapshot={snapshot} />
         ) : view === "settings" ? (
           <SettingsSlot snapshot={snapshot} />
+        ) : /* owner: ui-wiring */ view === "tools" ? (
+          <WorkspaceTools snapshot={snapshot} />
         ) : /* end owner: T05b */ view === "sources" ? (
           <SourcesPage snapshot={snapshot} run={run} busy={busy}
             onSignIn={signIn} onSync={sync} onSignOut={signOut} onImport={importFile}

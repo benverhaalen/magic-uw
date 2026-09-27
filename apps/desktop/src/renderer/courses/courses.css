@@ -532,7 +532,7 @@
 
 .desktop-courses .page-heading { padding: 0 0 20px; }
 .desktop-courses h1 { font:500 26px/1.35 var(--magic-font-editorial); }
-.desktop-course-list button.active { background: var(--magic-fill-shell-selected); }
+.desktop-course-list button.active { background: var(--magic-accent-frame-selected); }
 @media(max-width:650px) { .course-fact { grid-template-columns: 1fr; gap: 6px; } .course-next-row { flex-wrap: wrap; } .course-next-due { text-align: left; } }
 
 /* Disclosure summaries use the shared Lucide chevron instead of the platform triangle. */

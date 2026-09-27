@@ -1,3 +1,45 @@
+@import "../../../../docs/design/tokens.css";
+
+/* Accent frame: Sean's interim choice (2026-09-27), pending Ben's design system (DESIGN.md/tokens.css).
+   The chosen accent colours the frame outside the white content; "warm" is today's shell. Inside the
+   content, tokens.css's [data-accent] blocks recolour only command, focus and selection roles.
+   Text on the frame (onboarding wordmark, preview flag, the desktop chrome and sidebar) uses the
+   matching identity ink so it stays readable on the light accents. Every value is a token with a
+   light-dark() pair in tokens.css, so the frame follows dark mode; hover and selected rows on a
+   light accent mix toward the workspace surface (away from the ink in both themes), so they only
+   raise contrast: 5.15:1 or more for rose, blue and coral in light and dark (measured 2026-09-27). */
+:root {
+  --magic-accent-frame: var(--magic-fill-shell);
+  --magic-accent-frame-ink: var(--magic-ink-on-shell);
+  --magic-accent-frame-chip: var(--magic-fill-shell-selected);
+  --magic-accent-frame-hover: var(--magic-fill-shell-hover);
+  --magic-accent-frame-selected: var(--magic-fill-shell-selected);
+  --magic-accent-frame-focus: var(--magic-focus-on-shell);
+}
+:root[data-accent="rose"],
+:root[data-accent="blue"],
+:root[data-accent="coral"] {
+  --magic-accent-frame-chip: var(--magic-surface-workspace);
+  --magic-accent-frame-hover: color-mix(in srgb, var(--magic-surface-workspace) 28%, transparent);
+  --magic-accent-frame-selected: color-mix(in srgb, var(--magic-surface-workspace) 50%, transparent);
+  --magic-accent-frame-focus: var(--magic-accent-frame-ink);
+}
+:root[data-accent="rose"] {
+  --magic-accent-frame: var(--magic-fill-identity-rose);
+  --magic-accent-frame-ink: var(--magic-ink-identity-rose);
+}
+:root[data-accent="blue"] {
+  --magic-accent-frame: var(--magic-fill-identity-blue);
+  --magic-accent-frame-ink: var(--magic-ink-identity-blue);
+}
+:root[data-accent="coral"] {
+  --magic-accent-frame: var(--magic-fill-identity-coral);
+  --magic-accent-frame-ink: var(--magic-ink-identity-coral);
+}
+:root:has(.app-shell) {
+  height: 100%;
+  background: var(--magic-accent-frame);
+}
 :root {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: var(--magic-ink);
@@ -86,9 +128,13 @@ a {
   margin-bottom: 12px;
 }
 .app-shell {
-  min-height: 100vh;
+  position: fixed;
+  inset: 10px;
+  overflow: auto;
   display: grid;
   grid-template-columns: 212px minmax(0, 1fr);
+  background: var(--magic-surface-workspace);
+  border-radius: var(--magic-radius-workspace);
 }
 .sidebar {
   background: var(--magic-surface-quiet);
@@ -97,8 +143,9 @@ a {
   display: flex;
   flex-direction: column;
   position: fixed;
-  inset: 0 auto 0 0;
+  inset: 10px auto 10px 10px;
   width: 212px;
+  border-radius: var(--magic-radius-workspace) 0 0 var(--magic-radius-workspace);
 }
 .brand {
   display: flex;
@@ -384,7 +431,7 @@ a {
 .today-layout {
   display: grid;
   grid-template-columns: minmax(300px, 1fr) minmax(320px, 0.9fr);
-  min-height: calc(100vh - 184px);
+  min-height: calc(100vh - 204px); /* 20px: the accent frame insets .app-shell by 10px each side */
   border-top: 1px solid var(--border);
 }
 .resource-panel {
@@ -1246,7 +1293,7 @@ select {
     position: sticky;
     top: 0;
     align-self: start;
-    height: calc(100vh - 188px);
+    height: calc(100vh - 208px);
   }
 }
 @media (min-width: 1450px) {

@@ -78,7 +78,9 @@ export function sqlLedgerStore(store: Pick<CourseCoreStore, "addLedgerEntry" | "
         pack: r.pack,
         packVersion: r.packVersion,
         tier: hit ? "cache" : e.tier,
-        model: hit ? "cache" : e.model,
+        // owner: client-health. A refused or failed call has no model; the store requires one, and
+        // an empty value threw here, hiding the typed failure (not signed in, limit) behind a ZodError.
+        model: hit ? "cache" : e.model || "none",
         tokensIn: r.usage.in,
         tokensCached: r.usage.cached,
         tokensOut: r.usage.out,

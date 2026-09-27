@@ -111,6 +111,8 @@ test("codex one-shot: exact spec E2 argv, prefix leads stdin, strong tier adds e
   const schemaPath = first.argv[first.argv.indexOf("--output-schema") + 1];
   assert.deepEqual(first.argv, [
     "exec", "-", "--json", "--output-schema", schemaPath, "--ephemeral", "-s", "read-only", "--ignore-user-config",
+    // Codex refuses a non-git folder without it (verified on 0.156.1); the app's folders never are one.
+    "--skip-git-repo-check",
   ]);
   assert.equal(JSON.parse(await readFile(schemaPath, "utf8")).additionalProperties, false);
   assert.ok(first.stdin.startsWith(SYSTEM));

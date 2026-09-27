@@ -157,6 +157,14 @@ export function createCore(store: Store, options: CoreOptions) {
     active: AbortController | undefined,
     working: Promise<void> | undefined,
     closed = false;
+  const notifications = createNotifications(store, {
+    now,
+    timeZone:
+      options.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+    gateway: options.gateway,
+    generation: () => generation,
+    closed: () => closed,
+  });
   // owner: drain. One drain for every job kind. The caller's kinds plus Jev's, which keeps its
   // egress checks through core's manifest and receipts; purge, privacy changes and close cancel it.
   let cancel = new AbortController();
@@ -179,14 +187,6 @@ export function createCore(store: Store, options: CoreOptions) {
     now,
   });
   // end owner: drain
-  const notifications = createNotifications(store, {
-    now,
-    timeZone:
-      options.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
-    gateway: options.gateway,
-    generation: () => generation,
-    closed: () => closed,
-  });
   function profileFor(r: Resource): CourseIntelligence | undefined {
     const source = store.sources().find((s) => s.id === r.sourceId);
     return source

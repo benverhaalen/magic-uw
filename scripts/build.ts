@@ -1,7 +1,8 @@
 import { build } from "esbuild";
 import { build as viteBuild } from "vite";
-import { join } from "node:path";
-import { mkdir, copyFile, readFile, readdir } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { execFileSync } from "node:child_process";
+import { copyFile, readFile, readdir } from "node:fs/promises";
 const fonts = "packages/ui/assets/fonts";
 const lora = await readFile(join(fonts, "Lora-Medium.ttf"));
 await build({
@@ -54,13 +55,7 @@ const geistFiles = (await readdir(rendererAssets)).filter(name => /^Geist-Variab
 if (geistFiles.length !== 1 || !(await readFile(join(fonts, "Geist-Variable.woff2"))).equals(await readFile(join(rendererAssets, geistFiles[0]))))
   throw new Error("Emitted desktop Geist font differs from the supplied file.");
 await copyFile(join(fonts, "Geist-OFL.txt"), join(rendererAssets, "Geist-OFL.txt"));
-// The static website references fonts/Lora-Medium.ttf relative to index.html.
-await mkdir("apps/web/dist/fonts", { recursive: true });
-await copyFile("apps/web/index.html", "apps/web/dist/index.html");
-for (const name of ["Lora-Medium.ttf", "Lora-OFL.txt"])
-  await copyFile(join(fonts, name), join("apps/web/dist/fonts", name));
-if (!(await readFile("apps/web/dist/index.html", "utf8")).includes('url("fonts/Lora-Medium.ttf")'))
-  throw new Error("Website no longer references the copied Lora font path.");
+execFileSync(process.execPath, ["scripts/build-web.mjs"], { stdio: "inherit" });
 console.log(
   "Built desktop main, isolated preload, local worker, renderer, and informational website.",
 );

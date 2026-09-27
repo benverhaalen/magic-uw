@@ -130,7 +130,7 @@ test('rendered page: row fixes in place, disconnect versus delete, no authored e
   const html = renderToStaticMarkup(React.createElement(SourcesPage, {
     snapshot, busy: false, run: async () => undefined, onSignIn: noop, onSync: async () => undefined, onSignOut: noop, onImport: noop, onSample: noop,
     onOpenMyUw: noop, onOpenPrivacy: noop, uwConsented: true, now: () => NOW,
-    bridge: { signInUW: async () => {}, syncCanvas: async () => ({}) as never, signOutUW: async () => {}, setOutlookCalendar: async () => ({ connected: false }), outlookCalendarStatus: async () => ({ connected: false }) },
+    bridge: { signInUW: async () => ({ status: 'cancelled' as const, service: 'canvas' as const }), syncCanvas: async () => ({}) as never, signOutUW: async () => {}, setOutlookCalendar: async () => ({ connected: false }), outlookCalendarStatus: async () => ({ connected: false }) },
   }));
   assert.match(html, /Sign in again/);
   assert.match(html, /data-connection="canvas"[^]*?<details[^>]*data-place-disclosure="sources:canvas"[^>]*open=""/); // the connection needing attention opens on a fresh visit
