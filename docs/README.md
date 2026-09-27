@@ -34,6 +34,7 @@ We are entering Applied AI & Automation, DoIT's Badgers Building for Badgers, an
 | [Technical direction](architecture.md)                | Access, connectors, records, deadlines, Jev, models, stack proposals                                     |
 | [Pipeline details](pipeline-details.md)               | Actual endpoints and limits; proposed reconnect, scrubbing, citation checks, and link thresholds         |
 | [Course ingestion](ingestion-upgrade.md)              | Expanded sources, refresh, local materials, privacy, and verified limits                                 |
+| [Course intelligence](course-intelligence.md)          | Versioned course claims, source-bound policy interpretation, optional local extraction, and evidence limits |
 | [Planning integration](planning-upgrade.md)           | My UW adapters, source reconciliation, privacy, live evidence, and remaining work                         |
 | [Implementation status](implementation-status.md)     | Actual capability boundaries, evidence, and the remaining product scope                                  |
 | [Development](development.md)                         | Run the workspace and checks; configure the shared gateway safely                                        |
