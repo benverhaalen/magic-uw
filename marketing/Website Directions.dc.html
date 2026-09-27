@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Young+Serif&family=DM+Sans:wght@400;500;700&family=DM+Mono&family=Fredoka:wght@600&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#e9e5dc;font-family:'DM Sans',sans-serif;color:#1b1d33}a{color:inherit}a:hover{opacity:.8}@keyframes mcDraw{0%,12%{stroke-dashoffset:30}32%,85%{stroke-dashoffset:0}100%{stroke-dashoffset:30}}@keyframes mcFlip{0%,38%{transform:scaleX(1)}48%{transform:scaleX(0)}58%,88%{transform:scaleX(1)}98%{transform:scaleX(0)}100%{transform:scaleX(1)}}@keyframes mcFaceA{0%,47%{opacity:1}48%,97%{opacity:0}98%,100%{opacity:1}}@keyframes mcFaceB{0%,47%{opacity:0}48%,97%{opacity:1}98%,100%{opacity:0}}@keyframes mcBar{0%,100%{transform:scaleY(.3)}50%{transform:scaleY(1)}}@keyframes mcSweep{0%,10%{transform:scaleX(0)}40%,85%{transform:scaleX(1)}100%{transform:scaleX(0)}}@keyframes mcPop{0%,20%{transform:scale(0) rotate(-40deg)}34%{transform:scale(1.25) rotate(0)}44%,85%{transform:scale(1)}100%{transform:scale(0)}}</style>
+</helmet>
+<section data-screen-label="Turn 2" style="padding:64px 64px 0;display:flex;flex-direction:column;gap:40px">
+  <div style="display:flex;flex-direction:column;gap:8px;max-width:900px">
+    <div style="font-family:'DM Mono',monospace;font-size:13px;letter-spacing:.08em;text-transform:uppercase">Turn 2 · Refining <a href="#1c">1c</a></div>
+  </div>
+  <div style="display:flex;gap:48px;align-items:flex-start">
+    <!-- 2a -->
+    <div id="2a" style="display:flex;flex-direction:column;gap:16px;width:1280px;flex-shrink:0">
+      <div style="display:flex;align-items:baseline;gap:14px">
+        <div style="font-family:'DM Mono',monospace;font-size:14px;background:#1b1d33;color:#fff;padding:4px 10px;border-radius:6px">2a</div>
+        <div style="font-size:22px;font-weight:700">Rooms, refined</div>
+        <div style="font-size:16px">1c with shorter Know/Act/Practice blocks, then separate Assignment spaces and Study notebook sections.</div>
+      </div>
+      <div style="background:#fff;color:#1b1d33;border-radius:4px;overflow:hidden;padding:20px;display:flex;flex-direction:column;gap:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 20px">
+          <div style="display:flex;align-items:center;gap:10px"><img src="logo/head-color.svg" alt="" style="height:38px"></img><div style="font-family:Fredoka,sans-serif;font-size:24px;color:#2c55b8">Magic Canvas</div></div>
+          <div style="display:flex;gap:28px;font-size:16px;font-weight:500"><div>How it works</div><div>Pricing</div><div>For devs</div><div>About us</div><div>FAQ</div></div>
+          <div style="background:#2c55b8;color:#fff;padding:12px 22px;border-radius:999px;font-weight:700;font-size:15px">Download</div>
+        </div>
+        <div style="background:#f7c440;border-radius:36px;padding:72px 64px 0;display:grid;grid-template-columns:1.15fr 1fr;gap:24px;overflow:hidden;min-height:560px">
+          <div style="display:flex;flex-direction:column;gap:28px;padding-bottom:72px">
+            <div style="font-family:'Young Serif',serif;font-size:84px;line-height:1.02;letter-spacing:-.015em">Stop managing school. Start learning.</div>
+            <div style="font-size:20px;line-height:1.5;max-width:480px">An AI workspace that already knows your classes and turns your free time into learning that fits the course.</div>
+            <div style="display:flex;gap:12px"><div style="background:#1e2757;color:#fff;padding:18px 30px;border-radius:999px;font-weight:700;font-size:18px">Download for Mac</div><div style="background:#fff;padding:18px 26px;border-radius:999px;font-weight:500;font-size:18px">Watch the film</div></div>
+          </div>
+          <div style="display:flex;align-items:flex-end;justify-content:center"><img src="logo/mark-color.svg" alt="" style="height:500px;margin-bottom:-30px"></img></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px">
+          <div style="background:#2c55b8;color:#fff;border-radius:36px;padding:32px 36px;display:flex;flex-direction:column;gap:14px"><div style="font-family:'Young Serif',serif;font-size:40px">Know</div><div style="font-size:18px;line-height:1.5">Every assignment already has its instructions next to it. Changed dates show what they used to say.</div></div>
+          <div style="background:#e8eefc;border-radius:36px;padding:32px 36px;display:flex;flex-direction:column;gap:14px"><div style="font-family:'Young Serif',serif;font-size:40px;color:#1e2757">Act</div><div style="font-size:18px;line-height:1.5">One click opens the pages, files and editor for the thing you're working on.</div></div>
+          <div style="background:#fdf0c8;border-radius:36px;padding:32px 36px;display:flex;flex-direction:column;gap:14px"><div style="font-family:'Young Serif',serif;font-size:40px;color:#1e2757">Practice</div><div style="font-size:18px;line-height:1.5">Questions in the style of this course, with one gap and one next step at a time.</div></div>
+        </div>
+        <div style="background:#f5f2ea;border-radius:36px;padding:56px 64px;display:grid;grid-template-columns:1fr 1.2fr;gap:48px;align-items:center">
+          <div style="background:#fff;border-radius:24px;padding:24px;display:flex;flex-direction:column;gap:12px;box-shadow:0 20px 40px -20px rgba(30,39,87,.2)">
+            <div style="font-size:13px;font-family:'DM Mono',monospace">TODAY</div>
+            <div style="border:1px solid #e3dccb;border-radius:14px;padding:14px 16px"><div style="font-weight:700">CS 400 · P3 Hash tables</div><div style="font-size:14px">Due tonight · rubric ready</div></div>
+            <div style="border:1px solid #e3dccb;border-radius:14px;padding:14px 16px"><div style="font-weight:700">MATH 234 · Exam Monday</div><div style="font-size:14px">Practice 2 shaky skills</div></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:18px"><div style="font-family:'Young Serif',serif;font-size:52px;line-height:1.05;color:#1e2757">One calm view of your day.</div><div style="font-size:18px;line-height:1.5">Before class: prep. After class: review. Before an exam: practice. One useful action for each item.</div></div>
+        </div>
+        <div style="background:#e8eefc;border-radius:36px;padding:56px 64px;display:flex;flex-direction:column;gap:28px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:end">
+            <div style="display:flex;flex-direction:column;gap:12px"><div style="font-family:'DM Mono',monospace;font-size:13px;letter-spacing:.08em">ASSIGNMENT SPACES</div><div style="font-family:'Young Serif',serif;font-size:52px;line-height:1.05;color:#1e2757">One click opens everything it needs.</div></div>
+            <div style="font-size:18px;line-height:1.5">Click an assignment and the homework, the textbook and your tools open together, in the apps you already use.</div>
+          </div>
+          <div style="position:relative;height:420px">
+            <div style="position:absolute;left:0;top:40px;width:340px;background:#fff;border-radius:24px;padding:20px;display:flex;flex-direction:column;gap:12px;box-shadow:0 20px 40px -20px rgba(30,39,87,.25)">
+              <div style="font-size:13px;font-family:'DM Mono',monospace">TODAY</div>
+              <div style="border:1px solid #e3dccb;border-radius:14px;padding:14px 16px"><div style="font-weight:700">CS 400 · P3 Hash tables</div><div style="font-size:14px">Due tonight · rubric ready</div></div>
+              <div style="border-radius:14px;padding:14px 16px;transition:background .2s,color .2s,transform .15s;background:{{ rowBg }};color:{{ rowFg }};transform:{{ rowScale }};border:1px solid #e3dccb"><div style="font-weight:700">MATH 234 · Homework 6</div><div style="font-size:14px">Due Friday · 3 resources</div></div>
+              <div style="border:1px solid #e3dccb;border-radius:14px;padding:14px 16px"><div style="font-weight:700">BIO 151 · Lab 4 pre-brief</div><div style="font-size:14px">Before Friday's lab</div></div>
+            </div>
+            <div style="position:absolute;left:396px;top:0;width:352px;height:200px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 24px 50px -20px rgba(30,39,87,.35);transition:opacity .4s,transform .45s cubic-bezier(.2,.8,.2,1);opacity:{{ winOp }};transform:{{ winTf }}">
+              <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid #e6e6e6;font-size:13px;font-weight:500"><div style="width:14px;height:14px;background:#e4572e;border-radius:3px"></div>Homework 6 · Canvas</div>
+              <div style="padding:20px 24px;display:flex;flex-direction:column;gap:10px;font-size:14px;line-height:1.5"><div style="font-weight:700;font-size:17px">MATH 234 · Homework 6</div><div>3. Find the critical points of f(x, y) = x³ − 3xy + y³ and classify each one.</div></div>
+            </div>
+            <div style="position:absolute;left:396px;top:216px;width:352px;height:204px;background:#fbfaf7;border-radius:16px;overflow:hidden;box-shadow:0 24px 50px -20px rgba(30,39,87,.35);transition:opacity .4s .15s,transform .45s .15s cubic-bezier(.2,.8,.2,1);opacity:{{ winOp }};transform:{{ winTf }}">
+              <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#e9e5dc;font-size:13px;font-weight:500"><div style="width:14px;height:18px;background:#d94f3d;border-radius:2px"></div>Calculus textbook.pdf · p. 959</div>
+              <div style="padding:20px 24px;display:flex;flex-direction:column;gap:10px;font-family:Newsreader,serif;font-size:15px;line-height:1.5"><div style="font-weight:500;font-size:19px">14.7 Maximum and minimum values</div><div>A point (a, b) is a critical point of f if f<sub>x</sub>(a, b) = 0 and f<sub>y</sub>(a, b) = 0…</div></div>
+            </div>
+            <div style="position:absolute;left:764px;top:0;width:348px;height:420px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 24px 50px -20px rgba(30,39,87,.45);transition:opacity .4s .3s,transform .45s .3s cubic-bezier(.2,.8,.2,1);opacity:{{ winOp }};transform:{{ winTf }}">
+              <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid #e6e6e6;font-size:13px;font-weight:500"><div style="width:14px;height:14px;background:#2f9e44;border-radius:3px"></div>Desmos · Graphing calculator</div>
+              <div style="display:grid;grid-template-columns:130px 1fr;height:380px">
+                <div style="border-right:1px solid #e6e6e6;font-family:'DM Mono',monospace;font-size:12px;display:flex;flex-direction:column"><div style="padding:12px 10px;border-bottom:1px solid #e6e6e6;border-left:4px solid #2c55b8">x³−3xy+y³=0</div><div style="padding:12px 10px;border-bottom:1px solid #e6e6e6;border-left:4px solid #e4572e">(1, 1)</div><div style="padding:12px 10px;border-bottom:1px solid #e6e6e6;border-left:4px solid #e4572e">(0, 0)</div></div>
+                <svg viewBox="0 0 220 250" preserveAspectRatio="xMidYMid slice" style="width:100%;height:100%"><g stroke="#eceff4" stroke-width="1"><path d="M0 25H220M0 75H220M0 175H220M0 225H220M30 0V250M80 0V250M180 0V250"></path></g><path d="M0 125H220M130 0V250" stroke="#9aa3b2" stroke-width="1.5"></path><path d="M60 250 C95 170 110 140 130 125 C150 110 185 95 220 60" fill="none" stroke="#2c55b8" stroke-width="3"></path><path d="M130 125 C150 75 185 70 180 95 C175 120 150 125 130 125 Z" fill="none" stroke="#2c55b8" stroke-width="3"></path><circle cx="130" cy="125" r="5" fill="#e4572e"></circle><circle cx="170" cy="92" r="5" fill="#e4572e"></circle></svg>
+              </div>
+            </div>
+            <div style="position:absolute;z-index:5;pointer-events:none;transition:left .7s cubic-bezier(.4,0,.2,1),top .7s cubic-bezier(.4,0,.2,1),transform .15s;left:{{ curX }};top:{{ curY }};transform:{{ curTf }}"><svg width="26" height="30" viewBox="0 0 26 30"><path d="M2 2 L2 24 L8 18.5 L12.5 28 L16.5 26 L12 17 L20 17 Z" fill="#1b1d33" stroke="#fff" stroke-width="2" stroke-linejoin="round"></path></svg></div>
+          </div>
+        </div>
+        <div style="background:#fdf0c8;border-radius:36px;padding:56px 0 56px 64px;display:flex;flex-direction:column;gap:28px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:32px;padding-right:64px">
+            <div style="display:flex;flex-direction:column;gap:12px"><div style="font-family:'DM Mono',monospace;font-size:13px;letter-spacing:.08em">STUDY NOTEBOOK</div><div style="font-family:'Young Serif',serif;font-size:52px;line-height:1.05;color:#1e2757">Made from your actual course.</div></div>
+            <div style="display:flex;gap:10px">
+              <div onClick="{{ scrollPrev }}" style="cursor:pointer;width:52px;height:52px;border-radius:999px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;color:#1e2757">←</div>
+              <div onClick="{{ scrollNext }}" style="cursor:pointer;width:52px;height:52px;border-radius:999px;background:#1e2757;display:flex;align-items:center;justify-content:center;font-size:22px;color:#fff">→</div>
+            </div>
+          </div>
+          <div ref="{{ scrollRef }}" style="display:flex;gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;padding-right:64px;scrollbar-width:none">
+            <div style="flex:0 0 250px;scroll-snap-align:start;background:#fff;border-radius:28px;padding:14px;display:flex;flex-direction:column;gap:14px"><div style="height:170px;border-radius:20px;background:#e8eefc;display:flex;align-items:center;justify-content:center">{{ ic.exam }}</div><div style="padding:0 8px 8px;display:flex;flex-direction:column;gap:4px"><div style="font-family:'Young Serif',serif;font-size:22px;color:#1e2757">Practice exams</div><div style="font-size:15px">In the style of past exams</div></div></div>
+            <div style="flex:0 0 250px;scroll-snap-align:start;background:#fff;border-radius:28px;padding:14px;display:flex;flex-direction:column;gap:14px"><div style="height:170px;border-radius:20px;background:#f7c440;display:flex;align-items:center;justify-content:center">{{ ic.flash }}</div><div style="padding:0 8px 8px;display:flex;flex-direction:column;gap:4px"><div style="font-family:'Young Serif',serif;font-size:22px;color:#1e2757">Flashcards</div><div style="font-size:15px">From terms and missed answers</div></div></div>
+            <div style="flex:0 0 250px;scroll-snap-align:start;background:#fff;border-radius:28px;padding:14px;display:flex;flex-direction:column;gap:14px"><div style="height:170px;border-radius:20px;background:#e8eefc;display:flex;align-items:center;justify-content:center">{{ ic.digest }}</div><div style="padding:0 8px 8px;display:flex;flex-direction:column;gap:4px"><div style="font-family:'Young Serif',serif;font-size:22px;color:#1e2757">Lecture digests</div><div style="font-size:15px">Every lecture, with page numbers</div></div></div>
+            <div style="flex:0 0 250px;scroll-snap-align:start;background:#fff;border-radius:28px;padding:14px;display:flex;flex-direction:column;gap:14px"><div style="height:170px;border-radius:20px;background:#1e2757;display:flex;align-items:center;justify-content:center">{{ ic.pod }}</div><div style="padding:0 8px 8px;display:flex;flex-direction:column;gap:4px"><div style="font-family:'Young Serif',serif;font-size:22px;color:#1e2757">Review podcasts</div><div style="font-size:15px">Quizzes you out loud</div></div></div>
+            <div style="flex:0 0 250px;scroll-snap-align:start;background:#fff;border-radius:28px;padding:14px;display:flex;flex-direction:column;gap:14px"><div style="height:170px;border-radius:20px;background:#e8eefc;display:flex;align-items:center;justify-content:center">{{ ic.map }}</div><div style="padding:0 8px 8px;display:flex;flex-direction:column;gap:4px"><div style="font-family:'Young Serif',serif;font-size:22px;color:#1e2757">Concept maps</div><div style="font-size:15px">You draw the links</div></div></div>
+            <div style="flex:0 0 250px;scroll-snap-align:start;background:#fff;border-radius:28px;padding:14px;display:flex;flex-direction:column;gap:14px"><div style="height:170px;border-radius:20px;background:#f7c440;display:flex;align-items:center;justify-content:center">{{ ic.sheet }}</div><div style="padding:0 8px 8px;display:flex;flex-direction:column;gap:4px"><div style="font-family:'Young Serif',serif;font-size:22px;color:#1e2757">Exam sheets</div><div style="font-size:15px">Everything on one page</div></div></div>
+          </div>
+        </div>
+        <div style="background:#1e2757;color:#fff;border-radius:36px;padding:64px;display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:center">
+          <div style="font-family:'Young Serif',serif;font-size:52px;line-height:1.05">Bring your own AI, or run it locally.</div>
+          <div style="display:flex;flex-wrap:wrap;gap:10px"><div style="background:rgba(255,255,255,.12);padding:14px 22px;border-radius:999px;font-size:18px;display:flex;align-items:center;gap:10px"><img src="https://cdn.jsdelivr.net/npm/simple-icons@v10/icons/openai.svg" alt="" style="filter:invert(1);height:22px;width:22px"></img>ChatGPT</div><div style="background:rgba(255,255,255,.12);padding:14px 22px;border-radius:999px;font-size:18px;display:flex;align-items:center;gap:10px"><img src="https://cdn.simpleicons.org/claude/ffffff" alt="" style="height:22px;width:22px"></img>Claude</div><div style="background:rgba(255,255,255,.12);padding:14px 22px;border-radius:999px;font-size:18px;display:flex;align-items:center;gap:10px"><img src="https://cdn.simpleicons.org/googlegemini/ffffff" alt="" style="height:22px;width:22px"></img>Gemini</div><div style="background:#f7c440;color:#1b1d33;padding:14px 22px;border-radius:999px;font-size:18px;font-weight:700">Local model</div><div style="width:100%;font-size:17px;line-height:1.5;margin-top:10px">Stored on your device. Your UW password never goes to an AI.</div></div>
+        </div>
+        <div style="border-radius:36px;border:2px solid #f7c440;padding:56px;display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center">
+          <img src="logo/mark-color.svg" alt="" style="height:130px"></img>
+          <div style="font-family:'Young Serif',serif;font-size:48px">Give your attention back to learning.</div>
+          <div style="background:#2c55b8;color:#fff;padding:18px 30px;border-radius:999px;font-weight:700;font-size:18px">Download for Mac</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+<section data-screen-label="Turn 1" style="padding:64px;display:flex;flex-direction:column;gap:40px">
+  <div style="display:flex;flex-direction:column;gap:8px;max-width:900px">
+    <div style="font-family:'DM Mono',monospace;font-size:13px;letter-spacing:.08em;text-transform:uppercase">Turn 1 · Homepage directions · same content, three visual approaches</div>
+    <div style="font-size:18px;line-height:1.5">Borrowed from: Arc (how the page unfolds as you scroll, the "Try" button, bold blue with white text), Granola (serif headlines), Headspace (very simple navigation). The wizard appears as a guide in the hero, calls to action and empty states. Product content is made up for illustration.</div>
+  </div>
+  <div style="display:flex;gap:48px;align-items:flex-start">
+
+    <!-- 1a -->
+    <div id="1a" style="display:flex;flex-direction:column;gap:16px;width:1280px;flex-shrink:0">
+      <div style="display:flex;align-items:baseline;gap:14px">
+        <div style="font-family:'DM Mono',monospace;font-size:14px;background:#1b1d33;color:#fff;padding:4px 10px;border-radius:6px">1a</div>
+        <div style="font-size:22px;font-weight:700">Night Sky</div>
+        <div style="font-size:16px">Closest to Arc. Full-bleed blue, white serif headlines, and chapters that open one by one as you scroll.</div>
+      </div>
+      <div style="background:#2f5fd0;color:#fff;border-radius:4px;overflow:hidden">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:28px 56px">
+          <div style="display:flex;align-items:center;gap:10px"><img src="logo/mark-on-dark.svg" alt="" style="height:40px"></img><div style="font-family:Fredoka,sans-serif;font-size:24px">Magic Canvas</div></div>
+          <div style="display:flex;align-items:center;gap:32px;font-size:16px"><div>How it works</div><div>Privacy</div><div>FAQ</div><div style="background:#fff;color:#1e2757;padding:12px 22px;border-radius:999px;font-weight:700">Try Magic Canvas</div></div>
+        </div>
+        <div style="padding:72px 56px 0;display:flex;flex-direction:column;align-items:center;text-align:center;gap:28px">
+          <div style="font-family:'Instrument Serif',serif;font-size:124px;line-height:.95;letter-spacing:-.02em;max-width:1000px">Stop managing school.<br><span style="color:#f7c440">Start learning.</span></div>
+          <div style="font-size:21px;line-height:1.5;max-width:560px">An AI workspace that already knows your classes: what matters now, what you need, and how to practice for your professor.</div>
+          <div style="display:flex;gap:12px;align-items:center">
+            <div style="background:#f7c440;color:#1b1d33;padding:18px 30px;border-radius:999px;font-weight:700;font-size:18px">Download for Mac</div>
+            <div style="border:1.5px solid #fff;padding:16.5px 28px;border-radius:999px;font-weight:500;font-size:18px">Windows</div>
+          </div>
+          <div style="position:relative;margin-top:36px;width:1040px;height:430px">
+            <img src="logo/mark-on-dark.svg" alt="" style="position:absolute;left:-170px;top:-60px;height:210px;z-index:2;transform:rotate(-6deg)"></img>
+            <div style="position:absolute;inset:0;background:#fffdf7;color:#1b1d33;border-radius:16px 16px 0 0;display:grid;grid-template-columns:200px 1fr;text-align:left;overflow:hidden;box-shadow:0 -20px 60px rgba(10,20,60,.35)">
+              <div style="background:#f3efe4;padding:22px 16px;display:flex;flex-direction:column;gap:10px;font-size:14px"><div style="font-weight:700">Day</div><div>Spaces</div><div>Calendar</div></div>
+              <div style="padding:28px 36px;display:flex;flex-direction:column;gap:12px">
+                <div style="font-size:13px;font-family:'DM Mono',monospace">THURSDAY · 3 THINGS</div>
+                <div style="border:1px solid #d8d3c6;border-radius:10px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:700">CS 400 · P3 Hash tables</div><div style="font-size:14px">Due tonight 11:59 pm · rubric and starter code ready</div></div><div style="background:#2f5fd0;color:#fff;padding:8px 14px;border-radius:8px;font-size:14px">Open space</div></div>
+                <div style="border:1px solid #d8d3c6;border-radius:10px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:700">BIO 151 · Lecture in 40 min</div><div style="font-size:14px">Prep: 6 slides from Ch. 7 you haven't opened</div></div><div style="border:1px solid #1b1d33;padding:7px 13px;border-radius:8px;font-size:14px">Prep</div></div>
+                <div style="border:1px solid #d8d3c6;border-radius:10px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:700">MATH 234 · Exam Monday</div><div style="font-size:14px">Practice set in the style of past exams · 2 shaky skills</div></div><div style="border:1px solid #1b1d33;padding:7px 13px;border-radius:8px;font-size:14px">Practice</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="background:#1e2757;padding:110px 56px;display:flex;flex-direction:column;gap:64px">
+          <div style="font-family:'Instrument Serif',serif;font-size:72px;line-height:1;max-width:900px">It already knows the class. <span style="color:#f7c440">So you can get to the learning.</span></div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:40px;border-top:1px solid rgba(255,255,255,.3);padding-top:32px">
+            <div style="display:flex;flex-direction:column;gap:10px"><div style="font-family:'DM Mono',monospace;font-size:14px;color:#f7c440">01 KNOW</div><div style="font-size:26px;font-family:'Instrument Serif',serif">Every assignment, with its instructions.</div><div style="font-size:16px;line-height:1.5">Reads Canvas, syllabi and email so requirements stop being scattered.</div></div>
+            <div style="display:flex;flex-direction:column;gap:10px"><div style="font-family:'DM Mono',monospace;font-size:14px;color:#f7c440">02 ACT</div><div style="font-size:26px;font-family:'Instrument Serif',serif">The next step opens what you need.</div><div style="font-size:16px;line-height:1.5">Pages, files and your editor, in the apps you already use.</div></div>
+            <div style="display:flex;flex-direction:column;gap:10px"><div style="font-family:'DM Mono',monospace;font-size:14px;color:#f7c440">03 PRACTICE</div><div style="font-size:26px;font-family:'Instrument Serif',serif">Practice that matches this course.</div><div style="font-size:16px;line-height:1.5">Built from your professor's rubrics, exams and lectures.</div></div>
+          </div>
+        </div>
+        <div style="background:#2f5fd0;padding:110px 56px;display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center">
+          <div style="font-family:'Instrument Serif',serif;font-size:64px;line-height:1">Choose your AI.<br>Keep your data <span style="color:#f7c440">on your laptop.</span></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div style="border:1.5px solid rgba(255,255,255,.6);border-radius:14px;padding:22px;font-size:20px;display:flex;align-items:center;gap:12px"><img src="https://cdn.jsdelivr.net/npm/simple-icons@v10/icons/openai.svg" alt="" style="filter:invert(1);height:26px;width:26px"></img>ChatGPT</div>
+            <div style="border:1.5px solid rgba(255,255,255,.6);border-radius:14px;padding:22px;font-size:20px;display:flex;align-items:center;gap:12px"><img src="https://cdn.simpleicons.org/claude/ffffff" alt="" style="height:26px;width:26px"></img>Claude</div>
+            <div style="border:1.5px solid rgba(255,255,255,.6);border-radius:14px;padding:22px;font-size:20px;display:flex;align-items:center;gap:12px"><img src="https://cdn.simpleicons.org/googlegemini/ffffff" alt="" style="height:26px;width:26px"></img>Gemini</div>
+            <div style="background:#f7c440;color:#1b1d33;border-radius:14px;padding:22px;font-size:20px;font-weight:700">Local model</div>
+          </div>
+        </div>
+        <div style="background:#1e2757;padding:100px 56px;display:flex;flex-direction:column;align-items:center;gap:24px;text-align:center">
+          <img src="logo/mark-on-dark.svg" alt="" style="height:150px"></img>
+          <div style="font-family:'Instrument Serif',serif;font-size:72px;line-height:1">Give your attention back to learning.</div>
+          <div style="background:#f7c440;color:#1b1d33;padding:18px 30px;border-radius:999px;font-weight:700;font-size:18px">Download for Mac</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 1b -->
+    <div id="1b" style="display:flex;flex-direction:column;gap:16px;width:1280px;flex-shrink:0">
+      <div style="display:flex;align-items:baseline;gap:14px">
+        <div style="font-family:'DM Mono',monospace;font-size:14px;background:#1b1d33;color:#fff;padding:4px 10px;border-radius:6px">1b</div>
+        <div style="font-size:22px;font-weight:700">Notebook</div>
+        <div style="font-size:16px">Closest to Granola. Warm paper background, blue-ink serif, yellow highlighter. The product screenshot is the star.</div>
+      </div>
+      <div style="background:#fbf6ea;color:#1b1d33;border-radius:4px;overflow:hidden">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:24px 64px;border-bottom:1px solid #e3dccb">
+          <div style="display:flex;align-items:center;gap:10px"><img src="logo/head-color.svg" alt="" style="height:36px"></img><div style="font-family:Newsreader,serif;font-size:24px;font-weight:500">Magic Canvas</div></div>
+          <div style="background:#1b1d33;color:#fbf6ea;padding:11px 20px;border-radius:8px;font-weight:500;font-size:15px">Download</div>
+        </div>
+        <div style="padding:96px 64px 0;display:grid;grid-template-columns:1.1fr 1fr;gap:48px;align-items:end">
+          <div style="display:flex;flex-direction:column;gap:28px">
+            <div style="font-family:Newsreader,serif;font-size:92px;line-height:1;letter-spacing:-.02em;color:#1e2757">Stop managing school. Start <span style="background:linear-gradient(transparent 55%,#f7c440 55%)">learning.</span></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:24px;padding-bottom:10px">
+            <div style="font-size:20px;line-height:1.55">Magic Canvas already knows your classes. It keeps each assignment with its instructions, opens what you need next, and builds practice in your professor's style.</div>
+            <div style="display:flex;gap:12px;align-items:center"><div style="background:#2c55b8;color:#fff;padding:16px 26px;border-radius:10px;font-weight:700;font-size:17px">Download for Mac</div><div style="font-size:16px;text-decoration:underline">Windows</div><div style="font-size:16px;text-decoration:underline">Watch the 2-min film</div></div>
+          </div>
+        </div>
+        <div style="padding:64px 64px 0">
+          <div style="background:#fff;border:1px solid #e3dccb;border-radius:14px;display:grid;grid-template-columns:220px 1fr 300px;min-height:440px;overflow:hidden;box-shadow:0 30px 60px -30px rgba(30,39,87,.25)">
+            <div style="background:#f6f2e8;border-right:1px solid #e3dccb;padding:22px 18px;display:flex;flex-direction:column;gap:10px;font-size:14px"><div style="font-weight:700">Day</div><div>Spaces</div><div>Calendar</div></div>
+            <div style="padding:28px 32px;display:flex;flex-direction:column;gap:14px">
+              <div style="font-family:Newsreader,serif;font-size:30px">Thursday</div>
+              <div style="border-top:1px solid #e3dccb;padding-top:14px;display:flex;flex-direction:column;gap:4px"><div style="font-weight:700">CS 400 · P3 Hash tables</div><div style="font-size:14px">Due tonight 11:59 pm · rubric and starter code ready</div></div>
+              <div style="border-top:1px solid #e3dccb;padding-top:14px;display:flex;flex-direction:column;gap:4px"><div style="font-weight:700">BIO 151 · Lecture in 40 min</div><div style="font-size:14px">Prep: 6 slides from Ch. 7 you haven't opened</div></div>
+              <div style="border-top:1px solid #e3dccb;padding-top:14px;display:flex;flex-direction:column;gap:4px"><div style="font-weight:700">MATH 234 · Exam Monday</div><div style="font-size:14px">Practice set in the style of past exams</div></div>
+            </div>
+            <div style="border-left:1px solid #e3dccb;padding:24px;display:flex;flex-direction:column;gap:12px;background:#fdfbf5">
+              <div style="font-size:13px;font-family:'DM Mono',monospace">ASK ABOUT CS 400</div>
+              <div style="background:#eef2fb;border-radius:10px;padding:12px;font-size:14px">Can I use a library HashMap?</div>
+              <div style="font-size:14px;line-height:1.5">No. The P3 spec says to implement your own. <span style="text-decoration:underline">Spec §2.1</span>, updated 3 days ago.</div>
+            </div>
+          </div>
+        </div>
+        <div style="padding:120px 64px;display:grid;grid-template-columns:repeat(3,1fr);gap:48px">
+          <div style="display:flex;flex-direction:column;gap:12px"><div style="font-family:Newsreader,serif;font-size:22px;color:#2c55b8">Know</div><div style="font-family:Newsreader,serif;font-size:32px;line-height:1.1">Requirements, all in one place.</div><div style="font-size:16px;line-height:1.55">Assignments, instructions, rubrics and changes, each with its source and how recently it was checked.</div></div>
+          <div style="display:flex;flex-direction:column;gap:12px"><div style="font-family:Newsreader,serif;font-size:22px;color:#2c55b8">Act</div><div style="font-family:Newsreader,serif;font-size:32px;line-height:1.1">One click to the right tools.</div><div style="font-size:16px;line-height:1.55">Spaces reopen your pages, files and editor exactly where you left them.</div></div>
+          <div style="display:flex;flex-direction:column;gap:12px"><div style="font-family:Newsreader,serif;font-size:22px;color:#2c55b8">Practice</div><div style="font-family:Newsreader,serif;font-size:32px;line-height:1.1">Study the way you'll be graded.</div><div style="font-size:16px;line-height:1.55">Questions in the style of this course, with short feedback: what's right, one gap, one next step.</div></div>
+        </div>
+        <div style="margin:0 64px;border-top:1px solid #1b1d33;padding:64px 0 120px;display:grid;grid-template-columns:1fr 1fr;gap:64px">
+          <div style="font-family:Newsreader,serif;font-size:52px;line-height:1.05;color:#1e2757">Your AI, your choice. Your data stays on your device.</div>
+          <div style="display:flex;flex-direction:column;font-size:18px">
+            <div style="display:flex;justify-content:space-between;border-top:1px solid #e3dccb;padding:16px 0"><div style="display:flex;align-items:center;gap:14px"><img src="https://cdn.jsdelivr.net/npm/simple-icons@v10/icons/openai.svg" alt="" style="height:26px;width:26px"></img><img src="https://cdn.simpleicons.org/claude/1b1d33" alt="" style="height:26px;width:26px"></img><img src="https://cdn.simpleicons.org/googlegemini/1b1d33" alt="" style="height:26px;width:26px"></img><span>ChatGPT · Claude · Gemini</span></div><div>Your own account</div></div>
+            <div style="display:flex;justify-content:space-between;border-top:1px solid #e3dccb;padding:16px 0"><div>Local model</div><div>No account, runs offline</div></div>
+            <div style="display:flex;justify-content:space-between;border-top:1px solid #e3dccb;padding:16px 0"><div>UW password</div><div>Never sent to any AI</div></div>
+          </div>
+        </div>
+        <div style="background:#1e2757;color:#fbf6ea;padding:88px 64px;display:flex;justify-content:space-between;align-items:center">
+          <div style="display:flex;align-items:center;gap:28px"><img src="logo/mark-on-dark.svg" alt="" style="height:140px"></img><div style="font-family:Newsreader,serif;font-size:56px;line-height:1.05;max-width:560px">Give your attention back to learning.</div></div>
+          <div style="background:#f7c440;color:#1b1d33;padding:16px 26px;border-radius:10px;font-weight:700;font-size:17px">Download for Mac</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 1c -->
+    <div id="1c" style="display:flex;flex-direction:column;gap:16px;width:1280px;flex-shrink:0">
+      <div style="display:flex;align-items:baseline;gap:14px">
+        <div style="font-family:'DM Mono',monospace;font-size:14px;background:#1b1d33;color:#fff;padding:4px 10px;border-radius:6px">1c</div>
+        <div style="font-size:22px;font-weight:700">Rooms</div>
+        <div style="font-size:16px">Closest to Headspace. Only three navigation links, big rounded colour blocks (one per section), and a friendly serif.</div>
+      </div>
+      <div style="background:#fff;color:#1b1d33;border-radius:4px;overflow:hidden;padding:20px;display:flex;flex-direction:column;gap:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 20px">
+          <div style="display:flex;align-items:center;gap:10px"><img src="logo/head-color.svg" alt="" style="height:38px"></img><div style="font-family:Fredoka,sans-serif;font-size:24px;color:#2c55b8">Magic Canvas</div></div>
+          <div style="display:flex;gap:28px;font-size:16px;font-weight:500"><div>How it works</div><div>Privacy</div><div>FAQ</div></div>
+          <div style="background:#2c55b8;color:#fff;padding:12px 22px;border-radius:999px;font-weight:700;font-size:15px">Download</div>
+        </div>
+        <div style="background:#f7c440;border-radius:36px;padding:72px 64px 0;display:grid;grid-template-columns:1.15fr 1fr;gap:24px;overflow:hidden;min-height:560px">
+          <div style="display:flex;flex-direction:column;gap:28px;padding-bottom:72px">
+            <div style="font-family:'Young Serif',serif;font-size:84px;line-height:1.02;letter-spacing:-.015em">Stop managing school. Start learning.</div>
+            <div style="font-size:20px;line-height:1.5;max-width:480px">An AI workspace that already knows your classes and turns your free time into learning that fits the course.</div>
+            <div style="display:flex;gap:12px"><div style="background:#1e2757;color:#fff;padding:18px 30px;border-radius:999px;font-weight:700;font-size:18px">Download for Mac</div><div style="background:#fff;padding:18px 26px;border-radius:999px;font-weight:500;font-size:18px">Watch the film</div></div>
+          </div>
+          <div style="display:flex;align-items:flex-end;justify-content:center"><img src="logo/mark-color.svg" alt="" style="height:500px;margin-bottom:-30px"></img></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px">
+          <div style="background:#2c55b8;color:#fff;border-radius:36px;padding:40px;min-height:300px;display:flex;flex-direction:column;justify-content:space-between"><div style="font-family:'Young Serif',serif;font-size:40px">Know</div><div style="font-size:18px;line-height:1.5">Every assignment already has its instructions next to it. Changed dates show what they used to say.</div></div>
+          <div style="background:#e8eefc;border-radius:36px;padding:40px;min-height:300px;display:flex;flex-direction:column;justify-content:space-between"><div style="font-family:'Young Serif',serif;font-size:40px;color:#1e2757">Act</div><div style="font-size:18px;line-height:1.5">One click opens the pages, files and editor for the thing you're working on.</div></div>
+          <div style="background:#fdf0c8;border-radius:36px;padding:40px;min-height:300px;display:flex;flex-direction:column;justify-content:space-between"><div style="font-family:'Young Serif',serif;font-size:40px;color:#1e2757">Practice</div><div style="font-size:18px;line-height:1.5">Questions in the style of this course, with one gap and one next step at a time.</div></div>
+        </div>
+        <div style="background:#f5f2ea;border-radius:36px;padding:56px 64px;display:grid;grid-template-columns:1fr 1.2fr;gap:48px;align-items:center">
+          <div style="background:#fff;border-radius:24px;padding:24px;display:flex;flex-direction:column;gap:12px;box-shadow:0 20px 40px -20px rgba(30,39,87,.2)">
+            <div style="font-size:13px;font-family:'DM Mono',monospace">TODAY</div>
+            <div style="border:1px solid #e3dccb;border-radius:14px;padding:14px 16px"><div style="font-weight:700">CS 400 · P3 Hash tables</div><div style="font-size:14px">Due tonight · rubric ready</div></div>
+            <div style="border:1px solid #e3dccb;border-radius:14px;padding:14px 16px"><div style="font-weight:700">MATH 234 · Exam Monday</div><div style="font-size:14px">Practice 2 shaky skills</div></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:18px"><div style="font-family:'Young Serif',serif;font-size:52px;line-height:1.05;color:#1e2757">One calm view of your day.</div><div style="font-size:18px;line-height:1.5">Before class: prep. After class: review. Before an exam: practice. One useful action for each item.</div></div>
+        </div>
+        <div style="background:#1e2757;color:#fff;border-radius:36px;padding:64px;display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:center">
+          <div style="font-family:'Young Serif',serif;font-size:52px;line-height:1.05">Bring your own AI, or run it locally.</div>
+          <div style="display:flex;flex-wrap:wrap;gap:10px"><div style="background:rgba(255,255,255,.12);padding:14px 22px;border-radius:999px;font-size:18px;display:flex;align-items:center;gap:10px"><img src="https://cdn.jsdelivr.net/npm/simple-icons@v10/icons/openai.svg" alt="" style="filter:invert(1);height:22px;width:22px"></img>ChatGPT</div><div style="background:rgba(255,255,255,.12);padding:14px 22px;border-radius:999px;font-size:18px;display:flex;align-items:center;gap:10px"><img src="https://cdn.simpleicons.org/claude/ffffff" alt="" style="height:22px;width:22px"></img>Claude</div><div style="background:rgba(255,255,255,.12);padding:14px 22px;border-radius:999px;font-size:18px;display:flex;align-items:center;gap:10px"><img src="https://cdn.simpleicons.org/googlegemini/ffffff" alt="" style="height:22px;width:22px"></img>Gemini</div><div style="background:#f7c440;color:#1b1d33;padding:14px 22px;border-radius:999px;font-size:18px;font-weight:700">Local model</div><div style="width:100%;font-size:17px;line-height:1.5;margin-top:10px">Stored on your device. Your UW password never goes to an AI.</div></div>
+        </div>
+        <div style="border-radius:36px;border:2px solid #f7c440;padding:56px;display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center">
+          <img src="logo/mark-color.svg" alt="" style="height:130px"></img>
+          <div style="font-family:'Young Serif',serif;font-size:48px">Give your attention back to learning.</div>
+          <div style="background:#2c55b8;color:#fff;padding:18px 30px;border-radius:999px;font-weight:700;font-size:18px">Download for Mac</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const K='stroke="#1b1d33" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"';
+const A=(name,dur,delay,origin)=>`animation:${name} ${dur}s ${delay||0}s infinite ease-in-out;transform-box:fill-box;transform-origin:${origin||'center'}`;
+const ICONS={
+  exam:`<svg width="96" height="96" viewBox="0 0 80 80"><rect x="18" y="8" width="44" height="64" rx="5" fill="#fff" ${K}></rect>${[22,38,54].map((y,i)=>`<rect x="25" y="${y}" width="10" height="10" rx="2" fill="#fff" ${K} stroke-width="2.5"></rect><path d="M40 ${y+5}H54" ${K} stroke-width="2.5"></path><path d="M26.5 ${y+5} L29.5 ${y+8} L34 ${y+1}" fill="none" stroke="#2c55b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="30" style="${A('mcDraw',3.6,i*.45)}"></path>`).join('')}</svg>`,
+  flash:`<svg width="96" height="96" viewBox="0 0 80 80"><rect x="16" y="20" width="46" height="34" rx="5" fill="#fffdf7" ${K} transform="rotate(-8 39 37)"></rect><g style="${A('mcFlip',4,0)}"><rect x="18" y="26" width="46" height="34" rx="5" fill="#fff" ${K}></rect><g style="animation:mcFaceA 4s infinite"><text x="41" y="50" text-anchor="middle" font-family="Young Serif, serif" font-size="20" fill="#1b1d33">?</text></g><g style="animation:mcFaceB 4s infinite"><path d="M28 38H54M28 46H48" ${K} stroke="#2c55b8"></path></g></g></svg>`,
+  digest:`<svg width="96" height="96" viewBox="0 0 80 80"><rect x="10" y="14" width="60" height="44" rx="5" fill="#fff" ${K}></rect><rect x="18" y="29" width="36" height="8" rx="2" fill="#f7c440" style="${A('mcSweep',3.4,0,'left')}"></rect><path d="M20 24H52M20 33H50M20 42H44M20 50H38" ${K} stroke-width="2.5"></path><path d="M40 58V66M30 68H50" ${K}></path></svg>`,
+  pod:`<svg width="96" height="96" viewBox="0 0 80 80">${[14,26,38,50,62].map((x,i)=>`<rect x="${x-3.5}" y="16" width="7" height="48" rx="3.5" fill="${i%2?'#f7c440':'#fff'}" style="${A('mcBar',1.1,i*.14,'bottom')}"></rect>`).join('')}</svg>`,
+  map:`<svg width="96" height="96" viewBox="0 0 80 80"><path d="M22 22 L56 30 M22 22 L30 58 M56 30 L30 58 M56 30 L60 60" fill="none" stroke="#2c55b8" stroke-width="3" stroke-linecap="round" stroke-dasharray="44" style="animation:mcDraw 3.6s infinite ease-in-out;stroke-dashoffset:0"></path>${[[22,22],[56,30],[30,58],[60,60]].map(([x,y],i)=>`<circle cx="${x}" cy="${y}" r="7.5" fill="${i?'#fff':'#f7c440'}" ${K}></circle>`).join('')}</svg>`,
+  sheet:`<svg width="96" height="96" viewBox="0 0 80 80"><rect x="18" y="8" width="44" height="64" rx="5" fill="#fff" ${K}></rect><path d="M26 22H48M26 32H54M26 42H50M26 52H42" ${K} stroke-width="2.5"></path><polygon points="56,46 59.3,53.2 67,54 61.2,59.2 62.8,67 56,63 49.2,67 50.8,59.2 45,54 52.7,53.2" fill="#f7c440" ${K} stroke-width="2.5" style="${A('mcPop',3.2,0)}"></polygon></svg>`
+};
+class Component extends DCLogic {
+  state = { step: 0 };
+  scrollRef = React.createRef();
+  componentDidMount() {
+    const seq = [[0, 900], [1, 800], [2, 350], [3, 3400]];
+    let i = 0;
+    const next = () => { const [st, d] = seq[i]; this.setState({ step: st }); i = (i + 1) % seq.length; this.t = setTimeout(next, d); };
+    next();
+    this.icons = {};
+    for (const k in ICONS) this.icons[k] = React.createElement('div', { style: { display: 'flex' }, dangerouslySetInnerHTML: { __html: ICONS[k] } });
+    this.forceUpdate();
+  }
+  componentWillUnmount() { clearTimeout(this.t); }
+  scrollBy(d) { const el = this.scrollRef.current; if (el) el.scrollBy({ left: d * 266, behavior: 'smooth' }); }
+  renderVals() {
+    const { step } = this.state;
+    return {
+      ic: this.icons || {},
+      scrollRef: this.scrollRef,
+      scrollPrev: () => this.scrollBy(-1), scrollNext: () => this.scrollBy(1),
+      curX: step === 0 ? '520px' : '250px', curY: step === 0 ? '380px' : '190px',
+      curTf: step === 2 ? 'scale(.85)' : 'scale(1)',
+      rowBg: step >= 2 ? '#2c55b8' : '#fff', rowFg: step >= 2 ? '#fff' : '#1b1d33',
+      rowScale: step === 2 ? 'scale(.98)' : 'scale(1)',
+      winOp: step === 3 ? 1 : 0, winTf: step === 3 ? 'translateY(0) scale(1)' : 'translateY(18px) scale(.96)'
+    };
+  }
+}
+</script>
+</body>
+</html>

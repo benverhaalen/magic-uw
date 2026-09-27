@@ -223,6 +223,22 @@ test("selection rejects cloud variants, remote aliases, quantization mismatch, a
   );
 });
 
+test("a recommended tag matches an installed tag that adds a suffix at a real boundary, never a bare substring", () => {
+  // Real Ollama library tags often fold quantization/variant into the tag name
+  // itself (e.g. recommended "learner:3b" but only "learner:3b-instruct-q4km"
+  // is actually pullable at that quantization).
+  const suffixed = { ...installed, name: "learner:3b-instruct-q4km", model: "learner:3b-instruct-q4km" };
+  assert.deepEqual(selectInstalledLocalModel([suffixed], [recommendation]), {
+    name: suffixed.name,
+    digest: suffixed.digest,
+    recommendation,
+  });
+  // "learner:3bx" shares a prefix with "learner:3b" but is not the same tag
+  // followed by a real separator, so it must not match.
+  const lookalike = { ...installed, name: "learner:3bx", model: "learner:3bx" };
+  assert.equal(selectInstalledLocalModel([lookalike], [recommendation]), null);
+});
+
 test("missing recommendations report setup, without guessing or downloading models", async () => {
   const fake = runtime();
   const client = createLocalAi({
@@ -237,6 +253,24 @@ test("missing recommendations report setup, without guessing or downloading mode
   assert.match(state.reason, /llmfit/);
   assert.ok(!JSON.stringify(state).includes("secret-bearing"));
   assert.ok(fake.calls.every((c) => !c.url.includes("/pull")));
+});
+
+test("a null license on an unrelated row does not fail the whole recommendation batch", async () => {
+  // Real llmfit output includes rows with a null license (community/derivative
+  // quantizations without recorded license metadata); one such row must not
+  // sink an otherwise-valid recommendation elsewhere in the same response.
+  const unlicensed: LocalRecommendation = { ...recommendation, name: "Other/Unlicensed-1B", ollama_name: null, license: null };
+  const result = await recommendLocalModels(async (_file, args) =>
+    args[0] === "--version"
+      ? "llmfit 1.1.16"
+      : JSON.stringify({ models: [unlicensed, recommendation] }),
+  );
+  assert.equal(result.status, "available");
+  if (result.status === "available") {
+    assert.equal(result.models.length, 2);
+    assert.equal(result.models[1]!.license, "apache-2.0");
+    assert.equal(result.models[0]!.license, null);
+  }
 });
 
 test("cloud enabled or model remote metadata prevents course data from reaching inference", async () => {

@@ -95,7 +95,7 @@ const recommendationRow = z.object({
   effective_context_length: z.number().int().nonnegative(),
   memory_required_gb: z.number().finite().nonnegative(),
   memory_available_gb: z.number().finite().nonnegative(),
-  license: z.string().max(200),
+  license: z.string().max(200).nullable(),
   estimated_tps: z.number().finite().nonnegative(),
   estimate_confidence: z.string().max(60),
 });
@@ -190,8 +190,24 @@ function normalizeModelName(name: string): string {
 function normalizeQuant(quant: string): string {
   return quant.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
+/**
+ * True when `installedName` is the recommended tag, or that tag followed by a
+ * real Ollama tag separator (e.g. recommended "qwen2.5:7b" matches installed
+ * "qwen2.5:7b-instruct-q8_0"). Many Ollama library tags fold the quantization
+ * into the tag name itself, so llmfit's bare recommended tag often cannot be
+ * pulled directly at the recommended quantization. This is still an anchored
+ * exact-boundary check, not a family-name guess: quantization is independently
+ * verified against Ollama's own reported metadata, never inferred from the name.
+ */
+function matchesRecommendedTag(installedName: string, recommendedName: string): boolean {
+  return (
+    installedName === recommendedName ||
+    (installedName.startsWith(recommendedName) &&
+      /^[-:]/.test(installedName.slice(recommendedName.length)))
+  );
+}
 
-/** Exact catalog tag and quantization matching: a family-name guess cannot establish fit. */
+/** Anchored catalog tag and quantization matching: a family-name guess cannot establish fit. */
 export function selectInstalledLocalModel(
   models: InstalledLocalModel[],
   recommendations: LocalRecommendation[],
@@ -219,8 +235,10 @@ export function selectInstalledLocalModel(
           (safeModelName(m.model) &&
             normalizeModelName(m.model) === normalizeModelName(m.name))) &&
         m.details.format === "gguf" &&
-        normalizeModelName(m.name) ===
-          normalizeModelName(recommendation.ollama_name!) &&
+        matchesRecommendedTag(
+          normalizeModelName(m.name),
+          normalizeModelName(recommendation.ollama_name!),
+        ) &&
         normalizeQuant(m.details.quantization_level) ===
           normalizeQuant(recommendation.best_quant!),
     );

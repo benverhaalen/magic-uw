@@ -6,7 +6,9 @@ Start with [shared context](docs/README.md), [current implementation](docs/imple
 
 The outcome is learning tailored to the student, class, and professor with less school-management effort. Desktop comes first. Preserve the broader product direction while working on a bounded addition. A discussion, research request, or docs-only change does not authorize product implementation.
 
-## UI and design work
+## Feature planning and design work
+
+For discovering unfinished features, choosing what to build next, or planning and delivering a substantial feature, use [Magic feature planning](.agents/skills/magic-feature-planning/SKILL.md). It connects current repo evidence to product goals, reference research, bounded scope, and observable completion. Answer its guiding questions through evidence and judgment; ask the user only about consequential unresolved choices. Keep small changes small and discussion separate from implementation authorization.
 
 Use the repo’s [Magic design skill](.agents/skills/magic-design/SKILL.md) for UI design, implementation and audit. The governing entry point is [DESIGN.md](DESIGN.md); load only the relevant contracts. Preserve the near-approved Home and current user corrections; external skills are selective references. For cross-platform handoffs, use [the design foundation](docs/design-handoff.md). At natural task boundaries, reread relevant changed guidance; pulling alone does not load it into an active agent.
 

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Young+Serif&family=DM+Sans:wght@400;500;700&family=DM+Mono&family=Fredoka:wght@600&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#fff;font-family:'DM Sans',sans-serif;color:#1b1d33}a{color:inherit;text-decoration:none}a:hover{opacity:.8}</style>
+</helmet>
+<div data-screen-label="About us" style="max-width:1280px;margin:0 auto;padding:20px;display:flex;flex-direction:column;gap:20px;box-sizing:border-box">
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 20px;gap:24px;flex-wrap:wrap">
+    <a href="Website Directions.dc.html#2a" style="display:flex;align-items:center;gap:10px"><img src="logo/head-color.svg" alt="" style="height:38px"></img><div style="font-family:Fredoka,sans-serif;font-size:24px;color:#2c55b8">Magic Canvas</div></a>
+    <div style="display:flex;gap:28px;font-size:16px;font-weight:500;flex-wrap:wrap"><div>How it works</div><a href="Pricing.dc.html">Pricing</a><div>For devs</div><div style="color:#2c55b8;border-bottom:2px solid #2c55b8">About us</div><a href="FAQ.dc.html">FAQ</a></div>
+    <div style="background:#2c55b8;color:#fff;padding:12px 22px;border-radius:999px;font-weight:700;font-size:15px">Download</div>
+  </div>
+
+  <div style="background:#f7c440;border-radius:36px;padding:72px 64px 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:24px;overflow:hidden">
+    <div style="display:flex;flex-direction:column;gap:24px;padding-bottom:72px">
+      <div style="font-family:'DM Mono',monospace;font-size:13px;letter-spacing:.08em">ABOUT US</div>
+      <div style="font-family:'Young Serif',serif;font-size:68px;line-height:1.03;letter-spacing:-.015em;text-wrap:balance">Four Badgers who wanted their study time back.</div>
+      <div style="font-size:20px;line-height:1.55;max-width:560px;text-wrap:pretty">We were spending half our study time digging through scattered class data just to find our materials. So we set out to build a better, faster way to study.</div>
+    </div>
+    <div style="display:flex;align-items:flex-end;justify-content:center"><img src="logo/mark-color.svg" alt="" style="height:380px;margin-bottom:-24px"></img></div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:24px;padding:44px 20px 24px">
+    <div style="font-family:'Young Serif',serif;font-size:48px;line-height:1.05;color:#1e2757">The team</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:20px">
+      <sc-for list="{{ team }}" as="p" hint-placeholder-count="4">
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <img src="{{ p.photo }}" alt="{{ p.name }}" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:28px;background:#e8eefc"></img>
+          <div style="display:flex;flex-direction:column;gap:4px;padding:0 4px">
+            <div style="font-family:'Young Serif',serif;font-size:24px;color:#1e2757">{{ p.name }}</div>
+            <div style="font-size:16px;font-weight:500">{{ p.major }}</div>
+            <div style="font-size:15px">{{ p.meta }}</div>
+          </div>
+          <div style="display:flex;gap:8px;padding:0 4px">
+            <a href="{{ p.linkedin }}" target="_blank" style="background:#e8eefc;color:#1e2757;padding:9px 16px;border-radius:999px;font-weight:700;font-size:14px">LinkedIn</a>
+            <a href="{{ p.github }}" target="_blank" style="background:#e8eefc;color:#1e2757;padding:9px 16px;border-radius:999px;font-weight:700;font-size:14px">GitHub</a>
+            <a href="{{ p.email }}" style="background:#e8eefc;color:#1e2757;padding:9px 16px;border-radius:999px;font-weight:700;font-size:14px">Email</a>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="background:#1e2757;color:#fff;border-radius:36px;padding:64px;display:flex;flex-direction:column;gap:36px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:32px;align-items:end">
+      <div style="display:flex;flex-direction:column;gap:12px"><div style="font-family:'DM Mono',monospace;font-size:13px;letter-spacing:.08em;color:#f7c440">BADGER BUILDFEST 2026</div><div style="font-family:'Young Serif',serif;font-size:52px;line-height:1.05">What we're entering</div></div>
+      <div style="font-size:18px;line-height:1.5">Built at UW–Madison in 24 hours, from Saturday September 26 to Sunday September 27.</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:16px">
+      <div style="background:#f7c440;color:#1b1d33;border-radius:28px;padding:32px;display:flex;flex-direction:column;gap:10px"><div style="font-family:'DM Mono',monospace;font-size:12px;letter-spacing:.08em">TRACK</div><div style="font-family:'Young Serif',serif;font-size:28px;line-height:1.1">Applied AI &amp; Automation</div><div style="font-size:16px;line-height:1.5">An agent that turns course data into the next useful action.</div></div>
+      <div style="background:rgba(255,255,255,.1);border-radius:28px;padding:32px;display:flex;flex-direction:column;gap:10px"><div style="font-family:'DM Mono',monospace;font-size:12px;letter-spacing:.08em;color:#f7c440">CHALLENGE · DoIT</div><div style="font-family:'Young Serif',serif;font-size:28px;line-height:1.1">Badgers Building for Badgers</div><div style="font-size:16px;line-height:1.5">Built by UW students, for UW students across every major.</div></div>
+      <div style="background:rgba(255,255,255,.1);border-radius:28px;padding:32px;display:flex;flex-direction:column;gap:10px"><div style="font-family:'DM Mono',monospace;font-size:12px;letter-spacing:.08em;color:#f7c440">CHALLENGE</div><div style="font-family:'Young Serif',serif;font-size:28px;line-height:1.1">The Art of the Break</div><div style="font-size:16px;line-height:1.5">An honest look at where our agent fails and what we did about it.</div></div>
+    </div>
+  </div>
+
+  <div style="background:#e8eefc;border-radius:36px;padding:64px;display:flex;flex-direction:column;gap:36px">
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap"><div style="font-family:'Young Serif',serif;font-size:52px;line-height:1.05;color:#1e2757">Timeline</div><div style="font-family:'DM Mono',monospace;font-size:12px;letter-spacing:.08em;background:#fff;border-radius:999px;padding:6px 12px">WIP</div></div>
+    <div style="border:2px dashed #9fb2e3;border-radius:24px;padding:28px;font-size:17px;color:#1e2757">Work in progress. Milestones coming soon.</div>
+  </div>
+
+  <div style="border:2px solid #f7c440;border-radius:36px;padding:56px;display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center">
+    <img src="logo/mark-color.svg" alt="" style="height:130px"></img>
+    <div style="font-family:'Young Serif',serif;font-size:48px;color:#1e2757">Say hi.</div>
+    <div style="font-size:18px;line-height:1.5;max-width:520px">Questions, feedback or want to try it in your class? We'd love to hear from you.</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center">
+      <a href="mailto:amnorthcutt@wisc.edu,spleahy@wisc.edu,ngarelik@wisc.edu,bverhaalen@wisc.edu" style="background:#2c55b8;color:#fff;padding:18px 30px;border-radius:999px;font-weight:700;font-size:18px">Email the team</a>
+      <div style="background:#e8eefc;color:#1e2757;padding:18px 26px;border-radius:999px;font-weight:700;font-size:18px">GitHub</div>
+    </div>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;padding:12px 20px 20px;font-size:14px">
+    <div>Magic Canvas · Built for Badger BuildFest 2026</div>
+    <div style="display:flex;gap:24px"><div>GitHub</div><div>Privacy</div><a href="FAQ.dc.html">FAQ</a></div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      team: [
+        { name: 'Aidan Northcutt', email: 'mailto:amnorthcutt@wisc.edu', major: 'Data Science', meta: 'Senior · Chicago, IL', photo: 'team/aidan.png', linkedin: 'https://www.linkedin.com/in/aidan-northcutt-496731293/', github: 'https://github.com/amnorthcutt' },
+        { name: 'Sean Leahy', email: 'mailto:spleahy@wisc.edu', major: 'Data Science & Economics', meta: 'Sophomore · Chicago, IL', photo: 'team/sean.png', linkedin: 'https://www.linkedin.com/in/sean-leahy-077498382/', github: 'https://github.com/leahysean' },
+        { name: 'Nathaniel Garelik', email: 'mailto:ngarelik@wisc.edu', major: 'Computer Engineering', meta: 'Junior · New York City', photo: 'team/nate.png', linkedin: 'https://www.linkedin.com/in/nategarelik/', github: 'https://github.com/nategarelik' },
+        { name: 'Ben Verhaalen', email: 'mailto:bverhaalen@wisc.edu', major: 'Data Science & Computer Science', meta: 'Junior · Cedarburg, WI', photo: 'team/ben.png', linkedin: 'https://www.linkedin.com/in/ben-verhaalen/', github: 'https://github.com/benverhaalen' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
