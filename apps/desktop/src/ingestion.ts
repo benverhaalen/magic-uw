@@ -334,6 +334,9 @@ export function createIngestion(
       signal,
       extract: (file) => extractDriveFile(file),
     });
+    // Reconnect can cancel while the final Graph response is resolving. Never advance
+    // its cursor for batches that the cancelled generation cannot save.
+    signal.throwIfAborted();
     for (const batch of result.batches) save(batch);
     await result.commit();
     host.graph.onSynced?.({

@@ -222,3 +222,49 @@ test("cancellation during identity reporting cannot publish a module run or star
   assert.equal(moduleRuns, 0);
   assert.deepEqual(requests, ["/api/v1/users/self/profile"]);
 });
+
+test("Canvas reconnect cannot advance Graph deltas for batches discarded during cancellation", { timeout: 10_000 }, async () => {
+  const directory = mkdtempSync(join(tmpdir(), "magic-reconnect-graph-"));
+  const store = createStore(":memory:");
+  const entered = barrier(), release = barrier();
+  const writes: string[] = [];
+  let canvasReads = 0;
+  const runtime = createIngestion(store, {
+    directory,
+    secrets: async () => ({}),
+    canvasFetch: async () => { canvasReads++; return json({ id: "9001" }); },
+    graph: {
+      scopes: () => ["Calendars.Read"],
+      state: {
+        get: async () => undefined,
+        set: async (key) => { writes.push(key); },
+      },
+      transport: async () => {
+        entered.release();
+        // A transport already completing can deliver its last page after cancellation.
+        await release.promise;
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify({ value: [], "@odata.deltaLink": "https://graph.microsoft.com/v1.0/me/calendarView/delta?$deltatoken=synthetic" }),
+        };
+      },
+    },
+  });
+  store.setIngestionSettings({ ...store.ingestionSettings(), enabled: true });
+  try {
+    const run = runtime.tick("manual");
+    await entered.promise;
+    const reconnect = runtime.reconnected();
+    release.release();
+    await Promise.all([run, reconnect]);
+    assert.equal(store.sources().some((source) => source.scope === "graph_calendar"), false);
+    assert.deepEqual(writes, [], "a discarded batch must be replayed from the old delta cursor");
+    assert.equal(canvasReads, 0);
+  } finally {
+    release.release();
+    await runtime.stop();
+    store.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
