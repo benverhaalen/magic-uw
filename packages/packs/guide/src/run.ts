@@ -6,10 +6,13 @@
  */
 import { aiRecipientSchema, type PackScope } from "@magic/contracts";
 import { maySend } from "@magic/domain";
-import type { ModelRunner } from "../../../runner/src/index";
+import type { BackendCall, ModelRunner } from "../../../runner/src/index";
 import { buildPrompt, packCacheKey, type ArtifactStore, type LedgerStore, type PackSpec } from "../../core/src/index";
-import { readPackArtifact, runPack } from "../../../core/src/jobs/pack";
-import { buildReceipt, egressFor } from "../../../core/src/egress";
+import { runPack } from "../../../core/src/jobs/pack";
+import { buildReceipt, egressFor, payloadHash } from "../../../core/src/egress";
+import { contentCategories } from "../../../core/src/access";
+import { payloadScrubber, rosterFor, scrubText, toOriginalSpan } from "../../../core/src/identity";
+import { findQuote } from "../../../retrieval/src/quotes";
 import { conceptState, toView } from "../../../learning/src/knowledge/state";
 import { confusablePairs, frequentDistractors } from "../../../learning/src/insights/errors";
 import { tagOptions } from "../../../learning/src/insights/option-tags";
@@ -18,7 +21,7 @@ import { reviewAny, type ConceptMapDoc, type DropCode, type GuideDoc, type Guide
 import { personalize, type ConceptMapView, type GuideView, type PersonalSignals } from "./personalize";
 import { selectGuideInputs, type GuideSelection, type GuideStore } from "./inputs";
 import { changedSources, putLatest, readLatest, withoutChangedSpans, type SourceChange } from "./latest";
-import type { GuideInput, GuideKind } from "./schema";
+import type { ConceptMapOutput, GuideInput, GuideKind, GuideOutput } from "./schema";
 
 export type GuideRunStatus = "done" | "needs_student" | "blocked" | "paused" | "failed" | "no_client" | "empty";
 /** The `pack` command's result for a guide kind. */
@@ -70,6 +73,23 @@ function reviewed(kind: GuideKind, sel: GuideSelection, output: unknown) {
   return { ...r, counts: { generated: r.stats.generated, accepted: r.stats.accepted, dropped: r.drops.length, droppedBy } };
 }
 
+class GuideEgressBlocked extends Error {}
+const RECIPIENT: Record<string, string> = { local: "local", claude: "claude", anthropic: "claude", codex: "codex", openai: "chatgpt", openrouter: "openrouter", gemini: "gemini" };
+
+/** Every `{sourceId, quote}` in the output, rewritten by `map` (a quote code can't map back becomes ""). */
+function mapQuotes(kind: GuideKind, output: unknown, map: (sourceId: string | null, quote: string | null) => string | null): unknown {
+  if (kind === "conceptmap") {
+    const o = output as ConceptMapOutput;
+    return {
+      ...o,
+      nodes: o.nodes.map((n) => ({ ...n, quote: n.quote === null ? null : map(n.sourceId, n.quote) })),
+      edges: o.edges.map((e) => ({ ...e, quote: e.quote === null ? null : map(e.sourceId, e.quote) })),
+    };
+  }
+  const o = output as GuideOutput;
+  return { ...o, sections: o.sections.map((sec) => ({ ...sec, blocks: sec.blocks.map((b) => ({ ...b, quote: map(b.sourceId, b.quote) ?? "" })) })) };
+}
+
 export async function generateGuide(
   deps: GuideDeps,
   kind: GuideKind,
@@ -79,6 +99,7 @@ export async function generateGuide(
   const { store } = deps;
   const now = deps.now ?? (() => new Date());
   const at = () => now().toISOString();
+  const signal = options.signal;
   const picked = selectGuideInputs(store, kind, scope, options.passageTokenBudget);
   if (!picked.ok) return empty(kind, picked.status, picked.message, picked.courseRef);
   const sel = picked.selection;
@@ -86,14 +107,52 @@ export async function generateGuide(
   const pack = GUIDE_PACKS[kind] as PackSpec<GuideInput, unknown>;
   const receiptIds: string[] = [];
   const base = { ...empty(kind, "done", "", sel.courseRef), receiptIds };
-  const cacheKey = packCacheKey(pack, buildPrompt(pack, sel.frame, sel.input, sel.passages).systemPrompt, sel.input, sel.passages);
+
+  // As the quiz and cards packs: a fingerprint of the evidence and the sharing permissions; a
+  // change between selection and the call blocks it instead of sending stale or unconsented text.
+  const snapshot = () =>
+    payloadHash({
+      scope: store.resources().filter((r) => r.courseId === sel.courseId).map((r) => [r.id, r.contentHash, r.deleted, r.policy.mode]),
+      sources: store.sources(),
+      roster: rosterFor(store, sel.courseId, sel.accountScope).version,
+      privacy: store.privacy(),
+      consents: store.consents?.(),
+      concepts: store.learning.concepts(sel.courseRef).filter((c) => c.origin !== "model"),
+    });
+  const fingerprint = snapshot();
+  const validate = () => {
+    if (signal?.aborted || snapshot() !== fingerprint) throw new GuideEgressBlocked("Course evidence or sharing permissions changed. Try again with the current material.");
+  };
+  const runner = await deps.runner();
+  const hosted = runner ? runner.client !== "local" : store.privacy().mode !== "local_only";
+  const roster = rosterFor(store, sel.courseId, sel.accountScope);
+  const scrubber = payloadScrubber(store, hosted, sel.accountScope);
+  const scrub = (value: string) => scrubber.field(value, sel.courseId);
+  // Freeze the exact passage projection; quotes map back to the original text through it.
+  const frozen = new Map(sel.passages.map((p) => [p.sourceId, { original: p.text, result: hosted ? scrubText(p.text, roster) : { text: p.text, spans: [] } }]));
+  const toOriginal = (sourceId: string | null, quote: string | null): string | null => {
+    const p = sourceId ? frozen.get(sourceId) : undefined;
+    if (!p) return quote;
+    if (!quote) return quote;
+    const found = findQuote(p.result.text, quote);
+    const hit = found.status === "unique" ? found : found.status === "ambiguous" ? found.occurrences[0]! : null;
+    const span = hit && toOriginalSpan(p.result, hit.start, hit.end);
+    return span ? p.original.slice(span.start, span.end) : "";
+  };
+  const passages = sel.passages.map((p) => ({ ...p, text: frozen.get(p.sourceId)!.result.text }));
+  const input: GuideInput = { ...sel.input, scope: scrub(sel.input.scope), materials: sel.input.materials.map(scrub), topics: sel.input.topics.map(scrub), facts: sel.input.facts.map(scrub) };
+  const frame = { ...sel.frame, course: scrub(sel.frame.course), skeleton: scrub(sel.frame.skeleton), policy: scrub(sel.frame.policy) };
+  const prompt = buildPrompt(pack, frame, input, passages);
+  const cacheKey = payloadHash({ version: "guide-projection-v1", route: runner?.client ?? store.privacy().hostedProvider, fingerprint, key: packCacheKey(pack, prompt.systemPrompt, input, passages) });
+
   const finish = (artifact: { id: string; output: unknown; usage: GuideRunResult["tokens"]; createdAt?: string }, cached: boolean): GuideRunResult => {
-    const r = reviewed(kind, sel, artifact.output);
+    const r = reviewed(kind, sel, mapQuotes(kind, artifact.output, toOriginal));
     // The scope's latest guide: served marked stale if its material changes, until regenerated.
     const byId = new Map(sel.resources.map((x) => [x.id, x]));
     putLatest(store.learning, sel.courseRef, scope, {
       v: 1,
       kind,
+      packVersion: pack.version,
       cacheKey,
       artifactId: artifact.id,
       createdAt: artifact.createdAt ?? at(),
@@ -118,30 +177,38 @@ export async function generateGuide(
     };
   };
 
-  // Study-time rule: a cache hit is served without the runner, so it costs 0 tokens.
-  const hit = readPackArtifact(deps.artifacts, pack, sel.frame, sel.input, sel.passages);
-  if (hit) {
-    deps.ledger.append({ at: at(), pack: pack.id, packVersion: pack.version, courseId: sel.frame.courseId, cacheKey, outcome: "cache_hit", usage: { in: 0, cached: 0, out: 0 } });
-    return finish(hit, true);
+  // Study-time rule: a cache hit makes no provider call and costs 0 tokens.
+  const stored = deps.artifacts.get(cacheKey);
+  const parsedHit = stored && pack.schema.safeParse(stored.output);
+  if (stored && parsedHit?.success) {
+    deps.ledger.append({ at: at(), pack: pack.id, packVersion: pack.version, courseId: frame.courseId, cacheKey, outcome: "cache_hit", usage: { in: 0, cached: 0, out: 0 } });
+    return finish({ ...stored, output: parsedHit.data }, true);
   }
-  const runner = await deps.runner();
   if (!runner) return empty(kind, "no_client", "Connect your AI first: choose Claude or Codex in Settings and sign in, then try again.", sel.courseRef);
+  try {
+    validate();
+  } catch (error) {
+    return empty(kind, "blocked", (error as Error).message, sel.courseRef);
+  }
 
-  const prompt = buildPrompt(pack, sel.frame, sel.input, sel.passages);
   const lane = options.lane ?? "interactive";
-  const authorize = (recipient: string, categories: string[]) => {
+  const authorize = (recipient: string, categories: string[], payload?: unknown) => {
+    validate();
+    categories = [...new Set([...categories, ...sel.resources.flatMap(contentCategories)])];
     const parsed = aiRecipientSchema.safeParse(recipient);
     if (!parsed.success) return { allowed: false, reason: "This recipient is not supported." };
     const permission = maySend(store.privacy(), recipient, categories);
+    // The job checks permission without consuming a one-shot payload approval.
+    if (payload === undefined && permission.allowed) return permission;
     const m = {
       recipient: parsed.data,
       purpose: `Generate a ${NOUN[kind]} from course materials`,
       categories,
-      resourceIds: [...new Set(sel.resourceOf.values())],
-      characters: prompt.systemPrompt.length + prompt.input.length,
+      resourceIds: sel.resources.map((r) => r.id),
+      characters: JSON.stringify(payload ?? {}).length,
       allowed: permission.allowed,
       reason: permission.reason,
-      payload: { course: sel.label, title: kind, text: prompt.input, policy: sel.frame.policy },
+      payload,
     };
     const decision = egressFor(store).check(m, { at: at(), background: lane === "background" });
     if (decision.status === "blocked") {
@@ -157,19 +224,31 @@ export async function generateGuide(
     receiptIds.push(receipt.id);
     return { allowed: true, reason: permission.reason };
   };
-  const result = await runPack(
-    { runner, artifacts: deps.artifacts, ledger: deps.ledger, authorize, now: () => now().getTime() },
-    pack,
-    sel.frame,
-    sel.input,
-    sel.passages,
-    { lane, scope: scope.assessmentId ?? scope.moduleId ?? "course", ...(options.signal ? { signal: options.signal } : {}) },
-  );
-  if (result.status === "blocked") return { ...base, status: "blocked", message: result.reason };
-  if (result.status === "paused" || result.status === "failed") return { ...base, status: result.status, message: result.message };
-  if (result.status === "needs_student")
-    return { ...base, status: "needs_student", message: result.question, options: result.options, checkErrors: result.checkErrors };
-  return finish(result.artifact, result.cached);
+  const beforeCall = (call: BackendCall): BackendCall => {
+    const outgoing = { ...call, courseId: hosted ? undefined : call.courseId, systemPrompt: scrub(call.systemPrompt), input: scrub(call.input) };
+    const permission = authorize(RECIPIENT[runner.client] ?? runner.client, pack.categories, { systemPrompt: outgoing.systemPrompt, input: outgoing.input, jsonSchema: outgoing.jsonSchema });
+    if (!permission.allowed) throw new GuideEgressBlocked(permission.reason);
+    return outgoing;
+  };
+  try {
+    const result = await runPack(
+      { runner, artifacts: deps.artifacts, ledger: deps.ledger, authorize, beforeCall, validate, cacheKey, now: () => now().getTime() },
+      pack,
+      frame,
+      input,
+      passages,
+      { lane, scope: scope.assessmentId ?? scope.moduleId ?? "course", ...(signal ? { signal } : {}) },
+    );
+    if (result.status === "blocked") return { ...base, status: "blocked", message: result.reason };
+    if (result.status === "paused" || result.status === "failed") return { ...base, status: result.status, message: result.message };
+    if (result.status === "needs_student")
+      return { ...base, status: "needs_student", message: result.question, options: result.options, checkErrors: result.checkErrors };
+    validate();
+    return finish(result.artifact, result.cached);
+  } catch (error) {
+    if (error instanceof GuideEgressBlocked) return { ...base, status: "blocked", message: error.message };
+    throw error;
+  }
 }
 
 /** The student's signals for the course, all computed by code from the learning store. */
@@ -241,21 +320,14 @@ export type GuideViewResult =
  * model. When the material changed, the scope's last guide is served marked stale, listing the
  * changed sources; a new one is made only when the student asks (the pack command).
  */
-export function guideView(deps: Pick<GuideDeps, "store" | "artifacts" | "now">, kind: GuideKind, scope: PackScope): GuideViewResult {
+export function guideView(deps: Pick<GuideDeps, "store" | "now">, kind: GuideKind, scope: PackScope): GuideViewResult {
   const picked = selectGuideInputs(deps.store, kind, scope);
   if (!picked.ok) return { op: "guide.view", status: picked.status, pack: kind, courseRef: picked.courseRef, message: picked.message, modelCalls: 0 };
   const sel = picked.selection;
-  const at = (deps.now ?? (() => new Date()))();
-  const used = [...new Set(sel.resourceOf.values())];
-  const hit = readPackArtifact(deps.artifacts, GUIDE_PACKS[kind] as PackSpec<GuideInput, unknown>, sel.frame, sel.input, sel.passages);
-  if (hit) {
-    const r = reviewed(kind, sel, hit.output);
-    const signals = personalSignals(deps.store, sel.courseRef, at, used);
-    return { op: "guide.view", status: "ready", pack: kind, courseRef: sel.courseRef, artifactId: hit.id, stale: false, changedSources: [], view: personalize(r.doc, signals), drops: r.drops, modelCalls: 0 };
-  }
   const latest = readLatest(deps.store.learning, kind, sel.courseRef, scope);
   if (!latest)
     return { op: "guide.view", status: "missing", pack: kind, courseRef: sel.courseRef, message: `There's no ${NOUN[kind]} for this material yet. Generate one first.`, modelCalls: 0 };
+  // Freshness is decided by code from content hashes and the pack version, not by the model.
   const changes = changedSources(
     latest,
     (id) => {
@@ -264,15 +336,17 @@ export function guideView(deps: Pick<GuideDeps, "store" | "artifacts" | "now">, 
     },
     sel.resources.map((r) => ({ id: r.id, title: r.title })),
   );
+  const stale = changes.length > 0 || latest.packVersion !== GUIDE_PACKS[kind].version;
   const changed = new Set(changes.filter((c) => c.change !== "added").map((c) => c.resourceId));
+  const at = (deps.now ?? (() => new Date()))();
   const signals = personalSignals(deps.store, sel.courseRef, at, latest.sources.map((s) => s.resourceId).filter((id) => !changed.has(id)));
   return {
     op: "guide.view",
-    status: "stale",
+    status: stale ? "stale" : "ready",
     pack: kind,
     courseRef: sel.courseRef,
     artifactId: latest.artifactId,
-    stale: true,
+    stale,
     changedSources: changes,
     view: personalize(withoutChangedSpans(latest.doc, changed), signals),
     drops: latest.drops,

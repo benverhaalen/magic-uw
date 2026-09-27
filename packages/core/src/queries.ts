@@ -45,7 +45,7 @@ export function resourceViews(store: Store, list: Resource[]): ResourceView[] {
           : null;
       return {
         ...r,
-        deadline: resolveDeadline(evidence.deadlines(r)),
+        deadline: resolveDeadline(evidence.deadlines(r), evidence.unresolvedDeadlines(r)),
         kindLabel: label,
       };
     })

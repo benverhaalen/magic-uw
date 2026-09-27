@@ -4,7 +4,6 @@
  * this checks at runtime before reading.
  */
 import type { QueryRequest, QueryResult, Store } from "@magic/contracts";
-import { learningArtifactStore } from "../../core/src/learning-stores";
 import type { GuideStore } from "./inputs";
 import { guideView } from "./run";
 
@@ -23,18 +22,12 @@ export function guideQuery(store: Store, request: GuideRequest, now: string): Gu
   if (request.moduleId && request.assessmentId)
     return { ...base, status: "empty", courseRef: null, message: "Choose a module or an assessment, not both." };
   if (!isGuideStore(store)) return { ...base, status: "unavailable", courseRef: null, message: "Study guides need the workspace's learning store." };
-  const sourceOf = (sourceId: string) => {
-    const pid = Number(sourceId.slice(1));
-    const p = Number.isSafeInteger(pid) ? store.passage(pid) : undefined;
-    const r = p && store.resource(p.passage.resourceId);
-    return r ? { resourceId: r.id, contentHash: r.contentHash } : null;
-  };
   const scope = {
     courseId: request.courseId,
     ...(request.moduleId ? { moduleId: request.moduleId } : {}),
     ...(request.assessmentId ? { assessmentId: request.assessmentId } : {}),
   };
-  const r = guideView({ store, artifacts: learningArtifactStore(store.learning, sourceOf), now: () => new Date(now) }, request.kind, scope);
+  const r = guideView({ store, now: () => new Date(now) }, request.kind, scope);
   if (r.status === "ready" || r.status === "stale")
     return { ...base, status: r.status, courseRef: r.courseRef, artifactId: r.artifactId, stale: r.stale, changedSources: r.changedSources, message: null, guide: { view: r.view, drops: r.drops } };
   return { ...base, status: r.status, courseRef: r.courseRef, message: "message" in r ? r.message : null };

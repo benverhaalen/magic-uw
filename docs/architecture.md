@@ -1,5 +1,9 @@
 # Technical direction
 
+## Sync resilience integration in progress
+
+A local extension of this backend shares validated acquisition results across capture, inventory and freshness; resolves typed references through the existing document pipeline; and persists access observations independently of saved evidence. Learning keeps migration v8 and this extension uses v9. Product code is not yet published. See the [canonical handoff](sync-resilience-review.md#implementation-handoff--september-26-2026) for the implemented interfaces and evidence.
+
 ## The app's backend
 
 The course backend described in [course backend architecture](course-backend-architecture.md) is the app's backend: one local SQLite store (schema v7) with passages, the course map, course spaces and learning tables; passage retrieval; scoped queries; the job drain; the runner for the student's own AI client; prompt packs; and the learning engines. Status as of 2026-09-26 late (branch `feat/course-backend` at `33b1827`, 540/540 tests): storage, sync, consent, sign-in and onboarding are integrated; retrieval, the drain, the runner, packs and the learning engines are tested in isolation; the open platform contract (D42) is proposed. The canonical status per piece is [its §2](course-backend-architecture.md#2-where-we-are); the developer view and the scorecard are in [academic data platform](academic-data-platform.md). The sections below are the earlier direction and remain as written.

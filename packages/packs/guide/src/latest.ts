@@ -13,6 +13,7 @@ import type { GuideKind } from "./schema";
 export interface LatestGuide {
   v: 1;
   kind: GuideKind;
+  packVersion: string;
   cacheKey: string;
   artifactId: string;
   createdAt: string;
@@ -53,7 +54,7 @@ export function putLatest(learning: LearningStore, courseRef: string, scope: Pac
 
 const isLatest = (body: unknown): body is LatestGuide => {
   const b = body as Partial<LatestGuide> | null;
-  return !!b && b.v === 1 && typeof b.cacheKey === "string" && !!b.doc && Array.isArray(b.sources) && Array.isArray(b.scopeResources);
+  return !!b && b.v === 1 && typeof b.cacheKey === "string" && typeof b.packVersion === "string" && !!b.doc && Array.isArray(b.sources) && Array.isArray(b.scopeResources);
 };
 export function readLatest(learning: LearningStore, kind: GuideKind, courseRef: string, scope: PackScope): LatestGuide | null {
   const row = learning.artifact(latestKey(kind, courseRef, scope));

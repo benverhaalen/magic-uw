@@ -10,6 +10,7 @@ import {
 import { maySend, resolveDeadline } from "@magic/domain";
 import { contentCategories, courseInclusion } from "./access";
 import { evidenceFor } from "./evidence";
+import { outgoingProjection, payloadScrubber } from "./identity";
 
 export const mcpArgumentsSchema = z
   .object({
@@ -85,9 +86,23 @@ export function createMcpService(
         contentCategories(r).every(permitted)
       );
     };
+    // MCP output goes to hosted AI clients: scrub every free-text field with the
+    // same scrubber as hosted payloads. Excerpt offsets are in scrubbed ("outgoing")
+    // coordinates of the item's text, so validate-citations maps them back locally.
+    const scrubbers = new Map<string, ReturnType<typeof payloadScrubber>>();
+    const memo = new Map<string, string>();
+    const out = (value: string, courseId: string, scope?: string) => {
+      const scopeKey = scope ?? "";
+      let scrubber = scrubbers.get(scopeKey);
+      if (!scrubber) scrubbers.set(scopeKey, scrubber = payloadScrubber(store, true, scope));
+      const key = `${scopeKey}\u0000${courseId}\u0000${value}`;
+      let v = memo.get(key);
+      if (v === undefined) memo.set(key, (v = scrubber.field(value, courseId)));
+      return v;
+    };
     const allResources = store.resources();
     const resources = allResources.filter((r) => allowed(r));
-    const evidence = evidenceFor(store);
+    const evidence = evidenceFor(store, (r) => allowed(r));
     const safeUrl = (url: string) =>
       evidenceUrlSchema.safeParse(url).success ? url : undefined;
     const terms =
@@ -111,39 +126,54 @@ export function createMcpService(
               "are",
             ].includes(t),
         ) ?? [];
+    const contributors = new Map<string, Resource>();
+    function deadlineFor(r: Resource) {
+      for (const contributor of evidence.contributors(r)) contributors.set(contributor.id, contributor);
+      return resolveDeadline(evidence.deadlines(r), evidence.unresolvedDeadlines(r));
+    }
+    function projectedDeadline(r: Resource) {
+      const scrubValue = (v: unknown): unknown => typeof v === "string" ? out(v, r.courseId, sourceMap.get(r.sourceId)?.accountScope) : Array.isArray(v) ? v.map(scrubValue) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, scrubValue(x)])) : v;
+      return scrubValue(deadlineFor(r));
+    }
     function project(r: Resource) {
       const source = sourceMap.get(r.sourceId)!;
+      const s = (value: string) => out(value, r.courseId, source.accountScope);
+      const text = s(r.text);
       const match =
         terms
-          .map((t) => r.text.toLocaleLowerCase().indexOf(t))
+          .map((t) => text.toLocaleLowerCase().indexOf(t))
           .filter((n) => n >= 0)
           .sort((a, b) => a - b)[0] ?? 0;
       const start =
         name === "answer_course_question" || name === "search"
           ? Math.max(0, match - 500)
           : 0;
+      const projection = outgoingProjection(store, r, "text", { start, end: start + 8000 });
       return {
         id: r.id,
         courseId: r.courseId,
-        course: r.courseName,
-        title: r.title,
+        course: s(r.courseName),
+        title: s(r.title),
         kind: r.kind,
-        text: r.text.slice(start, start + 8000),
-        excerpt: { start, end: Math.min(r.text.length, start + 8000) },
-        deadline: resolveDeadline(evidence.deadlines(r)),
+        text: projection.text,
+        excerpt: { start, end: Math.min(text.length, start + 8000), basis: "outgoing" as const },
+        deadline: projectedDeadline(r),
         citation: {
           url: safeUrl(r.url),
           version: r.version,
+          contentHash: r.contentHash,
+          projectionId: projection.id,
           observedAt: r.observedAt,
-          source: source.label,
+          source: s(source.label),
         },
         parts: r.parts?.slice(0, 40).map((p) => ({
           page: p.page,
           slide: p.slide,
-          section: p.section,
+          section: p.section ? s(p.section) : undefined,
+          offsetBasis: "original_source" as const,
           start: p.start,
           end: p.end,
-          text: p.text.slice(0, 2000),
+          text: s(p.text).slice(0, 2000),
         })),
         freshness: {
           status: source.status,
@@ -154,7 +184,7 @@ export function createMcpService(
           ? {
               grade: {
                 score: r.submission.score,
-                grade: r.submission.grade,
+                grade: typeof r.submission.grade === "string" ? s(r.submission.grade) : r.submission.grade,
                 late: r.submission.late,
                 missing: r.submission.missing,
                 excused: r.submission.excused,
@@ -162,7 +192,13 @@ export function createMcpService(
             }
           : {}),
         ...(permitted("comments") && r.submission
-          ? { comments: r.submission.comments }
+          ? {
+              comments: r.submission.comments?.map((c) => ({
+                createdAt: c.createdAt,
+                text: s(c.text),
+                ...(c.authorName ? { authorName: s(c.authorName) } : {}),
+              })),
+            }
           : {}),
         // No raw HTML, identities, local paths, secret URLs, or arbitrary source payloads.
       };
@@ -230,7 +266,7 @@ export function createMcpService(
           ]),
         ),
         coverage: sources.map((s) => ({
-          source: s.label,
+          source: out(s.label, s.courseId, s.accountScope),
           status: s.status,
           complete: s.complete,
           lastSuccessAt: s.lastSuccessAt,
@@ -238,7 +274,7 @@ export function createMcpService(
         itemsWithNoDueDate: resources.filter(
           (r) =>
             r.kind === "assignment" &&
-            !resolveDeadline(evidence.deadlines(r)).dueAt,
+            !deadlineFor(r).dueAt,
         ).length,
       };
     } else {
@@ -246,7 +282,7 @@ export function createMcpService(
         const cutoff = now().getTime() + args.days * 86_400_000;
         selected = resources
           .filter((r) => {
-            const due = resolveDeadline(evidence.deadlines(r)).planningAt;
+            const due = resolveDeadline(evidence.deadlines(r), evidence.unresolvedDeadlines(r)).planningAt;
             return (
               due &&
               Date.parse(due) >= now().getTime() &&
@@ -255,9 +291,9 @@ export function createMcpService(
           })
           .sort((a, b) =>
             (
-              resolveDeadline(evidence.deadlines(a)).planningAt ?? ""
+              deadlineFor(a).planningAt ?? ""
             ).localeCompare(
-              resolveDeadline(evidence.deadlines(b)).planningAt ?? "",
+              deadlineFor(b).planningAt ?? "",
             ),
           );
       } else {
@@ -266,8 +302,8 @@ export function createMcpService(
           score: terms.reduce(
             (n, t) =>
               n +
-              (r.title.toLowerCase().includes(t) ? 4 : 0) +
-              (r.text.toLowerCase().includes(t) ? 1 : 0),
+              (out(r.title, r.courseId, sourceMap.get(r.sourceId)?.accountScope).toLowerCase().includes(t) ? 4 : 0) +
+              (out(r.text, r.courseId, sourceMap.get(r.sourceId)?.accountScope).toLowerCase().includes(t) ? 1 : 0),
             0,
           ),
         }));
@@ -296,7 +332,7 @@ export function createMcpService(
       );
     const categories = [
       ...new Set(
-        selected.flatMap((r) => [
+        [...new Map([...selected, ...contributors.values()].map((r) => [r.id, r])).values()].flatMap((r) => [
           ...contentCategories(r),
           ...(permitted("grades") &&
           r.submission &&
@@ -318,7 +354,7 @@ export function createMcpService(
       recipient: g.recipient,
       purpose: `MCP ${name}`,
       categories,
-      resourceIds: selected.map((r) => r.id),
+      resourceIds: [...new Set([...selected.map((r) => r.id), ...contributors.keys()])],
       characters: text.length,
       status: "sent",
       createdAt: now().toISOString(),

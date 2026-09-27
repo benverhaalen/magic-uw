@@ -25,6 +25,7 @@ const TEXT = [
   "A queue is a first-in, first-out collection of elements.",
   "Each list node holds 4 bytes, so 25 nodes use 100 bytes in total.",
   "The midterm is on October 14, 2026.",
+  "Questions go to grader@example.test before the midterm.",
 ].join(" ");
 const input = (id: string, over: Partial<ResourceInput> = {}): ResourceInput => ({
   externalId: id,
@@ -171,6 +172,8 @@ test("a module guide: one checked call; a wrong worked example and an invented q
     assert.equal(example?.computed, "100 bytes");
     assert.equal(g.reading.text.slice(example!.source.start!, example!.source.end!), Q.bytes, "the quote is placed in the resource");
     assert.ok(!(await g.prompts()).includes("Graphs have vertices"), "only the module's material was sent");
+    assert.ok(!(await g.prompts()).includes("grader@example.test"), "identifiers are scrubbed before the call, as for the quiz and cards packs");
+    assert.ok((await g.prompts()).includes("[EMAIL_1]"));
     const calls = await g.calls();
 
     const again = await g.pack<GuideRunResult>("guide");
