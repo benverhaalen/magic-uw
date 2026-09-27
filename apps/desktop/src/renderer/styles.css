@@ -29,7 +29,9 @@
   background: var(--magic-accent-frame);
 }
 :root {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--magic-font-interface);
+  font-weight: var(--magic-font-interface-weight);
+  letter-spacing: var(--magic-tracking);
   color: #262625;
   background: #fff;
   font-size: 13px;
@@ -49,8 +51,17 @@ body {
 }
 button,
 input,
-select {
+select,
+textarea,
+optgroup,
+option {
   font: inherit;
+  letter-spacing: inherit;
+}
+/* Preserve semantic emphasis without introducing another interface weight.
+   Editorial descendants inherit Karma Medium; code and source frames keep their face. */
+b, strong, h1, h2, h3, h4, h5, h6, th {
+  font-weight: inherit;
 }
 button {
   cursor: pointer;
@@ -82,18 +93,18 @@ p {
 }
 h1 {
   font-size: 27px;
-  font-weight: 540;
-  letter-spacing: -1px;
+  font-weight: inherit;
+  letter-spacing: var(--magic-tracking);
   margin-bottom: 0;
 }
 h2 {
   font-size: 16px;
-  font-weight: 560;
-  letter-spacing: -0.35px;
+  font-weight: inherit;
+  letter-spacing: var(--magic-tracking);
 }
 h3 {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: inherit;
 }
 p {
   line-height: 1.65;
@@ -110,7 +121,7 @@ a {
 }
 .provider-guidance summary {
   cursor: pointer;
-  font-weight: 550;
+  font-weight: inherit;
 }
 .provider-guidance details[open] summary {
   margin-bottom: 12px;
@@ -141,8 +152,8 @@ a {
   gap: 10px;
   padding: 0 12px 28px;
   font-size: 14px;
-  font-weight: 600;
-  letter-spacing: -0.35px;
+  font-weight: inherit;
+  letter-spacing: var(--magic-tracking);
 }
 .brand-mark {
   font-size: 19px;
@@ -153,7 +164,7 @@ a {
   background: #282927;
   border-radius: 7px;
   color: white;
-  font-weight: 500;
+  font-weight: inherit;
 }
 .sidebar nav {
   display: grid;
@@ -191,7 +202,7 @@ a {
 .planning-audit { margin: 22px 0; }
 .planning-audit details { padding: 12px 0; border-bottom: 1px solid var(--border); }
 .planning-audit summary { display: flex; gap: 12px; align-items: baseline; cursor: pointer; }
-.planning-audit blockquote { margin: 12px 0; padding-left: 14px; border-left: 2px solid var(--border); color: var(--muted); }
+.planning-audit blockquote { margin: 12px 0; padding-left: 14px; color: var(--muted); }
 .nav-button:hover {
   background: #eeeee9;
 }
@@ -260,7 +271,7 @@ a {
   border-radius: 4px;
   background: #f1f1ed;
   color: #72726b;
-  font-weight: 400;
+  font-weight: inherit;
   vertical-align: middle;
   white-space: nowrap;
 }
@@ -270,10 +281,10 @@ a {
 }
 .eyebrow {
   text-transform: uppercase;
-  letter-spacing: 1.05px;
+  letter-spacing: var(--magic-tracking);
   font-size: 10px;
   color: #898981;
-  font-weight: 500;
+  font-weight: inherit;
   margin-bottom: 9px;
 }
 .page-heading {
@@ -386,7 +397,7 @@ a {
 }
 .empty-workspace h2 {
   font-size: 21px;
-  letter-spacing: -0.65px;
+  letter-spacing: var(--magic-tracking);
   margin-bottom: 11px;
 }
 .empty-workspace > p {
@@ -461,7 +472,7 @@ a {
   justify-content: space-between;
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.75px;
+  letter-spacing: var(--magic-tracking);
   color: #999990;
   border-bottom: 1px solid var(--border);
   padding: 0 0 12px;
@@ -500,7 +511,7 @@ a {
 .resource-title {
   font-size: 13px;
   line-height: 1.45;
-  font-weight: 500;
+  font-weight: inherit;
   overflow-wrap: anywhere;
 }
 .resource-subline {
@@ -593,7 +604,7 @@ a {
 .resource-detail > h2 {
   font-size: 22px;
   line-height: 1.3;
-  letter-spacing: -0.6px;
+  letter-spacing: var(--magic-tracking);
   margin-bottom: 24px;
   overflow-wrap: anywhere;
 }
@@ -651,7 +662,6 @@ a {
 }
 .evidence-note {
   padding: 10px 12px;
-  border-left: 2px solid #c4a576;
   background: #faf6ed;
   font-size: 11px;
   line-height: 1.6;
@@ -684,7 +694,7 @@ a {
 .field-label {
   display: block;
   font-size: 11px;
-  font-weight: 500;
+  font-weight: inherit;
   color: #72736a;
   margin-bottom: 8px;
 }
@@ -713,7 +723,7 @@ select {
   font-size: 10px;
 }
 .manifest-status strong {
-  font-weight: 550;
+  font-weight: inherit;
 }
 .manifest-status span {
   color: #a1a194;
@@ -775,7 +785,7 @@ select {
   gap: 7px;
 }
 .link-evidence strong {
-  font-weight: 500;
+  font-weight: inherit;
 }
 .link-evidence p {
   margin-bottom: 3px;
@@ -794,6 +804,94 @@ select {
   padding-left: 0;
   padding-right: 0;
 }
+.privacy-intro {
+  padding: 34px 0 25px;
+  max-width: 710px;
+}
+.privacy-intro h1 {
+  font-family: var(--magic-font-editorial);
+  font-weight: 500;
+  line-height: 1.2;
+}
+.privacy-intro-copy {
+  color: var(--magic-ink-prose);
+  font-size: var(--magic-type-control);
+  max-width: 590px;
+  margin: 12px 0 20px;
+}
+.privacy-jump-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  padding: 0 0 18px;
+}
+.privacy-jump-links a {
+  color: var(--magic-ink-secondary);
+  font-size: var(--magic-type-control);
+  text-decoration: none;
+}
+.privacy-source-action {
+  margin: 15px 0 25px 8px;
+}
+.privacy-source-action .magic-fb-pill {
+  border: 0;
+  color: var(--magic-ink-secondary);
+  font-size: var(--magic-type-control);
+  font-family: inherit;
+  background-color: var(--magic-fb-pill-rest);
+}
+.privacy-save-note {
+  color: var(--magic-ink-muted-strong);
+  font-size: var(--magic-type-meta);
+  margin: 0;
+}
+.privacy-page .settings-section {
+  scroll-margin-top: 28px;
+}
+.privacy-page .visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.privacy-local-details {
+  max-width: 610px;
+  margin: 18px 0;
+  color: var(--magic-ink-prose);
+}
+.privacy-local-details summary {
+  cursor: pointer;
+  font-size: var(--magic-type-control);
+  color: var(--magic-ink-link);
+}
+.privacy-local-details p {
+  margin: 10px 0 0;
+  font-size: var(--magic-type-control);
+}
+.privacy-page .settings-section > h2 {
+  font-family: var(--magic-font-editorial);
+  font-size: var(--magic-type-section);
+  font-weight: 500;
+  line-height: 1.25;
+}
+.privacy-page .settings-section > p {
+  font-size: var(--magic-type-control);
+  line-height: 1.6;
+}
+.privacy-page .mode-choice strong,
+.privacy-page .setting-toggle strong {
+  font-size: var(--magic-type-control);
+}
+.privacy-page .mode-choice > span > span,
+.privacy-page .setting-toggle > span > span {
+  font-size: var(--magic-type-control);
+  line-height: 1.55;
+}
 .settings-section {
   border-top: 1px solid var(--border);
   padding: 27px 0;
@@ -803,12 +901,13 @@ select {
   margin-bottom: 10px;
 }
 .settings-section > p {
-  color: #85857b;
-  font-size: 12px;
+  color: var(--magic-ink-prose);
+  font-size: var(--magic-type-control);
   max-width: 620px;
 }
 .settings-section > p.small {
-  font-size: 11px;
+  color: var(--magic-ink-muted-strong);
+  font-size: var(--magic-type-meta);
   margin-top: 16px;
   margin-bottom: 0;
 }
@@ -846,7 +945,7 @@ select {
 .source-title h3 {
   margin: 0;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: inherit;
 }
 .source-facts {
   display: grid;
@@ -879,7 +978,7 @@ select {
 }
 .job-summary strong {
   font-size: 19px;
-  font-weight: 500;
+  font-weight: inherit;
   color: #767768;
 }
 .job-summary span {
@@ -895,7 +994,7 @@ select {
 }
 .mode-choices legend {
   font-size: 11px;
-  font-weight: 500;
+  font-weight: inherit;
   margin-bottom: 12px;
   padding: 0;
 }
@@ -920,11 +1019,11 @@ select {
 }
 .mode-choice strong {
   font-size: 12px;
-  font-weight: 500;
+  font-weight: inherit;
 }
 .mode-choice > span > span {
-  font-size: 11px;
-  color: #939383;
+  font-size: var(--magic-type-compact-control);
+  color: var(--magic-ink-muted-strong);
   line-height: 1.6;
 }
 .selected-mode {
@@ -948,11 +1047,11 @@ select {
 }
 .setting-toggle strong {
   font-size: 12px;
-  font-weight: 500;
+  font-weight: inherit;
 }
 .setting-toggle > span > span {
-  font-size: 11px;
-  color: #909080;
+  font-size: var(--magic-type-compact-control);
+  color: var(--magic-ink-muted-strong);
   line-height: 1.65;
 }
 .setting-toggle input {
@@ -993,10 +1092,11 @@ select {
 .disabled-setting strong {
   color: #aaa99c;
 }
-.setting-note {
-  font-size: 10px !important;
-  color: #9a9a89 !important;
-  margin-top: 0 !important;
+.setting-note,
+.settings-section > p.setting-note {
+  font-size: var(--magic-type-meta);
+  color: var(--magic-ink-muted-strong);
+  margin-top: 0;
   margin-bottom: 20px;
 }
 .provider-setting {
@@ -1026,7 +1126,7 @@ select {
 }
 .receipt-list strong {
   font-size: 12px;
-  font-weight: 500;
+  font-weight: inherit;
 }
 .receipt-list p {
   font-size: 11px;
@@ -1295,7 +1395,7 @@ select {
   justify-content: space-between;
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.75px;
+  letter-spacing: var(--magic-tracking);
   color: #999990;
   margin: 0 0 6px;
 }
@@ -1328,7 +1428,7 @@ select {
 }
 .rail-time {
   flex: 0 0 58px;
-  font-weight: 600;
+  font-weight: inherit;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
@@ -1346,7 +1446,7 @@ select {
   background: #f6e3d6;
   color: #a4521c;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: inherit;
   text-align: center;
   line-height: 15px;
 }
@@ -1364,13 +1464,6 @@ select {
   border-radius: 7px;
   background: #fff;
   border: 1px solid #ecece6;
-  border-left: 3px solid #c9a24a;
-}
-.rail-next.exam {
-  border-left-color: #c2553f;
-}
-.rail-next.prep {
-  border-left-color: #6b86cf;
 }
 .rail-next-title {
   padding: 0;
@@ -1378,7 +1471,7 @@ select {
   background: none;
   text-align: left;
   font-size: 12.5px;
-  font-weight: 600;
+  font-weight: inherit;
   color: inherit;
   cursor: pointer;
 }
@@ -1448,13 +1541,12 @@ select {
   line-height: 1.35;
   overflow: hidden;
   border: 0;
-  border-left: 3px solid;
   text-align: left;
   color: inherit;
 }
 .rail-block b {
   display: block;
-  font-weight: 600;
+  font-weight: inherit;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1474,27 +1566,24 @@ select {
 .rail-block.suggestion {
   background: transparent;
   border: 1px dashed #d6c9a6;
-  border-left: 3px solid #c9a24a;
   color: #6b604a;
   cursor: pointer;
 }
 .rail-block.suggestion b {
-  font-weight: 500;
+  font-weight: inherit;
 }
 .rail-block.suggestion.exam {
   border-color: #e2bdb4;
-  border-left-color: #c2553f;
 }
 .rail-block.suggestion.prep {
   border-color: #c6d2ee;
-  border-left-color: #6b86cf;
 }
 .rail-block.suggestion.focused {
   background: #fff;
   color: inherit;
 }
 .rail-block.suggestion.focused b {
-  font-weight: 600;
+  font-weight: inherit;
 }
 .rail-now {
   position: absolute;
@@ -1604,7 +1693,7 @@ select {
   color: inherit;
 }
 .rail-block.suggestion.planned b {
-  font-weight: 600;
+  font-weight: inherit;
 }
 .rail-block.suggestion.done {
   background: #f3f2ee;
@@ -1614,7 +1703,7 @@ select {
 }
 .rail-block.suggestion.done b {
   text-decoration: line-through;
-  font-weight: 500;
+  font-weight: inherit;
 }
 .rail-edit {
   display: flex;
@@ -1681,7 +1770,7 @@ select {
   border: 0;
   background: none;
   color: #f2c9a8;
-  font-weight: 600;
+  font-weight: inherit;
   cursor: pointer;
 }
 
@@ -1726,7 +1815,7 @@ select {
   background: #e7e6f7;
   color: #4b4a9c;
   font-size: 9.5px;
-  font-weight: 600;
+  font-weight: inherit;
   vertical-align: 1px;
 }
 .text-input {
@@ -1777,7 +1866,7 @@ select {
   background: #3e4fb5;
   color: #fff;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: inherit;
   line-height: 1.6;
   cursor: pointer;
 }

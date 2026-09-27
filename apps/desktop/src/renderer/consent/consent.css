@@ -14,7 +14,7 @@
   font-size: 12px;
 }
 .consent-recipients dt {
-  font-weight: 600;
+  font-weight: inherit;
 }
 .consent-recipients dd {
   margin: 0;
@@ -61,6 +61,6 @@
 }
 .consent-embedded .consent-title {
   font-size: 21px;
-  letter-spacing: -0.65px;
+  letter-spacing: var(--magic-tracking);
   margin: 0;
 }

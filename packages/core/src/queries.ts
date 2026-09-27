@@ -1,3 +1,5 @@
+import { personalPlanningAt } from "@magic/contracts";
+import { personalDeadlineSource, personalDeadlineProjection } from "./personal-deadlines";
 /**
  * Scoped queries instead of full snapshots (T15, backend optimization O1).
  *
@@ -21,7 +23,7 @@ import type {
 import { resolveDeadline } from "@magic/domain";
 import { judgmentResultSchema } from "@magic/ai";
 import { evidenceFor } from "./evidence";
-import { courseInclusion } from "./access";
+import { courseIncluded, courseInclusion } from "./access";
 import { readOnce } from "./graph/read-once";
 import { createHash } from "node:crypto";
 import { guideQuery } from "../../packs/guide/src/query"; // owner: guides
@@ -53,12 +55,16 @@ export function withReads(store: Store, reads: { sources?: ReturnType<Store["sou
   ) as Store;
 }
 
-export function resourceViews(store: Store, list: Resource[], all?: Resource[]): ResourceView[] {
-  const evidence = evidenceFor(all ? readOnce(store, all) : store);
-  // The last kind judgment per resource, as findLast over the list would pick it, indexed once.
+/** The one mapping from stored resources to what a view shows: deadline, label, order. */
+export function resourceViews(store: Store, list: Resource[], allResources?: Resource[]): ResourceView[] {
+  store = allResources ? readOnce(store, allResources) : store;
+  const included = courseInclusion(store, allResources);
+  const sources = new Map(store.sources().map(source => [source.id, source]));
+  const permitted = (resource: Resource) => !resource.deleted && included(resource) && sources.get(resource.sourceId)?.status !== "inaccessible";
+  const evidence = evidenceFor(store, permitted, allResources);
+  const personalDates = store.personalDeadlineChoices();
   const kindJudgments = new Map<string, Judgment>();
-  for (const j of store.judgments())
-    if (j.questionVersion === "assignment.kind.v1") kindJudgments.set(j.resourceId, j);
+  for (const j of store.judgments()) if (j.questionVersion === "assignment.kind.v1") kindJudgments.set(j.resourceId, j);
   return list
     .map((r) => {
       // store.judgments() holds only judgments whose input (content or text hash) is current,
@@ -73,17 +79,22 @@ export function resourceViews(store: Store, list: Resource[], all?: Resource[]):
         (parsed.data.probabilities[parsed.data.kind] ?? 0) >= 0.9
           ? parsed.data.kind.replaceAll("_", " ")
           : null);
+      const deadline = permitted(r) ? resolveDeadline(evidence.deadlines(r), evidence.unresolvedDeadlines(r)) : resolveDeadline([]);
+      const deadlineContributors = evidence.contributors(r).map(source => ({ resourceId: source.id, contentHash: source.contentHash }));
       return {
         ...r,
-        deadline: resolveDeadline(evidence.deadlines(r), evidence.unresolvedDeadlines(r)),
+        deadline,
+        deadlineContributors,
+        ...(permitted(r) && sources.get(r.sourceId) ? { personalDeadline: personalDeadlineProjection(
+          personalDeadlineSource(r, sources.get(r.sourceId)!.accountScope, deadline, deadlineContributors), personalDates) } : {}),
         kindLabel: label,
       };
     })
     .sort(
       (a, b) =>
         Number(a.completed) - Number(b.completed) ||
-        (a.deadline.planningAt ?? "9999").localeCompare(
-          b.deadline.planningAt ?? "9999",
+        (personalPlanningAt(a) ?? "9999").localeCompare(
+          personalPlanningAt(b) ?? "9999",
         ) ||
         a.title.localeCompare(b.title),
     );

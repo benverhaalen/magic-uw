@@ -1,0 +1,24 @@
+/* Local geometry only; shared components.css owns typography, actions and focus. */
+body { background: var(--magic-surface-workspace); }
+.connection-study { width: min(100%, 800px); margin: 64px auto; padding: 0 32px; }
+.connection-study__intro { margin-bottom: 40px; }
+.connection-study__intro h1 { margin: 8px 0 12px; }
+.connection-study__intro > p:last-child { max-width: 65ch; }
+.mc-connection { max-width: 640px; }
+.mc-connection__heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 18px; }
+.mc-connection__heading h2 { font-size: var(--magic-type-section); line-height: 1.4; }
+.mc-connection__heading .mc-action { min-width: 128px; flex-shrink: 0; }
+.mc-connection__freshness { color: var(--magic-ink-prose); font-size: 14px; margin-bottom: 3px; }
+.mc-connection__feedback { min-height: 40px; margin-top: 16px; }
+.mc-connection__saved { border-top: 1px solid var(--magic-line-quiet); padding-top: 12px; }
+.mc-connection__saved summary { cursor: pointer; font-size: 14px; padding: 4px 0; }
+.mc-connection__saved summary > .mc-meta { margin-left: 12px; }
+.mc-connection__saved ul { list-style: none; padding: 0; margin: 14px 0; display: grid; gap: 12px; }
+.mc-connection__saved li { display: grid; font-size: 14px; gap: 1px; overflow-wrap: anywhere; }
+.connection-study__note { max-width: 66ch; margin-top: 44px; }
+@media (max-width: 540px) {
+  .connection-study { margin: 32px auto; padding: 0 24px; }
+  .connection-study__intro { margin-bottom: 32px; }
+  .mc-connection__heading { gap: 16px; align-items: flex-start; }
+  .mc-connection__heading .mc-action { min-width: 112px; gap: 12px; }
+}

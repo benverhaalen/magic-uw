@@ -1,0 +1,33 @@
+/* Retain Home's prose-left / action-and-report-right composition while expanded. */
+.home-reading .magic-handled-briefing { display: grid; grid-template-columns: minmax(0, 1fr) var(--briefing-action-width, 174px); gap: 24px; align-items: center; }
+.magic-handled-briefing__body { grid-column: 1; grid-row: 1; }
+.magic-handled-briefing__aside { grid-column: 2; grid-row: 1; min-width: 0; }
+.magic-handled-briefing__body, .magic-handled-briefing__action { display: grid; grid-template-rows: 1fr; opacity: 1; transition: grid-template-rows 180ms ease, opacity 120ms ease; }
+.magic-handled-briefing__body > div, .magic-handled-briefing__action > div { min-height: 0; overflow: hidden; }
+.home-reading .magic-handled-briefing[data-handled=true] { grid-template-columns: minmax(0, 1fr); gap: 0; }
+.magic-handled-briefing[data-handled=true] .magic-handled-briefing__body, .magic-handled-briefing[data-handled=true] .magic-handled-briefing__action { grid-template-rows: 0fr; opacity: 0; }
+.magic-handled-briefing[data-handled=true] .magic-handled-briefing__aside { grid-column: 1; grid-row: 2; background: transparent; overflow: visible; }
+.home-reading .magic-handled-briefing[data-handled=true] .magic-ui-confirmation { padding: 0; border: 0; }
+.home-reading .magic-handled-briefing .magic-ui-confirmation [role=status] { font: var(--magic-font-interface-weight) .8125rem/1.5 var(--magic-font-interface); }
+.magic-handled-briefing .magic-ui-confirmation label { font-size: .8125rem; }
+@media (max-width: 1170px) { .home-reading .magic-handled-briefing { gap: 16px; } }
+@media (max-width: 650px) { .home-reading .magic-handled-briefing { grid-template-columns: minmax(0, 1fr); } .magic-handled-briefing__aside { grid-column: 1; grid-row: 2; } .home-reading .magic-handled-briefing:not([data-handled=true]) .magic-handled-briefing__aside { width:min(100%,240px); } }
+@media (prefers-reduced-motion: reduce) { .magic-handled-briefing__body, .magic-handled-briefing__action { transition: none; } }
+/* Keep handled summaries mounted, after active briefing passages. */
+.home-briefing:has(> .magic-handled-briefing) { display: flex; flex-direction: column; }
+.home-briefing > .briefing-passage { order: 1; }
+.home-briefing > .magic-handled-briefing[data-handled=true] { order: 2; margin-bottom: 8px; }
+
+/* Keep real save/error text near its checkbox; reserve no invisible paragraph. */
+.home-briefing .magic-ui-confirmation [role=status] { min-height:0; }
+.home-briefing .magic-ui-confirmation__reserve { display:none; }
+.home-briefing .magic-ui-confirmation [role=status]:has(> .magic-ui-confirmation__content:empty),
+.home-briefing .magic-ui-confirmation__feedback:empty { display:none; }
+.home-briefing .magic-ui-confirmation__feedback { min-height:0; }
+.home-reading .magic-handled-briefing__aside { overflow:visible; border-radius:var(--magic-radius-control); }
+.home-reading .magic-handled-briefing__aside .briefing-review { background:transparent; overflow:visible; }
+.home-reading .magic-handled-briefing__aside .briefing-review > .magic-ui-action { border-radius:var(--magic-radius-control) var(--magic-radius-control) 0 0; }
+.home-reading .magic-handled-briefing .magic-ui-confirmation label { display:flex; align-items:center; gap:6px; min-height:24px; font:var(--magic-font-interface-weight) var(--magic-type-compact-control)/1.4 var(--magic-font-interface); }
+.home-reading .magic-handled-briefing .magic-ui-confirmation [role=status] { overflow-wrap:anywhere; }
+.home-reading .magic-handled-briefing[data-handled=true] { grid-template-columns:minmax(0,1fr); }
+.home-reading .magic-handled-briefing[data-handled=true] .magic-ui-confirmation [hidden] { display:none; }

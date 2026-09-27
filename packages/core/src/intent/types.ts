@@ -84,7 +84,7 @@ export interface ActionContext {
   timeZone: string;
   signal: AbortSignal;
   /** What the student has open when they asked (the command's context). */
-  request: { courseId?: string; view?: string; noteId?: string };
+  request: { courseId?: string; view?: string; noteId?: string; resourceId?: string };
   /** The grounded ask, for the `ask` action and adapters that answer questions. */
   ask(question: string, courses: ResolvedCourse[] | "all", signal: AbortSignal): Promise<AskResult>;
 }

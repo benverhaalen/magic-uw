@@ -2,6 +2,10 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import "./styles.css";
+import "../../../../packages/ui/src/styles.css";
+import "../../../../packages/ui/src/inline-context/inline-context.css";
+import "../../../../packages/ui/src/motion/motion.css";
+import "./desktop.css";
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

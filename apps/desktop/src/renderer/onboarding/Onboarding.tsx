@@ -8,6 +8,8 @@ import { ConsentSetup } from "../consent/ConsentSetup";
 import { ACCENTS, applyAppearance, readAppearance, writeAppearance, type Appearance, type ThemePreference } from "../appearance";
 import { signInAndSync, signInMessage } from "../sign-in";
 import { ClientHealthNotice } from "./ClientHealthNotice";
+import { ReadinessOverview } from "./ReadinessOverview";
+import { projectReadiness } from "./readiness";
 import { Icon, Spinner } from "./icons";
 import {
   clientInfo,
@@ -417,10 +419,15 @@ function UwStep({
         session on this computer.
       </p>
       <div className={`onb-connection${confirmed ? " ok" : ""}`} role="status" aria-live="polite">
-        {signing ? (
+        {signing && !confirmed ? (
           <>
             <Spinner />
             <span>Finish signing in on UW's page.</span>
+          </>
+        ) : signing ? (
+          <>
+            <Icon name="check" className="onb-ok" />
+            <span>Signed in to UW. Reading your course list…</span>
           </>
         ) : outcome ? (
           <>
@@ -1288,15 +1295,18 @@ function Populating({
   onFinish: () => void;
 }) {
   const summary = summarize(snapshot, busy);
-  const [whyOpen, setWhyOpen] = useState<string | null>(null);
+  const readiness = projectReadiness(snapshot, summary.sources);
+  const keyGap = readiness.primaryGap;
   const title =
     summary.outcome === "empty"
       ? "Nothing connected yet"
       : summary.outcome === "reading"
         ? "Reading your courses"
-        : summary.outcome === "issues"
+        : keyGap
           ? "Your workspace is partly ready"
-          : "Your workspace is ready";
+          : readiness.incomplete
+            ? "Your workspace has saved content"
+            : "Your workspace is ready";
   return (
     <>
       {heading(title)}
@@ -1305,54 +1315,13 @@ function Populating({
           ? "No source has been read yet. Sign in to UW, or look around with a sample course."
           : summary.outcome === "reading"
             ? "This keeps going if you open your workspace now."
-            : summary.outcome === "issues"
-              ? "These weren't fully read. What was read is saved; each one says why and what you can do."
-              : summary.filesArriving
-                ? `Your courses' assignments and modules are read. ${summary.filesArriving} course ${summary.filesArriving === 1 ? "file is" : "files are"} still coming in; they keep arriving after you open your workspace.`
-                : "Everything connected was read."}
+            : keyGap
+              ? "Some included course areas or connections need a closer look. What was read is saved."
+              : readiness.incomplete
+                ? "Your saved work is available. Some other source checks were incomplete; details are below."
+                : "Your saved coursework is ready to use."}
       </p>
-      {summary.counts.length > 0 ? (
-        <ul className="onb-counts" aria-label="Items found">
-          {summary.counts.map((entry) => (
-            <li key={entry.label}>
-              <strong>{entry.count}</strong> {entry.label}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {summary.sources.length > 0 ? (
-        <ul className="onb-sources" aria-label="Sources">
-          {summary.sources.map((source) => (
-            <li key={source.id} className={`onb-source ${source.state}`}>
-              <span className="onb-source-mark" aria-hidden="true">
-                {source.state === "reading" ? (
-                  <Spinner />
-                ) : source.state === "ready" ? (
-                  <Icon name="check" className="onb-ok" />
-                ) : (
-                  <Icon name="alert" className="onb-warn" />
-                )}
-              </span>
-              <span className="onb-source-text">
-                <span className="onb-source-label">{source.label}</span>
-                {source.reason ? <span className="onb-source-reason">{source.reason}</span> : null}
-                {whyOpen === source.id && source.why ? <span className="onb-source-reason">{source.why}</span> : null}
-              </span>
-              <span className="onb-source-status">
-                {source.status}
-                {source.detail ? <span className="onb-source-detail">{source.detail}</span> : null}
-                {source.action === "sign-in" ? (
-                  <button className="onb-link" onClick={onSignIn}>Sign in again</button>
-                ) : source.action === "retry" ? (
-                  <button className="onb-link" disabled={busy} onClick={onRetry}>Retry</button>
-                ) : source.action === "why" && source.why ? (
-                  <button className="onb-link" aria-expanded={whyOpen === source.id} onClick={() => setWhyOpen(whyOpen === source.id ? null : source.id)}>Why?</button>
-                ) : null}
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      <ReadinessOverview snapshot={snapshot} summary={summary} />
       {snapshot.fixtureMode ? <p className="onb-note">This is a synthetic sample course, not your coursework.</p> : null}
       {noClient ? <p className="onb-note">No AI is connected, so study material waits until you add one.</p> : null}
       <Actions onBack={onBack}>

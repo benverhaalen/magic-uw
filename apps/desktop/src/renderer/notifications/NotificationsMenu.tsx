@@ -1,36 +1,33 @@
+import { MagicGlyph } from '../../../../../packages/ui/src/glyph';
 import { useEffect, useId, useRef, useState } from "react";
-import type {
-  AppNotification,
-  Command,
-  NotificationFeed,
-} from "@magic/contracts";
-import "./notifications.css";
+import type { AppNotification, Command, NotificationFeed } from "@magic/contracts";
+import { markAnchor } from "../../../../../packages/ui/src/motion";
+import { destinationLabel, type NotificationDestination } from "./destination";
 
 /**
- * Top-bar notifications: a bell with the unread count of urgent + important items and a
- * non-modal panel anchored under it. Levels, counts and freshness arrive computed in the
- * snapshot; this component only displays them and sends read/dismiss commands.
+ * Shell bell: unread count of urgent + important items and a nonmodal panel anchored under it
+ * (native popover, like NavigationPopover). Levels, counts and freshness arrive computed in the
+ * snapshot; this component displays them, sends read/dismiss commands and hands each row's
+ * destination to the app, which owns routing and destination focus.
  */
 export function NotificationsMenu({
   feed,
   busy,
   run,
-  canOpenResource,
-  onOpenResource,
+  destinationOf,
+  onOpen,
   onOpenSources,
   onOpenPrivacy,
 }: {
   feed: NotificationFeed | undefined;
   busy: boolean;
   run: (command: Command) => Promise<unknown>;
-  /** Whether the item detail can show this resource (it may be filtered out or removed). */
-  canOpenResource: (id: string) => boolean;
-  onOpenResource: (id: string) => void;
+  destinationOf: (item: AppNotification) => NotificationDestination | null;
+  onOpen: (destination: NotificationDestination) => void;
   onOpenSources: () => void;
   onOpenPrivacy: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
   const bellRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
@@ -48,20 +45,33 @@ export function NotificationsMenu({
       ? `Notifications, ${unread} need${unread === 1 ? "s" : ""} attention`
       : "Notifications";
 
-  const close = (returnFocus: boolean) => {
-    setOpen(false);
-    if (returnFocus) bellRef.current?.focus();
-  };
+  useEffect(() => {
+    const panel = panelRef.current!;
+    const update = () => setOpen(panel.matches(":popover-open"));
+    panel.addEventListener("toggle", update);
+    return () => panel.removeEventListener("toggle", update);
+  }, []);
 
-  // Clicking anywhere outside closes the panel without moving focus.
+  // Right-aligned under the bell, kept inside the window.
+  function place() {
+    const panel = panelRef.current!, rect = bellRef.current!.getBoundingClientRect();
+    const width = Math.min(380, innerWidth - 24);
+    panel.style.width = `${width}px`;
+    panel.style.left = `${Math.max(12, Math.min(rect.right - width + 6, innerWidth - width - 12))}px`;
+    panel.style.top = `${rect.bottom + 8}px`;
+    panel.style.maxHeight = `${Math.max(160, innerHeight - rect.bottom - 20)}px`;
+    markAnchor(panel, bellRef.current!);
+  }
   useEffect(() => {
     if (!open) return;
-    const onPointer = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointer);
-    return () => document.removeEventListener("pointerdown", onPointer);
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
   }, [open]);
+
+  const hide = (returnFocus: boolean) => {
+    if (panelRef.current?.matches(":popover-open")) panelRef.current.hidePopover();
+    if (returnFocus) bellRef.current?.focus();
+  };
 
   // A dismissal or "Mark all read" disables or removes the focused control. Once the command
   // settles, put focus back on the same row (if it failed), the next row, or the panel.
@@ -71,7 +81,7 @@ export function NotificationsMenu({
     const pending = restore.current;
     restore.current = null;
     const active = document.activeElement;
-    if (active && active !== document.body && rootRef.current?.contains(active)) return;
+    if (active && active !== document.body && panelRef.current?.contains(active)) return;
     const id =
       pending === "panel"
         ? null
@@ -79,9 +89,7 @@ export function NotificationsMenu({
           ? pending.id
           : pending.next;
     const target = id
-      ? panelRef.current?.querySelector<HTMLElement>(
-          `[data-notification="${CSS.escape(id)}"]`,
-        )
+      ? panelRef.current?.querySelector<HTMLElement>(`[data-notification="${CSS.escape(id)}"]`)
       : null;
     (target ?? panelRef.current)?.focus();
   });
@@ -90,22 +98,17 @@ export function NotificationsMenu({
     if (ids.length) void run({ type: "notifications-read", ids: ids.slice(0, 500) });
   };
 
-  const destination = (item: AppNotification): "resource" | "sources" | null => {
-    if (item.reason === "sign_in" || item.reason === "source_stale") return "sources";
-    if (item.resourceId && canOpenResource(item.resourceId)) return "resource";
-    return null;
-  };
-
-  const activate = (item: AppNotification) => {
+  const activate = (item: AppNotification, destination: NotificationDestination | null) => {
     if (!item.read) markRead([item.id]);
-    const target = destination(item);
-    if (target === "resource" && item.resourceId) onOpenResource(item.resourceId);
-    else if (target === "sources") onOpenSources();
-    // The panel hides; return focus to the bell rather than dropping it on the page.
-    if (target) close(true);
+    if (!destination) return;
+    // In-app destinations take focus themselves (their heading, or the saved place on Back).
+    // Outlook opens outside the app, so focus returns to the bell.
+    hide(destination.kind === "outlook");
+    onOpen(destination);
   };
 
-  const dismiss = (item: AppNotification, visible: AppNotification[]) => {
+  const dismiss = (item: AppNotification) => {
+    const visible = [...attention, ...other];
     const index = visible.findIndex((entry) => entry.id === item.id);
     const next = visible[index + 1] ?? visible[index - 1];
     restore.current = { id: item.id, next: next?.id ?? null };
@@ -113,51 +116,50 @@ export function NotificationsMenu({
   };
 
   const go = (action: () => void) => {
+    hide(false);
     action();
-    close(true);
   };
 
   const renderRows = (list: AppNotification[]) => (
     <ul className="notif-list">
-      {list.map((item) => (
-        <NotificationRow
-          key={item.id}
-          item={item}
-          busy={busy}
-          opens={destination(item)}
-          onActivate={() => activate(item)}
-          onDismiss={() => dismiss(item, [...attention, ...other])}
-        />
-      ))}
+      {list.map((item) => {
+        const destination = destinationOf(item);
+        return (
+          <NotificationRow
+            key={item.id}
+            item={item}
+            busy={busy}
+            destination={destination}
+            onActivate={() => activate(item, destination)}
+            onDismiss={() => dismiss(item)}
+          />
+        );
+      })}
     </ul>
   );
 
   return (
-    <div
-      className="notif"
-      ref={rootRef}
-      onKeyDown={(event) => {
-        if (event.key === "Escape" && open) {
-          event.stopPropagation();
-          close(true);
-        }
-      }}
-      onBlur={(event) => {
-        // Focus moving to another element outside closes the panel. A null target means the
-        // window lost focus or the focused row was removed; outside clicks cover the rest.
-        const next = event.relatedTarget as Node | null;
-        if (open && next && !rootRef.current?.contains(next)) setOpen(false);
-      }}
-    >
+    <div className="notif">
       <button
         ref={bellRef}
         type="button"
-        className={`notif-bell ${open ? "open" : ""}`}
+        className="notif-bell"
         aria-label={bellName}
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={panelId}
-        onClick={() => setOpen((value) => !value)}
+        popoverTarget={panelId}
+        onClick={(event) => {
+          // The bell is the declared invoker, so light dismiss ignores it; toggle here instead.
+          event.preventDefault();
+          const panel = panelRef.current!;
+          if (panel.matches(":popover-open")) panel.hidePopover();
+          else {
+            panel.showPopover();
+            place();
+            panel.focus();
+          }
+        }}
       >
         <BellGlyph />
         {feed && unread > 0 ? (
@@ -169,18 +171,32 @@ export function NotificationsMenu({
       <div
         ref={panelRef}
         id={panelId}
+        popover="auto"
+        data-magic-motion="anchored"
         className="notif-panel"
         role="dialog"
         aria-labelledby={headingId}
         tabIndex={-1}
-        hidden={!open}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            hide(true);
+          }
+        }}
+        onBlur={(event) => {
+          // Focus moving elsewhere closes the panel; the bell toggles it itself. A null target
+          // means the window lost focus or the focused row was removed, so the panel stays.
+          const next = event.relatedTarget as Node | null;
+          if (next && !event.currentTarget.contains(next) && next !== bellRef.current) hide(false);
+        }}
       >
         <div className="notif-header">
           <h2 id={headingId}>Notifications</h2>
           {feed ? (
             <button
               type="button"
-              className="subtle-button"
+              className="notif-quiet"
               disabled={busy || unreadIds.length === 0}
               onClick={() => {
                 restore.current = "panel";
@@ -195,14 +211,12 @@ export function NotificationsMenu({
           <p className="notif-empty">Notifications aren’t available yet.</p>
         ) : items.length === 0 ? (
           <p className="notif-empty">
-            {feed.degraded
-              ? "Can’t confirm you’re up to date."
-              : "Nothing new since your last look."}
+            {feed.degraded ? "Can’t confirm you’re up to date." : "Nothing new since your last look."}
           </p>
         ) : (
           <>
-            <section className="notif-section" aria-label="Needs attention">
-              <h3>Needs attention</h3>
+            <section className="notif-section" aria-labelledby={`${headingId}-attention`}>
+              <h3 id={`${headingId}-attention`}>Needs attention</h3>
               {attention.length ? (
                 renderRows(attention)
               ) : (
@@ -216,6 +230,7 @@ export function NotificationsMenu({
             {other.length ? (
               <details className="notif-section notif-other">
                 <summary>
+                  <ChevronGlyph />
                   Other updates <span className="notif-count">{other.length}</span>
                 </summary>
                 {renderRows(other)}
@@ -226,35 +241,27 @@ export function NotificationsMenu({
         {feed ? (
           <div className="notif-footer">
             {feed.degraded ? (
-              <div className="notif-warning">
-                <p>Some sources haven’t updated — updates may be missing.</p>
-                <button
-                  type="button"
-                  className="subtle-button"
-                  onClick={() => go(onOpenSources)}
-                >
+              <div className="notif-note notif-note--attention">
+                <p>Some sources haven’t updated, so updates may be missing.</p>
+                <button type="button" className="notif-quiet" onClick={() => go(onOpenSources)}>
                   Check sources
                 </button>
               </div>
             ) : (
               <p className="notif-checked">
                 {feed.checkedAt
-                  ? `Checked ${relativeTime(feed.checkedAt).toLowerCase()}`
+                  ? `Checked ${relativeTime(feed.checkedAt).toLowerCase()}. Checks run while the app is open.`
                   : "Not checked yet"}
               </p>
             )}
             {feed.triage.status !== "on" ? (
-              <div className="notif-triage">
+              <div className="notif-note">
                 <p>
-                  Announcement sorting by Jev{" "}
-                  {feed.triage.status === "off" ? "is off" : "isn’t available"}.
-                  {feed.triage.reason ? ` ${feed.triage.reason}` : ""}
+                  Announcement and email sorting by Jev{" "}
+                  {feed.triage.status === "off" ? "is off" : "isn’t available"}. Code rules
+                  still sort everything.{feed.triage.reason ? ` ${feed.triage.reason}` : ""}
                 </p>
-                <button
-                  type="button"
-                  className="subtle-button"
-                  onClick={() => go(onOpenPrivacy)}
-                >
+                <button type="button" className="notif-quiet" onClick={() => go(onOpenPrivacy)}>
                   Data & AI
                 </button>
               </div>
@@ -269,13 +276,13 @@ export function NotificationsMenu({
 function NotificationRow({
   item,
   busy,
-  opens,
+  destination,
   onActivate,
   onDismiss,
 }: {
   item: AppNotification;
   busy: boolean;
-  opens: "resource" | "sources" | null;
+  destination: NotificationDestination | null;
   onActivate: () => void;
   onDismiss: () => void;
 }) {
@@ -285,11 +292,8 @@ function NotificationRow({
   const before = item.detail ? undefined : readable(evidence.before);
   const after = item.detail ? undefined : readable(evidence.after);
   const quote =
-    evidence.quote && evidence.quote.trim() !== item.title.trim()
-      ? evidence.quote
-      : undefined;
-  // Email rows name the sender; the code's category reason is available on hover and to
-  // assistive technology through the row's description.
+    evidence.quote && evidence.quote.trim() !== item.title.trim() ? evidence.quote : undefined;
+  // Email rows name the sender; the code's category reason is available on hover.
   const meta = (
     item.reason === "email"
       ? [
@@ -307,12 +311,14 @@ function NotificationRow({
     .filter(Boolean)
     .join(" · ");
   const affects = item.raisedBy?.affects.filter(Boolean) ?? [];
+  const hint = destinationLabel(destination);
   return (
     <li className={`notif-row ${item.read ? "read" : "unread"}`}>
       <button
         type="button"
         className="notif-open"
         data-notification={item.id}
+        data-destination={destination?.kind ?? "none"}
         onClick={onActivate}
       >
         <span className="notif-title-line">
@@ -321,13 +327,9 @@ function NotificationRow({
               <span className="notif-hidden">Unread. </span>
             </span>
           )}
-          {item.level === "urgent" ? (
-            <span className="notif-chip">Urgent</span>
-          ) : null}
+          {item.level === "urgent" ? <span className="notif-tag notif-tag--urgent">Urgent</span> : null}
           <span className="notif-title">{item.title}</span>
-          {item.count && item.count > 1 ? (
-            <span className="notif-count">{item.count} items</span>
-          ) : null}
+          {item.count && item.count > 1 ? <span className="notif-count">{item.count} items</span> : null}
         </span>
         {item.detail ? <span className="notif-detail">{item.detail}</span> : null}
         {before || after ? (
@@ -350,23 +352,23 @@ function NotificationRow({
         {quote ? <span className="notif-quote">“{quote}”</span> : null}
         {item.raisedBy ? (
           <span
-            className="notif-jev"
+            className="notif-tag notif-tag--jev"
             title={`Jev (${item.raisedBy.model}) raised this from ${levelLabel(item.raisedBy.from)}. This is a model’s judgment; check the message.`}
           >
-            Flagged by Jev
-            {affects.length ? ` · May affect ${affects.join(", ")}` : ""}
+            Flagged by Jev{affects.length ? ` · May affect ${affects.join(", ")}` : ""}
           </span>
         ) : null}
-        {meta ? (
-          <span
-            className="notif-meta"
-            title={item.senderReason ? `Sorted by code: ${item.senderReason}` : undefined}
-          >
-            {meta}
+        {meta || hint ? (
+          <span className="notif-meta">
+            <span title={item.senderReason ? `Sorted by code: ${item.senderReason}` : undefined}>{meta}</span>
+            {hint ? (
+              <span className="notif-hint">
+                <span className="notif-hidden">. </span>
+                {hint}
+                {destination?.kind === "outlook" ? <ExternalGlyph /> : null}
+              </span>
+            ) : null}
           </span>
-        ) : null}
-        {opens === "sources" ? (
-          <span className="notif-hidden">. Opens Sources.</span>
         ) : null}
       </button>
       <button
@@ -376,15 +378,7 @@ function NotificationRow({
         disabled={busy}
         onClick={onDismiss}
       >
-        <svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true">
-          <path
-            d="m5 5 10 10M15 5 5 15"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
-        </svg>
+        <MagicGlyph name="close" size={14} />
       </button>
     </li>
   );
@@ -394,9 +388,8 @@ function levelLabel(level: AppNotification["level"]): string {
   return level === "info" ? "other updates" : level;
 }
 
-/** "Just now", "12 min ago", "3 hr ago", "Yesterday", weekday within a week, else a date. */
-export /** An ISO instant as local text; any other evidence value is shown as given. */
-function readable(value?: string) {
+/** An ISO instant as local text; any other evidence value is shown as given. */
+export function readable(value?: string) {
   if (!value) return value;
   const ms = Date.parse(value);
   if (!/^\d{4}-\d{2}-\d{2}T/.test(value) || Number.isNaN(ms)) return value;
@@ -408,6 +401,8 @@ function readable(value?: string) {
     minute: "2-digit",
   }).format(new Date(ms));
 }
+
+/** "Just now", "12 min ago", "3 hr ago", "Yesterday", weekday within a week, else a date. */
 function relativeTime(value: string, now = new Date()): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Unknown time";
@@ -420,8 +415,7 @@ function relativeTime(value: string, now = new Date()): string {
   const startOfYesterday = new Date(startOfToday);
   startOfYesterday.setDate(startOfYesterday.getDate() - 1);
   if (date >= startOfYesterday) return "Yesterday";
-  if (seconds < 6 * 86400)
-    return new Intl.DateTimeFormat(undefined, { weekday: "long" }).format(date);
+  if (seconds < 6 * 86400) return new Intl.DateTimeFormat(undefined, { weekday: "long" }).format(date);
   return new Intl.DateTimeFormat(undefined, {
     month: "short",
     day: "numeric",
@@ -429,22 +423,6 @@ function relativeTime(value: string, now = new Date()): string {
   }).format(date);
 }
 
-function BellGlyph() {
-  // Lucide "bell", drawn on its 24px grid at the app's 18px icon size.
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="18"
-      height="18"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M10.268 21a2 2 0 0 0 3.464 0" />
-      <path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326" />
-    </svg>
-  );
-}
+function BellGlyph() { return <MagicGlyph name="bell" size={16} />; }
+function ChevronGlyph() { return <MagicGlyph name="chevron" size={14} className="notif-chevron" />; }
+function ExternalGlyph() { return <MagicGlyph name="external" size={12} />; }

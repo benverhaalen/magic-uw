@@ -1,0 +1,60 @@
+.magic-start-work { color:var(--magic-ink); font-family:var(--magic-font-interface); font-weight: var(--magic-font-interface-weight); letter-spacing: var(--magic-tracking); margin-block:1.25rem; }
+.magic-start-work h3 { font:500 1.2rem/1.35 var(--magic-font-editorial); margin:0 0 .75rem; }
+.magic-start-work__destinations { list-style:none; padding:0; display:grid; gap:.6rem; margin:0 0 1rem; }
+.magic-start-work__destinations li { display:grid; gap:.2rem; }
+.magic-start-work small,.magic-start-work__note { font-size:.875rem; line-height:1.5; color:var(--magic-ink-muted); }
+.magic-start-work__note { margin:.6rem 0; }
+.magic-start-work__receipt { padding-inline-start:1.25rem; font-size:.9rem; line-height:1.5; }
+.magic-start-work p,.magic-start-work li { overflow-wrap:anywhere; }
+
+/* Flat Upcoming row: one colored card, the row itself starts the work; trailing controls are siblings. */
+.magic-start-work--compact { margin:0; }
+.home-work-card { display:flex; align-items:stretch; border-radius:var(--magic-radius-card); min-width:0; }
+.magic-start-work--compact .home-work-row { flex:1; min-width:0; min-height:66px; padding:11px 8px 11px 16px; background:transparent; font:inherit; text-align:left; border:0; cursor:pointer; color:inherit; }
+.magic-start-work--compact .home-work-row[aria-disabled=true] { cursor:default; }
+.magic-start-work--compact .home-work-row:focus-visible { outline:2px solid var(--magic-focus); outline-offset:2px; }
+.home-work-summary { flex:1; min-width:0; display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.home-work-name { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; font:500 var(--magic-type-work-title)/1.25 var(--magic-font-editorial); overflow-wrap:anywhere; }
+.home-work-marks { flex:0 0 auto; display:flex; align-items:center; gap:4px; min-width:22px; justify-content:flex-end; opacity:.82; }
+.home-work-mark { display:inline-flex; }
+.home-work-mark svg { width:15px; height:15px; }
+.home-work-mark-more,.home-work-opening { font-size:12px; font-weight: inherit; white-space:nowrap; }
+.magic-start-work--compact [role=status]:empty { display:none; }
+.magic-start-work--compact [role=status] { font-size:12px; padding:6px 4px 0; }
+.magic-start-work--compact [role=status] p { margin:0 0 4px; }
+.magic-start-work--compact .magic-start-work__receipt { margin:0; font-size:12px; }
+
+/* Briefing action: same prepared set, labeled with what opens. */
+.magic-start-work--action { margin:0; }
+.magic-start-work--action>.magic-ui-action { display:flex; width:100%; min-height:58px; justify-content:space-between; align-items:center; text-align:left; font-size:13px; padding:10px 13px; gap:12px; }
+.magic-start-work--action>.magic-ui-action small { display:block; margin-top:2px; font-size:12px; line-height:1.35; color:inherit; opacity:.78; }
+.magic-start-work--action>.magic-ui-action svg { flex:0 0 14px; width:14px; }
+.magic-start-work--action [role=status]:empty { display:none; }
+.magic-start-work--action [role=status] { font-size:12px; line-height:1.45; margin-top:6px; }
+.magic-start-work--action [role=status] p { margin:0 0 4px; }
+.magic-start-work--action .magic-start-work__receipt { margin:0; padding-inline-start:1rem; font-size:12px; }
+
+/* Feedback belongs to the complete flat card (shared card family, packages/ui/src/motion/feedback.css):
+ * the whole tile tints and lifts on hover, including over its sibling detail control, and deepens at
+ * once when the row is pressed. The tint is an inset shadow under the text, so title and deadline
+ * never change or move; no filter or transform. Keyboard focus rings the tile, not the inner row. */
+.magic-start-work .home-work-card { box-shadow: var(--magic-fb-card-edge, 0 0 0 0 transparent), var(--magic-fb-card-rest); transition: box-shadow var(--magic-fb-duration) var(--magic-fb-ease); }
+@media (hover: hover) and (pointer: fine) { .home-work-card:hover:not(:has(>.home-work-row[aria-disabled=true])) { box-shadow: var(--magic-fb-card-edge, 0 0 0 0 transparent), var(--magic-fb-card-hover); } }
+.home-work-card:has(>.home-work-row:active:not([aria-disabled=true])) { box-shadow: var(--magic-fb-card-edge, 0 0 0 0 transparent), var(--magic-fb-card-press); transition-duration: 0s; }
+/* Deadline edges (packages/ui/src/deadline-emphasis.css) are box-shadows too: carried as the first layer
+ * so hover and press never erase them. Values mirror that file until it sets --magic-fb-card-edge itself. */
+.magic-start-work .home-work-card[data-magic-deadline=overdue] { --magic-fb-card-edge: inset 0 0 0 1.5px var(--magic-deadline-ink); }
+.magic-start-work .home-work-card[data-magic-deadline=completed] { --magic-fb-card-edge: inset 0 0 0 1px var(--magic-line-quiet); }
+.home-work-card:has(>.home-work-row:focus-visible) { outline: 2px solid var(--magic-focus); outline-offset: 2px; }
+.magic-start-work--compact .home-work-card>.home-work-row:focus-visible { outline-color: transparent; }
+
+.home-work-status-slot { position: relative; flex: 0 0 92px; width: 92px; display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding: 0 4px; box-sizing: border-box; font: var(--magic-font-interface-weight) 12px/1.3 var(--magic-font-interface); }
+.magic-start-work--compact .home-work-status-slot [role=status] { padding: 0; font: inherit; }
+.home-work-remedy { border: 0; padding: 6px 0; color: inherit; background: transparent; font: inherit; text-decoration: underline; cursor: pointer; }
+.home-work-error-info > summary { cursor: pointer; list-style: none; min-width: 20px; min-height: 32px; display: grid; place-items: center; }
+.home-work-error-info > div { position: absolute; z-index: 30; right: 0; top: calc(100% - 6px); width: 260px; max-width: 50vw; padding: 12px; border: 1px solid var(--magic-line-quiet); border-radius: 8px; background: var(--magic-surface-workspace); color: var(--magic-ink); font: var(--magic-font-interface-weight) 12px/1.5 var(--magic-font-interface); box-shadow: 0 4px 18px #38242220; overflow-wrap: anywhere; }
+
+.home-work-card { position: relative; }
+.magic-start-work--compact .home-work-row { padding-right: 100px; }
+.home-work-status-slot { position: absolute; top: 0; bottom: 0; right: 38px; pointer-events: none; }
+.home-work-status-slot button, .home-work-status-slot details { pointer-events: auto; }
