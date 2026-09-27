@@ -19,7 +19,7 @@
 .home-work-marks { flex:0 0 auto; display:flex; align-items:center; gap:4px; min-width:22px; justify-content:flex-end; opacity:.82; }
 .home-work-mark { display:inline-flex; }
 .home-work-mark svg { width:15px; height:15px; }
-.home-work-mark-more,.home-work-opening { font-size:11px; font-weight:550; white-space:nowrap; }
+.home-work-mark-more,.home-work-opening { font-size:12px; font-weight:550; white-space:nowrap; }
 .magic-start-work--compact [role=status]:empty { display:none; }
 .magic-start-work--compact [role=status] { font-size:12px; padding:6px 4px 0; }
 .magic-start-work--compact [role=status] p { margin:0 0 4px; }
@@ -28,7 +28,7 @@
 /* Briefing action: same prepared set, labeled with what opens. */
 .magic-start-work--action { margin:0; }
 .magic-start-work--action>.magic-ui-action { display:flex; width:100%; min-height:58px; justify-content:space-between; align-items:center; text-align:left; font-size:13px; padding:10px 13px; gap:12px; }
-.magic-start-work--action>.magic-ui-action small { display:block; margin-top:2px; font-size:11px; line-height:1.35; color:inherit; opacity:.78; }
+.magic-start-work--action>.magic-ui-action small { display:block; margin-top:2px; font-size:12px; line-height:1.35; color:inherit; opacity:.78; }
 .magic-start-work--action>.magic-ui-action svg { flex:0 0 14px; width:14px; }
 .magic-start-work--action [role=status]:empty { display:none; }
 .magic-start-work--action [role=status] { font-size:12px; line-height:1.45; margin-top:6px; }

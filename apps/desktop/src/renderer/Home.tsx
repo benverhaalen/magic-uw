@@ -76,9 +76,8 @@ export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPl
     <section className="home-upcoming" aria-labelledby="upcoming-title" data-place-anchor="upcoming"><div className="home-section-heading"><h2 id="upcoming-title">Upcoming</h2><button onClick={onCourses}>All coursework</button></div>
       <div className="home-work-list">{shown.map(group)}</div>
       {!work.upcoming.length && <p className="home-empty">No future dated work in this saved capture.{work.today.length?' Today’s deadlines are in Today.':''}</p>}
-      {(laterCount>0 || work.earlier.length>0) && <div className="home-more-list">
+      {laterCount>0 && <div className="home-more-list">
         {laterCount>0 && <details className="home-more" data-place-disclosure="upcoming-later"><summary data-focus-key="upcoming-later"><Glyph name="chevron"/>{laterCount} more upcoming</summary><div className="home-work-list">{later.map(group)}</div></details>}
-        {work.earlier.length>0 && <details className="home-more" data-place-disclosure="earlier-work"><summary data-focus-key="earlier-work"><Glyph name="chevron"/>{work.earlier.length} past {work.earlier.length===1?'deadline':'deadlines'} without a saved submission</summary><p className="home-empty">These saved deadlines have passed. Check the source for submission and late-work availability.</p><div className="home-work-list">{work.earlier.map(workRow)}</div></details>}
       </div>}
     </section>
     <section className="home-study" aria-labelledby="study-title" data-place-anchor="study"><h2 id="study-title">Study &amp; Learn</h2><div className="home-study-grid">{study.map(({material,context})=><a className="home-study-action" href={resourceHref(material.id)} data-focus-key={`study-${material.id}`} key={material.id}><span title={label(material).raw}>{course(material)}</span><h3>Review {material.title}</h3><p>Referenced in {context.title}</p><div><span>Open saved material</span><Glyph name="forward"/></div></a>)}</div>
