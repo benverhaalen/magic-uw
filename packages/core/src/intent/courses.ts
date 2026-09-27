@@ -8,6 +8,7 @@ import { OUTLOOK_CALENDAR_COURSE_ID } from "@magic/contracts";
 import { normaliseLabel } from "../../../learning/src/concepts";
 import { courseInclusion } from "../access";
 import { resolveDate } from "./dates";
+import type { Concept } from "../../../learning/src/store";
 import type { IntentStore, Resolve, ResolvedCourse, SlotResolution } from "./types";
 
 export interface CourseEntry extends ResolvedCourse {
@@ -33,6 +34,15 @@ export interface IntentIndex {
   assignments: AssignmentEntry[];
   /** Alias (lower case) → canonical subjects, longest alias first. */
   aliases: [string, string[]][];
+  /** Compiled once per build, so a command's budget covers matching only. */
+  matchers: {
+    codes: { re: RegExp; subjects: string[] }[];
+    names: CourseEntry[];
+    aliases: { re: RegExp; subjects: string[] }[];
+    tokens: { re: RegExp; course: CourseEntry }[];
+  };
+  /** Each current course's active concepts, with a revision so a changed map is re-read. */
+  topics: Map<string, { revision: string; concepts: Concept[] }>;
 }
 
 /** Common student names for subject codes; the course's own subject code is always an alias. */
@@ -140,7 +150,49 @@ export function buildIndex(store: IntentStore): IntentIndex {
     for (const a of names) (aliasMap.get(a) ?? aliasMap.set(a, new Set()).get(a)!).add(c.subject);
   }
   const aliases = [...aliasMap.entries()].map(([a, s]) => [a, [...s]] as [string, string[]]).sort((x, y) => y[0].length - x[0].length);
-  return { signature, courses, assignments, aliases };
+  const index: IntentIndex = { signature, courses, assignments, aliases, matchers: compileMatchers(courses, aliases), topics: new Map() };
+  refreshTopics(store, index);
+  return index;
+}
+
+function compileMatchers(courses: CourseEntry[], aliases: [string, string[]][]): IntentIndex["matchers"] {
+  const current = courses.filter((c) => c.current);
+  const counts = new Map<string, number>();
+  for (const c of current) for (const t of new Set(c.nameTokens)) counts.set(t, (counts.get(t) ?? 0) + 1);
+  return {
+    // "cs 400", "comp sci 400", "compsci400", "math234".
+    codes: aliases.map(([alias, subjects]) => ({ re: new RegExp(`(?<![a-z0-9])${escape(alias).replace(/ /g, "\\s*")}\\s*-?\\s*(\\d{3})(?![0-9])`, "g"), subjects })),
+    names: courses.filter((c) => c.nameNorm.length >= 6).sort((a, b) => b.nameNorm.length - a.nameNorm.length),
+    // "my econ class", "philosophy"; a short alias needs a course cue.
+    aliases: aliases.map(([alias, subjects]) => {
+      const cue = alias.length <= 3 && !["cs", "ece", "lit", "bio", "soc", "lsc"].includes(alias);
+      const re = cue
+        ? new RegExp(`(?:\\b(?:my|the|in|for|from) )${word(alias)}(?: (?:class|course|homework|hw))?|${word(alias)} (?:class|course)`, "g")
+        : new RegExp(`(?:\\bmy )?${word(alias)}(?: (?:class|course))?`, "g");
+      return { re, subjects };
+    }),
+    // A distinctive name word next to a course cue (so "dynamic programming" stays a topic).
+    tokens: current.flatMap((c) =>
+      c.nameTokens
+        .filter((t) => counts.get(t) === 1)
+        .map((t) => ({ re: new RegExp(`(?:\\b(?:my|the|in|for|from|of|to) )${word(t)}(?: (?:class|course))?|${word(t)} (?:class|course)`, "g"), course: c })),
+    ),
+  };
+}
+
+const topicRevision = (concepts: Concept[]) => JSON.stringify(concepts.map((c) => [c.id, c.status, c.studentLabel ?? c.label, c.parentId]));
+/** Re-reads each current course's concept map; returns true when any changed. */
+export function refreshTopics(store: IntentStore, index: IntentIndex): boolean {
+  let changed = false;
+  for (const c of index.courses.filter((x) => x.current)) {
+    const concepts = store.learning.concepts(c.ref).filter((x) => x.status === "active");
+    const revision = topicRevision(concepts);
+    if (index.topics.get(c.ref)?.revision !== revision) {
+      index.topics.set(c.ref, { revision, concepts });
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 const TITLE_SYNONYMS: [RegExp, string][] = [
@@ -177,38 +229,22 @@ export function findCourseMentions(index: IntentIndex, text: string): CourseMent
     claimed.push({ start, end });
     if (courses.length) out.push({ start, end, courses });
   };
-  // 1. Subject alias plus number: "cs 400", "comp sci 400", "compsci400", "math234".
-  for (const [alias, subjects] of index.aliases) {
-    const re = new RegExp(`(?<![a-z0-9])${escape(alias).replace(/ /g, "\\s*")}\\s*-?\\s*(\\d{3})(?![0-9])`, "g");
-    for (const m of text.matchAll(re)) {
-      const hit = index.courses.filter((c) => c.subject && subjects.includes(c.subject) && c.number?.replace(/[A-Z]$/, "") === m[1]);
-      add(m.index!, m.index! + m[0].length, hit);
+  const m = index.matchers;
+  // 1. Subject alias plus number.
+  for (const { re, subjects } of m.codes)
+    for (const hit of text.matchAll(re)) {
+      const found = index.courses.filter((c) => c.subject && subjects.includes(c.subject) && c.number?.replace(/[A-Z]$/, "") === hit[1]);
+      add(hit.index!, hit.index! + hit[0].length, found);
     }
-  }
   // 2. A full course name.
-  for (const c of [...index.courses].sort((a, b) => b.nameNorm.length - a.nameNorm.length)) {
-    if (c.nameNorm.length < 6) continue;
+  for (const c of m.names) {
     const at = text.indexOf(c.nameNorm);
     if (at >= 0) add(at, at + c.nameNorm.length, index.courses.filter((x) => x.nameNorm === c.nameNorm));
   }
-  // 3. "my econ class", "philosophy", "the discrete course": a subject nickname anywhere, or a
-  // distinctive name word next to a course cue (so "dynamic programming" stays a topic).
-  for (const [alias, subjects] of index.aliases) {
-    const cue = alias.length <= 3 && !["cs", "ece", "lit", "bio", "soc", "lsc"].includes(alias);
-    const re = cue
-      ? new RegExp(`(?:\\b(?:my|the|in|for|from) )${word(alias)}(?: (?:class|course|homework|hw))?|${word(alias)} (?:class|course)`, "g")
-      : new RegExp(`(?:\\bmy )?${word(alias)}(?: (?:class|course))?`, "g");
-    for (const m of text.matchAll(re)) add(m.index!, m.index! + m[0].length, index.courses.filter((c) => c.subject && subjects.includes(c.subject)));
-  }
-  const current = index.courses.filter((c) => c.current);
-  const counts = new Map<string, number>();
-  for (const c of current) for (const t of new Set(c.nameTokens)) counts.set(t, (counts.get(t) ?? 0) + 1);
-  for (const c of current)
-    for (const t of c.nameTokens) {
-      if (counts.get(t) !== 1) continue;
-      const re = new RegExp(`(?:\\b(?:my|the|in|for|from|of|to) )${word(t)}(?: (?:class|course))?|${word(t)} (?:class|course)`, "g");
-      for (const m of text.matchAll(re)) add(m.index!, m.index! + m[0].length, [c]);
-    }
+  // 3. A subject nickname, then a distinctive name word.
+  for (const { re, subjects } of m.aliases)
+    for (const hit of text.matchAll(re)) add(hit.index!, hit.index! + hit[0].length, index.courses.filter((c) => c.subject && subjects.includes(c.subject)));
+  for (const { re, course } of m.tokens) for (const hit of text.matchAll(re)) add(hit.index!, hit.index! + hit[0].length, [course]);
   return out.sort((a, b) => a.start - b.start);
 }
 
@@ -261,7 +297,9 @@ export function createResolve(store: IntentStore, index: () => IntentIndex, now:
     },
     date: (text) => resolveDate(text, now(), timeZone),
     topics(course, labels) {
-      const concepts = store.learning.concepts(course.ref).filter((c) => c.status === "active" && (c.kind === "concept" || c.kind === "unit"));
+      // The index holds current courses' maps; another course is read on demand.
+      const cached = index().topics.get(course.ref)?.concepts ?? store.learning.concepts(course.ref);
+      const concepts = cached.filter((c) => c.status === "active" && (c.kind === "concept" || c.kind === "unit"));
       const named = concepts.map((c) => ({ id: c.id, kind: c.kind, n: normaliseLabel(c.studentLabel ?? c.label), raw: normaliseLabel(c.label) }));
       const ids: string[] = [];
       const unmatched: string[] = [];

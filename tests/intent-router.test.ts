@@ -14,14 +14,14 @@ import type { IntentCommandResult, LearningRequest } from "@magic/contracts";
 import { createClaudeBackend, type CliCommand, type ModelRunner, type RunRequest } from "../packages/runner/src/index";
 import { createPackRuntime } from "../packages/packs/core/src/index";
 import { conceptId } from "../packages/learning/src/concepts";
-import { createIntentRouter, NO_CLIENT_REASON, NOT_IN_MATERIALS, resolveDate, type AnyAction } from "../packages/core/src/intent/index";
+import { buildIndex, createIntentRouter, NO_CLIENT_REASON, NOT_IN_MATERIALS, resolveDate, type AnyAction, type IntentRouterDeps } from "../packages/core/src/intent/index";
 import { z } from "zod";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fake: CliCommand = { file: process.execPath, prefixArgs: [join(here, "fixtures", "fake-cli", "fake-cli.mjs"), "claude"] };
 import { LATE, NOW, TZ, workspace } from "./intent-fixtures";
 
-async function setup(responses: unknown[] = [{}], opts: { client?: boolean; actions?: AnyAction[] } = {}) {
+async function setup(responses: unknown[] = [{}], opts: { client?: boolean; actions?: AnyAction[]; buildIndex?: IntentRouterDeps["buildIndex"] } = {}) {
   const { store, batches, ref } = workspace();
   const dir = await mkdtemp(join(tmpdir(), "intent-"));
   const workDir = join(dir, "work");
@@ -33,7 +33,7 @@ async function setup(responses: unknown[] = [{}], opts: { client?: boolean; acti
   const runner: ModelRunner = { client: inner.client, run: (r) => (requests.push(r as RunRequest<unknown>), inner.run(r)) };
   const learning: LearningRequest[] = [];
   const packs: { pack: string; scope: unknown }[] = [];
-  const router = createIntentRouter({ store, runner: () => (opts.client === false ? null : runner), now: () => NOW, timeZone: TZ, actions: opts.actions });
+  const router = createIntentRouter({ store, runner: () => (opts.client === false ? null : runner), now: () => NOW, timeZone: TZ, actions: opts.actions, buildIndex: opts.buildIndex });
   const core = createCore(store, {
     fixture: batches[0]!,
     now: () => NOW,
@@ -276,4 +276,50 @@ test("preview runs only the code resolver; prewarm reports readiness; both cost 
   assert.deepEqual({ status: ready.status, ai: ready.status === "ready" && ready.ai }, { status: "ready", ai: true });
   assert.equal((await h.calls()).length, 0, "preview and prewarm never call the model");
   assert.equal(h.learning.length, 0, "preview never runs an action");
+});
+
+test("a cold first command with a slow index build still takes the code path at 0 tokens", async () => {
+  // 150 ms of CPU per build: far past the resolver's 20 ms budget if the build counted against it.
+  let builds = 0;
+  const slow: IntentRouterDeps["buildIndex"] = (store) => {
+    builds++;
+    const until = performance.now() + 150;
+    while (performance.now() < until);
+    return buildIndex(store);
+  };
+  const h = await setup([intent("agenda.due", { date: "tomorrow" })], { buildIndex: slow });
+  for (const text of ["search for utilitarianism", "schedule a study session tomorrow at 3pm", "quiz me on recursion in cs 400"]) {
+    const r = await h.run(text);
+    assert.equal(r.status, "ran", `${text}: ${JSON.stringify(r)}`);
+    assert.equal(r.path, "code", text);
+    assert.deepEqual(r.tokens, { in: 0, cached: 0, out: 0 });
+  }
+  assert.equal(builds, 1, "built once, outside the budget, then reused");
+  assert.equal((await h.calls()).length, 0, "no model call");
+});
+
+test("the index is ready at launch and follows new courses and changed concept maps", async () => {
+  const h = await setup();
+  h.router.ready();
+  const before = h.router.index();
+  assert.equal(h.router.index(), before, "reused within the recheck window");
+  // A sync adds a course; a changed concept map adds a topic to COMPSCI 400.
+  h.store.ingest({
+    source: { id: "canvas-c577", kind: "canvas", accountScope: "acct", courseId: "c577", scope: "course", label: "x" },
+    observedAt: "2026-09-28T12:00:00.000Z",
+    complete: true,
+    status: "ok",
+    resources: [
+      { externalId: "c577", kind: "course", courseId: "c577", courseName: "COMPSCI577: Introduction to Algorithms (001) FA26", title: "Introduction to Algorithms", text: "", url: "https://canvas.example.test/courses/c577", deadlines: [], points: null, submitted: null, policy: { mode: "coaching", evidence: "" } },
+    ],
+  });
+  const unit = h.store.learning.concepts(h.ref).find((c) => c.kind === "unit")!;
+  h.store.learning.putConceptMap(h.ref, [{ ...unit, id: conceptId(h.ref, "concept", "Heaps"), kind: "concept", label: "Heaps", parentId: unit.id, position: 9 }], "test");
+  await new Promise((r) => setTimeout(r, 2100));
+  const after = h.router.index();
+  assert.notEqual(after, before, "a new course rebuilt the index");
+  const open = await h.run("open cs 577");
+  assert.ok(open.status === "ran" && (open.args.course as { courseId: string }).courseId === "c577", JSON.stringify(open));
+  const quiz = await h.run("quiz me on heaps in cs 400");
+  assert.ok(quiz.status === "ran" && JSON.stringify(quiz.args.topicIds) === JSON.stringify([conceptId(h.ref, "concept", "Heaps")]), JSON.stringify(quiz));
 });

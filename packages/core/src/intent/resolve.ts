@@ -199,8 +199,9 @@ export function resolveCode(text: string, contextCourseId: string | undefined, d
       if (groups.kind) s.kind = /quiz|question/.test(groups.kind) ? "quiz" : "cards";
       if (spec.name === "ask") s.query = text.trim().slice(0, 500);
       const checked = resolveSlots(spec, s, deps.resolve, text.trim(), contextCourseId);
-      deadline();
+      // A resolved match is kept even past the budget: it is already paid for, and a model call costs more.
       if (checked.ok) return { status: "hit", action: spec.name, slots: s, args: checked.args };
+      deadline();
       // The action is clear and the student must choose: code asks, at 0 tokens. A reference that
       // didn't resolve goes on to the model with what code did settle.
       if (checked.kind === "choose") return { status: "clarify", action: spec.name, question: checked.question, candidates: checked.candidates, slots: s };

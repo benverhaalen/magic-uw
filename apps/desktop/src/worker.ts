@@ -109,6 +109,7 @@ const intentNotes: NotesSeam = {
   handle: (request, signal) => notes.handle(notesRequestSchema.parse(request), signal),
   sessionOn: (courseId, date, type) => notes.sessionOn(courseId, date, type === "discussion" || type === "lab" ? type : "lecture"),
 };
+let intentIndexScheduled = false;
 const intent = createIntentRouter({
   store,
   runner: intentRunner,
@@ -618,6 +619,19 @@ port.on("message", async ({ data }: { data: any }) => {
   }
   // owner: T15. Scoped queries (O1): a read with its own small payload.
   if (data.kind === "query") {
+    // owner: intent. After the first bootstrap query is answered, build the command bar's index
+    // in the background turn, so the first command's resolver budget covers matching only.
+    if (!intentIndexScheduled) {
+      intentIndexScheduled = true;
+      setImmediate(() => {
+        try {
+          intent.ready();
+        } catch {
+          // A failed build is retried by the first command, outside its budget.
+        }
+      });
+    }
+    // end owner: intent
     try {
       port.postMessage({
         kind: "response",

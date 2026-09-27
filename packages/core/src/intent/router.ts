@@ -21,7 +21,7 @@ import { readPackArtifact, runPack } from "../jobs/pack";
 import { defaultActions } from "./adapters";
 import { groundedAsk } from "./ask";
 import { authorizer } from "./consent";
-import { buildIndex, createResolve, indexSignature, type IntentIndex } from "./courses";
+import { buildIndex, createResolve, indexSignature, refreshTopics, type IntentIndex } from "./courses";
 import { createRegistry, type ActionRegistry, type AnyAction } from "./registry";
 import { candidate, courseDisplay, normaliseUtterance, resolveCode, resolveSlots, type CodeOutcome } from "./resolve";
 import type { ActionContext, AskResult, IntentHost, IntentStore, ResolvedArgs, ResolvedCourse } from "./types";
@@ -39,6 +39,8 @@ export interface IntentRouterDeps {
   /** Starts the client for the classify prefix without sending anything (SessionPool.warm). */
   warm?: (request: WarmRequest) => Promise<unknown>;
   speculation?: "gate" | "race";
+  /** Replaces the index build (tests use a slow one to prove it stays outside the budget). */
+  buildIndex?: (store: IntentStore) => IntentIndex;
   /** false skips the code resolver: the AI-only baseline, for measurement. */
   codePath?: boolean;
   resolverBudgetMs?: number;
@@ -73,15 +75,27 @@ export function createIntentRouter(deps: IntentRouterDeps) {
 
   let cached: IntentIndex | null = null;
   let checkedAt = -Infinity;
+  /**
+   * The resolver's index (courses, assignments, compiled matchers, current courses' concept maps).
+   * Built at launch and at prewarm, and otherwise once, synchronously, before a command's resolver
+   * budget starts. Rechecked at most every 2 s: a change in the sources' revision (a sync added or
+   * changed courses or assignments) rebuilds it; a changed concept map is re-read.
+   */
   const index = (): IntentIndex => {
-    const t = clock();
-    if (!cached || t - checkedAt > INDEX_RECHECK_MS) {
+    const t = performance.now();
+    if (!cached) {
+      cached = (deps.buildIndex ?? buildIndex)(store);
       checkedAt = t;
-      if (!cached || cached.signature !== indexSignature(store)) cached = buildIndex(store);
+    } else if (t - checkedAt > INDEX_RECHECK_MS) {
+      checkedAt = t;
+      if (cached.signature !== indexSignature(store)) cached = (deps.buildIndex ?? buildIndex)(store);
+      else refreshTopics(store, cached);
     }
     return cached;
   };
-  const resolve = createResolve(store, index, now, timeZone);
+  // Inside a command the resolvers read the index as prepared; they never rebuild it mid-budget.
+  const current = () => cached ?? index();
+  const resolve = createResolve(store, current, now, timeZone);
   const acquire = (): Promise<ModelRunner | null> =>
     (async () => deps.runner())().catch(() => null);
 
@@ -275,6 +289,11 @@ export function createIntentRouter(deps: IntentRouterDeps) {
     return { status: "ready", ai: !!runner, path: "none", latencyMs: clock() - t0, tokens: zero() };
   }
 
-  return { registry, handle, preview, prewarm, resolve, index };
+  /** Builds the index now (at launch, after the first bootstrap query) so no command waits on it. */
+  function ready(): void {
+    index();
+  }
+
+  return { registry, handle, preview, prewarm, ready, resolve, index };
 }
 export type IntentRouter = ReturnType<typeof createIntentRouter>;
