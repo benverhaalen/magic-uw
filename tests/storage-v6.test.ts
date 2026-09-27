@@ -391,7 +391,8 @@ test("purge enumerates every table: zero rows everywhere, FTS empty, backup dele
       store.notes.setSyncSetting({ provider: "google", enabled: true, enabledAt: t(9), lastCheckAt: null, message: null });
       assert.ok(store.migrationBackup());
       for (const [table, n] of Object.entries(counts(file)))
-        if (!["preferences", "life_items", "course_briefs", "mcp_grants"].includes(table) && !table.startsWith("learning_")) assert.ok(n > 0, `${table} is populated before purge`);
+        // platform-fix: observations and source_observations were never read and are no longer written.
+        if (!["preferences", "life_items", "course_briefs", "mcp_grants", "observations", "source_observations"].includes(table) && !table.startsWith("learning_")) assert.ok(n > 0, `${table} is populated before purge`);
 
       const onDisk = () =>
         [file, `${file}-wal`, migrationBackupPath(file)]
