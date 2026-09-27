@@ -31,6 +31,10 @@ export interface CourseOptions {
   direct?: boolean;
   /** Where Canvas redirects downloads; a host outside the allowlist shows the refusal cause. */
   fileHost?: string;
+  /** The Files list is open (default: hidden, 403). */
+  filesList?: boolean;
+  /** Display names by file index (for example a syllabus). */
+  names?: Record<number, string>;
 }
 interface SyntheticFile {
   id: string;
@@ -45,7 +49,7 @@ const sleep = (ms: number, signal?: AbortSignal | null) =>
     const timer = setTimeout(resolve, ms);
     signal?.addEventListener("abort", () => (clearTimeout(timer), reject(signal.reason)), { once: true });
   });
-function makeFiles(count: number): SyntheticFile[] {
+function makeFiles(count: number, names: Record<number, string> = {}): SyntheticFile[] {
   const files: SyntheticFile[] = [];
   for (let i = 0; i < count; i++) {
     const course = 101 + (i % 5),
@@ -67,6 +71,7 @@ function makeFiles(count: number): SyntheticFile[] {
         bytes: textPdf(Array.from({ length: 8 + (i % 60) }, (_, p) => `${topic} page ${p + 1}`)), updatedAt,
       });
     else files.push({ id, course, name: `scan-${i}.pdf`, type: "application/pdf", bytes: scannedPdf(`Scanned ${i}`), updatedAt });
+    if (names[i]) files[files.length - 1]!.name = names[i]!;
   }
   return files;
 }
@@ -77,10 +82,11 @@ export function syntheticDocumentTerm(options: CourseOptions = {}) {
   const latency = options.latencyMs ?? 60,
     bandwidth = options.bandwidth ?? 8 * 1024 * 1024,
     fileHost = options.fileHost ?? INST_FS;
-  const files = makeFiles(options.files ?? 300);
+  const files = makeFiles(options.files ?? 300, options.names);
   const byId = new Map(files.map((f) => [f.id, f]));
   const university = createSyntheticCanvasUniversity({ origin, rateLimit: false });
   const counts = { metadata: 0, downloads: 0, bytes: 0, other: 0, inFlight: 0, peakInFlight: 0 };
+  const order: string[] = [];
   const courseFiles = (course: number) => files.filter((f) => f.course === course);
   async function transfer(file: SyntheticFile, signal?: AbortSignal | null) {
     counts.inFlight++;
@@ -89,6 +95,7 @@ export function syntheticDocumentTerm(options: CourseOptions = {}) {
       await sleep(latency + (file.bytes.byteLength / bandwidth) * 1000, signal);
       counts.downloads++;
       counts.bytes += file.bytes.byteLength;
+      order.push(file.name);
       return new Response(new Uint8Array(file.bytes), {
         headers: { "content-type": file.type, "content-length": String(file.bytes.byteLength) },
       });
@@ -143,9 +150,16 @@ export function syntheticDocumentTerm(options: CourseOptions = {}) {
     }
     const path = new URL(url).pathname;
     await sleep(latency, signal);
-    if (/^\/api\/v1\/courses\/\d+\/files$/.test(path)) {
+    const list = /^\/api\/v1\/courses\/(\d+)\/files$/.exec(path);
+    if (list) {
       counts.other++;
-      return json({ status: "unauthorized" }, 403); // the Files tab is hidden
+      if (!options.filesList) return json({ status: "unauthorized" }, 403); // the Files tab is hidden
+      return json(
+        courseFiles(Number(list[1])).map((f) => ({
+          id: f.id, folder_id: "1", display_name: f.name, filename: f.name, "content-type": f.type,
+          size: f.bytes.byteLength, updated_at: f.updatedAt, created_at: f.updatedAt, locked_for_user: false,
+        })),
+      );
     }
     const modules = /^\/api\/v1\/courses\/(\d+)\/modules$/.exec(path);
     if (modules) {
@@ -182,9 +196,12 @@ export function syntheticDocumentTerm(options: CourseOptions = {}) {
     }
     const meta = /^\/api\/v1\/files\/(\d+)$/.exec(path);
     if (meta) {
-      counts.metadata++;
       const file = byId.get(meta[1]!);
-      if (!file) return json({}, 404);
+      if (!file) {
+        counts.other++; // the base university's own references (file 9), not the term's files
+        return json({}, 404);
+      }
+      counts.metadata++;
       return json({
         id: file.id, folder_id: "1", display_name: file.name, filename: file.name, "content-type": file.type,
         size: file.bytes.byteLength, updated_at: file.updatedAt, locked_for_user: false, hidden: false,
@@ -207,7 +224,7 @@ export function syntheticDocumentTerm(options: CourseOptions = {}) {
       return fileService(url.href, request.signal);
     },
   });
-  return { canvasFetch, client, counts, files };
+  return { canvasFetch, client, counts, files, order };
 }
 
 export interface StageResult {
