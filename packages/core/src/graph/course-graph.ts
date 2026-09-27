@@ -3,14 +3,16 @@
  * the references between them, and a coverage report of what the pipeline could not connect.
  */
 import type { CourseGraph, CourseRef } from "../../../contracts/src/course-core";
-import { courseIndex, type PipelineStore } from "./course-index";
+import { graphCall, type PipelineStore } from "./course-index";
 import { references } from "./references";
 import { hasLinks, isMaterial } from "./write";
 
 export type { CourseGraph };
 
 export function courseGraph(store: PipelineStore, course: CourseRef): CourseGraph {
-  const index = courseIndex(store, course);
+  // The course's index and references are read once for the graph, not once per assignment.
+  const call = graphCall(store);
+  const index = call.index(course);
   const counts = new Map(store.graphCounts(course).map((c) => [c.resourceId, c]));
   const roleOf = new Map<string, string | null>();
   const needsJudgment: string[] = [];
@@ -36,11 +38,11 @@ export function courseGraph(store: PipelineStore, course: CourseRef): CourseGrap
     if (facts.some((f) => f.kind === "needs_judgment" && f.value === "role")) needsJudgment.push(r.id);
     if (!role) withoutRole.push(r.id);
   }
-  const refTotals = { direct: 0, named: 0, external: 0, unresolved: 0, externalRecords: store.externalRefs(course).length };
+  const refTotals = { direct: 0, named: 0, external: 0, unresolved: 0, externalRecords: call.externalRefs(course).length };
   const unresolvedLinks: CourseGraph["coverage"]["unresolvedLinks"] = [];
   for (const r of index.resources.values()) {
     if (!hasLinks(r)) continue;
-    for (const ref of store.resourceRefs(r.id)) {
+    for (const ref of call.resourceRefs(r.id)) {
       if (ref.strength === "direct") refTotals.direct++;
       else refTotals.named++;
       if (ref.kind === "external") refTotals.external++;
@@ -55,7 +57,7 @@ export function courseGraph(store: PipelineStore, course: CourseRef): CourseGrap
   for (const r of new Set([...index.assignmentById.values(), ...index.quizById.values()])) {
     const type = index.contentType(r) ?? (r.kind === "assignment" ? "assignment" : "quiz");
     assessments.push({ resourceId: r.id, title: r.title, type, dueAt: r.dueAt ?? r.moduleItem?.dueAt ?? null, role: roleOf.get(r.id) ?? null });
-    if (r.kind === "assignment" && !references(store, r.id).length) assignmentsWithoutReferences.push(r.id);
+    if (r.kind === "assignment" && !references(store, r.id, call).length) assignmentsWithoutReferences.push(r.id);
   }
   const modules = [...index.modules.values()]
     .sort((a, b) => a.position - b.position)

@@ -11,7 +11,7 @@
 import { OUTLOOK_CALENDAR_COURSE_ID, type Resource, type SourceHealth } from "@magic/contracts";
 import { courseInclusion } from "../access";
 import type { Agenda, AgendaEntry, AgendaGroup } from "../../../contracts/src/course-core";
-import type { PipelineStore } from "./course-index";
+import { graphCall, type PipelineStore } from "./course-index";
 import { references } from "./references";
 
 export type { Agenda, AgendaEntry, AgendaGroup };
@@ -84,6 +84,8 @@ export function agenda(store: PipelineStore, input: AgendaInput): Agenda {
   const weekEnd = dayStart(addDays(input.date, 7), input.tz);
   const sources = new Map<string, SourceHealth>(store.sources().map((s) => [s.id, s]));
   const included = courseInclusion(store);
+  // One read of each course's index and references for the whole agenda, not one per entry.
+  const call = graphCall(store);
   const families = new Map<string, Family>();
   const family = (key: string, kind: Family["kind"], r: Resource, source: SourceHealth) => {
     let f = families.get(key);
@@ -162,7 +164,7 @@ export function agenda(store: PipelineStore, input: AgendaInput): Agenda {
       authority: dated.scope,
       resourceIds: [...new Set(copies.map((c) => c.r.id))],
       submitted,
-      references: f.kind === "event" || input.withReferences === false ? [] : references(store, canonical.r.id),
+      references: f.kind === "event" || input.withReferences === false ? [] : references(store, canonical.r.id, call),
     });
   }
 
