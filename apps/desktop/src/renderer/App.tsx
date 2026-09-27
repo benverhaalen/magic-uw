@@ -17,8 +17,9 @@ import { ConsentSetup, hasUwConsent, missingConsents } from "./consent/ConsentSe
 // owner: T81
 import { Onboarding, needsFirstRunSetup } from "./onboarding";
 import { TodayRail } from "./TodayRail";
-import { DesktopShell } from "./DesktopShell";
+import { DesktopShell, Glyph } from "./DesktopShell";
 import { Home, ObjectLink } from "./Home";
+import { PersonalReport } from "./PersonalReport";
 import { Action, Disclosure } from "../../../../packages/ui/src";
 import { useDesktopNavigation, type DesktopView } from "./navigation";
 
@@ -329,12 +330,6 @@ export function App() {
   ])).values()];
   const selected =
     resources.find((resource) => resource.id === selectedId) ?? null;
-  const openItems = resources.filter(
-    (resource) =>
-      resource.kind === "assignment" &&
-      !resource.completed &&
-      resource.submitted !== true,
-  ).length;
   const unavailableSources =
     snapshot?.sources.filter(
       (source) => source.status !== "ok" || !source.complete,
@@ -342,12 +337,6 @@ export function App() {
   const needsSignIn = unavailableSources.some(
     (source) => source.status === "needs_sign_in",
   );
-  const oldestCapture = resources.reduce<string | null>(
-    (oldest, resource) =>
-      !oldest || resource.observedAt < oldest ? resource.observedAt : oldest,
-    null,
-  );
-
   // owner: T81. First run, or setup still incomplete: the onboarding flow replaces the shell
   // (and T06's in-Home consent entry) until the student opens the workspace.
   if (snapshot && needsFirstRunSetup(snapshot))
@@ -472,7 +461,7 @@ export function App() {
                 onSample={() => run({ type: "fixture" })}
               />
             ) : (
-              <Home snapshot={snapshot} resources={resources} onSelect={setSelectedId} onCourses={() => { setQuery(""); setView("courses"); }} onSources={() => setView("sources")} onPlan={command => run(command)} />
+              <Home snapshot={snapshot} resources={resources} onSelect={setSelectedId} onCourses={() => { setQuery(""); setView("courses"); }} onSources={() => setView("sources")} onPlan={command => run(command)} report={resource => <PersonalReport resource={resource} snapshot={snapshot} run={run}/>} />
             )}
           </>
         ) : view === "resource" ? (
@@ -724,6 +713,8 @@ function ResourceDetail({
 }) {
   const [recipient, setRecipient] = useState<Recipient>("local");
   const [manifest, setManifest] = useState<ContextManifest | null>(null);
+  const initialVersion = useRef(resource.contentHash);
+  const changedWhileReading = initialVersion.current !== resource.contentHash;
   const source = snapshot.sources.find(
     (candidate) => candidate.id === resource.sourceId,
   );
@@ -747,18 +738,10 @@ function ResourceDetail({
   ]);
   return (
     <section className="resource-detail" aria-label="Selected item">
-      <div className="detail-top">
-        <span className="eyebrow">{resource.kindLabel ?? resource.kind}</span>
-        <button
-          className="icon-button"
-          aria-label="Close item"
-          onClick={onClose}
-        >
-          ×
-        </button>
-      </div>
+      <p className="eyebrow">{resource.kindLabel ?? resource.kind}</p>
       <p className="detail-course">{resource.courseName}</p>
       <h2 tabIndex={-1}>{resource.title}</h2>
+      {changedWhileReading && <p className="evidence-note" role="status">This saved item changed while you were reading. Its requirements and dates below reflect the latest capture; your position has been kept.</p>}
       <dl className="facts">
         <div>
           <dt>Due</dt>
@@ -803,7 +786,7 @@ function ResourceDetail({
           last successful capture.
         </div>
       ) : null}
-      <Action onClick={() => open(resource.url)}>Open original <Icon name="arrow" /></Action>
+      <Action onClick={() => open(resource.url)}>Open original <Glyph name="external" /></Action>
       <p className="source-url">{resource.url}</p>
       <section className="detail-section">
         <h3>Instructions</h3>

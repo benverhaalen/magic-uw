@@ -36,7 +36,7 @@ Already-running sessions refresh changed guidance at natural boundaries and befo
 | --- | --- | --- |
 | HTML component lab | Canonical tokens + isolated vanilla recipes | Audited reference; not a consumer of the new React package. See direct-source audit. |
 | React adoption example | `packages/ui/examples/adoption.tsx` imports `packages/ui/src` and its styles | Executable integration example; verification recorded below. Synthetic/in-memory. |
-| Desktop Home and other screens | Existing/unfinished renderer work | **Pending.** Not migrated by this change; inspect ownership before integration. |
+| Desktop shell, Home and resource detail | `Home.tsx`, `App.tsx`, `PersonalReport.tsx`; canonical styles imported once by `main.tsx` | Integrated on the desktop design branch: EvidenceLink, Action, Disclosure and Confirmation. Native synthetic verification below; other operational pages remain partial. |
 | Public website | Existing informational site | **Pending.** May consume tokens/behavior contracts without introducing React. Verify its actual framework first. |
 
 Update a row only when an actual consumer and its evidence change. This is a compact dependency map, not a claim to have designed every future screen.
@@ -53,3 +53,15 @@ Verified September 26, 2026 (America/Chicago), against the source added with thi
 - A separate Jev-dispatched Claude Sonnet 5 read-only review inspected the components and routing docs. Its pending-checkbox concern was **not reproduced** in the actual React build: checked and unchecked pending examples retained state and emitted zero changes after click and Space. Review agreement alone is not verification.
 
 The example is synthetic and in memory. Persistence, production routing/return restoration, desktop integration and website adoption remain unverified. Target-browser compatibility beyond the tested Chromium also remains a consumer responsibility. No claim of production adoption or automatic enforcement.
+
+## Desktop integration checkpoint
+
+System revision: `ddf93e9` shared foundation, renderer checkpoint `cb65496`, personal-report backend integrated as `fbdd0cc`. Scope remains the isolated desktop design branch.
+
+Consumers: Home named objects use EvidenceLink with exact ID/hash and internal resource route; detail uses Action/Disclosure; PersonalReport adapts Confirmation to the durable typed command. Shell/Home geometry stays local; all roles/colors use canonical shared tokens. Lucide 0.468.0 glyph nodes retain attribution in `packages/ui/LICENSE.icons`. Licensed font binaries remain private runtime assets, not repository files.
+
+Observed: hidden native Electron at 1440×900 with synthetic isolated SQLite; exact Cooper Light/Geist loaded; Home → resource requirements/related material → Back restores originating link/action focus. Native original-source action fails honestly in headless mode; successful external browser opening is unverified. A narrow 980×650 run restored exact workspace scroll/focus, sidebar collapse focus and My UW route. A 200% root-font check had no horizontal overflow; this is not an OS zoom test.
+
+Report verification: handled → Undo → handled → Electron restart retained the report without changing local completion or source submission. Changing only an independent calendar resource hash reopened the issue while assignment hash stayed fixed. The test explicitly prepared accepted same_as links with core `linkExactEvidence` in an isolated synthetic database; current import does not automatically call that helper. Renderer evidence mapping and eight durable backend tests passed. Private harness/captures stay outside Git.
+
+Remaining: actual-course visual review, Start Work integration, independent review, complete briefing/study selection, full Calendar week/month, current course/learning reconciliation, production font distribution and successful external app launch. Calendar currently exposes the existing Today rail only. This checkpoint does not establish whole-app completion.

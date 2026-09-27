@@ -23,20 +23,18 @@ export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPl
   const next = [...work.dueToday, ...work.upcoming, ...work.overdue].find(r => r.id !== conflict?.id);
   const nextResource = resources.find(r => r.id === next?.id);
   const update = resources.filter(r => r.text && r.id !== next?.id && r.id !== conflict?.id && r.kind === 'message').sort((a,b) => b.observedAt.localeCompare(a.observedAt))[0];
-  const fallback = !nextResource && !update && !conflict ? resources.find(r => r.text) : null;
-  const study = snapshot.links.filter(link => link.status === 'accepted').flatMap(link => {
-    const from = resources.find(r => r.id === link.fromId), to = resources.find(r => r.id === link.toId);
+  const study = snapshot.links.filter(link => link.status === 'accepted' && link.type === 'specifies').flatMap(link => {
+    const from = resources.find(r => r.id === link.toId), to = resources.find(r => r.id === link.fromId);
     if (!from || !to || !to.text || to.kind === 'assignment') return [];
     return [{ link, from, to }];
   }).filter((item, index, all) => all.findIndex(other => other.to.id === item.to.id) === index).slice(0,2);
   const incomplete = snapshot.sources.some(source => source.status !== 'ok' || !source.complete);
   return <div className="home-layout"><div className="home-reading">
     <section className="home-briefing" aria-labelledby="briefing-title" data-place-anchor="briefing"><h1 id="briefing-title" tabIndex={-1}>Briefing</h1>
-      {nextResource && <div className="briefing-passage"><p><ObjectLink resource={nextResource}/> is {next?.dueAt && Date.parse(next.dueAt) < Date.now() ? 'past its saved deadline' : 'coming up'} in {nextResource.courseName}{nextResource.deadline.planningAt ? <> — <strong>{dueLabel(nextResource.deadline.planningAt)}</strong></> : null}. {nextResource.text ? excerpt(nextResource.text) : 'Open the saved requirements and check the original source before beginning.'}</p><div className="briefing-action"><Action onClick={() => onSelect(nextResource.id)}>Review requirements <Glyph name="forward"/></Action></div></div>}
-      {conflict && <div className="briefing-passage"><p>The saved dates for <ObjectLink resource={conflict}/> disagree. {conflict.deadline.planningAt && <>Plan for <strong>{dueLabel(conflict.deadline.planningAt)}</strong> until you confirm the date. </>}Review the source evidence before deciding which deadline applies.</p><div className="briefing-action briefing-review"><Action onClick={() => onSelect(conflict.id)}>Review dates <Glyph name="forward"/></Action>{report?.(conflict)}</div></div>}
+      {nextResource && <div className="briefing-passage"><p><ObjectLink resource={nextResource}/> is {next?.dueAt && Date.parse(next.dueAt) < Date.now() ? 'past its saved deadline' : 'coming up'} in {nextResource.courseName}{nextResource.deadline.planningAt ? <> — <strong>{dueLabel(nextResource.deadline.planningAt)}</strong></> : null}. {nextResource.text ? excerpt(nextResource.text) : 'Open the saved requirements and check the original source before beginning.'}</p><div className="briefing-action"><Action data-focus-key={`review-${nextResource.id}`} onClick={() => onSelect(nextResource.id)}>Review requirements <Glyph name="forward"/></Action></div></div>}
+      {conflict && <div className="briefing-passage"><p>The saved dates for <ObjectLink resource={conflict}/> disagree. {conflict.deadline.planningAt && <>Plan for <strong>{dueLabel(conflict.deadline.planningAt)}</strong> until you confirm the date. </>}Review the source evidence before deciding which deadline applies.</p><div className="briefing-action briefing-review"><Action data-focus-key={`review-${conflict.id}`} onClick={() => onSelect(conflict.id)}>Review dates <Glyph name="forward"/></Action>{report?.(conflict)}</div></div>}
       {update && <div className="briefing-passage"><p>In <ObjectLink resource={update}/>, {update.courseName} shares an update: {excerpt(update.text)}</p></div>}
-      {fallback && <div className="briefing-passage"><p>Your saved material includes <ObjectLink resource={fallback}/> from {fallback.courseName}. {excerpt(fallback.text)}</p></div>}
-      {!nextResource && !conflict && !update && !fallback && <p>There isn’t enough saved context for a useful briefing yet. Your coursework is available in Courses; refresh your sources to bring in requirements and materials.</p>}
+      {!nextResource && !conflict && !update && <p>There isn’t enough saved context for a useful briefing yet. Your coursework is available in Courses; refresh your sources to bring in requirements and materials.</p>}
       <div className="home-provenance"><span>From saved course sources{incomplete ? ' · some coverage is incomplete' : ''}.</span><button onClick={onSources}>Inspect sources <Glyph name="chevron"/></button></div>
     </section>
     <section className="home-upcoming" aria-labelledby="upcoming-title" data-place-anchor="upcoming"><div className="home-section-heading"><h2 id="upcoming-title">Upcoming</h2><button onClick={onCourses}>View all</button></div>

@@ -35,3 +35,9 @@ The polling snapshot contains only the latest `{issueId, sourceVersion, handled,
 ## Evidence and remaining integration
 
 `tests/personal-reports.test.ts` exercises real file-backed SQLite close/reopen, Undo/history, second-connection stale revisions, duplicate retries after Undo, changed source evidence, account/exclusion/removal boundaries, typed core commands, context/MCP omission and purge. Synthetic coursework is used for these tests. The renderer must still verify click → saved state → restart → Undo, changed-source reopening, pending/error recovery and preserved return in the actual desktop app. Passing storage tests alone does not establish that journey.
+
+## Desktop deadline consumer
+
+`renderer/PersonalReport.tsx` binds shared Confirmation. It includes the assignment plus every accepted incoming `same_as` calendar contributor used by current `core/evidence.ts`, and compares the complete claim multiset against the displayed deadline resolution. Missing or mismatched provenance disables reporting with an explanation. Current resolver does not derive deadline claims from announcements; future provenance changes must extend this adapter before enabling reports for that new evidence. The exact contributor set forms the issue identity and all content hashes form its version.
+
+Native synthetic verification exercised handled/Undo/restart and changed calendar-only evidence with unchanged assignment hash. Tests prepared accepted exact links explicitly; automatic ingest-to-link refresh is outside this renderer verification. No generic completed command is used.
