@@ -96,9 +96,23 @@ export function checkClientHealth(id: ClientId, force = false): Promise<void> {
   pending.set(id, next);
   return next;
 }
+const subscribeHealth = (listener: () => void) => { healthListeners.add(listener); return () => { healthListeners.delete(listener); }; };
+/** Health for several clients (the "Your AI" cards), checked on mount through the same cache. */
+export function useClientHealths(ids: readonly ClientId[]): Partial<Record<ClientId, ClientHealth | null>> {
+  useSyncExternalStore(subscribeHealth, () => healthVersion, () => 0);
+  const key = ids.join(",");
+  useEffect(() => { for (const id of key.split(",")) if (id) void checkClientHealth(id as ClientId); }, [key]);
+  return Object.fromEntries(ids.map((id) => [id, healthCache.get(id)?.health ?? null]));
+}
+/** One status line for a client card: "Ready · instant · Max plan", "Not installed", "Not checked". */
+export function healthLine(health: ClientHealth | null | undefined): string {
+  if (!health) return "Not checked";
+  if (health.state !== "ok") return stateWords[health.state];
+  return [`Ready · ${modeWords[health.mode]}`, plan(health.plan) ? `${plan(health.plan)} plan` : null].filter(Boolean).join(" · ");
+}
 /** Health for the chosen hosted client, or null. `check` false reads only what is cached. */
 export function useClientHealth(choice: AiChoice, check = true): ClientHealth | null {
-  useSyncExternalStore((listener) => { healthListeners.add(listener); return () => healthListeners.delete(listener); }, () => healthVersion, () => 0);
+  useSyncExternalStore(subscribeHealth, () => healthVersion, () => 0);
   const hosted = (HOSTED_CHOICES as readonly string[]).includes(choice) ? (choice as ClientId) : null;
   useEffect(() => { if (hosted && check) void checkClientHealth(hosted); }, [hosted, check]);
   return hosted ? healthCache.get(hosted)?.health ?? null : null;

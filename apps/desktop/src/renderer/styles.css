@@ -1802,3 +1802,7 @@ select {
   border-left: 3px dotted;
   border-color: var(--magic-ink-schedule-event);
 }
+/* owner: ai-choice. A choice the app cannot honour stays visible with its reason, and cannot be picked. */
+.mode-choice:has(input:disabled) { cursor: default; }
+.mode-choice:has(input:disabled) strong { color: var(--magic-ink-muted-strong); }
+.sharing-choices { margin-top: 10px; }

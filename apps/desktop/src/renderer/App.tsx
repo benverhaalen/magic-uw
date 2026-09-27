@@ -13,7 +13,9 @@ import { SourcesPage } from "./sources";
 import { MyUw, PlanningAlerts } from "./MyUw";
 import { CoursePageView, CoursesOverview } from "./courses/CoursePage";
 import { buildCourseCards, buildCoursePage, courseKey } from "../../../../packages/domain/src/course-page";
-import { LocalAiPanel } from "./LocalAiPanel";
+import { YourAiChoice } from "./ai-choice/YourAiChoice";
+import { SharingChoice } from "./ai-choice/SharingChoice";
+import { aiChoiceOf, useLocalChoice } from "./ai-choice/answering";
 import { LearningPanel } from "./LearningPanel";
 import { ProviderGuidance } from "./ProviderGuidance";
 import { IngestionControls, McpConnections } from "./IngestionControls";
@@ -388,8 +390,7 @@ export function App() {
     const opened = openFloatingChat();
     if (opened === "opened") return true;
     if (opened === "hidden") { setNotice("Chat is available once setup is finished and your courses are connected."); return false; }
-    if (selected) document.querySelector<HTMLElement>(".local-ai-panel")?.scrollIntoView({ behavior: "smooth" });
-    setNotice(selected ? "Floating chat is off. Ask about this item in its Local AI section, or turn Floating chat on in Data & AI." : "Floating chat is off. Turn it on in Data & AI to chat about this page.");
+    setNotice("Floating chat is off. Turn it on in Data & AI to chat about this page.");
     return false;
   }
   // owner: voice. Ctrl+K (Cmd+K) opens the chat; Ctrl+Shift+Space (Cmd+Shift+Space) opens it and
@@ -473,7 +474,12 @@ export function App() {
         {snapshot && <FloatingChat hidden={view === "consent" || (resources.length === 0 && !uwConsented)} warm={chatWarmPolicy(snapshot.privacy, snapshot.consents ?? [])} view={view}
           resource={view === "resource" ? selected : null} course={view === "courses" ? coursePage : null} courseKey={navigation.courseKey}
           cards={courseCards} bridge={window.magic} resources={resources} sources={snapshot.sources} now={snapshot.generatedAt}
-          onNavigate={(next, id, key) => navigation.navigate(next, id, key)} onOpenSetup={target => setView(target === "sources" ? "sources" : "privacy")}/>}
+          onNavigate={(next, id, key) => navigation.navigate(next, id, key)} onOpenSetup={target => {
+            if (target === "sources") return setView("sources");
+            // "Connect your AI" and local-model setup both land on Your AI in Data & AI.
+            setView("privacy");
+            window.setTimeout(() => document.getElementById("your-ai")?.scrollIntoView({ block: "start" }), 60);
+          }}/>}
         {!snapshot ? (
           <section className="initial-state">
             <h1>Your classes, in one place.</h1>
@@ -764,7 +770,10 @@ function ResourceDetail({
   open: (url: string) => void;
   onClose: () => void;
 }) {
-  const [recipient, setRecipient] = useState<Recipient>("local");
+  // owner: ai-choice. The preview is for whoever answers now: the chosen hosted AI, else this computer.
+  const localOn = useLocalChoice();
+  const answeringChoice = aiChoiceOf(snapshot.privacy, localOn);
+  const recipient: Recipient = answeringChoice === "local" || answeringChoice === "off" ? "local" : answeringChoice;
   const [manifest, setManifest] = useState<ContextManifest | null>(null);
   const initialVersion = useRef(resource.contentHash);
   const changedWhileReading = initialVersion.current !== resource.contentHash;
@@ -788,6 +797,7 @@ function ResourceDetail({
     snapshot.privacy.hostedProvider,
     snapshot.privacy.shareCourseText,
     snapshot.privacy.shareStudentWork,
+    recipient,
   ]);
   return (
     <section className="resource-detail" aria-label="Selected item">
@@ -943,44 +953,16 @@ function ResourceDetail({
         </p>
       </Disclosure>
       <LearningPanel key={`${resource.id}:${source?.accountScope}:${resource.contentHash}:${JSON.stringify(snapshot.privacy)}`} resource={resource} accountScope={source?.accountScope} />
-      <LocalAiPanel
-        key={`${resource.contentHash}:${JSON.stringify(snapshot.privacy)}`}
-        resource={resource}
-        privacyKey={JSON.stringify(snapshot.privacy)}
-      />
 
       <section className="detail-section">
-        <h3>Data preview</h3>
-        <p className="small muted">
-          Inspect the exact context prepared for a model. Previewing does not
-          send it.
-        </p>
-        <label className="field-label" htmlFor="recipient">
-          Recipient
-        </label>
+        <h3>Before sharing course data</h3>
+        <SharingChoice legend="When to show you what would be sent" privacy={snapshot.privacy} disabled={busy}
+          onChange={(patch) => void run({ type: "privacy", value: { ...snapshot.privacy, ...patch } }, "Data settings saved.")}/>
         <div className="inline-actions">
-          <select
-            id="recipient"
-            disabled={busy}
-            value={recipient}
-            onChange={(event) => {
-              setRecipient(event.target.value as Recipient);
-              setManifest(null);
-            }}
-          >
-            {Object.entries(recipientLabels).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <button
-            className="button"
-            disabled={busy}
-            onClick={() => void preview()}
-          >
-            Preview data
+          <button className="subtle-button" disabled={busy} onClick={() => void (manifest ? setManifest(null) : preview())}>
+            {manifest ? "Hide what would be sent" : "See what would be sent"}
           </button>
+          <span className="small muted">To {recipientLabels[recipient]}. Looking does not send anything.</span>
         </div>
         {manifest ? <Manifest manifest={manifest} /> : null}
         <div className="classification-action">
@@ -1414,6 +1396,12 @@ function Privacy({
           Agreements
         </button>
       </section>
+      {/* owner: ai-choice */}
+      <section className="settings-section" id="your-ai">
+        <h2>Your AI</h2>
+        <p>Choose who answers your questions and writes study material. You can change it any time.</p>
+        <YourAiChoice privacy={value} busy={busy} onChange={(patch) => update(patch)} />
+      </section>
       <section className="settings-section">
         <h2>Models & services</h2>
         <SettingToggle
@@ -1428,34 +1416,7 @@ function Privacy({
             ? "Shared gateway configured."
             : "The shared gateway has not been configured on this device."}
         </p>
-        <div className="provider-setting">
-          <label className="field-label" htmlFor="provider">
-            Preferred AI
-          </label>
-          <select
-            id="provider"
-            disabled={busy || value.mode === "local_only"}
-            value={value.hostedProvider}
-            onChange={(event) =>
-              void update({
-                hostedProvider: event.target
-                  .value as PrivacyPreferences["hostedProvider"],
-              })
-            }
-          >
-            <option value="none">Local model</option>
-            <option value="chatgpt">ChatGPT</option>
-            <option value="claude">Claude</option>
-            <option value="gemini">Gemini</option>
-          </select>
-          <p className="small muted">
-            This is a data preference, not an account connection. Hosted account
-            handoff and automatic model installation are not available in this
-            build. Installed local models can be used below.
-          </p>
-        </div>
       </section>
-      <LocalAiPanel privacyKey={JSON.stringify(value)} />
       <section className="settings-section">
         <h2>What may be shared</h2>
         <SettingToggle
@@ -1498,6 +1459,11 @@ function Privacy({
           part of model context. Turning off access prevents future sends; it
           cannot recall data already sent.
         </p>
+      </section>
+      {/* owner: ai-choice. When the payload preview shows; grants are still checked on every request. */}
+      <section className="settings-section">
+        <h2>Before sharing course data</h2>
+        <SharingChoice legend="When to show you what would be sent" privacy={value} disabled={busy || value.mode === "local_only"} onChange={(patch) => void update(patch)} />
       </section>
       <ProviderGuidance open={open} disabled={busy} />
       <McpConnections snapshot={snapshot} busy={busy} run={run} />

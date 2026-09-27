@@ -4,7 +4,8 @@ import {
   CONSENT_DISCLOSURE_VERSION,
   hasCurrentConsent,
 } from "../../../../../packages/domain/src/index";
-import { ConsentSetup } from "../consent/ConsentSetup";
+import { ConsentSetup, missingConsents } from "../consent/ConsentSetup";
+import { writeLocalChoice } from "../ai-choice/answering";
 import { ACCENTS, applyAppearance, readAppearance, writeAppearance, type Appearance, type ThemePreference } from "../appearance";
 import { signInAndSync, signInMessage } from "../sign-in";
 import { ClientHealthNotice } from "./ClientHealthNotice";
@@ -874,6 +875,11 @@ function ConnectClient({
             setFinishing(true);
             try {
               await clients.choose(id);
+              // owner: ai-choice. The chosen client is also "Your AI" in Data & AI: the send gate's
+              // selected AI with cloud access on. Saved only when every agreement it needs is current.
+              const next = { ...snapshot.privacy, hostedProvider: id, mode: "selective_cloud" as const };
+              if (!missingConsents(next, snapshot.consents).length) await run({ type: "privacy", value: next });
+              writeLocalChoice(false);
               onConnected();
             } catch {
               setProblem(`Could not save ${info.name} as your AI.`);
