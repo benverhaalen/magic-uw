@@ -1,8 +1,8 @@
 /*
- * Magic Canvas visual seed v2 — September 26, 2026.
+ * Magic Canvas visual seed v3 — September 26, 2026.
  * Small semantic values extracted from the final cohesive Home mock.
  * Reference/provenance: visual-baseline.md. No app integration performed.
- * v2 adds candidate status/disabled roles and explicit contrast caveats.
+ * v3 calibrates shell stops against the original Home pixels; still a candidate.
  * This is not a fully approved universal theme. Candidate border/tag values
  * preserve the current reference while local refinements remain open.
  * No font files are provided: "Cooper Light" names the mock's private
@@ -13,12 +13,12 @@
   --magic-font-editorial: "Cooper Light", Georgia, serif;
   --magic-font-interface: Geist, system-ui, sans-serif;
   --magic-tracking: normal;
-  --magic-type-identity: 19px;
-  --magic-type-page-title: 18px;
-  --magic-type-section: 21px;
-  --magic-type-work-title: 19px;
-  --magic-type-study-title: 18px;
-  --magic-type-prose: 16px;
+  --magic-type-identity: 1.1875rem;
+  --magic-type-page-title: 1.125rem;
+  --magic-type-section: 1.3125rem;
+  --magic-type-work-title: 1.1875rem;
+  --magic-type-study-title: 1.125rem;
+  --magic-type-prose: 1rem;
   --magic-leading-prose: 1.72;
 
   --magic-surface-workspace: #faf8f4;
@@ -28,19 +28,27 @@
   --magic-ink-prose: #3a342f;
   --magic-ink-muted: #746d66;
   --magic-ink-link: #325c90;
-  /* Brightest raw shell stop with this ink is 3.43:1. Do not assume
+  /* Updated stops require composed contrast checks. Do not assume
      small text passes on the highlight: measure composed locations and
      darken/confine highlight beneath text when needed; preserve Home anchor. */
   --magic-ink-on-shell: #fff4ed;
   --magic-ink-on-shell-secondary: #ffe9dd;
-  --magic-fill-shell: radial-gradient(ellipse 95% 78% at 8% 10%, #d3643d 0%, transparent 57%), linear-gradient(155deg, #ae412e 0%, #913128 45%, #6e2824 100%);
+  --magic-fill-shell:
+    radial-gradient(ellipse 95% 78% at 8% 10%, #b1573d 0%, transparent 57%),
+    linear-gradient(155deg, #a14e38 0%, #873a2f 45%, #78332d 100%);
   --magic-fill-shell-selected: #6f251d73;
   --magic-fill-shell-hover: #6f251d66;
 
-  --magic-fill-review: linear-gradient(110deg, #a2c0eb, #d8e6f8);
-  --magic-fill-review-hover: linear-gradient(110deg, #91b4e5, #c9dcf4);
-  --magic-ink-review: #233f65;
+  /* General command roles; review remains an alias for existing consumers. */
+  --magic-fill-action: linear-gradient(110deg, #a2c0eb, #d8e6f8);
+  --magic-fill-action-hover: linear-gradient(110deg, #91b4e5, #c9dcf4);
+  --magic-ink-action: #233f65;
+  --magic-fill-review: var(--magic-fill-action);
+  --magic-fill-review-hover: var(--magic-fill-action-hover);
+  --magic-ink-review: var(--magic-ink-action);
   --magic-fill-confirmation: #eef3fa;
+  --magic-line-confirmation: #7894b44d;
+  --magic-fill-backdrop: #29231f40;
   --magic-ink-confirmation: #516378;
 
   /* Paired identity fills/inks; not error/success or course-index semantics. */
@@ -74,6 +82,33 @@
   --magic-fill-status-error-candidate: #f9e7e5;
   --magic-ink-status-error-candidate: #7b2927;
   --magic-ink-disabled-candidate: #77716b;
+
+  /* New component roles: candidates demonstrated in the isolated lab, not
+     previously approved Home treatments. Keep paired values together. */
+  --magic-ink-muted-strong: #655e57;
+  --magic-line-field: #97897d;
+  --magic-fill-disabled: #eeeae4;
+  --magic-fill-avatar: #e8d3b2;
+  --magic-ink-avatar: #63432e;
+  --magic-fill-pressed-overlay: #29231f12;
+  --magic-ink-disabled: var(--magic-ink-disabled-candidate);
+  --magic-fill-secondary: #e4edf9;
+  --magic-fill-secondary-hover: #d5e3f5;
+  --magic-ink-secondary: var(--magic-ink-link);
+  --magic-ink-feedback: #425440;
+  --magic-ink-error: var(--magic-ink-status-error-candidate);
+  --magic-radius-field: 6px;
+  --magic-radius-overlay: var(--magic-radius-workspace);
+  --magic-type-control: 0.875rem;
+  --magic-type-compact-control: 0.8125rem;
+  --magic-type-label: 0.6875rem;
+  --magic-type-meta: 0.75rem;
+  --magic-glyph-control: 16px;
+  --magic-glyph-navigation: 16px;
+  --magic-glyph-trailing: 14px;
+  --magic-glyph-inline: 12px;
+  --magic-shadow-overlay: 0 20px 70px #29231f28;
+  --magic-shadow-popover: 0 8px 30px #29231f20;
 
   /* Pending local comparison; do not generalize to all components. */
   --magic-line-action-candidate: #adc5e3;

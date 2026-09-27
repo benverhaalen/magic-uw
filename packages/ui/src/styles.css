@@ -1,0 +1,26 @@
+/* One canonical token source. Font binaries are supplied by the host, never bundled here. */
+@import '../../../docs/design/tokens.css';
+.magic-ui-action, .magic-ui-confirmation, .magic-ui-popover, .magic-ui-link, .magic-ui-disclosure {
+  font-family: var(--magic-font-interface); color: var(--magic-ink); box-sizing: border-box;
+}
+.magic-ui-action { border: 0; border-radius: var(--magic-radius-control); min-height: 42px; padding: 10px 14px; font-size: var(--magic-type-control); line-height: 1.4; color: var(--magic-ink-action); background: var(--magic-fill-action); cursor: pointer; }
+.magic-ui-action--quiet { background: transparent; color: var(--magic-ink-link); text-decoration: underline; text-underline-offset: 3px; }
+.magic-ui-action:disabled, .magic-ui-action[aria-disabled=true] { background: var(--magic-fill-disabled); color: var(--magic-ink-disabled); cursor: default; }
+.magic-ui-action[aria-busy=true] { cursor: progress; }
+.magic-ui-action:active:not(:disabled):not([aria-disabled=true]) { box-shadow: inset 0 0 0 999px var(--magic-fill-pressed-overlay); }
+.magic-ui-link { color: var(--magic-ink-link); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
+.magic-ui-meta { font-size: var(--magic-type-meta); color: var(--magic-ink-muted-strong); line-height: 1.5; margin: 6px 0; }
+.magic-ui-confirmation input { accent-color: var(--magic-focus); }
+.magic-ui-confirmation .magic-ui-action { min-height: 28px; padding: 0 4px; }
+.magic-ui-glyph { width: var(--magic-glyph-control); height: var(--magic-glyph-control); flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: var(--magic-icon-stroke-seed); stroke-linecap: round; stroke-linejoin: round; }
+.magic-ui-disclosure summary { display: flex; gap: 8px; align-items: center; list-style: none; cursor: pointer; }
+.magic-ui-disclosure summary::-webkit-details-marker { display: none; }
+.magic-ui-disclosure[open] > summary .magic-ui-glyph { transform: rotate(90deg); }
+.magic-ui-popover { position: fixed; inset: auto; margin: 0; padding: 6px; max-height: calc(100dvh - 24px); overflow: auto; border: 1px solid var(--magic-line-quiet); border-radius: var(--magic-radius-overlay); background: var(--magic-surface-raised); box-shadow: var(--magic-shadow-popover); }
+.magic-ui-popover nav { display: grid; }
+.magic-ui-popover a { padding: 10px; border-radius: var(--magic-radius-control); color: var(--magic-ink); font-size: var(--magic-type-control); overflow-wrap: anywhere; }
+:is(.magic-ui-action,.magic-ui-link,.magic-ui-disclosure summary,.magic-ui-confirmation input,.magic-ui-popover a):focus-visible { outline: 2px solid var(--magic-focus); outline-offset: 3px; }
+@media (hover: hover) {
+ .magic-ui-action:not(:disabled):not([aria-disabled=true]):hover { background: var(--magic-fill-action-hover); }
+ .magic-ui-action--quiet:not(:disabled):not([aria-disabled=true]):hover, .magic-ui-popover a:hover { background: var(--magic-fill-secondary-hover); }
+}

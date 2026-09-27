@@ -1,70 +1,60 @@
-# Component and interaction contracts
+# Magic product and interaction contracts
 
-Version 2. These are implementation recipes and acceptance targets, not claims of working components. Consult the baseline for appearance and current Home direction for product semantics. Begin with these recurring roles; extract reusable code when two real uses need the same behavior. Avoid a universal component framework.
+Version 3. This page binds the [reusable recipes](component-recipes.md) to Magic's student workflows. These are requirements and acceptance examples, not claims of working production components. Appearance uses [foundations](foundations.md); the [coverage map](system-coverage.md) records what has actually been demonstrated.
 
-## Atomic structure
+## Complete interaction contract
 
-**Foundations → controls → meaningful compositions → complete journeys.** Shared foundations: identity, typography, ink/surface/semantic color, border roles, radius, spacing and focus. Controls: button, link, disclosure, time tag, provider mark, confirmation. Compositions: shell navigation, briefing passage with optional action, work row, study action, Today event. A page assembles these according to its goal. Every composition owns its state contract as well as appearance.
+For each consequential journey specify:
 
-| Recipe | Appearance and meaning | Interaction / edge conditions |
-| --- | --- | --- |
-| App shell | Thin warm gradient wrap, ivory work surface; one collapsible sidebar; compact top controls, centered Cooper page title; profile bottom | Home/Courses/My UW/Calendar. Collapse preserves route and course expansion; keyboard focus stays on the toggle. Icon-only controls retain accessible names/tooltips. History controls reflect real history. Compose opens a new context-aware Magic chat using the current page and permitted course context; unavailable capability is disclosed. The reference bell is illustrative until its destination and state are defined; it must not imply implemented notifications. Website does not copy Mac window buttons. |
-| Course navigation | Coherent short title + secondary code, same active/hover/focus grammar as siblings | Expand is distinct from course navigation. Long names wrap or truncate with accessible full name; no typography from a different product inside the dropdown. Zero, many, hidden and unavailable courses are meaningful states. |
-| Briefing passage | Readable prose, selective emphasis; optional colored action at right; no-action text uses full width | Entity links inspect the correct object/source. Explicit verbs act. Evidence and freshness remain inspectable. A named entity must not unexpectedly open many apps. Mixed information lengths do not create mandatory boxed rows. |
-| Time tag / entity link | Tag text inherits prose size, filled background extends around text; entity has recognizable link affordance | A time label is not a button unless it actually navigates. Link supports keyboard/focus and a useful destination. No hover-only critical evidence. Outline/link backing remains a local refinement, not a universal ban. |
-| Review + confirmation | A coherent action region, separate review and handled controls, quiet internal division when needed | Clicking review never checks handled. Confirmation explains local self-report, persists by issue and source version, supports Undo. Material new evidence can reopen with reason; copy regeneration alone cannot. Focus survives update. |
-| Upcoming work row | Flat colored surface, selective Cooper title, readily seen due date/time, small authentic destination marks | Whole-row launch must communicate what opens. Preserve one-click prepared work; no nested competing buttons. Show partial launch failure per destination and retry only failures. Do not imply installed tools or correct resource matching without evidence. |
-| Study action | Specific already-chosen activity and reason, clear typographic action, compact vibrant surface | Start the selected useful activity. An exam in a week can justify source-grounded practice without invented mastery. No generic class menu, minutes selector or quiz/podcast thumbnail. If unavailable, explain and offer an actual alternative. |
-| Today / Calendar | Deadline and timed-event distinctions; readable hours; consistent course/source identity | Home is today's projection. Calendar defaults to the current week, offers week/month views and shows suggestions on request through an easy-to-find action with relevant context already supplied; normal content is commitments and accepted study blocks. Same underlying records and confirmed plan state in both; partial coverage is not a free day. Preserve source timezone, all-day semantics and overlapping events. |
+`normal entry + intent → activation/feedback → exact destination/resource → preserved state → refreshed facts → completion/correction → failure recovery → observable check`
 
-## State and return contract
+Keep domain evidence, student confirmation and view state distinct. A source-completed assignment, local work completion, handled conflict and demonstrated understanding are different facts. Do not expose one generic `complete` operation for all of them. A source version change invalidates dependent conclusions until checked; missing, partial and conflicting sources must not collapse into an empty/successful state. The interface does not imply an exam blueprint, mastery model or grade predictor from ordinary course data.
 
-For each consequential interaction write a compact specification:
-
-`entry + user intent → activation/feedback → destination/resource identity → preserved state → refreshed data → completion/correction → failure recovery → observable check`
-
-Representative journey: saved Home → named lecture → relevant requirements and assigned material → source/readings → Back to the same briefing place. Preserve semantic anchor plus offset, keyboard focus, selected course, useful drafts and local confirmations. Revalidate changed facts without jumping the reader or reshuffling an active selection. Do not discard draft/state by accidentally changing a component's identity. If the target was removed, explain and return to the nearest useful context rather than opening a similarly named item. A network failure leaves saved evidence usable with honest freshness.
-
-For a work-launch action, prepare the verified destinations before activation; after activation show which opened, which failed and how to recover. Returning to Magic restores the originating context. Opening does not prove the work was completed. School submission/enrollment stays outside the app's authorized capability boundary.
-
-Keep domain evidence, student confirmations and view state distinct. A completed source assignment, a locally completed work item, an acknowledged conflict and demonstrated understanding are different facts. Do not overload one generic `complete` operation.
-
-## Minimum states to inspect where relevant
-
-- Default entry, populated, no data, loading, stale/partial and recoverable error.
-- Hover, focus, pressed, disabled and keyboard activation; focus return after a menu/dialog.
-- Long course/title, unbroken source label, dense day, no action, several related insights, no study recommendation.
-- Refresh during reading, edited deadline, removed source, interrupted launch, repeated clicks and Undo.
-- Narrow laptop width, zoom/enlarged text, reduced motion and collapsed sidebar.
-
-Use synthetic cases. Vision catches hierarchy/wrapping/material inconsistency; DOM/accessibility inspection catches semantics and focus; deterministic checks catch IDs, time handling and persistence. Run only the cases affected by the change plus a representative sibling and return path. A screenshot cannot establish these behaviors.
-
-## Visual states and motion
-
-Use [Foundations](foundations.md) for color, boundary, icon, focus and motion rules. The recipes above specify which states and return behavior need those treatments.
+For navigation, preserve semantic anchor plus offset, keyboard focus, selected course, useful drafts and local confirmations. Revalidate changed facts without jumping the reader or reshuffling an active selection. Stable object IDs survive changed display copy. If a target disappears, explain and return to useful context; never substitute a similarly named item. Network failure keeps saved evidence usable with honest freshness.
 
 ## Shared evidence reference — every AI surface
 
-Applies to Briefing, course/detail summaries, Study, chat and My UW whenever AI refers to a source-backed object or assertion. Choose the correct role:
+Applies to Home, course/assignment detail, Study, chat and My UW whenever AI refers to a source-backed object or assertion (D18).
 
-- **Named object:** recognizable link to the exact course, assignment, lecture or resource context.
-- **Evidence:** compact source affordance exposing title, source, relevant excerpt/location, captured/updated time and uncertainty where material. It may accompany the named link without creating two indistinguishable actions.
-- **Work action:** explicit verb describing what starts or opens. An action label such as “Review assigned readings” is not merely a citation to the Canvas homepage.
+| Role | Meaning and destination | Required distinction |
+| --- | --- | --- |
+| Named object | Recognizable link to the exact course, assignment, lecture or resource context | Must not unexpectedly launch several apps. |
+| Evidence | Inspect title, source, relevant excerpt/location, captured/updated time and material uncertainty | Expose on demand through keyboard/click, never hover alone. Unsupported inference cannot acquire a fabricated citation. |
+| Work action | Explicit verb names what starts or opens using the assembled context | “Review assigned readings” must reach the useful material, not a generic Canvas homepage. |
 
-These share a visual family but not a generic click handler. Preserve keyboard semantics, visible link recognition and a useful destination. A source missing or changed after generation retains its identity and explains the limitation; never substitute a similarly named item. Unsupported inference is labeled as inference and cannot acquire a fabricated citation. Expose evidence on demand to preserve glanceability; do not require hover. Permission-sensitive content remains subject to the app's existing access boundary.
+These can share a visual family while retaining separate handlers and semantics (R1/R2/R5). Permission-sensitive information follows existing access boundaries. If a source changes or disappears, retain identity and explain what cannot currently be supported. **Integration acceptance:** the same assignment in Home prose, course detail and chat resolves to the same object/version; a changed deadline is consistent across all three; Back restores each origin. A static mock cannot demonstrate this.
 
-**Acceptance example:** the same assignment appears in Home prose, a course page and chat. All three resolve to the same source object/version; a changed deadline is represented consistently, and Back restores the originating surface. This is a required integration check, not currently demonstrated by a static mock.
+## Surface bindings
 
-## Courses overview and course detail
+| Binding | Composition and accepted requirement | Behavior and recipe mapping |
+| --- | --- | --- |
+| Desktop shell | Thin warm wrap, ivory open pane; one collapsible sidebar; compact top controls; centered Cooper page title; profile at bottom | Home/Courses/My UW/Calendar; preserve course expansion and route on collapse, focus stays on toggle. History reflects actual history. Compose creates a context-aware Magic chat with permitted page/course context or explains unavailability. Reference bell is illustrative until capability is defined. R1/R5/R7; window chrome is desktop-only. |
+| Home Briefing | Most important cross-source implications first; readable prose and selective emphasis; optional right action region; no-action text gets full width | Named entities inspect context, explicit verbs act, evidence/freshness stay available. No mandatory cards or buttons per insight. R1/R2/R6. This hierarchy is Home-specific. |
+| Review and local confirmation | Coherent action region with separate review and handled controls, quiet division when useful | Review never checks handled. Confirmation explains student report, persists by issue/source version and supports Undo. Material new evidence may reopen with a reason; regenerated wording alone cannot. Preserve focus. R2/R6; combined geometry remains a comparison (D12). |
+| Home Upcoming | Compact flat colored graded-work rows, selective Cooper title, visible deadline and small authentic destination marks; no decorative previews | One-click prepared work launch, with destinations clear before activation. Verified resources/capabilities only; report partial failure per destination and retry only failures. Return restores origin; opening proves no completion. R1/R3/R6. |
+| Home Study & Learn | Specific already-selected useful activity with a reason, compact vibrant surface and clear action | Start the selected source-grounded activity. No generic course menu, minutes selector or quiz/podcast thumbnail. An approaching exam can justify practice without invented mastery. Explain unavailability and offer a real alternative. R1/R2/R6. Session composition remains to be designed. |
+| Home Today | Separate right-side timing context; readable hours; distinguish deadlines from timed events | Same underlying records and confirmed plan state as Calendar. Partial coverage is not a free day. Preserve timezone, all-day and overlapping events. R8. Responsive placement must retain access. |
+| Calendar | Current week by default; week and month views; normal content is commitments and accepted study blocks | Suggestions on request, easy to discover with context supplied. No silent insertion or automatic suggestion flood. “Suggest study time” is a proposed label, not exact approved copy. Density/overlap, proposal acceptance and narrow layouts still need demonstration. R1/R5/R8. |
+| Courses overview | Prefer one card per course (D19), readable concise name + code, one useful current cue if supported | Stable course identity across sidebar/card/event/assignment. No mandatory progress ring or grade-to-mastery inference. Handle zero/many courses, long names and partial capture without deleting saved courses. R3/R6/R7. |
+| Course/assignment detail | Course-specific requirements/materials and source access, using the shared language | Exact composition is provisional. Distinguish course navigation from expansion; dropdown uses sibling typography, hover/focus and selection. Preserve full official identity in detail. Overview → course → assignment/source → Back is the transfer journey. R1–R3/R5–R7. |
+| Public website | Explain the product and provide legitimate download/GitHub access | Use Magic type/material/action roles with website navigation/footer and real URLs. It inherits no student source state, desktop window controls or fake installed capability. Branding divergence with Aiden needs human resolution. R1/R3/R7; actual transfer remains evidence-dependent. |
 
-Prefer one card per course, following Ben's Canvas reference while using Magic's material/type language. The card identifies the course with a concise readable name and code and supplies one meaningful current cue when supported. Opening it goes to that course's working context; do not turn every card into a duplicated Home briefing or infer mastery from a grade. Full official identity remains available in detail. There is no mandatory grade/progress ring.
+My UW's first useful task, chat's complete session layout and broader settings remain underspecified; do not invent their primary product requirements to fill a template. Use R4/R5 when an authorized concrete form/task calls for them. School submission and enrollment remain outside the app's authorized capability boundary.
 
-Keep course identity stable across card, sidebar, event and assignment. The dropdown must be a sibling of the same design system, including hover/focus/selection. Expansion and navigation are distinguishable controls. Empty enrollment, long names, many courses and partial capture need usable states. Preserve saved courses while a capture is partial. A stale course can still open saved evidence with an honest freshness label.
+## Representative Home journey and time-aware case
 
-Course detail gives the student course-specific work/material context and useful evidence access. Its exact page composition is provisional; do not freeze a new layout based only on this paragraph. A representative transfer trial is overview → course → assignment/source → Back, checking the selected card, semantic scroll anchor and focus. Keep domain identity and view state outside display copy.
+**Journey:** saved Home → named lecture → relevant requirements/assigned material → source/readings → Back to the same briefing place. This tests the intended understand → inspect → begin → return benefit. The work action prepares and verifies the required destinations before activation; success/failure concerns opening those destinations, not learning completion.
 
-## Time-aware briefing — synthetic scenario, not a clock-only algorithm
+**Synthetic time-aware scenario:** a verified 2:30 lecture, explicitly associated reading, current source state and graded work are known. Before class, explain the relationship and offer “Review assigned readings.” Near class, opening relevant notes may be useful if the student supplied that habit. The reading remains accessible. Reaching the lecture time or opening the link never marks it read. A changed lecture time refreshes its facts without discarding an active review. Unknown preference or missing association stays unknown. An advisor update may need no action. These inputs test useful selection; they do not impose a clock-only algorithm or three-row template.
 
-Inputs: a verified 2:30 lecture; explicitly assigned reading linked to it; source freshness; upcoming graded work; known typed-note preference only if the student supplied it. Before class, a useful passage can state the lecture time and offer “Review assigned readings.” Near class, it can offer opening the relevant notes when that matches the student's habit. The reading remains accessible; merely reaching 2:30 or opening its link never marks it read. A changed lecture time uses fresh evidence and does not silently discard an active review.
+## Inspect the affected states
 
-The system selects the useful implication and action from available evidence and preferences, rather than displaying every input. Unknown preference or missing reading association must not become invented certainty. An informational advisor update may need no button. This scenario makes the flagship intelligence testable without forcing every briefing into the same three rows.
+Use synthetic cases in development; their fixture identity belongs in the evidence path. Inspect only the changed family, its real consumers, a representative sibling and return path:
+
+- Normal entry/populated, no data, loading, stale/partial/conflicting and recoverable failure where the capability produces them.
+- Hover, focus, pressed, unavailable and keyboard activation; overlay dismissal and focus return.
+- Long course/title, unbroken source label, dense day, no action, several related insights and no study recommendation.
+- Source/version change during reading, removed source, interrupted launch, repeated activation, failed save and Undo.
+- Narrow window, enlarged text, reduced motion when animated and collapsed navigation.
+
+Visual inspection checks hierarchy/wrapping/materials; DOM and keyboard inspection check semantics and focus; deterministic domain checks establish IDs, time handling and persistence. Verify the actual integration before claiming the complete journey. Static links do not need fictional network state machinery to satisfy this list.
