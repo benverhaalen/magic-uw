@@ -1,3 +1,4 @@
+import { judgmentFailure } from "./judgment-errors";
 import {
   app,
   BrowserWindow,
@@ -26,6 +27,7 @@ import {
 } from "../../../packages/connectors/src/network";
 import { checkedSpaceProbeUrl } from "../../../packages/connectors/src/space-hosts"; // owner: T05b
 import { clearSignOutSecrets, createSecretVault } from "./secrets";
+import { MadgradesHttp, madgradesRequestSchema } from "../../../packages/connectors/src/madgrades";
 import sampleFixture from "../../../fixtures/course.json";
 // owner: T05c
 import { Tray, Menu, nativeImage } from "electron";
@@ -171,6 +173,11 @@ app
       encrypt: (value) => safeStorage.encryptString(value),
       decrypt: (value) => safeStorage.decryptString(Buffer.from(value)),
     });
+    // The Madgrades token stays in the main-process vault; the workspace sends only fixed request shapes.
+    const madgradesHttp = new MadgradesHttp({
+      fetch: (url, init) => fetch(url, init),
+      token: () => vault.get("madgrades:token"),
+    });
     const sourceReads = new Map<string, AbortController>();
     studentSession.setPermissionRequestHandler((_wc, _permission, callback) =>
       callback(false),
@@ -315,6 +322,25 @@ app
           const request = message.payload?.request;
           if (planningClears > 0 || !["public-search", "enrollment-packages"].includes(request?.kind)) throw new Error("Unsupported planning read");
           const result = await planningHttp.read(request, controller.signal);
+          controller.signal.throwIfAborted();
+          worker.postMessage({ kind: "source-response", id: message.id, result });
+        } catch {
+          worker.postMessage({ kind: "source-response", id: message.id, error: true });
+        } finally { planningReads.delete(message.id); sourceReads.delete(message.id); }
+        return;
+      }
+      if (message.kind === "madgrades-read") {
+        if (!(await consentGate("planning-public-read"))) {
+          worker.postMessage({ kind: "source-response", id: message.id, error: true });
+          return;
+        }
+        const controller = new AbortController();
+        sourceReads.set(message.id, controller);
+        planningReads.add(message.id);
+        try {
+          const request = madgradesRequestSchema.parse(message.payload?.request);
+          if (planningClears > 0) throw new Error("Madgrades read cancelled");
+          const result = await madgradesHttp.read(request, controller.signal);
           controller.signal.throwIfAborted();
           worker.postMessage({ kind: "source-response", id: message.id, result });
         } catch {
@@ -528,11 +554,11 @@ app
             controller.signal,
           );
           worker.postMessage({ kind: "evaluation", id: message.id, result });
-        } catch {
+        } catch (error) {
           worker.postMessage({
             kind: "evaluation",
             id: message.id,
-            error: true,
+            ...judgmentFailure(error),
           });
         } finally {
           evaluations.delete(message.id);
@@ -552,6 +578,13 @@ app
     async function execute(command: unknown): Promise<CommandResult> {
       const parsed = commandSchema.parse(command);
       await ready;
+      if (parsed.type === "madgrades-token") {
+        // Stored only in the OS-protected vault; the workspace, records, and logs never receive it.
+        if (parsed.token === null) await vault.deletePrefix("madgrades:");
+        else await vault.set("madgrades:token", parsed.token);
+        const result = await execute({ type: "snapshot" });
+        return { ...result, message: parsed.token === null ? "Madgrades token removed from this device." : "Madgrades token saved on this device." };
+      }
       if (parsed.type === "purge") {
         sync?.abort();
         cancelPlanning();

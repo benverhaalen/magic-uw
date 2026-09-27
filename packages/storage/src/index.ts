@@ -58,6 +58,11 @@ import {
   consentRecordSchema,
   type ConsentChange,
   type ConsentRecord,
+  identityRosterSchema,
+  autoIdentityStateSchema,
+  autoIdentityUpdateSchema,
+  type AutoIdentityUpdate,
+  type IdentityRoster,
   type Attempt,
   type DayPlanEntry,
   type EgressReceipt,
@@ -1469,6 +1474,50 @@ export function createStore(
         return ids.length;
       });
     },
+    identityRoster() {
+      // Stored in the existing preferences table: no schema change. Cleared by purge().
+      const row = db
+        .prepare("SELECT value FROM preferences WHERE key = 'identity_roster'")
+        .get();
+      return row
+        ? identityRosterSchema.parse(JSON.parse(String(row.value)))
+        : identityRosterSchema.parse({});
+    },
+    setIdentityRoster(value: IdentityRoster) {
+      const parsed = identityRosterSchema.parse(value);
+      db.prepare(
+        "INSERT INTO preferences VALUES ('identity_roster', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      ).run(JSON.stringify(parsed));
+    },
+    autoIdentities() {
+      // Kept apart from the manual roster so a sync can never overwrite manual entries.
+      const row = db
+        .prepare("SELECT value FROM preferences WHERE key = 'identity_roster_auto'")
+        .get();
+      return row
+        ? autoIdentityStateSchema.parse(JSON.parse(String(row.value)))
+        : { accounts: {} };
+    },
+    recordAutoIdentity(value: AutoIdentityUpdate) {
+      const update = autoIdentityUpdateSchema.parse(value);
+      const row = db
+        .prepare("SELECT value FROM preferences WHERE key = 'identity_roster_auto'")
+        .get();
+      const state = row
+        ? autoIdentityStateSchema.parse(JSON.parse(String(row.value)))
+        : { accounts: {} as ReturnType<typeof autoIdentityStateSchema.parse>["accounts"] };
+      const account = (state.accounts[update.accountScope] ??= { authorsByCourse: {} });
+      // The current profile replaces the account's previous automatic self identity.
+      if (update.self) account.self = update.self;
+      if (update.courseId && update.authors?.length) {
+        // Authors accumulate: a partial read never forgets a known student.
+        const known = account.authorsByCourse[update.courseId] ?? [];
+        account.authorsByCourse[update.courseId] = [...new Set([...known, ...update.authors])].slice(0, 2000);
+      }
+      db.prepare(
+        "INSERT INTO preferences VALUES ('identity_roster_auto', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      ).run(JSON.stringify(autoIdentityStateSchema.parse(state)));
+    },
     setCompleted(id, completed) {
       if (!liveResource(id))
         throw new Error(
@@ -1603,8 +1652,10 @@ export function createStore(
         for (;;) {
           const row = prepare(
             `SELECT * FROM jobs WHERE ((status = 'pending' AND run_after <= ?) OR (status = 'running' AND lease_until <= ?))
-             ${filter} ORDER BY run_after, rowid LIMIT 1`,
-          ).get(time, time, ...params) as Row | undefined;
+             ${filter} AND NOT EXISTS (
+               SELECT 1 FROM preferences WHERE key = 'jobCooldown:' || jobs.kind AND value > ?
+             ) ORDER BY run_after, rowid LIMIT 1`,
+          ).get(time, time, ...params, time) as Row | undefined;
           if (!row) return undefined;
           const error =
             Number(row.attempts) >= MAX_ATTEMPTS
@@ -1633,6 +1684,27 @@ export function createStore(
             error: null,
           });
         }
+      });
+    },
+    jobCooldown(kind) {
+      return (prepare("SELECT value FROM preferences WHERE key = ?").get(`jobCooldown:${kind}`) as Row | undefined)?.value as string | undefined;
+    },
+    defer(job, runAfter, reason, now = new Date().toISOString()) {
+      const time = timestamp(now), until = timestamp(runAfter);
+      if (until <= time) throw new Error("Job deferral must be in the future.");
+      return transaction(() => {
+        const row = prepare(
+          `SELECT * FROM jobs WHERE id = ? AND status = 'running' AND lease_token = ?
+           AND input_hash = ? AND kind = ? AND lease_until > ?`,
+        ).get(job.id, job.leaseToken, job.inputHash, job.kind, time) as Row | undefined;
+        if (!row || (row.resource_id ?? "") !== job.resourceId || !isFresh(row)) return false;
+        prepare(`INSERT INTO preferences (key, value) VALUES (?, ?)
+          ON CONFLICT(key) DO UPDATE SET value = MAX(value, excluded.value)`)
+          .run(`jobCooldown:${job.kind}`, until);
+        prepare(`UPDATE jobs SET status = 'pending', attempts = MAX(0, attempts - 1),
+          run_after = ?, lease_until = NULL, lease_token = NULL, error = ? WHERE id = ?`)
+          .run(until, reason.slice(0, 2000), job.id);
+        return true;
       });
     },
     finish(job, error, now = new Date().toISOString()) {

@@ -1,6 +1,6 @@
 # Backend branch audit and integration boundaries
 
-Human owner: Ben. Agent: Codex driver with scoped read-only reviewers. September 26, 2026. Audit base: main `18a8486`; backend `1f8b1f7`; original Start work `2817609`. Status: audit complete; product integration not performed.
+Human owner: Ben. Agent: Codex driver with scoped read-only reviewers. September 26, 2026. Audit base: main `18a8486`; backend `1f8b1f7`; original Start work `2817609`. Status: historical audit complete; authorized selective integration is verified for delivery (see below).
 
 See [full audit](../../../../docs/backend-branch-audit.md) for evidence, limits and acceptance checks.
 
@@ -19,3 +19,14 @@ Next action: frontend retains Start work; backend integration starts with privac
 Ben authorized selective backend integration after this audit. Base refreshed to main `274f738`, including Nate's T17 sync scheduling. Isolated integration branch: `integration/backend-current`; scoped backoff worker: `fix/scoped-jev-backoff`. No frontend ownership change.
 
 Current scope: identity/citation projection and contributing-evidence privacy; deadline extraction through canonical queries; provider-scoped Jev refusal handling. Preserve current sync scheduler, consent/egress, learning v8 and registered jobs. Avoid App/preload/Start Work changes. Fuzzy and Madgrades remain partial unless separately integrated and verified; do not infer their adoption from this handoff. Driver will fetch/reconcile before publishing tested product changes.
+
+
+## Selective integration verified for delivery
+
+Driver branch `integration/backend-current`, based on main through `23fd8b6`; includes Nate’s wave-D runner/learning work. Canonical [resolution and limits](../../../../docs/backend-branch-audit.md#selective-integration-resolution).
+
+Ports: identity/citation projections, permission-filtered deadline evidence, scoped durable Jev backoff with IPC error metadata, public Madgrades comparison. New study-generation protection hooks the existing runner before every actual send and after provider awaits; no replacement learning framework or frontend changes. `RunRequest.beforeCall` / `afterCall` are optional hooks, adopted by the quiz/card handler. Other model-call paths need their own explicit adoption.
+
+Frontend retains Start work; no App/preload/renderer files were changed in this integration. Sync retains T17 and its v9 work. Relevant overlap for sync is `apps/desktop/src/ingestion.ts` (automatic local identity capture), `worker.ts`/`main.ts` (Madgrades and typed budget errors), core dispatch and storage preferences. Pull the completed integration before resolving those overlaps; preserve both capabilities. Do not replace the current branches with the older backend branch.
+
+Known limits: roster scrubbing is not anonymization; literal citations are not semantic proof; Madgrades lacks normal setup UI/live validation; old cache artifacts are invalidated rather than individually erased; already-sent model requests cannot be recalled. Verification: product revision `218cad1`, 734 tests passed and one Windows-only test skipped; TypeScript/build and hidden Electron bridge passed. Delivery commit includes this packet and will be on main; pull main to integrate. No live provider or private coursework was used.
