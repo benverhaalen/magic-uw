@@ -7,6 +7,7 @@ import type {
 } from "@magic/contracts";
 import {
   buildTodayRail,
+  layoutLanes,
   planEntry,
   validatePlanEdit,
   type RailSuggestion,
@@ -202,6 +203,17 @@ export function TodayRail({
     day: "numeric",
   }).format(new Date(now));
   const hourCount = rail.hours.end - rail.hours.start;
+  // Overlapping events and blocks share the row side by side instead of covering each other.
+  const lanes = layoutLanes([
+    ...rail.events.map((e) => ({ id: e.id, startMin: e.startMin, endMin: e.endMin ?? e.startMin + 30 })),
+    ...visible.map((s) => ({ id: s.id, startMin: s.startMin, endMin: s.endMin })),
+  ]);
+  const across = (id: string) => {
+    const { lane, lanes: n } = lanes.get(id) ?? { lane: 0, lanes: 1 };
+    if (n === 1) return {};
+    const col = `(100% - 36px) / ${n}`;
+    return { left: `calc(34px + ${col} * ${lane})`, width: `calc(${col} - 2px)`, right: "auto" };
+  };
 
   return (
     <aside className="today-rail" aria-label="Today's schedule">
@@ -373,19 +385,24 @@ export function TodayRail({
                 title={`${e.title} · ${e.endMin != null ? `${clock(e.startMin)}–${clock(e.endMin)}` : `${clock(e.startMin)}, start only`}${e.location ? ` · ${e.location}` : ""}`}
                 aria-label={`${e.title}, ${e.endMin != null ? `${clock(e.startMin)} to ${clock(e.endMin)}` : `${clock(e.startMin)}, start only`}. Open details`}
                 onClick={() => onSelect(e.id)}
-                style={{ top: top(e.startMin) + 1, height: height(e.startMin, end) }}
+                style={{ top: top(e.startMin) + 1, height: height(e.startMin, end), ...across(e.id) }}
               >
                 <b>
                   {e.onlineMeeting === "teams" ? <span className="rail-teams">Teams</span> : null}
                   {e.title}
                 </b>
                 {height(e.startMin, end) >= 36 ? (
-                  <span>
-                    {e.endMin != null
-                      ? `${clock(e.startMin)}–${clock(e.endMin)}`
-                      : `${clock(e.startMin)} · start only`}
-                    {e.location && e.onlineMeeting !== "teams" ? ` · ${e.location}` : ""}
-                  </span>
+                  (lanes.get(e.id)?.lanes ?? 1) > 1 ? (
+                    // Sharing the row: the range would wrap and clip. Full times stay in the label.
+                    <span>{clock(e.startMin)}</span>
+                  ) : (
+                    <span>
+                      {e.endMin != null
+                        ? `${clock(e.startMin)}–${clock(e.endMin)}`
+                        : `${clock(e.startMin)} · start only`}
+                      {e.location && e.onlineMeeting !== "teams" ? ` · ${e.location}` : ""}
+                    </span>
+                  )
                 ) : null}
               </button>
             );
@@ -403,7 +420,7 @@ export function TodayRail({
               <div
                 key={s.id}
                 className="rail-slot"
-                style={{ top: top(s.startMin) + 1, height: height(s.startMin, s.endMin) }}
+                style={{ top: top(s.startMin) + 1, height: height(s.startMin, s.endMin), ...across(s.id) }}
               >
                 <button
                   className={`rail-block suggestion ${s.type} ${s.state} ${focused?.id === s.id ? "focused" : ""}`}

@@ -87,6 +87,39 @@ export function validatePlanEdit(
     .map((ev) => ev.title);
   return { ok: true, overlaps };
 }
+/**
+ * Side-by-side columns for timed blocks, so overlapping events stay visible.
+ * Blocks that overlap (directly or through a chain) share one column count;
+ * each takes the first free column. Touching blocks (one ends as the next starts) don't overlap.
+ */
+export function layoutLanes(
+  items: { id: string; startMin: number; endMin: number }[],
+): Map<string, { lane: number; lanes: number }> {
+  const out = new Map<string, { lane: number; lanes: number }>();
+  const sorted = [...items].sort((a, b) => a.startMin - b.startMin || b.endMin - a.endMin);
+  let group: { id: string; lane: number }[] = [];
+  let laneEnds: number[] = [];
+  let groupEnd = -Infinity;
+  const close = () => {
+    for (const g of group) out.set(g.id, { lane: g.lane, lanes: laneEnds.length });
+    group = [];
+    laneEnds = [];
+  };
+  for (const it of sorted) {
+    if (it.startMin >= groupEnd) {
+      close();
+      groupEnd = -Infinity;
+    }
+    let lane = laneEnds.findIndex((end) => end <= it.startMin);
+    if (lane === -1) lane = laneEnds.push(it.endMin) - 1;
+    else laneEnds[lane] = it.endMin;
+    group.push({ id: it.id, lane });
+    groupEnd = Math.max(groupEnd, it.endMin);
+  }
+  close();
+  return out;
+}
+
 export interface TodayRail {
   date: string;
   nowMin: number;
