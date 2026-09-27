@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Command, ResourceView, Snapshot } from '@magic/contracts';
 import { localTime } from '@magic/domain';
 import { Action, EvidenceLink } from '../../../../packages/ui/src';
+import { InlineEntity, InlineTime, presentationLabel, sourceDates } from '../../../../packages/ui/src/inline-context';
 import { deadlineReportEvidence } from './PersonalReport';
 import { personalReportIssue, personalReportState, personalReportVersion } from '@magic/contracts';
 import { StartWork, preparedWorkRevision } from './StartWork';
@@ -73,13 +74,19 @@ export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPl
       if(next===work.upcoming.length) pane?.querySelector<HTMLElement>('.home-upcoming .magic-start-work:last-child .home-work-details')?.focus({preventScroll:true});
     });
   }
+  // Conflict copy: literal concise name after the shown course; only dates a source states, each with its source when known.
+  const conflictLabel=conflict && presentationLabel(conflict.title,{shownPrefixes:[course(conflict)]});
+  const conflictName=conflict && conflictLabel && <>{course(conflict)} <InlineEntity name={conflictLabel}><ObjectLink resource={conflict}>{conflictLabel.label}</ObjectLink></InlineEntity></>;
+  const conflictDates=conflict ? sourceDates(conflict.deadline.claims) : [];
+  const conflictSourced=conflictDates.every(d=>d.sources.length>0);
   return <div className="home-layout"><div className="home-reading">
     <section className="home-briefing" aria-labelledby="briefing-title" data-place-anchor="briefing"><h1 id="briefing-title" tabIndex={-1}>Briefing</h1>
-      {conflict && <div className="briefing-passage"><p>{conflictHandled ? <>You reported handling the date disagreement for <ObjectLink resource={conflict}/>. The saved dates are still available to inspect.</> : <>The saved dates for <ObjectLink resource={conflict}/> disagree. {conflict.deadline.planningAt && <>Plan for <strong>{dueLabel(conflict.deadline.planningAt)}</strong> until you confirm the date.</>}</>}</p><div className="briefing-action briefing-review"><Action data-focus-key={`review-${conflict.id}`} onClick={() => onSelect(conflict.id)}>Review dates <Glyph name="forward"/></Action>{reportable && report?.(originalConflict!)}</div></div>}
+      {conflict && <div className="briefing-passage"><p>{conflictHandled ? <>You reported handling the dates for {conflictName}. The saved dates are still available to inspect.</> : <>Check the due date for {conflictName}{conflictDates.length > 1 ? <>: {conflictSourced ? null : 'saved sources list '}{conflictDates.map((d, i) => <Fragment key={d.value}>{i > 0 && (i === conflictDates.length - 1 ? ' and ' : ', ')}{conflictSourced && <>{d.sources.join(' and ')} {d.sources.length > 1 ? 'say' : 'says'} </>}<InlineTime dateTime={d.value} parts={d.precision === 'day' ? [day(d.value)] : [day(d.value), time(d.value)]} after={i === conflictDates.length - 1 ? '.' : undefined}/></Fragment>)}</> : <>. Its saved sources disagree.</>}</>}</p><div className="briefing-action briefing-review"><Action data-focus-key={`review-${conflict.id}`} onClick={() => onSelect(conflict.id)}>Review dates <Glyph name="forward"/></Action>{reportable && report?.(originalConflict!)}</div></div>}
       {passages.filter(p=>p.resource.id!==conflict?.id).slice(0,conflict?1:2).map(p=>{
         const due=p.resource.kind==='assignment' ? p.resource.deadline.planningAt : null;
         const launch=p.reason!=='changed-date' && p.resource.kind==='assignment' && !launchable.has(p.resource.id) && work.today.concat(work.upcoming.flatMap(g=>g.items)).some(r=>r.id===p.resource.id);
-        return <div className="briefing-passage" key={`${p.resource.id}:${p.span.start}`}><p><span className="briefing-context">{course(p.resource)} · <ObjectLink resource={p.resource}/>{due && <> · due {whenInline(due)} {time(due)}</>}</span><q>{p.span.text}</q></p>
+        const name=presentationLabel(p.resource.title,{shownPrefixes:[course(p.resource)]});
+        return <div className="briefing-passage" key={`${p.resource.id}:${p.span.start}`}><p>{course(p.resource)} <InlineEntity name={name}><ObjectLink resource={p.resource}>{name.label}</ObjectLink></InlineEntity>{due ? <> is due <InlineTime dateTime={due} parts={[whenInline(due), time(due)]} after="."/></> : ':'} <q>{p.span.text}</q></p>
           {p.reason==='changed-date' ? <div className="briefing-action"><Action data-focus-key={`briefing-${p.resource.id}`} onClick={()=>onSelect(p.resource.id)}>Review change <Glyph name="forward"/></Action></div>
             : launch ? <div className="briefing-action"><StartWork resource={p.resource} refreshKey={refreshKey} onInspect={() => onSelect(p.resource.id)} action/></div> : null}</div>;
       })}
