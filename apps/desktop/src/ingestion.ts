@@ -77,6 +77,8 @@ import {
 } from "../../../packages/connectors/src/gitlab";
 import { courseInclusion } from "../../../packages/core/src/access";
 import { createRefreshCoordinator } from "../../../packages/core/src/refresh";
+import { readFileSync, writeFileSync } from "node:fs"; // fix/sync-events
+import { hashCanvas } from "../../../packages/connectors/src/canvas-models"; // fix/sync-events
 // owner: T33. Per-course freshness probes (D37).
 import {
   canvasCourseCode,
@@ -1694,6 +1696,21 @@ export function createIngestion(
     external,
     record(run) {
       recordRun(run);
+    },
+    // fix/sync-events: baselines survive a relaunch; hashes and times only, beside the database.
+    fingerprint: () =>
+      hashCanvas(
+        store
+          .sources()
+          .filter((s) => s.kind === "canvas" && s.scope === "course")
+          .map((s) => s.id)
+          .sort()
+          .join("|"),
+      ),
+    persist: {
+      load: () => JSON.parse(readFileSync(join(host.directory, "canvas-refresh.json"), "utf8")),
+      save: (snapshot) =>
+        writeFileSync(join(host.directory, "canvas-refresh.json"), JSON.stringify(snapshot), { mode: 0o600 }),
     },
   });
   /**

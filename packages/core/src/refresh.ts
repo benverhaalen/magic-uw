@@ -56,6 +56,45 @@ export interface RefreshDependencies {
    * new costs one request per stream. Its failure never stops the Canvas reads.
    */
   graph?(signal: AbortSignal, trigger: "manual" | "background"): Promise<void>;
+  /**
+   * fix/sync-events. Baselines kept across launches, so a relaunch within the window probes
+   * instead of re-reading. `fingerprint` names the stored Canvas inventory the baselines describe;
+   * a different one (a purge, an import, another account) discards them and a full read follows.
+   */
+  fingerprint?(): string;
+  persist?: { load(): unknown; save(snapshot: RefreshSnapshot): void };
+}
+/** fix/sync-events. What the per-course coordinator keeps between launches: hashes and times only. */
+export interface RefreshSnapshot {
+  version: 1;
+  fingerprint: string;
+  hotBaseline?: Record<string, string>;
+  contentBaseline?: Record<string, string>;
+  componentBaseline: Record<string, Record<string, string>>;
+  fullAt: number;
+  contentAt: number;
+}
+const isStringMap = (v: unknown): v is Record<string, string> =>
+  !!v && typeof v === "object" && !Array.isArray(v) && Object.values(v).every((x) => typeof x === "string");
+/** Validates a persisted snapshot; anything unexpected is discarded (a full read follows). */
+export function parseRefreshSnapshot(value: unknown): RefreshSnapshot | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const v = value as Record<string, unknown>;
+  if (
+    v.version !== 1 ||
+    typeof v.fingerprint !== "string" ||
+    typeof v.fullAt !== "number" ||
+    !Number.isFinite(v.fullAt) ||
+    typeof v.contentAt !== "number" ||
+    !Number.isFinite(v.contentAt) ||
+    (v.hotBaseline !== undefined && !isStringMap(v.hotBaseline)) ||
+    (v.contentBaseline !== undefined && !isStringMap(v.contentBaseline)) ||
+    !v.componentBaseline ||
+    typeof v.componentBaseline !== "object" ||
+    !Object.values(v.componentBaseline).every(isStringMap)
+  )
+    return undefined;
+  return v as unknown as RefreshSnapshot;
 }
 /**
  * The cadence table: which background read classes carry the student's signed-in session.
@@ -150,6 +189,51 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
     focusRequested = false;
   const retryAt = new Map<string, number>();
   const componentBaseline: Record<string, Record<string, string>> = {};
+  // fix/sync-events: baselines persisted across launches, tied to the stored inventory.
+  let fingerprintAt: string | undefined;
+  const loaded = perCourse
+    ? parseRefreshSnapshot(
+        (() => {
+          try {
+            return deps.persist?.load();
+          } catch {
+            return undefined;
+          }
+        })(),
+      )
+    : undefined;
+  if (loaded) {
+    hotBaseline = loaded.hotBaseline;
+    contentBaseline = loaded.contentBaseline;
+    Object.assign(componentBaseline, loaded.componentBaseline);
+    fullAt = loaded.fullAt;
+    contentAt = loaded.contentAt;
+    fingerprintAt = loaded.fingerprint;
+  }
+  function clearBaselines() {
+    hotBaseline = undefined;
+    contentBaseline = undefined;
+    for (const course of Object.keys(componentBaseline)) delete componentBaseline[course];
+    retryAt.clear();
+    fullAt = 0;
+  }
+  function persist() {
+    if (!perCourse || !deps.persist || !deps.fingerprint || !hotBaseline || !contentBaseline) return;
+    try {
+      fingerprintAt = deps.fingerprint();
+      deps.persist.save({
+        version: 1,
+        fingerprint: fingerprintAt,
+        hotBaseline,
+        contentBaseline,
+        componentBaseline,
+        fullAt,
+        contentAt,
+      });
+    } catch {
+      // A failed save only costs a full read on the next launch.
+    }
+  }
   function comparableContent(probe: CourseProbe): CourseProbe {
     if (!probe.components) return probe;
     const courses: Record<string, string> = {};
@@ -194,6 +278,10 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
   ): Promise<void> {
     const probes: Array<"hot" | "content"> = [];
     result.probes = probes;
+    // fix/sync-events: the stored inventory changed under the baselines (a purge, an import):
+    // they no longer describe it, so the next read is a full one.
+    if (deps.fingerprint && fingerprintAt !== undefined && deps.fingerprint() !== fingerprintAt)
+      clearBaselines();
     const needFull =
       trigger === "manual" ||
       !hotBaseline ||
@@ -355,7 +443,11 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
       } else if (perCourse) {
         // owner: T33
         attemptedCanvas = true;
-        await perCourseCanvas(trigger, date, feedsChanged, signal, result);
+        try {
+          await perCourseCanvas(trigger, date, feedsChanged, signal, result);
+        } finally {
+          persist(); // fix/sync-events
+        }
         // end owner: T33
       } else {
         attemptedCanvas = true;
@@ -436,11 +528,12 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
       retryCanvasAt = 0;
       signature = undefined;
       // owner: T33: a new session re-baselines with a full read.
-      hotBaseline = undefined;
-      contentBaseline = undefined;
-      for (const course of Object.keys(componentBaseline))
-        delete componentBaseline[course];
-      retryAt.clear();
+      clearBaselines();
+      // fix/sync-events: and a restart before that read doesn't bring the old baselines back.
+      try {
+        deps.persist?.save({ version: 1, fingerprint: "", componentBaseline: {}, fullAt: 0, contentAt: 0 });
+      } catch {}
+      fingerprintAt = undefined;
       nextAt = 0;
     },
     cancel() {
