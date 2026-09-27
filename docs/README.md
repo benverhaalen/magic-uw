@@ -30,6 +30,7 @@ We are entering Applied AI & Automation, DoIT's Badgers Building for Badgers, an
 | [Home and visual direction](home-design-direction.md) | Current flagship Home, near-approved layout/type, remaining local refinements and reference transfers |
 | [Magic Canvas direction](magic-canvas-direction.md) | Course backend lane: the whole product, frontend surfaces, open-source academic data platform plus paid product, roadmap (open decisions marked) |
 | [Course backend architecture](course-backend-architecture.md) | Course backend lane: system map, integration with main, what changed and why, implementation status and what is left |
+| [Course-aware learning sessions](learning-sessions.md) | Assignment learning surface adapted to the shared backend; explicit integration dependencies and verification limits |
 | [Product](product.md)                                 | Vision, student experience, learning loop, interface ideas, visual taste                                 |
 | [Organizing concepts](product-directions.md)          | Earlier organizing alternatives; current Home decisions supersede their unresolved entry/navigation status |
 | [Reference-driven design](reference-driven-design.md) | Reference roles, architecture analogies, images, demo inspection, and product verification               |
