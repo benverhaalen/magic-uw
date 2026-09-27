@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ContextManifest } from "@magic/contracts";
 export { createLocalAi } from "./local";
+export { createLocalCourseExtractor } from "./course-extraction";
 const kinds = [
   "essay",
   "problem_set",
