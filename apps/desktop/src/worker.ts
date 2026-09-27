@@ -14,6 +14,7 @@ import { createLocalService } from "./local-service";
 import { createIngestion, ACQUISITION_APP } from "./ingestion";
 import { createLearningRouter, type StudyContext } from "../../../packages/learning/src/router";
 import { createStudyContextResolver } from "./learning-context";
+import { createExamEvidence } from "../../../packages/learning/src/exam/evidence"; // owner: exam-prep
 import { dirname, join } from "node:path";
 import {
   createLocalDocumentExtractor,
@@ -268,6 +269,7 @@ const core = createCore(store, {
     // and course-map assessment rows).
     analyticsReferences: () => createPipelineReferences(store),
     // end owner: analytics
+    examEvidence: () => createExamEvidence(store), // owner: exam-prep
   }), pack: generation.pack /* owner: generation */, notes /* owner: notes */, intent /* owner: intent */,
     // owner: agenda. Only the estimate subject is built; the others keep core's honest message.
     correct: (value, at) =>

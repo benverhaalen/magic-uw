@@ -18,6 +18,10 @@ import { learningArtifactStore, sqlLedgerStore } from "../../packs/core/src/lear
 import { quizDrafts, quizPack, type Draft, type GenerationInput } from "../../packs/items/src/index";
 import { cardDrafts, cardsPack, reverseCards } from "../../packs/cards/src/index";
 import { subjectFamily } from "../../notes/src/templates/index";
+// owner: exam-prep. Step-by-step problems: authored by the model, checked by code, stored as problems.
+import { isProblemDraft, problemDrafts, problemsPack } from "../../packs/problems/src/index";
+import { checkAuthored, putProblem } from "../../learning/src/exam/problems";
+// end owner: exam-prep
 import { runPipeline, type CandidateItem, type PipelineResource, type StageName } from "../../learning/src/items";
 import { conceptId, normaliseLabel } from "../../learning/src/concepts";
 import { newCard } from "../../learning/src/fsrs";
@@ -33,10 +37,21 @@ import { runPack } from "./jobs/pack";
 import { generateGuide, guideView, isGuideKind, type GuideRunResult, type GuideViewResult } from "../../packs/guide/src/index";
 // end owner: guides
 
-export type GenerationPackName = "quiz" | "cards";
+export type GenerationPackName = "quiz" | "cards" | "problems";
 /** Command pack names the handler answers to. */
-export const GENERATION_PACKS: Record<string, GenerationPackName> = { quiz: "quiz", items: "quiz", cards: "cards", flashcards: "cards" };
-export const DEFAULT_COUNT: Record<GenerationPackName, number> = { quiz: 8, cards: 10 };
+export const GENERATION_PACKS: Record<string, GenerationPackName> = { quiz: "quiz", items: "quiz", cards: "cards", flashcards: "cards", problems: "problems", solve: "problems" };
+export const DEFAULT_COUNT: Record<GenerationPackName, number> = { quiz: 8, cards: 10, problems: 4 };
+const NOUN: Record<GenerationPackName, string> = { quiz: "questions", cards: "cards", problems: "problems" };
+const PURPOSE: Record<GenerationPackName, string> = {
+  quiz: "Generate quiz questions from course materials",
+  cards: "Generate flashcards from course materials",
+  problems: "Generate step-by-step practice problems from course materials",
+};
+/** A problem check's reason ("restraint: …") as the pipeline stage it corresponds to. */
+const PROBLEM_STAGE: Record<string, StageName> = {
+  policy: "policy", open_graded: "policy", quote: "quote", verbatim: "quote", tags: "tags", schema: "schema", parse: "schema",
+  units: "schema", recompute: "executed", restraint: "flaws", distractors: "flaws",
+};
 /** Passages sent per call, by the store's token estimate. */
 export const PASSAGE_TOKEN_BUDGET = 6000;
 const MAX_PASSAGES = 24;
@@ -260,6 +275,31 @@ export function createPackHandler(deps: PackHandlerDeps) {
         drops.push({ index: d.index, stage: "schema", reason: d.problem });
         continue;
       }
+      // owner: exam-prep. A problem draft is checked by the exam engine and stored as a problem.
+      if (isProblemDraft(d)) {
+        const resourceId = resourceOf.get(d.sourceId) ?? "";
+        const r = byId.get(resourceId);
+        const found = r ? findQuote(r.text, d.quote) : null;
+        const checked = checkAuthored(d.solve, {
+          id,
+          courseRef: s.courseRef,
+          resource: r ? { id: r.id, kind: r.kind, text: r.text, contentHash: r.contentHash } : { id: resourceId, kind: "material", text: "", contentHash: "" },
+          span: r && found?.status === "unique" ? { start: found.start, end: found.end } : null,
+          courseRestricted: s.restricted,
+          openGraded: !r || !eligible.has(r.id),
+          conceptIds: (tags.get(d.index) ?? []).map((t) => t.conceptId),
+          generator,
+        });
+        if (!checked.problem) {
+          const first = checked.reasons[0] ?? "schema: rejected";
+          drops.push({ index: d.index, stage: PROBLEM_STAGE[first.split(":")[0]!] ?? "schema", reason: checked.reasons.join("; ") });
+          continue;
+        }
+        putProblem(store.learning, checked.problem, at.toISOString());
+        itemIds.push(id);
+        continue;
+      }
+      // end owner: exam-prep
       // Code grounds the quote: the stored quote is the exact span of the current resource text.
       const resourceId = resourceOf.get(d.sourceId) ?? "";
       const r = byId.get(resourceId);
@@ -339,7 +379,9 @@ export function createPackHandler(deps: PackHandlerDeps) {
     const frame = frameFor(s, units);
     return name === "quiz"
       ? execute(quizPack, quizDrafts, name, scope, s, passages, resourceOf, input, frame, signal, options)
-      : execute(cardsPack, cardDrafts, name, scope, s, passages, resourceOf, input, frame, signal, options);
+      : name === "cards"
+        ? execute(cardsPack, cardDrafts, name, scope, s, passages, resourceOf, input, frame, signal, options)
+        : execute(problemsPack, problemDrafts, name, scope, s, passages, resourceOf, input, frame, signal, options); // owner: exam-prep
   }
 
   async function execute<O>(
@@ -405,7 +447,7 @@ export function createPackHandler(deps: PackHandlerDeps) {
       for (const d of drops) droppedBy[d.stage] = (droppedBy[d.stage] ?? 0) + 1;
       return {
         ...base,
-        message: `${itemIds.length} ${name === "quiz" ? "questions" : "cards"} ready${drops.length ? `; ${drops.length} dropped by the checks` : ""}.`,
+        message: `${itemIds.length} ${NOUN[name]} ready${drops.length ? `; ${drops.length} dropped by the checks` : ""}.`,
         artifactIds: [artifact.id],
         itemIds,
         cached,
@@ -435,7 +477,7 @@ export function createPackHandler(deps: PackHandlerDeps) {
       if (payload === undefined && permission.allowed) return permission;
       const m = {
         recipient: parsed.data,
-        purpose: `Generate ${name === "quiz" ? "quiz questions" : "flashcards"} from course materials`,
+        purpose: PURPOSE[name],
         categories,
         resourceIds: s.resources.map((r) => r.id),
         characters: JSON.stringify(payload ?? {}).length,
@@ -519,7 +561,7 @@ export function generatePack(
 // owner: ai-paths
 /** Pack id → output schema for every generation pack: the warm pool's union schema. */
 export function generationKinds(): PoolOptions["kinds"] {
-  return Object.fromEntries([quizPack, cardsPack, ...Object.values(GUIDE_PACKS)].map((p) => [p.id, p.schema as PoolOptions["kinds"][string]]));
+  return Object.fromEntries([quizPack, cardsPack, problemsPack, ...Object.values(GUIDE_PACKS)].map((p) => [p.id, p.schema as PoolOptions["kinds"][string]]));
 }
 /**
  * The Claude route with one warm session per lane (D38): a follow-up pack call reuses the live

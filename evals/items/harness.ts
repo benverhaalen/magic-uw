@@ -108,7 +108,8 @@ export interface LiveBackendFactory {
 export interface HarnessOptions {
   courses: CourseCase[];
   packs: GenerationPackName[];
-  counts: Record<GenerationPackName, number>;
+  /** Per listed pack; a pack without a count uses its default (the problems pack arrived after these evals). */
+  counts: Partial<Record<GenerationPackName, number>>;
   /** "course" runs the whole course; "modules" also runs each material on its own. */
   scopes: "course" | "course+modules";
   backend: OfflineBackendFactory | LiveBackendFactory;
