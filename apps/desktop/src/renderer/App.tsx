@@ -1403,15 +1403,15 @@ function Privacy({
         <SettingToggle
           focusKey="privacy-jev"
           label="Jev judgments"
-          description="Classifies course material through our gateway, and can raise new announcements and email in Notifications when Course communications is also on. Permitted context is visible to the gateway operator and TypeSafe; the shared API key remains on the server. We pay for usage."
+          description="Classifies course material with TypeSafe, and can raise new announcements and email in Notifications when Course communications is also on. Permitted context goes to TypeSafe directly from this app, which contains our shared key, or through our gateway when one is set up. We pay for usage."
           checked={value.jevEnabled}
           disabled={busy || value.mode === "local_only"}
           onChange={(checked) => void update({ jevEnabled: checked })}
         />
         <p className="setting-note">
           {snapshot.gatewayConfigured
-            ? "Shared gateway configured."
-            : "The shared gateway has not been configured on this device."}
+            ? "Jev is available in this build."
+            : "Jev isn't set up in this build; code rules still sort Notifications."}
         </p>
         <div className="provider-setting">
           <label className="field-label" htmlFor="provider">
