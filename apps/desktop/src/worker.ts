@@ -743,7 +743,9 @@ port.on("message", async ({ data }: { data: any }) => {
         result: {
           ...(await core.execute({ type: "snapshot" })),
           message:
-            "Refresh finished. Source status shows any incomplete reads.",
+            // fix/sync-events: what a refresh reads: every course checked for changes, each current
+            // course's assignments and syllabus re-read, and any changed course read again.
+            "Refresh finished: every course was checked for changes, and each current course's assignments and syllabus were read again. Source status shows any incomplete reads.",
         },
       });
     } catch {
@@ -869,9 +871,13 @@ port.on("message", async ({ data }: { data: any }) => {
     });
     if (data.command?.type === "purge") {
       courseBriefs.purge(); // owner: course-facts
+      ingestion.purged(); // fix/sync-events: the saved refresh baselines go with the data
       ingestion.resume();
       pipeline.resume(); // owner: pipeline
     }
+    // fix/sync-events: a changed inclusion is probed afresh (a re-included course is read).
+    if (data.command?.type === "course-override" && typeof data.command.value?.courseId === "string")
+      ingestion.forget(data.command.value.courseId);
   } catch (error) {
     port.postMessage({
       kind: "response",

@@ -6,6 +6,7 @@ import {
   type CourseCoreStore,
   type CaptureBatch,
   type Resource,
+  type IngestReport,
   type ResourceInput,
 } from "@magic/contracts";
 import {
@@ -79,6 +80,9 @@ import {
 } from "../../../packages/connectors/src/gitlab";
 import { courseInclusion } from "../../../packages/core/src/access";
 import { createRefreshCoordinator } from "../../../packages/core/src/refresh";
+import { readFileSync, rmSync, writeFileSync } from "node:fs"; // fix/sync-events
+import { canvasTargetedRead } from "../../../packages/connectors/src/canvas-targeted"; // fix/sync-events
+import { hashCanvas } from "../../../packages/connectors/src/canvas-models"; // fix/sync-events
 // owner: T33. Per-course freshness probes (D37).
 import {
   canvasCourseCode,
@@ -276,8 +280,8 @@ export function createIngestion(
   }
   const observedPages = new Set<string>();
   let reconnecting = false;
-  function save(batch: CaptureBatch) {
-    if (reconnecting) return;
+  function save(batch: CaptureBatch): IngestReport | undefined {
+    if (reconnecting) return undefined;
     const previous = store.sources().find((s) => s.id === batch.source.id);
     if (previous && batch.observedAt <= previous.lastAttemptAt)
       batch = {
@@ -286,7 +290,7 @@ export function createIngestion(
           Date.parse(previous.lastAttemptAt) + 1,
         ).toISOString(),
       };
-    store.ingest(batch);
+    const report = store.ingest(batch);
     if (
       batch.source.kind === "canvas" &&
       batch.status === "ok" &&
@@ -307,6 +311,7 @@ export function createIngestion(
       batch.resources.some((r) => r.kind === "assignment" || r.kind === "event")
     )
       firstValueMs = Math.max(0, performance.now() - activeStart);
+    return report;
   }
   function courses() {
     const included = courseInclusion(store),
@@ -325,6 +330,9 @@ export function createIngestion(
         source: sources.get(resource.sourceId)!,
       }));
   }
+  // fix/sync-events: a course feed is read once per run (it was read at the run's start and again
+  // after the Canvas read); a failed read may be tried again in the same run.
+  const feedsThisRun = new Set<string>();
   async function feeds(signal: AbortSignal) {
     let changed = false;
     const secrets = (await host.secrets("list")) ?? {};
@@ -333,12 +341,7 @@ export function createIngestion(
       const key = `calendar:${source.accountScope}:${resource.courseId}`,
         feedUrl = secrets[key];
       if (!feedUrl) continue;
-      const before = store
-        .resources()
-        .filter((r) => r.calendar && r.courseId === resource.courseId)
-        .map((r) => r.contentHash)
-        .sort()
-        .join(":");
+      if (feedsThisRun.has(key)) continue;
       for await (const batch of calendarConnector({
         feedUrl,
         canvasOrigin: origin,
@@ -347,15 +350,12 @@ export function createIngestion(
         courseName: resource.courseName,
         client,
         now,
-      }).pull(signal))
-        save(batch);
-      const after = store
-        .resources()
-        .filter((r) => r.calendar && r.courseId === resource.courseId)
-        .map((r) => r.contentHash)
-        .sort()
-        .join(":");
-      changed ||= before !== after;
+      }).pull(signal)) {
+        // fix/sync-events: the store's report says whether the feed changed (was two decodes).
+        const report = save(batch);
+        changed ||= !!report && report.created + report.changed + report.deleted > 0;
+        if (batch.status === "ok") feedsThisRun.add(key); // read once per run, once it succeeded
+      }
     }
     // The student's published Outlook calendar, if they connected one.
     const outlookHashes = () =>
@@ -587,8 +587,26 @@ export function createIngestion(
       scheduler: scheduler(), // owner: T17
     });
     const sources = new Map(store.sources().map((s) => [s.id, s]));
-    const included = courseInclusion(store);
-    const all = store.resources().filter((r) => !r.deleted && included(r));
+    // fix/sync-events: the workspace is decoded once per run (was up to four times per file).
+    const all = store.resources();
+    const included = courseInclusion(store, all);
+    for (let i = all.length - 1; i >= 0; i--) if (all[i]!.deleted || !included(all[i]!)) all.splice(i, 1);
+    const rowIndex = new Map(all.map((r) => [`${r.sourceId}|${r.externalId}`, r.id]));
+    /** A stored row by source and item: the run's index, else the source's own recent change rows. */
+    function storedRow(sourceId: string, externalId: string): Resource | undefined {
+      const key = `${sourceId}|${externalId}`;
+      const indexed = rowIndex.get(key);
+      const known = indexed ? store.resource(indexed) : undefined;
+      if (known && !known.deleted) return known;
+      for (const change of store.changes({ sourceId, limit: 20 })) {
+        const row = store.resource(change.resourceId);
+        if (row && !row.deleted && row.externalId === externalId) {
+          rowIndex.set(key, row.id);
+          return row;
+        }
+      }
+      return store.resources().find((r) => r.sourceId === sourceId && r.externalId === externalId);
+    }
     type Job = {
       id: string;
       course: Resource;
@@ -656,6 +674,20 @@ export function createIngestion(
           (stored.extractionStatus === "ok" ||
             stored.extractionStatus === "unsupported" ||
             (stored.extractionStatus !== "error" && !!stored.localPath && existsSync(stored.localPath)))
+        ) {
+          skipped++;
+          continue;
+        }
+        // fix/sync-events: with the Files tab hidden there is no list row to compare, so a document
+        // already read whole is re-checked on the six-hour backstop, not on every probe; a change
+        // to it shows first in the probes (modules, newest page) or the course's warm read.
+        const checkedAt = sources.get(`documents:${source.accountScope}:${course.courseId}:${id}`)?.lastSuccessAt;
+        if (
+          acquisition.skipUnchanged &&
+          !listed &&
+          (stored?.extractionStatus === "ok" || stored?.extractionStatus === "unsupported") &&
+          checkedAt &&
+          now().getTime() - Date.parse(checkedAt) < 6 * 3600_000
         ) {
           skipped++;
           continue;
@@ -737,6 +769,8 @@ export function createIngestion(
               scope: `document:${job.id}`,
             };
             const prior = priorDocuments.get(`${job.account}:${job.course.courseId}:${job.id}`); // owner: acquisition
+            // fix/sync-events: inclusion was decided for this run above; per file only what can
+            // change mid-run is checked (the course still stored, not excluded by the student since).
             const stillIncluded = () =>
               store
                 .sources()
@@ -745,7 +779,11 @@ export function createIngestion(
                     s.accountScope === job.account &&
                     s.courseId === job.course.courseId &&
                     s.scope === "course",
-                ) && courseInclusion(store)(job.course);
+                ) &&
+              store
+                .courseOverrides()
+                .find((o) => o.accountScope === job.account && o.courseId === job.course.courseId)
+                ?.included !== false;
             try {
               signal.throwIfAborted();
               const response = await http.request(
@@ -839,12 +877,7 @@ export function createIngestion(
               )
                 throw new MaterialReadError("download_host_unverified", { host: download.hostname });
               // end owner: acquisition
-              const current = store
-                .resources()
-                .find(
-                  (r) =>
-                    r.sourceId === job.source.id && r.externalId === job.id,
-                )!;
+              const current = storedRow(job.source.id, job.id)!;
               const version = current.contentHash;
               const extracted = await manager.capture({
                 id: job.id,
@@ -890,17 +923,8 @@ export function createIngestion(
                 signal,
               });
               signal.throwIfAborted();
-              if (
-                !stillIncluded() ||
-                !store
-                  .resources()
-                  .some(
-                    (r) =>
-                      r.id === current.id &&
-                      !r.deleted &&
-                      r.contentHash === version,
-                  )
-              )
+              const latest = store.resource(current.id);
+              if (!stillIncluded() || !latest || latest.deleted || latest.contentHash !== version)
                 continue;
               // owner: acquisition: the real cause; a text-less PDF is a complete read whose
               // document is `needs_ocr` (its own status), not a source left partial forever.
@@ -1094,20 +1118,16 @@ export function createIngestion(
                 s.courseId === source.courseId &&
                 s.scope === "course",
             ) ||
-          !courseInclusion(store)(job.parent)
+          !included(job.parent) ||
+          // fix/sync-events: per job, the student's current choice (an exclusion mid-run holds).
+          store
+            .courseOverrides()
+            .find((o) => o.accountScope === source.accountScope && o.courseId === source.courseId)
+            ?.included === false
         )
           continue;
-        if (
-          prior &&
-          !store
-            .resources()
-            .some(
-              (r) =>
-                r.id === prior.id &&
-                !r.deleted &&
-                r.contentHash === prior.contentHash,
-            )
-        )
+        const latest = prior && store.resource(prior.id);
+        if (prior && (!latest || latest.deleted || latest.contentHash !== prior.contentHash))
           continue;
         const input = resourceInputSchema.parse({
           ...(prior ? inputResource(prior) : {}),
@@ -1253,10 +1273,10 @@ export function createIngestion(
       capturedLatePage = false;
     const settings = store.ingestionSettings();
     const sources = new Map(store.sources().map((s) => [s.id, s]));
+    const stored = store.resources(); // fix/sync-events: one decode per run, not one per course
     for (const { resource: course, source } of courses()) {
       signal.throwIfAborted();
-      const resources = store
-        .resources()
+      const resources = stored
         .filter(
           (r) =>
             r.courseId === course.courseId &&
@@ -1543,6 +1563,7 @@ export function createIngestion(
           s.accountScope === accountScope &&
           s.courseId === courseId,
       );
+    let courseRows: Resource[] | undefined;
     return {
       session: sessionTransport,
       public: publicAccessTransport(client),
@@ -1562,8 +1583,8 @@ export function createIngestion(
             checkedAt: expired.lastAttemptAt,
           };
         const fileId = canvasFileId(space.url, origin, courseId);
-        const candidates = store
-          .resources()
+        // fix/sync-events: one decode per course check, not one per space.
+        const candidates = (courseRows ??= store.resources().filter((r) => r.courseId === courseId))
           .filter(
             (r) =>
               !r.deleted &&
@@ -1723,6 +1744,7 @@ export function createIngestion(
   const coordinator = createRefreshCoordinator({
     now,
     begin() {
+      feedsThisRun.clear(); // fix/sync-events
       runScheduler = undefined; // owner: T17: a new sync reads afresh
       activeStart = performance.now();
       firstValueMs = undefined;
@@ -1826,6 +1848,16 @@ export function createIngestion(
       const included = new Set(
         courses().map(({ resource }) => resource.courseId),
       );
+      // fix/sync-events: one the stored inventory doesn't know at all (not merely excluded) means
+      // the inventory changed: the coordinator escalates to a full read.
+      const known = new Set(
+        store
+          .sources()
+          .filter((s) => s.kind === "canvas" && s.scope === "course")
+          .map((s) => s.courseId),
+      );
+      if (courseIds.some((id) => id !== "account" && !known.has(id)))
+        return { needsSignIn: false, complete: true, inventoryChanged: true };
       const read = courseIds.filter((id) => included.has(id));
       if (!read.length) return { needsSignIn: false, complete: true };
       return canvasRead(new Set(read), signal);
@@ -1834,6 +1866,24 @@ export function createIngestion(
     external,
     record(run) {
       recordRun(run);
+    },
+    // fix/sync-events: baselines survive a relaunch; hashes and times only, beside the database.
+    fingerprint: () =>
+      hashCanvas(
+        [
+          store.generation?.() ?? "",
+          ...store
+            .sources()
+            .filter((s) => s.kind === "canvas" && s.scope === "course")
+            .map((s) => s.id)
+            .sort(),
+        ].join("|"),
+      ),
+    manual: (signal) => manualCheck(signal),
+    persist: {
+      load: () => JSON.parse(readFileSync(join(host.directory, "canvas-refresh.json"), "utf8")),
+      save: (snapshot) =>
+        writeFileSync(join(host.directory, "canvas-refresh.json"), JSON.stringify(snapshot), { mode: 0o600 }),
     },
   });
   /**
@@ -1942,6 +1992,52 @@ export function createIngestion(
     holdForChoice(false);
     return tick("manual");
   }
+  /**
+   * fix/sync-events. What a manual refresh reads besides the probes, for the changes they can't
+   * see: the course lists (with each current course's syllabus body) and every included course's
+   * assignment list (one request each: a due date moved outside the to-do window). A course the
+   * lists add is returned for a course read.
+   */
+  async function manualCheck(signal: AbortSignal) {
+    const before = new Set(courses().map(({ resource }) => resource.courseId));
+    const s = store.ingestionSettings();
+    let needsSignIn = false;
+    for await (const batch of canvasConnector({
+      fetch: host.canvasFetch,
+      metadataConcurrency: s.metadataConcurrency,
+      scheduler: scheduler(),
+      selectedTerm: s.selectedTerm,
+      courseOverrides: store.courseOverrides(),
+      knownResources: store.resources(),
+      ...enrollmentOptions(),
+      now,
+      catalogOnly: true,
+      syllabusFromCatalog: true,
+    }).pull(signal)) {
+      save(batch);
+      needsSignIn ||= batch.status === "needs_sign_in" && !batch.source.courseId;
+    }
+    if (needsSignIn) return { needsSignIn: true };
+    const current = courses();
+    const added = current.map(({ resource }) => resource.courseId).filter((id) => !before.has(id));
+    const http = new CanvasHttp({ fetch: host.canvasFetch, metadataConcurrency: s.metadataConcurrency, scheduler: scheduler() });
+    const known = store.resources();
+    let complete = true;
+    for (const { resource, source } of current) {
+      if (added.includes(resource.courseId)) continue; // the course read covers it
+      const result = await canvasTargetedRead(
+        http,
+        { accountScope: source.accountScope, id: resource.courseId, name: resource.courseName },
+        [{ kind: "assignment" }],
+        known.filter((r) => r.courseId === resource.courseId),
+        { now, collectComments: s.collectComments, signal },
+      );
+      for (const batch of result.batches) save(batch);
+      if (result.needsSignIn) return { needsSignIn: true };
+      complete &&= result.complete;
+    }
+    return { needsSignIn: false, complete, courses: added };
+  }
   // owner: T33. One Canvas read: every included course (full), or only the given ones (warm).
   async function canvasRead(
     only: Set<string> | undefined,
@@ -1963,6 +2059,7 @@ export function createIngestion(
       courseOverrides: store.courseOverrides(),
       knownResources: store.resources(),
       ...enrollmentOptions(), // fix/current-courses-only
+      pageReadThisRun: (url) => [...observedPages].some((key) => key.endsWith(`:${url}`)), // fix/sync-events
       moduleRun,
       onModuleRun: (run) => {
         if (!signal.aborted && !reconnecting) moduleRun = run;
@@ -2103,9 +2200,17 @@ export function createIngestion(
     tick, // owner: T17
     markExpired,
     discover, // fix/current-courses-only
+    /** fix/sync-events. The student changed a course's inclusion: it is probed afresh. */
+    forget: (courseId: string) => coordinator.forget(courseId),
+    /** fix/sync-events. Delete local data: the saved refresh baselines go too. */
+    purged() {
+      coordinator.purged();
+      rmSync(join(host.directory, "canvas-refresh.json"), { force: true });
+    },
     confirmCourses, // fix/current-courses-only
     // owner: T05b
     reconnected() {
+      coordinator.invalidateSaved(); // fix/sync-events: before the running read is cancelled
       sessionGeneration++;
       reconnecting = true;
       recheckAll = true;

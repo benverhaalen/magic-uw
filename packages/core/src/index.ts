@@ -635,6 +635,7 @@ export function createCore(store: Store, options: CoreOptions) {
       case "snapshot":
         return { snapshot: snapshot(command.search) };
       case "import": {
+        store.bumpGeneration?.(); // fix/sync-events: the workspace was replaced, not refreshed
         store.ingest(command.batch);
         saved(command.batch.source.id); // owner: T05b
         wake();
@@ -807,6 +808,7 @@ export function createCore(store: Store, options: CoreOptions) {
           options.now?.() ?? new Date(),
           options.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
         );
+        store.bumpGeneration?.(); // fix/sync-events
         store.ingest({ ...moved, observedAt: now() });
         saved(options.fixture.source.id); // owner: T05b
         wake();

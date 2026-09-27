@@ -1571,6 +1571,19 @@ export function createStore(
       const row = resourceRow(id);
       return row ? readResource(row) : undefined;
     },
+    // fix/sync-events: kept in preferences, so Delete local data clears it and a new one follows.
+    generation() {
+      const row = prepare("SELECT value FROM preferences WHERE key='store_generation'").get();
+      if (row) return String(row.value);
+      const value = randomUUID();
+      prepare("INSERT INTO preferences VALUES ('store_generation',?) ON CONFLICT(key) DO NOTHING").run(value);
+      return String((prepare("SELECT value FROM preferences WHERE key='store_generation'").get() as Row).value);
+    },
+    bumpGeneration() {
+      prepare(
+        "INSERT INTO preferences VALUES ('store_generation',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      ).run(randomUUID());
+    },
     resourceHistory(id) {
       assertText(id, "resourceId");
       return (
