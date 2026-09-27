@@ -16,11 +16,17 @@ import { pseudonymSession, type PseudonymSession } from "./pseudonyms";
 
 const RECHECK_MS = 2000;
 let work = 0;
+let criticalMs = 0;
 /** Protection calls made on the command bar path (tests: a code hit must not add any). */
 export const intentProtectionWork = (): number => work;
+/** Milliseconds of protection spent on the dispatch path so far (tests: the privacy share). */
+export const intentProtectionMs = (): number => criticalMs;
 
 export interface IntentProtection {
-  warm(): void;
+  /** When the bar opens: the roster (revision checked) and, given the stable prefix, its protection. */
+  warm(prefix?: string): void;
+  /** The stable prefix (catalogue, argument glossary, courses), protected once per content. */
+  prefix(value: string): string;
   /** A request's protector: every field it protects shares one pseudonym session. */
   request(context: string): IntentRequest;
 }
@@ -32,36 +38,76 @@ export interface IntentRequest {
   restore(value: string): string;
 }
 
+/**
+ * The dispatch path carries only the student's own short text: the roster's revision check runs
+ * when the bar opens and on a timer after a request, never between submit and send; the stable
+ * prefix is protected when the bar opens and cached by content (it has its own pseudonym session,
+ * so its placeholders, rare in a catalogue, are stable across requests).
+ */
 export function intentProtection(store: Store, enabled = true): IntentProtection {
   let cached: { signature: string; roster: EffectiveRoster } | null = null;
   let checkedAt = -Infinity;
+  let pending: ReturnType<typeof setTimeout> | null = null;
   const signature = () =>
     JSON.stringify([
       store.sources().map((s) => `${s.id}:${s.lastSuccessAt ?? ""}:${s.resourceCount}`),
       store.identityRoster(),
       store.autoIdentities(),
     ]);
-  const roster = (): EffectiveRoster => {
-    const t = performance.now();
-    if (!cached || t - checkedAt > RECHECK_MS) {
-      checkedAt = t;
-      const sig = signature();
-      if (cached?.signature !== sig) cached = { signature: sig, roster: accountRoster(store, undefined, "intent") };
+  const refresh = () => {
+    checkedAt = performance.now();
+    const sig = signature();
+    if (cached?.signature !== sig) {
+      cached = { signature: sig, roster: accountRoster(store, undefined, "intent") };
+      prefixes.clear();
     }
     return cached.roster;
   };
+  /** The current roster, without a check; the first use builds it (warm() normally has). */
+  const roster = (): EffectiveRoster => cached?.roster ?? refresh();
+  /** After a request: recheck the revision off the dispatch path, at most every 2 s. */
+  const later = () => {
+    if (pending || performance.now() - checkedAt < RECHECK_MS) return;
+    pending = setTimeout(() => {
+      pending = null;
+      try {
+        refresh();
+      } catch {
+        // A failed check keeps the roster it has; the next request retries.
+      }
+    }, 50);
+    pending.unref?.();
+  };
+  const prefixSession = pseudonymSession("intent:prefix");
+  const prefixes = new Map<string, string>();
+  const prefix = (value: string): string => {
+    if (!enabled) return value;
+    let out = prefixes.get(value);
+    if (out === undefined) {
+      out = protectText(value, roster(), prefixSession, "teaching").text;
+      if (prefixes.size >= 16) prefixes.delete(prefixes.keys().next().value!);
+      prefixes.set(value, out);
+    }
+    return out;
+  };
   return {
-    warm() {
-      if (enabled) roster();
+    warm(stable) {
+      if (!enabled) return;
+      refresh();
+      if (stable !== undefined) prefix(stable);
     },
+    prefix,
     request(context) {
       if (!enabled) return { text: (v) => v, frozen: (v) => ({ text: v, spans: [] }), restore: (v) => v };
+      later();
       const session: PseudonymSession = pseudonymSession(`intent:${context}`);
       const originals = new Map<string, string>();
       const frozen = (value: string, cls: ContentClass): ScrubResult => {
+        const t0 = performance.now();
         work++;
         const r = protectText(value, roster(), session, cls);
         for (const s of r.spans) if (!originals.has(s.placeholder)) originals.set(s.placeholder, value.slice(s.originalStart, s.originalEnd));
+        criticalMs += performance.now() - t0;
         return r;
       };
       return {

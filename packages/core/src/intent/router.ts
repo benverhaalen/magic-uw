@@ -130,10 +130,12 @@ export function createIntentRouter(deps: IntentRouterDeps) {
     // owner: privacy: the command and hints are the student's words; the catalogue and courses are teaching text.
     const p = protection.request("classify");
     const plainFrame = classifyFrame();
-    const frame: CourseFrame = { ...plainFrame, skeleton: p.text(plainFrame.skeleton, "teaching") };
+    // The prefix and course labels are protected when the bar opens and cached by content; only
+    // the student's own words are protected here, between submit and send.
+    const frame: CourseFrame = { ...plainFrame, skeleton: protection.prefix(plainFrame.skeleton) };
     const input: ClassifyInput = {
       utterance: p.text(normaliseUtterance(text) || text.trim().toLowerCase(), "personal"),
-      currentCourse: contextCourse ? p.text(courseDisplay(contextCourse), "teaching") : null,
+      currentCourse: contextCourse ? protection.prefix(courseDisplay(contextCourse)) : null,
       hints: hintsOf(hints).map((h) => p.text(h, "personal")),
     };
     const runner = await runnerP;
@@ -296,8 +298,8 @@ export function createIntentRouter(deps: IntentRouterDeps) {
   async function prewarm(): Promise<IntentCommandResult> {
     const t0 = clock();
     index();
-    protection.warm(); // owner: privacy
     const frame = classifyFrame();
+    protection.warm(frame.skeleton); // owner: privacy: the roster and the protected prefix
     const runner = await acquire();
     if (runner && deps.warm) {
       const prompt = buildPrompt(classifyPack, frame, { utterance: "", currentCourse: null, hints: [] }, []);
@@ -312,7 +314,7 @@ export function createIntentRouter(deps: IntentRouterDeps) {
   /** Builds the index now (at launch, after the first bootstrap query) so no command waits on it. */
   function ready(): void {
     index();
-    protection.warm(); // owner: privacy
+    protection.warm(classifyFrame().skeleton); // owner: privacy: the roster and the protected prefix
   }
 
   return { registry, handle, preview, prewarm, ready, resolve, index };
