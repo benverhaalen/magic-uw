@@ -156,3 +156,43 @@ Local artifacts: `magic-canvas-briefing-inline.html` and `magic-canvas-briefing-
 Actual Claude CLI Opus 5.5 reviewed both first-pass screenshots (model identity verified in local receipt). It preferred inline links, flagged date/link ambiguity and overemphasis, and cautioned about confusing review with completion. Subsequent user cohesion feedback drove the softer action treatment; date tags became consistently neutral and filled, excessive lead bolding and inline chevrons were removed in the preferred alternative. The driver retained the user's shared split-control idea and broad handled wording rather than adopting the reviewer's narrower claim that an exam time was confirmed. These are judgments from screenshots, not evidence of student usability.
 
 Browser verification passed for both alternatives: action beside text; full-width informational paragraph; named-link keyboard activation; readings and exam navigation; separate checkbox behavior; handled state after reload and Undo; assignment route; sidebar collapse; supplied fonts loaded; official Canvas image loaded; no page errors; no horizontal page overflow at 1440, 1280, 1100, and 900-pixel widths. Final screenshots were inspected after initial animation settled. Real multi-app launching, live briefing regeneration, and external completion remain unimplemented in this mock.
+
+## September 26 — familiar icons and cohesion across the whole surface
+
+Source: Ben, Magic Canvas design conversation; recorded September 26, 2026. Original message timestamps/IDs unavailable. Exact excerpts:
+
+> really intuitive familiar icons. less sharp compared to the current ones.
+
+> also make sure borders are all cohesive and such, if there is one, when there is one, etc.
+
+> also something you never noticed. under the courses dropdown, those dont follow the vision the high level the taste.
+
+> with the inline like "tomorrow 1PM" thing id rather that the outline and border extends out of the text line with the text being the same size as everything else.
+
+> also for the study thing at the bottom, we probably know things that users would want to be studying. like an easy one is an exam in a week. you know what they want to study. there are a few different ways to study.
+
+> i want to be able to tweak things in one spot in case things change. but not everything needs to be absolutely abstracted.
+
+> also magic canvas text should be the serif.
+
+> also make the "Home" at the top in cooper.
+
+### Applied interpretations; visual approval pending
+
+- **Recognizable shapes before decoration.** Compared actual Home/sidebar/compose/books/bell SVGs from [Lucide](https://lucide.dev/), [Phosphor](https://github.com/phosphor-icons/core), and [Tabler](https://tabler.io/icons) at toolbar size. Lucide with rounded joins at 1.65 stroke is the current local choice. Its book-open is clearer than its abstract library glyph here. This is a visual match judgment, not identification of Codex's actual library. If small-size recognition suffers, change the glyph within the family before mixing families. Source SVGs and upstream license are retained with the private mock; asset commit recorded there.
+- **Interface and provider icons have different jobs.** Use one family for navigation/actions, official recognizable marks for actual app destinations. First-party assets: [VS Code](https://code.visualstudio.com/brand), [GitLab](https://about.gitlab.com/press/press-kit/), and previously recorded Canvas/MyUW favicons. Preserve source/licensing and brand colors; no hand-redrawn product marks. Destination marks do not establish that an app is installed or launch integration exists. Internal card navigation uses a chevron; external references use an outward arrow.
+- **A border must explain a boundary.** Current proposal: no extra outline around already distinct colored work/study surfaces; one soft 1px outline around a review control, with one internal divider for independent confirmation; quiet neutral dividers between schedule/task regions; a filled neutral time tag with a fine outline; visible focus rings only when focused. Cohesion means consistent roles, not outlining everything. Keep the user's colored review actions; blue there denotes interaction, not exclusive course ownership.
+- **Type and navigation are part of the same product.** Supplied Cooper Light BT on the wordmark and centered page title; Geist for readable controls/prose. Time text inherits the surrounding body size, with padding/border extending beyond its baseline. The course submenu now pairs a readable short course name with its code, using the same navigation rhythm and states. Colored dots alone were a weak replacement for meaningful identity. Course selection preserves course identity in the local destination and on refresh.
+- **Study selection starts with an actual need.** An approaching assessment is one useful trigger, not the only trigger or a fixed seven-day rule. Select a specific source-backed topic and suitable activity, then offer a ready action. The local comparison offers listening and practice for SQL ahead of the captured Oct 14 midterm. It does not assert verified exam coverage, a known weakness, or generated audio. Mode choice should not become another configuration task. Do not crowd out higher-value needs just to show multiple formats.
+
+### General lesson and modest edit surface
+
+The missed course submenu exposed a scope error: evaluating the edited briefing alone allowed a neighboring surface to drift. For the next change, inspect the affected component **and its siblings, nested states, destination, and return path** at actual size. Apply the same meaning, type roles, icon weight, and boundary rules. Record a real exception with its reason. This is a project-local inference from Ben's correction, not a new global aesthetic prohibition.
+
+Repeated corrections justify a small shared identity/type/palette/radius/border/icon layer. The local mock introduces an app-name value and semantic CSS roles for fonts, control/card/tag radii, quiet/action/tag lines, link ink, focus, and icon weight. Existing course/layout values are not fully refactored. Product implementation should use its established token/component structure; avoid an abstraction for every measurement. Background customization remains deferred. Discuss a broader cohesion mechanism after this visual review, as Ben requested.
+
+### Evidence and limits
+
+Local `magic-canvas-cohesive-home.html` and matching screenshot, rendered at 1440×900 with 2× pixels. Actual Opus 5.5 screenshot review verified in a local model receipt: adopted clearer book icon, stronger submenu metadata, and compacted secondary cards so their source links clear the bottom edge. Rejected a proposed neutral-button reversal because Ben explicitly requested colored actions; retained his serif card direction. Review is expert judgment, not student usability evidence.
+
+Browser checks passed for exact fonts, body-size time tags, loaded assets, right-aligned actions, full-width informational prose, keyboard links, readings/exam/assignment routes, independent confirmation and reload/Undo, individual course identity and refresh, course expansion, sidebar collapse, profile menu, and SQL practice feedback. No page errors or horizontal overflow at 1440/1280/1100/900 widths. This remains a local visual prototype: audio generation, live selection, multi-app launching, and the teammate's newer My UW implementation are not integrated into it. Raw course captures, fonts, screenshots, and CLI logs stay outside Git.
