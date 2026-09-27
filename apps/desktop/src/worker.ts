@@ -47,7 +47,11 @@ async function generationRunner(): Promise<ModelRunner | null> {
     Object.entries(profileEnv(chosen, { userData: generationUserData })).flatMap(([k, v]) => (v === undefined ? [] : [[k, v]])),
   );
   const options = { command, workDir: workDir(generationUserData, chosen), env };
-  const backend = chosen === "claude" ? createClaudeBackend(options) : createCodexBackend(options);
+  // owner: ai-paths. Claude runs through the warm session pool (one per worker, replaced on a
+  // client change); Codex stays one-shot.
+  const { pooledClaudeBackend } = await import("../../../packages/core/src/pack-handler");
+  const backend = chosen === "claude" ? pooledClaudeBackend(options) : createCodexBackend(options);
+  // end owner: ai-paths
   generationRuntime = { client: chosen, runner: createPackRuntime(backend, DEFAULT_PACK_CONFIG).runner };
   return generationRuntime.runner;
 }

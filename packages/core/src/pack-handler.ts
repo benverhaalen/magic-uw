@@ -9,6 +9,10 @@ import { aiRecipientSchema, type CourseCoreStore, type PackScope, type Resource,
 import { maySend } from "@magic/domain";
 import { effectiveCoursePolicy } from "../../domain/src/course-intelligence";
 import type { BackendCall, ModelRunner } from "../../runner/src/index";
+// owner: ai-paths
+import { createClaudeBackend, createSessionPool, type CliCommand, type PoolOptions, type SessionPool } from "../../runner/src/index";
+import { GUIDE_PACKS } from "../../packs/guide/src/index";
+// end owner: ai-paths
 import { buildPrompt, packCacheKey, type ArtifactStore, type CourseFrame, type LedgerStore, type PackSpec, type Passage } from "../../packs/core/src/index";
 import { learningArtifactStore, sqlLedgerStore } from "../../packs/core/src/learning-stores";
 import { quizDrafts, quizPack, type Draft, type GenerationInput } from "../../packs/items/src/index";
@@ -496,3 +500,21 @@ export function generatePack(
   const { pack, scope, ...options } = request;
   return createPackHandler(deps).run(pack, scope, signal, options);
 }
+
+// owner: ai-paths
+/** Pack id → output schema for every generation pack: the warm pool's union schema. */
+export function generationKinds(): PoolOptions["kinds"] {
+  return Object.fromEntries([quizPack, cardsPack, ...Object.values(GUIDE_PACKS)].map((p) => [p.id, p.schema as PoolOptions["kinds"][string]]));
+}
+/**
+ * The Claude route with one warm session per lane (D38): a follow-up pack call reuses the live
+ * process instead of paying a cold start. Other packs and a lane that fails twice go one-shot.
+ */
+export function pooledClaudeBackend(options: { command: CliCommand; workDir: string; env?: Record<string, string> }): SessionPool {
+  // One pool per process: a new one (a client or profile change) closes the previous sessions.
+  void currentPool?.close();
+  currentPool = createSessionPool({ ...options, kinds: generationKinds(), fallback: createClaudeBackend(options) });
+  return currentPool;
+}
+let currentPool: SessionPool | null = null;
+// end owner: ai-paths
