@@ -363,35 +363,126 @@ const DATE_DM = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?${MONTH}
 const WEEKDAY = /\b(mon|tue|wed|thu|fri|sat|sun)(?:day|sday|nesday|rsday|urday)?s?\b/gi;
 const MONTH_OR_DAY = new RegExp(`^(?:${MONTH}|(?:mon|tues?|wed(?:nes)?|thu(?:rs)?|fri|sat(?:ur)?|sun)(?:day)?s?)$`, "i");
 /** Capitalized words that are not names: titles and common words. */
-const NOT_NAMES = new Set(["i", "prof", "professor", "dr", "mr", "ms", "mrs", "the", "a", "an", "it", "this", "that", "you", "your", "yes", "no", "note", "also"]);
+const NOT_NAMES = new Set(["i", "prof", "professor", "dr", "mr", "ms", "mrs", "the", "a", "an", "it", "this", "that", "you", "your", "yes", "no", "note", "also", "am", "pm"]);
 const month = (m: string) => MONTHS.find((x) => m.toLowerCase().startsWith(x)) ?? m.toLowerCase();
-/** The exact claims a text makes: month-day dates, weekdays, numbers and capitalized names (not sentence-initial). */
-function claims(text: string): { dates: string[]; weekdays: string[]; numbers: string[]; names: string[] } {
+/** A capitalized label and its number ("Homework 4", "Lab 3"): checked as one phrase, not as a bare number. */
+const LABEL = /\b([A-Z][A-Za-z]+)\s+(\d+[A-Za-z]?)\b/g;
+/** A room or course code: letters then digits ("B10", "CS400"). Checked as one word, never read as a name. */
+const CODE = /\b[A-Za-z]+\d+[A-Za-z]?\b/g;
+/** Arithmetic written in a sentence: "7 × 25 = 175", "8 − 1 = 7", "3 x 24". */
+const EXPR = /(\d+(?:\.\d+)?)\s*([×x*+−–/÷-])\s*(\d+(?:\.\d+)?)(?:\s*=\s*(\d+(?:\.\d+)?))?/g;
+/** Constants a calculation may use besides quoted numbers: one, two, days a week, hours a day, minutes, percent. */
+const OPERAND_CONSTANTS = ["1", "2", "7", "24", "60", "100"];
+type Claims = { dates: string[]; weekdays: string[]; numbers: string[]; names: string[]; labels: string[]; codes: string[] };
+/** The exact claims a text makes: month-day dates, weekdays, labels, codes, other numbers and capitalized names (not sentence-initial). */
+function claims(text: string): Claims {
   const t = text.replace(/(\d),(?=\d{3}\b)/g, "$1");
   const dates = [
     ...[...t.matchAll(DATE_MD)].map((m) => `${month(m[1]!)} ${Number(m[2])}`),
     ...[...t.matchAll(DATE_DM)].map((m) => `${month(m[2]!)} ${Number(m[1])}`),
   ];
   const weekdays = [...t.matchAll(WEEKDAY)].map((m) => m[1]!.toLowerCase());
-  const numbers = [...t.matchAll(/\d+(?:\.\d+)?/g)].map((m) => String(Number(m[0])));
+  // A date's day and a label's number are checked with their date or label, so they aren't bare numbers too.
+  const undated = t.replace(DATE_MD, " ").replace(DATE_DM, " ");
+  const labels: string[] = [];
+  const unlabelled = undated.replace(LABEL, (all, word: string, n: string) => {
+    if (MONTH_OR_DAY.test(word)) return all;
+    labels.push(`${word.toLowerCase()} ${n.toLowerCase()}`);
+    return " ";
+  });
+  const codes = [...unlabelled.matchAll(CODE)].map((m) => m[0].toLowerCase());
+  const numbers = [...unlabelled.replace(CODE, " ").matchAll(/\d+(?:\.\d+)?/g)].map((m) => String(Number(m[0])));
   const names: string[] = [];
   let initial = true;
-  for (const token of t.split(/\s+/)) {
+  // A label's word ("Homework" in "Homework 4") is checked with its label, not as a name.
+  for (const token of unlabelled.split(/\s+/)) {
     const word = token.replace(/^[("'“‘[]+/, "").replace(/[^A-Za-z'’-]+$/, "");
-    if (!initial && /^[A-Z][A-Za-z'’-]*$/.test(word) && !NOT_NAMES.has(word.toLowerCase()) && !MONTH_OR_DAY.test(word)) names.push(word.toLowerCase());
+    // A token with a digit is a code or a number ("B10"), never the name "B".
+    if (!initial && !/\d/.test(token) && /^[A-Z][A-Za-z'’-]*$/.test(word) && !NOT_NAMES.has(word.toLowerCase()) && !MONTH_OR_DAY.test(word)) names.push(word.toLowerCase());
     if (word || token) initial = /[.!?:]["'”’)]*$/.test(token);
   }
-  return { dates, weekdays, numbers, names };
+  return { dates, weekdays, numbers, names, labels, codes };
 }
-/** True when every date, weekday, number and name the sentence states is in its quotes. */
-export function claimsMatch(sentence: string, quotes: string): boolean {
-  const said = claims(sentence), shown = claims(quotes);
-  const words = new Set(quotes.toLowerCase().split(/[^a-z0-9'’-]+/).filter(Boolean));
+const wordsOf = (text: string) => new Set(text.toLowerCase().split(/[^a-z0-9'’-]+/).filter(Boolean));
+const phrase = (text: string) => ` ${text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()} `;
+/** A word without a plural "s", so "Section 303" finds "sections". */
+const stem = (w: string) => w.replace(/(?<=[a-z]{3})s$/, "");
+/** Date arithmetic written in a sentence: "October 13 + 7 days". */
+const DATE_PLUS = new RegExp(`\\b${MONTH}\\s+(\\d{1,2})\\s*([+−–-])\\s*(\\d+)\\s*days?\\b`, "gi");
+const numberText = (x: number) => String(Number(x.toFixed(2)));
+function calculate(a: number, op: string, b: number): number {
+  if (op === "×" || op === "x" || op === "*") return a * b;
+  if (op === "+") return a + b;
+  if (op === "/" || op === "÷") return b ? a / b : Number.NaN;
+  return a - b;
+}
+/** Days from one month-day date to another (either order), in a common and a leap year, counted both ways. */
+function daySpans(dates: string[]): string[] {
+  const at = (d: string, year: number) => {
+    const [m, day] = d.split(" ");
+    return Date.UTC(year, MONTHS.indexOf(m!), Number(day));
+  };
+  const spans = new Set<string>();
+  for (const a of dates)
+    for (const b of dates)
+      for (const year of [2026, 2024]) {
+        const days = Math.round((at(b, year) - at(a, year)) / 86_400_000);
+        if (days > 0) for (const n of [days, days + 1]) spans.add(String(n));
+      }
+  return [...spans];
+}
+/**
+ * True when the sentence says what its quotes say. A kind of detail the quotes state (a date, weekday,
+ * name, label or code) must match them. A kind they don't state may come from the rest of the cited
+ * passage. That covers a label ("Homework 4") or a heading date just outside the quoted words, and it
+ * never lets a sentence contradict its quote. A number must be quoted, stated earlier in the same
+ * answer, or be the result of arithmetic written in the sentence from such numbers, which code
+ * re-does ("7 × 25 = 175"; the days between two dates the sentence names).
+ */
+export function claimsMatch(sentence: string, quotes: string, context: { passages?: string; known?: Iterable<string> } = {}): boolean {
+  const said = claims(sentence), shown = claims(quotes), around = claims(context.passages ?? "");
+  const quoteWords = wordsOf(quotes), passageWords = wordsOf(context.passages ?? "");
+  const quotePhrase = phrase(quotes), passagePhrase = phrase(context.passages ?? "");
+  const fits = (items: string[], stated: string[], inQuote: (x: string) => boolean, inPassage: (x: string) => boolean) =>
+    items.every((x) => inQuote(x) || (!stated.length && inPassage(x)));
+  const known = new Set([...shown.numbers, ...(context.known ?? [])]);
+  if (!shown.numbers.length) for (const n of around.numbers) known.add(n);
+  if (/\bdays?\b/i.test(sentence)) for (const n of daySpans(said.dates)) known.add(n);
+  // A date worked out from a date the sentence may state ("October 13 + 7 days") is re-done by code.
+  const stateable = (d: string) => shown.dates.includes(d) || (!shown.dates.length && around.dates.includes(d));
+  const derivedDates: string[] = [];
+  for (const m of sentence.matchAll(DATE_PLUS)) {
+    if (!stateable(`${month(m[1]!)} ${Number(m[2])}`)) continue;
+    const at = new Date(Date.UTC(2026, MONTHS.indexOf(month(m[1]!)), Number(m[2]) + (m[3] === "+" ? 1 : -1) * Number(m[4])));
+    derivedDates.push(`${MONTHS[at.getUTCMonth()]} ${at.getUTCDate()}`);
+    known.add(numberText(Number(m[4])));
+  }
+  // A label whose number is quoted may use the passage's word for it ("Section 303" for "303 meets" under "sections").
+  const stems = new Set([...quoteWords, ...passageWords].map(stem));
+  const labelled = (l: string) => {
+    const [word, n] = l.split(" ");
+    return shown.numbers.includes(n!) && stems.has(stem(word!));
+  };
+  // Re-do the sentence's arithmetic until nothing new is verified (one step may feed the next).
+  const exprs = [...sentence.replace(/(\d),(?=\d{3}\b)/g, "$1").matchAll(EXPR)];
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const [, a, op, b, stated] of exprs) {
+      const operand = (x: string) => known.has(numberText(Number(x))) || OPERAND_CONSTANTS.includes(numberText(Number(x)));
+      if (!operand(a!) || !operand(b!)) continue;
+      const result = numberText(calculate(Number(a), op!, Number(b)));
+      if (stated !== undefined && result !== numberText(Number(stated))) continue;
+      for (const n of [a!, b!, result].map((x) => numberText(Number(x))))
+        if (!known.has(n)) (known.add(n), (changed = true));
+    }
+  }
   return (
-    said.dates.every((d) => shown.dates.includes(d)) &&
-    said.weekdays.every((d) => shown.weekdays.includes(d)) &&
-    said.numbers.every((n) => shown.numbers.includes(n)) &&
-    said.names.every((n) => words.has(n))
+    fits(said.dates, shown.dates, (d) => shown.dates.includes(d) || derivedDates.includes(d), (d) => around.dates.includes(d)) &&
+    fits(said.weekdays, shown.weekdays, (d) => shown.weekdays.includes(d), (d) => around.weekdays.includes(d)) &&
+    fits(said.names, shown.names, (n) => quoteWords.has(n), (n) => passageWords.has(n)) &&
+    fits(said.labels, shown.labels, (l) => quotePhrase.includes(` ${l} `) || labelled(l), (l) => passagePhrase.includes(` ${l} `)) &&
+    fits(said.codes, shown.codes, (c) => quoteWords.has(c), (c) => passageWords.has(c)) &&
+    said.numbers.every((n) => known.has(n))
   );
 }
 
@@ -409,6 +500,7 @@ export function checkAnswer(
   const citations: IntentCitation[] = [];
   const keyOf = new Map<string, number>();
   const sentences: string[] = [];
+  const known = new Set<string>();
   let dropped = 0;
   for (const s of output.found ? output.sentences : []) {
     const marks: number[] = [];
@@ -440,13 +532,15 @@ export function checkAnswer(
       continue;
     }
     const tags = marks.map((n) => `[${n + 1}]`).join("");
-    // The quote is real; the sentence must also say what it says. Every date, number and name in
-    // the sentence has to appear in its checked quotes, or the sentence gives way to the quotes.
-    if (!claimsMatch(s.text, marks.map((n) => citations[n]!.quote).join("\n"))) {
+    // The quote is real; the sentence must also say what it says (claimsMatch), or the sentence
+    // gives way to the quotes. Numbers from sentences already accepted in this answer count as known.
+    const cited = [...new Set(marks.map((n) => citations[n]!.sourceId))].map((id) => bySource.get(id) ?? "").join("\n");
+    if (!claimsMatch(s.text, marks.map((n) => citations[n]!.quote).join("\n"), { passages: cited, known })) {
       dropped++;
       sentences.push(`${marks.map((n) => `“${citations[n]!.quote}”`).join(" ")} ${tags}`);
       continue;
     }
+    for (const n of claims(s.text).numbers) known.add(n);
     sentences.push(`${s.text.trim()} ${tags}`);
   }
   if (!sentences.length) return { text: NOT_IN_MATERIALS, citations: [], notFound: true, dropped };

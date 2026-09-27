@@ -1,0 +1,1501 @@
+{
+  "date": "2026-09-27T15:04:04.184Z",
+  "client": "claude (instant mode)",
+  "repeats": 3,
+  "rows": [
+    {
+      "id": "d1",
+      "family": "derived",
+      "repeat": 0,
+      "found": true,
+      "sentences": [
+        {
+          "text": "There are 8 homework assignments worth 25 points each, but the lowest score is dropped, so 8 − 1 = 7 count, meaning 7 × 25 = 175 points for the category.",
+          "quotes": "There are 8 homework assignments, each worth 25 points. The lowest homework score is dropped.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "There are 8 homework assignments worth 25 points each, but the lowest score is dropped, so 8 − 1 = 7 count, meaning 7 × 25 = 175 points for the category. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2288,
+        "cached": 1575,
+        "out": 302
+      },
+      "latencyMs": 6510
+    },
+    {
+      "id": "d1",
+      "family": "derived",
+      "repeat": 1,
+      "found": true,
+      "sentences": [
+        {
+          "text": "The lowest homework score is dropped, so 8 − 1 = 7 count, so 7 × 25 = 175 points is what the homework category is worth.",
+          "quotes": "There are 8 homework assignments, each worth 25 points. The lowest homework score is dropped.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "The lowest homework score is dropped, so 8 − 1 = 7 count, so 7 × 25 = 175 points is what the homework category is worth. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 4878,
+        "cached": 4572,
+        "out": 411
+      },
+      "latencyMs": 8420
+    },
+    {
+      "id": "d1",
+      "family": "derived",
+      "repeat": 2,
+      "found": true,
+      "sentences": [
+        {
+          "text": "The lowest homework score is dropped, so 8 − 1 = 7 count, and 7 × 25 = 175 points make up the homework category.",
+          "quotes": "There are 8 homework assignments, each worth 25 points. The lowest homework score is dropped.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "The lowest homework score is dropped, so 8 − 1 = 7 count, and 7 × 25 = 175 points make up the homework category. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2288,
+        "cached": 2286,
+        "out": 229
+      },
+      "latencyMs": 5855
+    },
+    {
+      "id": "d2",
+      "family": "derived",
+      "repeat": 0,
+      "found": true,
+      "sentences": [
+        {
+          "text": "The proposal is due October 6 and the final report is due December 8, so counting October 6 to December 8 gives 25 (rest of October) + 30 (November) + 8 (December) = 63 days.",
+          "quotes": "The proposal is due October 6. The final report is due December 8.",
+          "inOwnQuote": false,
+          "shown": false
+        }
+      ],
+      "shownAfter": "“The proposal is due October 6. The final report is due December 8.” [1]",
+      "replacedAfter": 1,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 5069,
+        "cached": 3852,
+        "out": 619
+      },
+      "latencyMs": 9107
+    },
+    {
+      "id": "d2",
+      "family": "derived",
+      "repeat": 1,
+      "found": true,
+      "sentences": [
+        {
+          "text": "The proposal is due October 6 and the final report is due December 8, so the gap runs from October 6 to December 8 = 63 days.",
+          "quotes": "The proposal is due October 6. The final report is due December 8.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "The proposal is due October 6 and the final report is due December 8, so the gap runs from October 6 to December 8 = 63 days. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2279,
+        "cached": 2277,
+        "out": 471
+      },
+      "latencyMs": 8348
+    },
+    {
+      "id": "d2",
+      "family": "derived",
+      "repeat": 2,
+      "found": true,
+      "sentences": [
+        {
+          "text": "The proposal is due October 6 and the final report is due December 8, so counting from October 6 to December 8 gives 63 days.",
+          "quotes": "The proposal is due October 6. The final report is due December 8.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "The proposal is due October 6 and the final report is due December 8, so counting from October 6 to December 8 gives 63 days. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2279,
+        "cached": 2277,
+        "out": 317
+      },
+      "latencyMs": 8244
+    },
+    {
+      "id": "d3",
+      "family": "derived",
+      "repeat": 0,
+      "found": true,
+      "sentences": [
+        {
+          "text": "You have 3 late days total, and each one extends a deadline by 24 hours, so 3 × 24 = 72 hours late is the maximum on one assignment.",
+          "quotes": "You have 3 late days in total. Each late day extends a deadline by 24 hours.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "You have 3 late days total, and each one extends a deadline by 24 hours, so 3 × 24 = 72 hours late is the maximum on one assignment. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 4896,
+        "cached": 3880,
+        "out": 383
+      },
+      "latencyMs": 8577
+    },
+    {
+      "id": "d3",
+      "family": "derived",
+      "repeat": 1,
+      "found": true,
+      "sentences": [
+        {
+          "text": "You have 3 late days total, and each one extends a deadline by 24 hours, so 3 × 24 = 72 hours late if you use them all on one assignment.",
+          "quotes": "You have 3 late days in total. Each late day extends a deadline by 24 hours.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "You have 3 late days total, and each one extends a deadline by 24 hours, so 3 × 24 = 72 hours late if you use them all on one assignment. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 4935,
+        "cached": 4610,
+        "out": 391
+      },
+      "latencyMs": 7426
+    },
+    {
+      "id": "d3",
+      "family": "derived",
+      "repeat": 2,
+      "found": true,
+      "sentences": [
+        {
+          "text": "You have 3 late days total, and each one extends a deadline by 24 hours, so using all 3 on one assignment gives 3 × 24 = 72 hours (3 days) of extra time.",
+          "quotes": "You have 3 late days in total. Each late day extends a deadline by 24 hours.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "You have 3 late days total, and each one extends a deadline by 24 hours, so using all 3 on one assignment gives 3 × 24 = 72 hours (3 days) of extra time. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2307,
+        "cached": 2305,
+        "out": 191
+      },
+      "latencyMs": 5714
+    },
+    {
+      "id": "d4",
+      "family": "derived",
+      "repeat": 0,
+      "found": false,
+      "sentences": [],
+      "shownAfter": "Not in your materials.",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2332,
+        "cached": 1575,
+        "out": 430
+      },
+      "latencyMs": 8736
+    },
+    {
+      "id": "d4",
+      "family": "derived",
+      "repeat": 1,
+      "found": false,
+      "sentences": [],
+      "shownAfter": "Not in your materials.",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2332,
+        "cached": 1575,
+        "out": 355
+      },
+      "latencyMs": 8919
+    },
+    {
+      "id": "d4",
+      "family": "derived",
+      "repeat": 2,
+      "found": false,
+      "sentences": [],
+      "shownAfter": "Not in your materials.",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2332,
+        "cached": 2330,
+        "out": 618
+      },
+      "latencyMs": 10769
+    },
+    {
+      "id": "m1",
+      "family": "mixed",
+      "repeat": 0,
+      "found": true,
+      "sentences": [
+        {
+          "text": "The MATH 222 Midterm 1 is on Wednesday, October 8, from 5:45 to 7:15 PM.",
+          "quotes": "MATH 222: Midterm 1 is Wednesday, October 8, 5:45 to 7:15 PM.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "The MATH 222 Midterm 1 is on Wednesday, October 8, from 5:45 to 7:15 PM. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2343,
+        "cached": 2341,
+        "out": 182
+      },
+      "latencyMs": 6419
+    },
+    {
+      "id": "m1",
+      "family": "mixed",
+      "repeat": 1,
+      "found": true,
+      "sentences": [
+        {
+          "text": "The MATH 222 Midterm 1 is on Wednesday, October 8, from 5:45 to 7:15 PM.",
+          "quotes": "MATH 222: Midterm 1 is Wednesday, October 8, 5:45 to 7:15 PM.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "The MATH 222 Midterm 1 is on Wednesday, October 8, from 5:45 to 7:15 PM. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2343,
+        "cached": 1575,
+        "out": 182
+      },
+      "latencyMs": 5316
+    },
+    {
+      "id": "m1",
+      "family": "mixed",
+      "repeat": 2,
+      "found": true,
+      "sentences": [
+        {
+          "text": "The MATH 222 Midterm 1 is on Wednesday, October 8, from 5:45 to 7:15 PM.",
+          "quotes": "MATH 222: Midterm 1 is Wednesday, October 8, 5:45 to 7:15 PM.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "The MATH 222 Midterm 1 is on Wednesday, October 8, from 5:45 to 7:15 PM. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2343,
+        "cached": 2341,
+        "out": 182
+      },
+      "latencyMs": 5656
+    },
+    {
+      "id": "m2",
+      "family": "mixed",
+      "repeat": 0,
+      "found": true,
+      "sentences": [
+        {
+          "text": "The CHEM 103 lecture is held in 1351 Chemistry.",
+          "quotes": "CHEM 103 lecture: Monday, Wednesday, Friday 11 AM in 1351 Chemistry.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "The CHEM 103 lecture is held in 1351 Chemistry. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2350,
+        "cached": 1575,
+        "out": 169
+      },
+      "latencyMs": 5385
+    },
+    {
+      "id": "m2",
+      "family": "mixed",
+      "repeat": 1,
+      "found": true,
+      "sentences": [
+        {
+          "text": "The CHEM 103 lecture is held in 1351 Chemistry.",
+          "quotes": "CHEM 103 lecture: Monday, Wednesday, Friday 11 AM in 1351 Chemistry.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "The CHEM 103 lecture is held in 1351 Chemistry. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2350,
+        "cached": 2348,
+        "out": 169
+      },
+      "latencyMs": 5911
+    },
+    {
+      "id": "m2",
+      "family": "mixed",
+      "repeat": 2,
+      "found": true,
+      "sentences": [
+        {
+          "text": "The CHEM 103 lecture is held in 1351 Chemistry.",
+          "quotes": "CHEM 103 lecture: Monday, Wednesday, Friday 11 AM in 1351 Chemistry.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "The CHEM 103 lecture is held in 1351 Chemistry. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2350,
+        "cached": 2348,
+        "out": 169
+      },
+      "latencyMs": 5791
+    },
+    {
+      "id": "m3",
+      "family": "mixed",
+      "repeat": 0,
+      "found": true,
+      "sentences": [
+        {
+          "text": "Your essays are graded by your section TA, Jordan Park, within 10 days.",
+          "quotes": "Essays are graded by your section TA, Jordan Park, within 10 days.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "Your essays are graded by your section TA, Jordan Park, within 10 days. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2322,
+        "cached": 1575,
+        "out": 156
+      },
+      "latencyMs": 5804
+    },
+    {
+      "id": "m3",
+      "family": "mixed",
+      "repeat": 1,
+      "found": true,
+      "sentences": [
+        {
+          "text": "Your essays are graded by your section TA, Jordan Park.",
+          "quotes": "Essays are graded by your section TA, Jordan Park",
+          "inOwnQuote": true,
+          "shown": true
+        },
+        {
+          "text": "They are graded within 10 days.",
+          "quotes": "within 10 days",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "Your essays are graded by your section TA, Jordan Park. [1] They are graded within 10 days. [2]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 4904,
+        "cached": 3895,
+        "out": 373
+      },
+      "latencyMs": 7190
+    },
+    {
+      "id": "m3",
+      "family": "mixed",
+      "repeat": 2,
+      "found": true,
+      "sentences": [
+        {
+          "text": "Your essays are graded by your section TA, Jordan Park, within 10 days.",
+          "quotes": "Essays are graded by your section TA, Jordan Park, within 10 days.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "Your essays are graded by your section TA, Jordan Park, within 10 days. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2322,
+        "cached": 2320,
+        "out": 156
+      },
+      "latencyMs": 6186
+    },
+    {
+      "id": "m4",
+      "family": "mixed",
+      "repeat": 0,
+      "found": true,
+      "sentences": [
+        {
+          "text": "Lecture attendance is not recorded, so no attendance penalty applies there.",
+          "quotes": "Lecture attendance is not recorded",
+          "inOwnQuote": true,
+          "shown": true
+        },
+        {
+          "text": "Instead, participation is graded through iClicker questions, which count for 5% of the grade.",
+          "quotes": "iClicker questions count for 5% of the grade",
+          "inOwnQuote": true,
+          "shown": true
+        },
+        {
+          "text": "Lab attendance, unlike lecture, is required.",
+          "quotes": "Lab attendance is required.",
+          "inOwnQuote": true,
+          "shown": true
+        },
+        {
+          "text": "If you have more than 2 unexcused lab absences, your final grade is lowered by one letter.",
+          "quotes": "More than 2 unexcused lab absences lowers your final grade by one letter.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "Lecture attendance is not recorded, so no attendance penalty applies there. [1] Instead, participation is graded through iClicker questions, which count for 5% of the grade. [2] Lab attendance, unlike lecture, is required. [3] If you have more than 2 unexcused lab absences, your final grade is lowered by one letter. [4]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2336,
+        "cached": 1575,
+        "out": 375
+      },
+      "latencyMs": 7129
+    },
+    {
+      "id": "m4",
+      "family": "mixed",
+      "repeat": 1,
+      "found": true,
+      "sentences": [
+        {
+          "text": "Lecture attendance is not tracked, but iClicker questions count for 5% of the grade.",
+          "quotes": "Lecture attendance is not recorded, but iClicker questions count for 5% of the grade.",
+          "inOwnQuote": true,
+          "shown": true
+        },
+        {
+          "text": "Lab attendance is mandatory, and having more than 2 unexcused lab absences lowers your final grade by one letter.",
+          "quotes": "Lab attendance is required. More than 2 unexcused lab absences lowers your final grade by one letter.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "Lecture attendance is not tracked, but iClicker questions count for 5% of the grade. [1] Lab attendance is mandatory, and having more than 2 unexcused lab absences lowers your final grade by one letter. [2]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 5033,
+        "cached": 4668,
+        "out": 563
+      },
+      "latencyMs": 8963
+    },
+    {
+      "id": "m4",
+      "family": "mixed",
+      "repeat": 2,
+      "found": true,
+      "sentences": [
+        {
+          "text": "Lecture attendance itself is not recorded, but iClicker questions count for 5% of the grade.",
+          "quotes": "Lecture attendance is not recorded, but iClicker questions count for 5% of the grade.",
+          "inOwnQuote": true,
+          "shown": true
+        },
+        {
+          "text": "Lab attendance is required, and more than 2 unexcused lab absences lowers your final grade by one letter.",
+          "quotes": "Lab attendance is required. More than 2 unexcused lab absences lowers your final grade by one letter.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "Lecture attendance itself is not recorded, but iClicker questions count for 5% of the grade. [1] Lab attendance is required, and more than 2 unexcused lab absences lowers your final grade by one letter. [2]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2336,
+        "cached": 2334,
+        "out": 286
+      },
+      "latencyMs": 6311
+    },
+    {
+      "id": "n1",
+      "family": "neighbour",
+      "repeat": 0,
+      "found": true,
+      "sentences": [
+        {
+          "text": "There are two midterms, each worth 25%, so 25 + 25 = 50% of the grade is midterms.",
+          "quotes": "Midterm 1 25%. Midterm 2 25%.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "There are two midterms, each worth 25%, so 25 + 25 = 50% of the grade is midterms. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 4891,
+        "cached": 3880,
+        "out": 370
+      },
+      "latencyMs": 10050
+    },
+    {
+      "id": "n1",
+      "family": "neighbour",
+      "repeat": 1,
+      "found": true,
+      "sentences": [
+        {
+          "text": "There are two midterms, each worth 25% of the grade, so together they make up 25 + 25 = 50% of the grade.",
+          "quotes": "Midterm 1 25%. Midterm 2 25%.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "There are two midterms, each worth 25% of the grade, so together they make up 25 + 25 = 50% of the grade. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2307,
+        "cached": 2305,
+        "out": 193
+      },
+      "latencyMs": 7897
+    },
+    {
+      "id": "n1",
+      "family": "neighbour",
+      "repeat": 2,
+      "found": true,
+      "sentences": [
+        {
+          "text": "The course has two midterms, each worth 25%: \"Midterm 1 25%. Midterm 2 25%\", so 25 + 25 = 50% of the grade comes from the midterms combined.",
+          "quotes": "Midterm 1 25%. Midterm 2 25%",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "The course has two midterms, each worth 25%: \"Midterm 1 25%. Midterm 2 25%\", so 25 + 25 = 50% of the grade comes from the midterms combined. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2307,
+        "cached": 2305,
+        "out": 265
+      },
+      "latencyMs": 7471
+    },
+    {
+      "id": "n2",
+      "family": "neighbour",
+      "repeat": 0,
+      "found": true,
+      "sentences": [
+        {
+          "text": "You get 4 free late days for the whole semester, with at most 2 usable on any single assignment.",
+          "quotes": "You have 4 free late days for the semester, at most 2 on any one assignment.",
+          "inOwnQuote": true,
+          "shown": true
+        },
+        {
+          "text": "Once those free late days are used up, each additional late day costs 10% of that assignment's points.",
+          "quotes": "After that, each late day costs 10% of the assignment's points.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "You get 4 free late days for the whole semester, with at most 2 usable on any single assignment. [1] Once those free late days are used up, each additional late day costs 10% of that assignment's points. [2]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2304,
+        "cached": 1575,
+        "out": 251
+      },
+      "latencyMs": 6818
+    },
+    {
+      "id": "n2",
+      "family": "neighbour",
+      "repeat": 1,
+      "found": true,
+      "sentences": [
+        {
+          "text": "You get 4 free late days for the whole semester.",
+          "quotes": "You have 4 free late days for the semester",
+          "inOwnQuote": true,
+          "shown": true
+        },
+        {
+          "text": "You can use at most 2 of those late days on any single assignment.",
+          "quotes": "at most 2 on any one assignment",
+          "inOwnQuote": true,
+          "shown": true
+        },
+        {
+          "text": "Once you've used up your free late days, each extra late day costs 10% of that assignment's points.",
+          "quotes": "After that, each late day costs 10% of the assignment's points",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "You get 4 free late days for the whole semester. [1] You can use at most 2 of those late days on any single assignment. [2] Once you've used up your free late days, each extra late day costs 10% of that assignment's points. [3]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 4974,
+        "cached": 3877,
+        "out": 573
+      },
+      "latencyMs": 10173
+    },
+    {
+      "id": "n2",
+      "family": "neighbour",
+      "repeat": 2,
+      "found": true,
+      "sentences": [
+        {
+          "text": "You get 4 free late days for the semester, with a limit of at most 2 on any single assignment.",
+          "quotes": "You have 4 free late days for the semester, at most 2 on any one assignment.",
+          "inOwnQuote": true,
+          "shown": true
+        },
+        {
+          "text": "After those free late days are used up, each additional late day costs 10% of the assignment's points.",
+          "quotes": "After that, each late day costs 10% of the assignment's points.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "You get 4 free late days for the semester, with a limit of at most 2 on any single assignment. [1] After those free late days are used up, each additional late day costs 10% of the assignment's points. [2]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2304,
+        "cached": 2302,
+        "out": 232
+      },
+      "latencyMs": 6931
+    },
+    {
+      "id": "n3",
+      "family": "neighbour",
+      "repeat": 0,
+      "found": true,
+      "sentences": [
+        {
+          "text": "There are two Thursday discussion sections: 302 meets at 9:55 AM in 1261 Sterling Hall with Omar Haddad.",
+          "quotes": "302 meets Thursday 9:55 AM in 1261 Sterling Hall with Omar Haddad",
+          "inOwnQuote": true,
+          "shown": true
+        },
+        {
+          "text": "303 meets Thursday at 1:20 PM in 2241 Chamberlin with Priya Nair.",
+          "quotes": "303 meets Thursday 1:20 PM in 2241 Chamberlin with Priya Nair",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "There are two Thursday discussion sections: 302 meets at 9:55 AM in 1261 Sterling Hall with Omar Haddad. [1] 303 meets Thursday at 1:20 PM in 2241 Chamberlin with Priya Nair. [2]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 5179,
+        "cached": 3945,
+        "out": 651
+      },
+      "latencyMs": 19978
+    },
+    {
+      "id": "n3",
+      "family": "neighbour",
+      "repeat": 1,
+      "found": true,
+      "sentences": [
+        {
+          "text": "There are two Thursday discussion sections: 302 meets Thursday 9:55 AM in 1261 Sterling Hall with Omar Haddad.",
+          "quotes": "302 meets Thursday 9:55 AM in 1261 Sterling Hall with Omar Haddad.",
+          "inOwnQuote": true,
+          "shown": true
+        },
+        {
+          "text": "303 meets Thursday 1:20 PM in 2241 Chamberlin with Priya Nair.",
+          "quotes": "303 meets Thursday 1:20 PM in 2241 Chamberlin with Priya Nair.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "There are two Thursday discussion sections: 302 meets Thursday 9:55 AM in 1261 Sterling Hall with Omar Haddad. [1] 303 meets Thursday 1:20 PM in 2241 Chamberlin with Priya Nair. [2]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2372,
+        "cached": 1575,
+        "out": 313
+      },
+      "latencyMs": 7912
+    },
+    {
+      "id": "n3",
+      "family": "neighbour",
+      "repeat": 2,
+      "found": true,
+      "sentences": [
+        {
+          "text": "There are two Thursday discussion sections: 302 meets at 9:55 AM in 1261 Sterling Hall with Omar Haddad.",
+          "quotes": "302 meets Thursday 9:55 AM in 1261 Sterling Hall with Omar Haddad",
+          "inOwnQuote": true,
+          "shown": true
+        },
+        {
+          "text": "303 meets Thursday at 1:20 PM in 2241 Chamberlin with Priya Nair.",
+          "quotes": "303 meets Thursday 1:20 PM in 2241 Chamberlin with Priya Nair",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "There are two Thursday discussion sections: 302 meets at 9:55 AM in 1261 Sterling Hall with Omar Haddad. [1] 303 meets Thursday at 1:20 PM in 2241 Chamberlin with Priya Nair. [2]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 5371,
+        "cached": 4740,
+        "out": 607
+      },
+      "latencyMs": 10892
+    },
+    {
+      "id": "n4",
+      "family": "neighbour",
+      "repeat": 0,
+      "found": true,
+      "sentences": [
+        {
+          "text": "The Chapter 6 quiz is on October 3.",
+          "quotes": "Chapter 6 quiz on October 3",
+          "inOwnQuote": true,
+          "shown": true
+        },
+        {
+          "text": "It opens at 8 AM and closes at 11:59 PM.",
+          "quotes": "Each quiz opens at 8 AM and closes at 11:59 PM",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "The Chapter 6 quiz is on October 3. [1] It opens at 8 AM and closes at 11:59 PM. [2]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 4978,
+        "cached": 3904,
+        "out": 464
+      },
+      "latencyMs": 8462
+    },
+    {
+      "id": "n4",
+      "family": "neighbour",
+      "repeat": 1,
+      "found": true,
+      "sentences": [
+        {
+          "text": "The Chapter 6 quiz is on October 3, opening at 8 AM and closing at 11:59 PM.",
+          "quotes": "Chapter 6 quiz on October 3. Chapter 7 quiz on October 10. Each quiz opens at 8 AM and closes at 11:59 PM.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "The Chapter 6 quiz is on October 3, opening at 8 AM and closing at 11:59 PM. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 4949,
+        "cached": 4658,
+        "out": 417
+      },
+      "latencyMs": 8600
+    },
+    {
+      "id": "n4",
+      "family": "neighbour",
+      "repeat": 2,
+      "found": true,
+      "sentences": [
+        {
+          "text": "The Chapter 6 quiz is on October 3.",
+          "quotes": "Chapter 6 quiz on October 3.",
+          "inOwnQuote": true,
+          "shown": true
+        },
+        {
+          "text": "It opens at 8 AM and closes at 11:59 PM.",
+          "quotes": "Each quiz opens at 8 AM and closes at 11:59 PM.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "The Chapter 6 quiz is on October 3. [1] It opens at 8 AM and closes at 11:59 PM. [2]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 4973,
+        "cached": 4658,
+        "out": 459
+      },
+      "latencyMs": 10207
+    },
+    {
+      "id": "u1",
+      "family": "update",
+      "repeat": 0,
+      "found": true,
+      "sentences": [
+        {
+          "text": "The midterm was originally scheduled for October 14 in 1240 Humanities, from 7:15 to 9:15 PM.",
+          "quotes": "The midterm exam is on October 14 in 1240 Humanities, 7:15 to 9:15 PM.",
+          "inOwnQuote": true,
+          "shown": true
+        },
+        {
+          "text": "Due to a room conflict, it has since been moved to Thursday, October 16, in B10 Ingraham Hall, with the same time.",
+          "quotes": "Because of the room conflict, the midterm has moved to Thursday, October 16, in B10 Ingraham Hall. The time is unchanged.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "The midterm was originally scheduled for October 14 in 1240 Humanities, from 7:15 to 9:15 PM. [1] Due to a room conflict, it has since been moved to Thursday, October 16, in B10 Ingraham Hall, with the same time. [2]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2364,
+        "cached": 1575,
+        "out": 298
+      },
+      "latencyMs": 12567
+    },
+    {
+      "id": "u1",
+      "family": "update",
+      "repeat": 1,
+      "found": true,
+      "sentences": [
+        {
+          "text": "The midterm was originally scheduled for October 14 in 1240 Humanities, from 7:15 to 9:15 PM.",
+          "quotes": "The midterm exam is on October 14 in 1240 Humanities, 7:15 to 9:15 PM.",
+          "inOwnQuote": true,
+          "shown": true
+        },
+        {
+          "text": "However, due to a room conflict, it has since moved to Thursday, October 16, in B10 Ingraham Hall, with the time unchanged.",
+          "quotes": "Because of the room conflict, the midterm has moved to Thursday, October 16, in B10 Ingraham Hall. The time is unchanged.",
+          "inOwnQuote": true,
+          "shown": true
+        },
+        {
+          "text": "So the midterm is now on October 16 in B10 Ingraham Hall, still 7:15 to 9:15 PM.",
+          "quotes": "The time is unchanged 7:15 to 9:15 PM",
+          "inOwnQuote": false,
+          "shown": true
+        }
+      ],
+      "shownAfter": "The midterm was originally scheduled for October 14 in 1240 Humanities, from 7:15 to 9:15 PM. [1] However, due to a room conflict, it has since moved to Thursday, October 16, in B10 Ingraham Hall, with the time unchanged. [2] So the midterm is now on October 16 in B10 Ingraham Hall, still 7:15 to 9:15 PM. [3][4]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2364,
+        "cached": 2362,
+        "out": 416
+      },
+      "latencyMs": 17032
+    },
+    {
+      "id": "u1",
+      "family": "update",
+      "repeat": 2,
+      "found": true,
+      "sentences": [
+        {
+          "text": "The midterm was originally scheduled for October 14 in 1240 Humanities, from 7:15 to 9:15 PM.",
+          "quotes": "The midterm exam is on October 14 in 1240 Humanities, 7:15 to 9:15 PM.",
+          "inOwnQuote": true,
+          "shown": true
+        },
+        {
+          "text": "Due to a room conflict, it has been moved to Thursday, October 16, in B10 Ingraham Hall.",
+          "quotes": "the midterm has moved to Thursday, October 16, in B10 Ingraham Hall",
+          "inOwnQuote": true,
+          "shown": true
+        },
+        {
+          "text": "The time remains the same, so the exam is still 7:15 to 9:15 PM.",
+          "quotes": "The time is unchanged. 7:15 to 9:15 PM",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "The midterm was originally scheduled for October 14 in 1240 Humanities, from 7:15 to 9:15 PM. [1] Due to a room conflict, it has been moved to Thursday, October 16, in B10 Ingraham Hall. [2] The time remains the same, so the exam is still 7:15 to 9:15 PM. [3][4]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2364,
+        "cached": 1575,
+        "out": 399
+      },
+      "latencyMs": 13943
+    },
+    {
+      "id": "u2",
+      "family": "update",
+      "repeat": 0,
+      "found": true,
+      "sentences": [
+        {
+          "text": "Homework 4 was originally due Friday, October 3 at 11:59 PM on Canvas.",
+          "quotes": "Homework 4 is due Friday, October 3 at 11:59 PM on Canvas",
+          "inOwnQuote": true,
+          "shown": true
+        },
+        {
+          "text": "It was then extended by two days because Canvas was down, so it is now due Sunday, October 5 at 11:59 PM.",
+          "quotes": "extended Homework 4 by two days because Canvas was down; it is now due Sunday, October 5 at 11:59 PM",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "Homework 4 was originally due Friday, October 3 at 11:59 PM on Canvas. [1] It was then extended by two days because Canvas was down, so it is now due Sunday, October 5 at 11:59 PM. [2]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2348,
+        "cached": 1575,
+        "out": 306
+      },
+      "latencyMs": 13104
+    },
+    {
+      "id": "u2",
+      "family": "update",
+      "repeat": 1,
+      "found": true,
+      "sentences": [
+        {
+          "text": "Homework 4 was originally due Friday, October 3 at 11:59 PM on Canvas.",
+          "quotes": "Homework 4 is due Friday, October 3 at 11:59 PM on Canvas",
+          "inOwnQuote": true,
+          "shown": true
+        },
+        {
+          "text": "That deadline was extended by two days because Canvas was down, so it is now due Sunday, October 5 at 11:59 PM.",
+          "quotes": "I've extended Homework 4 by two days because Canvas was down; it is now due Sunday, October 5 at 11:59 PM",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "Homework 4 was originally due Friday, October 3 at 11:59 PM on Canvas. [1] That deadline was extended by two days because Canvas was down, so it is now due Sunday, October 5 at 11:59 PM. [2]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2348,
+        "cached": 2346,
+        "out": 277
+      },
+      "latencyMs": 14871
+    },
+    {
+      "id": "u2",
+      "family": "update",
+      "repeat": 2,
+      "found": true,
+      "sentences": [
+        {
+          "text": "Homework 4 was originally due Friday, October 3 at 11:59 PM on Canvas.",
+          "quotes": "Homework 4 is due Friday, October 3 at 11:59 PM on Canvas",
+          "inOwnQuote": true,
+          "shown": true
+        },
+        {
+          "text": "That deadline was extended by two days because Canvas was down, making it now due Sunday, October 5 at 11:59 PM.",
+          "quotes": "I've extended Homework 4 by two days because Canvas was down; it is now due Sunday, October 5 at 11:59 PM",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "Homework 4 was originally due Friday, October 3 at 11:59 PM on Canvas. [1] That deadline was extended by two days because Canvas was down, making it now due Sunday, October 5 at 11:59 PM. [2]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2348,
+        "cached": 2346,
+        "out": 276
+      },
+      "latencyMs": 6691
+    },
+    {
+      "id": "u3",
+      "family": "update",
+      "repeat": 0,
+      "found": true,
+      "sentences": [
+        {
+          "text": "This week only, Professor Lin's office hours are held on Wednesday from 3 to 4 PM in 1325 Computer Sciences, overriding the usual schedule.",
+          "quotes": "This week only, Professor Lin's office hours are on Wednesday from 3 to 4 PM in 1325 Computer Sciences.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "This week only, Professor Lin's office hours are held on Wednesday from 3 to 4 PM in 1325 Computer Sciences, overriding the usual schedule. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2366,
+        "cached": 1575,
+        "out": 204
+      },
+      "latencyMs": 7803
+    },
+    {
+      "id": "u3",
+      "family": "update",
+      "repeat": 1,
+      "found": true,
+      "sentences": [
+        {
+          "text": "This week, Professor Lin's office hours are in 1325 Computer Sciences.",
+          "quotes": "This week only, Professor Lin's office hours are on Wednesday from 3 to 4 PM in 1325 Computer Sciences",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "This week, Professor Lin's office hours are in 1325 Computer Sciences. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2366,
+        "cached": 1575,
+        "out": 176
+      },
+      "latencyMs": 4917
+    },
+    {
+      "id": "u3",
+      "family": "update",
+      "repeat": 2,
+      "found": true,
+      "sentences": [
+        {
+          "text": "This week, Professor Lin's office hours are held in 1325 Computer Sciences, on Wednesday from 3 to 4 PM.",
+          "quotes": "This week only, Professor Lin's office hours are on Wednesday from 3 to 4 PM in 1325 Computer Sciences.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "This week, Professor Lin's office hours are held in 1325 Computer Sciences, on Wednesday from 3 to 4 PM. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2366,
+        "cached": 2364,
+        "out": 221
+      },
+      "latencyMs": 7200
+    },
+    {
+      "id": "u4",
+      "family": "update",
+      "repeat": 0,
+      "found": true,
+      "sentences": [
+        {
+          "text": "The syllabus originally set the final project at 30%... wait, correcting: the final project was originally worth 45%.",
+          "quotes": "final project 45%",
+          "inOwnQuote": false,
+          "shown": false
+        },
+        {
+          "text": "However, a Sep 20 announcement updated this after a class vote, making the final project now worth 40%.",
+          "quotes": "the final project is now worth 40%",
+          "inOwnQuote": false,
+          "shown": true
+        }
+      ],
+      "shownAfter": "“final project 45%” [1] However, a Sep 20 announcement updated this after a class vote, making the final project now worth 40%. [2]",
+      "replacedAfter": 1,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2330,
+        "cached": 1575,
+        "out": 215
+      },
+      "latencyMs": 5957
+    },
+    {
+      "id": "u4",
+      "family": "update",
+      "repeat": 1,
+      "found": true,
+      "sentences": [
+        {
+          "text": "After a class vote on Sep 20, the final project's weight was changed to 40%, updating the original syllabus value.",
+          "quotes": "the final project is now worth 40% and participation is worth 5% final project 45%",
+          "inOwnQuote": false,
+          "shown": true
+        }
+      ],
+      "shownAfter": "After a class vote on Sep 20, the final project's weight was changed to 40%, updating the original syllabus value. [1][2]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 4863,
+        "cached": 4656,
+        "out": 279
+      },
+      "latencyMs": 7859
+    },
+    {
+      "id": "u4",
+      "family": "update",
+      "repeat": 2,
+      "found": true,
+      "sentences": [
+        {
+          "text": "The final project was originally worth 45% according to the syllabus.",
+          "quotes": "final project 45%",
+          "inOwnQuote": true,
+          "shown": true
+        },
+        {
+          "text": "However, an announcement on Sep 20 updated this after a class vote, making the final project worth 40%.",
+          "quotes": "the final project is now worth 40%",
+          "inOwnQuote": false,
+          "shown": true
+        }
+      ],
+      "shownAfter": "The final project was originally worth 45% according to the syllabus. [1] However, an announcement on Sep 20 updated this after a class vote, making the final project worth 40%. [2]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 4978,
+        "cached": 4656,
+        "out": 455
+      },
+      "latencyMs": 8116
+    },
+    {
+      "id": "w1",
+      "family": "weekday",
+      "repeat": 0,
+      "found": false,
+      "sentences": [],
+      "shownAfter": "Not in your materials.",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2292,
+        "cached": 1575,
+        "out": 151
+      },
+      "latencyMs": 5092
+    },
+    {
+      "id": "w1",
+      "family": "weekday",
+      "repeat": 1,
+      "found": false,
+      "sentences": [],
+      "shownAfter": "Not in your materials.",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2292,
+        "cached": 2290,
+        "out": 127
+      },
+      "latencyMs": 6089
+    },
+    {
+      "id": "w1",
+      "family": "weekday",
+      "repeat": 2,
+      "found": false,
+      "sentences": [],
+      "shownAfter": "Not in your materials.",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2292,
+        "cached": 2290,
+        "out": 137
+      },
+      "latencyMs": 5707
+    },
+    {
+      "id": "w2",
+      "family": "weekday",
+      "repeat": 0,
+      "found": true,
+      "sentences": [
+        {
+          "text": "Reading responses are due the night before each Tuesday lecture, by 10 PM, starting in week 3.",
+          "quotes": "Reading responses are due the night before each Tuesday lecture, by 10 PM, starting in week 3.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "Reading responses are due the night before each Tuesday lecture, by 10 PM, starting in week 3. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2282,
+        "cached": 1575,
+        "out": 173
+      },
+      "latencyMs": 6200
+    },
+    {
+      "id": "w2",
+      "family": "weekday",
+      "repeat": 1,
+      "found": true,
+      "sentences": [
+        {
+          "text": "Reading responses are due by 10 PM the night before each Tuesday lecture, starting in week 3.",
+          "quotes": "Reading responses are due the night before each Tuesday lecture, by 10 PM, starting in week 3.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "Reading responses are due by 10 PM the night before each Tuesday lecture, starting in week 3. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2282,
+        "cached": 1575,
+        "out": 172
+      },
+      "latencyMs": 6032
+    },
+    {
+      "id": "w2",
+      "family": "weekday",
+      "repeat": 2,
+      "found": true,
+      "sentences": [
+        {
+          "text": "The reading response is due the night before each Tuesday lecture, by 10 PM, starting in week 3.",
+          "quotes": "Reading responses are due the night before each Tuesday lecture, by 10 PM, starting in week 3.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "The reading response is due the night before each Tuesday lecture, by 10 PM, starting in week 3. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2282,
+        "cached": 2280,
+        "out": 172
+      },
+      "latencyMs": 5719
+    },
+    {
+      "id": "w3",
+      "family": "weekday",
+      "repeat": 0,
+      "found": true,
+      "sentences": [
+        {
+          "text": "Lab 3 takes place the week of October 13, and each lab report is due one week after the lab session, at the start of the next session.",
+          "quotes": "Each lab report is due one week after your lab session, at the start of your next session. Lab 3 runs the week of October 13.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "Lab 3 takes place the week of October 13, and each lab report is due one week after the lab session, at the start of the next session. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2302,
+        "cached": 1575,
+        "out": 182
+      },
+      "latencyMs": 7153
+    },
+    {
+      "id": "w3",
+      "family": "weekday",
+      "repeat": 1,
+      "found": true,
+      "sentences": [
+        {
+          "text": "The Lab 3 report is due one week after the Lab 3 session, at the start of the next lab session.",
+          "quotes": "Each lab report is due one week after your lab session, at the start of your next session.",
+          "inOwnQuote": false,
+          "shown": true
+        },
+        {
+          "text": "Since Lab 3 runs the week of October 13, the report is due at the start of the following week's session, the week of October 20.",
+          "quotes": "Lab 3 runs the week of October 13.",
+          "inOwnQuote": false,
+          "shown": false
+        }
+      ],
+      "shownAfter": "The Lab 3 report is due one week after the Lab 3 session, at the start of the next lab session. [1] “Lab 3 runs the week of October 13.” [2]",
+      "replacedAfter": 1,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2302,
+        "cached": 1575,
+        "out": 309
+      },
+      "latencyMs": 7197
+    },
+    {
+      "id": "w3",
+      "family": "weekday",
+      "repeat": 2,
+      "found": true,
+      "sentences": [
+        {
+          "text": "The lab report for Lab 3 is due one week after that lab session, at the start of your next session.",
+          "quotes": "Each lab report is due one week after your lab session, at the start of your next session. Lab 3 runs the week of October 13.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "The lab report for Lab 3 is due one week after that lab session, at the start of your next session. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2302,
+        "cached": 2300,
+        "out": 172
+      },
+      "latencyMs": 5484
+    },
+    {
+      "id": "w4",
+      "family": "weekday",
+      "repeat": 0,
+      "found": true,
+      "sentences": [
+        {
+          "text": "The final exam starts at 12:25 PM and ends at 2:25 PM on Sunday, December 14.",
+          "quotes": "Final exam: Sunday, December 14, 12:25 PM to 2:25 PM.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "The final exam starts at 12:25 PM and ends at 2:25 PM on Sunday, December 14. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2293,
+        "cached": 1575,
+        "out": 170
+      },
+      "latencyMs": 6871
+    },
+    {
+      "id": "w4",
+      "family": "weekday",
+      "repeat": 1,
+      "found": true,
+      "sentences": [
+        {
+          "text": "The final exam starts at 12:25 PM and ends at 2:25 PM on Sunday, December 14.",
+          "quotes": "Final exam: Sunday, December 14, 12:25 PM to 2:25 PM",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "The final exam starts at 12:25 PM and ends at 2:25 PM on Sunday, December 14. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 2293,
+        "cached": 2291,
+        "out": 168
+      },
+      "latencyMs": 7110
+    },
+    {
+      "id": "w4",
+      "family": "weekday",
+      "repeat": 2,
+      "found": true,
+      "sentences": [
+        {
+          "text": "The final exam starts at 12:25 PM and ends at 2:25 PM on Sunday, December 14.",
+          "quotes": "Final exam: Sunday, December 14, 12:25 PM to 2:25 PM.",
+          "inOwnQuote": true,
+          "shown": true
+        }
+      ],
+      "shownAfter": "The final exam starts at 12:25 PM and ends at 2:25 PM on Sunday, December 14. [1]",
+      "replacedAfter": 0,
+      "model": "claude-sonnet-5",
+      "usage": {
+        "in": 4825,
+        "cached": 4582,
+        "out": 331
+      },
+      "latencyMs": 7653
+    }
+  ]
+}
