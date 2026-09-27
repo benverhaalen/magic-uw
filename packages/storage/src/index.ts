@@ -4,7 +4,17 @@ import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { planningMigration, planningRepository } from "./planning";
 import {
+  compileCourseIntelligence,
+  courseInputHash,
+  courseIntelligenceId,
+} from "../../domain/src/course-intelligence";
+import type {
+  CourseIntelligence,
+  CourseExtractionBatch,
+} from "@magic/contracts";
+import {
   captureEnvelopeSchema,
+  courseExtractionBatchSchema,
   resourceInputSchema,
   ingestionSettingsSchema,
   defaultIngestionSettings,
@@ -33,7 +43,7 @@ import {
   type Store,
 } from "@magic/contracts";
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 const MAX_ATTEMPTS = 3;
 type Row = Record<string, string | number | bigint | Uint8Array | null>;
 
@@ -229,7 +239,8 @@ export function createStore(path: string): Store {
     `);
     });
 
-  if (schemaVersion < 4) transaction(() => db.exec(planningMigration + "PRAGMA user_version = 4;"));
+  if (schemaVersion < 4)
+    transaction(() => db.exec(planningMigration + "PRAGMA user_version = 4;"));
   const planning = planningRepository(db);
 
   function resourceRow(id: string): Row | undefined {
@@ -329,6 +340,80 @@ export function createStore(path: string): Store {
     };
   }
 
+  if (schemaVersion < 5)
+    transaction(() =>
+      db.exec(`CREATE TABLE course_intelligence (
+    id TEXT NOT NULL, version INTEGER NOT NULL, input_hash TEXT NOT NULL, payload TEXT NOT NULL,
+    PRIMARY KEY(id,version)); PRAGMA user_version = 5;`),
+    );
+  function latestIntelligence(id: string): CourseIntelligence | undefined {
+    const row = db
+      .prepare(
+        "SELECT payload FROM course_intelligence WHERE id=? ORDER BY version DESC LIMIT 1",
+      )
+      .get(id);
+    return row ? JSON.parse(String(row.payload)) : undefined;
+  }
+  function rebuildIntelligence(
+    account: string,
+    course: string,
+    at: string,
+    extraction?: CourseExtractionBatch,
+  ) {
+    const rows = db
+      .prepare(
+        `SELECT r.*,v.payload,COALESCE(c.completed,0) AS completed FROM resources r
+      JOIN sources s ON s.id=r.source_id JOIN resource_versions v ON v.resource_id=r.id AND v.version=r.version
+      LEFT JOIN completions c ON c.resource_id=r.id
+      WHERE s.account_scope=? AND s.course_id=? AND r.deleted=0 ORDER BY r.id`,
+      )
+      .all(account, course) as Row[];
+    const resources = rows.map(readResource);
+    const previous = latestIntelligence(courseIntelligenceId(account, course));
+    if (extraction && extraction.inputHash !== courseInputHash(resources))
+      return false;
+    if (!extraction && previous?.inputHash === courseInputHash(resources))
+      return false;
+    if (!resources.length && extraction) return false;
+    const sourceRoles = db
+      .prepare(
+        "SELECT id,kind,scope FROM sources WHERE account_scope=? AND course_id=?",
+      )
+      .all(account, course) as unknown as Pick<
+      SourceHealth,
+      "id" | "kind" | "scope"
+    >[];
+    const profile = compileCourseIntelligence(
+      account,
+      course,
+      resources,
+      at,
+      previous,
+      extraction,
+      sourceRoles,
+    );
+    if (
+      extraction &&
+      previous?.extraction?.resultHash === profile.extraction?.resultHash
+    )
+      return false;
+    db.prepare("INSERT INTO course_intelligence VALUES (?,?,?,?)").run(
+      profile.id,
+      profile.version,
+      profile.inputHash,
+      JSON.stringify(profile),
+    );
+    return true;
+  }
+  // Existing databases are materialized locally at open; no model or network request.
+  for (const row of db
+    .prepare("SELECT DISTINCT account_scope,course_id FROM sources")
+    .all())
+    rebuildIntelligence(
+      String(row.account_scope),
+      String(row.course_id),
+      new Date().toISOString(),
+    );
   let closed = false;
   // Keep two weeks of day-plan history, measured from the newest saved day.
   const DAY_PLAN_KEEP_DAYS = 14;
@@ -361,6 +446,29 @@ export function createStore(path: string): Store {
     ).run(JSON.stringify(entries.filter((e) => e.date >= cutoff)));
   }
   return {
+    courseIntelligence() {
+      return db
+        .prepare(
+          "SELECT payload FROM course_intelligence p WHERE version=(SELECT MAX(version) FROM course_intelligence WHERE id=p.id) ORDER BY id",
+        )
+        .all()
+        .map((row) => JSON.parse(String(row.payload)) as CourseIntelligence);
+    },
+    courseIntelligenceHistory(id) {
+      return db
+        .prepare(
+          "SELECT payload FROM course_intelligence WHERE id=? ORDER BY version",
+        )
+        .all(id)
+        .map((row) => JSON.parse(String(row.payload)) as CourseIntelligence);
+    },
+    applyCourseExtraction(account, course, extraction, at) {
+      const parsed = courseExtractionBatchSchema.safeParse(extraction);
+      if (!parsed.success) return false;
+      return transaction(() =>
+        rebuildIntelligence(account, course, timestamp(at), parsed.data),
+      );
+    },
     ...planning,
     close() {
       if (!closed) {
@@ -802,6 +910,7 @@ export function createStore(path: string): Store {
             date_coverage_ratio=scope_baselines.date_coverage_ratio*0.7+excluded.date_coverage_ratio*0.3,observed_at=excluded.observed_at`,
           ).run(source.id, 1, count, emptyRatio, dateRatio, observedAt);
         }
+        rebuildIntelligence(source.accountScope, source.courseId, capturedAt);
         return report;
       });
     },
@@ -1353,7 +1462,9 @@ export function createStore(path: string): Store {
     },
     purge() {
       transaction(() => {
-        db.exec("DELETE FROM planning_versions; DELETE FROM planning_sources;");
+        db.exec(
+          "DELETE FROM course_intelligence; DELETE FROM planning_versions; DELETE FROM planning_sources;",
+        );
         db.exec(`DELETE FROM receipts; DELETE FROM preferences; DELETE FROM course_overrides; DELETE FROM sync_runs; DELETE FROM mcp_grants; DELETE FROM resource_search; DELETE FROM sources;
           INSERT INTO resource_search(resource_search) VALUES ('optimize');`);
       });

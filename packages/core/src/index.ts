@@ -1,6 +1,16 @@
+import {
+  effectiveCoursePolicy,
+  intelligenceView,
+  courseExtractionHash,
+} from "../../domain/src/course-intelligence";
+import type {
+  CourseExtractionBatch,
+  CourseIntelligence,
+} from "@magic/contracts";
 import { randomUUID } from "node:crypto";
 import {
   commandSchema,
+  courseExtractionBatchSchema,
   type Store,
   type ContextManifest,
   type CommandResult,
@@ -16,13 +26,34 @@ import { evidenceFor } from "./evidence";
 import { rebaseFixture } from "./fixture-dates";
 export { rebaseFixture } from "./fixture-dates";
 import { pullGuideForSubject } from "../../connectors/src/planning-public";
-import { createPublicClient, type PublicClient } from "../../connectors/src/network";
+import {
+  createPublicClient,
+  type PublicClient,
+} from "../../connectors/src/network";
 import { comparePlanning } from "./planning";
 import { reconcileAcademicRecords } from "./academic-reconciliation";
 import type { UwPlanningHttp } from "../../connectors/src/uw-planning-http";
-import { buildUwPublicCourseSearchRequest, normalizeUwPublicCourseSearch, buildUwPublicEnrollmentPackagesRequest, normalizeUwPublicEnrollmentPackages } from "../../connectors/src/uw-planning-catalog";
+import {
+  buildUwPublicCourseSearchRequest,
+  normalizeUwPublicCourseSearch,
+  buildUwPublicEnrollmentPackagesRequest,
+  normalizeUwPublicEnrollmentPackages,
+} from "../../connectors/src/uw-planning-catalog";
 export interface CoreOptions {
   fixture: CaptureBatch;
+  courseExtractor?: {
+    version?: string;
+    extract(
+      input: {
+        inputHash: string;
+        resources: Pick<
+          Resource,
+          "id" | "contentHash" | "text" | "kind" | "externalId"
+        >[];
+      },
+      signal: AbortSignal,
+    ): Promise<CourseExtractionBatch | null>;
+  };
   gateway?: JudgmentGateway;
   now?: () => Date;
   /** Local time zone used to place the sample course on today. Defaults to the system zone. */
@@ -33,11 +64,31 @@ export interface CoreOptions {
 export function createCore(store: Store, options: CoreOptions) {
   const planningReads = new Set<AbortController>();
   const publicClient = options.planningPublicClient ?? createPublicClient();
+  const semanticAttempts = new Map<
+    string,
+    {
+      status: "running" | "complete" | "partial" | "unavailable";
+      attemptedAt: string;
+    }
+  >();
+  let wakePending = false;
   const now = () => (options.now?.() ?? new Date()).toISOString();
   let generation = 0,
     active: AbortController | undefined,
     working: Promise<void> | undefined,
     closed = false;
+  function profileFor(r: Resource): CourseIntelligence | undefined {
+    const source = store.sources().find((s) => s.id === r.sourceId);
+    return source
+      ? store
+          .courseIntelligence()
+          .find(
+            (p) =>
+              p.accountScope === source.accountScope &&
+              p.courseId === r.courseId,
+          )
+      : undefined;
+  }
   function snapshot(search?: string): Snapshot {
     const evidence = evidenceFor(store);
     const judgments = store.judgments();
@@ -74,7 +125,23 @@ export function createCore(store: Store, options: CoreOptions) {
       );
     const sources = store.sources();
     return {
-      planning: { records: store.planningRecords(), sources: store.planningSources(), reconciliation: reconcileAcademicRecords(store, now()) },
+      courseIntelligence: store.courseIntelligence().map((p) => ({
+        ...intelligenceView(p, store.sources(), now()),
+        semantic: semanticAttempts.get(
+          `${p.id}:${p.inputHash}:${options.courseExtractor?.version ?? "v1"}`,
+        ) ?? {
+          status: p.extraction
+            ? (p.extraction.coverage?.status ?? "complete")
+            : options.courseExtractor
+              ? "pending"
+              : "unavailable",
+        },
+      })),
+      planning: {
+        records: store.planningRecords(),
+        sources: store.planningSources(),
+        reconciliation: reconcileAcademicRecords(store, now()),
+      },
       resources,
       sources,
       privacy: store.privacy(),
@@ -114,16 +181,42 @@ export function createCore(store: Store, options: CoreOptions) {
                   (c) => maySend(store.privacy(), recipient, [c]).allowed,
                 ),
             );
+    const profile = recipient === "jev" ? undefined : profileFor(r);
+    const effectivePolicy = effectiveCoursePolicy(profile, r);
+    if (
+      profile &&
+      intelligenceView(profile, store.sources(), now()).freshness !==
+        "current_capture" &&
+      effectivePolicy.mode === "allowed"
+    )
+      effectivePolicy.mode = "coaching";
+    const policyResources = effectivePolicy.resourceIds
+      .map((id) => store.resource(id))
+      .filter((s): s is Resource => !!s && !s.deleted);
+    const policyAllowed = policyResources.every(
+      (s) =>
+        courseIncluded(store, s) &&
+        contentCategories(s).every(
+          (c) => maySend(store.privacy(), recipient, [c]).allowed,
+        ),
+    );
     const payload = {
       course: r.courseName.slice(0, 200),
       title: r.title.slice(0, 500),
       text: [r.text, ...supporting.map((s) => `${s.title}\n${s.text}`)]
         .join("\n\n")
         .slice(0, 12000),
-      policy: r.policy.evidence.slice(0, 4000),
+      policy: (policyAllowed
+        ? effectivePolicy.evidence
+        : "Policy evidence is withheld by data-sharing settings; use coaching only."
+      ).slice(0, 4000),
     };
     const categories = [
-      ...new Set([r, ...supporting].flatMap(contentCategories)),
+      ...new Set(
+        [r, ...supporting, ...(policyAllowed ? policyResources : [])].flatMap(
+          contentCategories,
+        ),
+      ),
     ];
     const permission = maySend(store.privacy(), recipient, categories);
     if (!courseIncluded(store, r)) {
@@ -133,9 +226,28 @@ export function createCore(store: Store, options: CoreOptions) {
     }
     return {
       recipient,
-      purpose: "Classify assignment kind",
+      effectivePolicy:
+        recipient === "local"
+          ? effectivePolicy
+          : {
+              ...effectivePolicy,
+              mode: policyAllowed ? effectivePolicy.mode : "unknown",
+              evidence: payload.policy,
+              claimIds: [],
+              resourceIds: [],
+            },
+      purpose:
+        recipient === "jev"
+          ? "Classify assignment kind"
+          : "Explain coursework with course policy",
       categories,
-      resourceIds: [id, ...supporting.map((s) => s.id)],
+      resourceIds: [
+        ...new Set([
+          id,
+          ...supporting.map((s) => s.id),
+          ...(policyAllowed ? policyResources.map((s) => s.id) : []),
+        ]),
+      ],
       characters: JSON.stringify(payload).length,
       ...permission,
       payload,
@@ -170,6 +282,105 @@ export function createCore(store: Store, options: CoreOptions) {
       !!live.leaseUntil &&
       live.leaseUntil > now()
     );
+  }
+  async function extractCourses() {
+    if (!options.courseExtractor || closed) return;
+    for (const profile of store.courseIntelligence()) {
+      const key = `${profile.id}:${profile.inputHash}:${options.courseExtractor.version ?? "v1"}`;
+      if (
+        options.courseExtractor.version &&
+        profile.extraction?.extractorVersion.startsWith(
+          `${options.courseExtractor.version}:`,
+        )
+      )
+        continue;
+      const prior = semanticAttempts.get(key);
+      if (
+        prior &&
+        (prior.status !== "unavailable" ||
+          Date.parse(now()) - Date.parse(prior.attemptedAt) < 300_000)
+      )
+        continue;
+      const attemptedAt = now();
+      semanticAttempts.set(key, { status: "running", attemptedAt });
+      const resources = profile.dependencies
+        .map((d) => store.resource(d.resourceId))
+        .filter(
+          (r): r is Resource =>
+            !!r &&
+            !r.deleted &&
+            courseIncluded(store, r) &&
+            !r.gitlab &&
+            (r.externalId === "syllabus" || r.kind === "assignment"),
+        );
+      if (!resources.length) {
+        semanticAttempts.set(key, { status: "unavailable", attemptedAt });
+        continue;
+      }
+      const version = generation;
+      active = new AbortController();
+      const timer = setTimeout(() => active?.abort(), 90_000);
+      try {
+        const batch = await options.courseExtractor.extract(
+          {
+            inputHash: profile.inputHash,
+            resources: resources.map(
+              ({ id, contentHash, text, kind, externalId }) => ({
+                id,
+                contentHash,
+                text,
+                kind,
+                externalId,
+              }),
+            ),
+          },
+          active.signal,
+        );
+        if (
+          batch &&
+          !closed &&
+          generation === version &&
+          !active.signal.aborted
+        ) {
+          const applied = store.applyCourseExtraction(
+            profile.accountScope,
+            profile.courseId,
+            batch,
+            now(),
+          );
+          const parsedBatch = courseExtractionBatchSchema.safeParse(batch);
+          const accepted =
+            parsedBatch.success &&
+            store
+              .courseIntelligence()
+              .find(
+                (p) =>
+                  p.id === profile.id &&
+                  p.inputHash === profile.inputHash &&
+                  p.extraction?.resultHash ===
+                    courseExtractionHash(parsedBatch.data),
+              );
+          semanticAttempts.set(key, {
+            status:
+              applied || accepted
+                ? (accepted && accepted.extraction?.coverage?.status) ||
+                  "complete"
+                : "unavailable",
+            attemptedAt,
+          });
+        } else
+          semanticAttempts.set(key, { status: "unavailable", attemptedAt });
+      } catch {
+        semanticAttempts.set(key, {
+          status: "unavailable",
+          attemptedAt,
+        }); /* No cloud fallback. */
+      } finally {
+        clearTimeout(timer);
+        active = undefined;
+      }
+      if (generation !== version) break;
+    }
   }
   async function drain() {
     if (
@@ -243,10 +454,18 @@ export function createCore(store: Store, options: CoreOptions) {
     }
   }
   function wake() {
-    if (closed || working) return;
-    working = drain().finally(() => {
-      working = undefined;
-    });
+    if (closed) return;
+    if (working) {
+      wakePending = true;
+      return;
+    }
+    wakePending = false;
+    working = drain()
+      .then(extractCourses)
+      .finally(() => {
+        working = undefined;
+        if (wakePending && !closed) wake();
+      });
   }
   function interrupt() {
     generation++;
@@ -267,50 +486,129 @@ export function createCore(store: Store, options: CoreOptions) {
         break;
       }
       case "planning-guide": {
-        const subjects = store.planningRecords().filter((row) => !row.deleted && row.accountScope === "public").filter((row) => row.kind === "subject");
-        const subject = subjects.find((row) => row.code === command.subjectCode);
-        if (!subject) throw new Error("Refresh planning to load the official subject list first.");
-        const controller = new AbortController(), version = generation;
+        const subjects = store
+          .planningRecords()
+          .filter((row) => !row.deleted && row.accountScope === "public")
+          .filter((row) => row.kind === "subject");
+        const subject = subjects.find(
+          (row) => row.code === command.subjectCode,
+        );
+        if (!subject)
+          throw new Error(
+            "Refresh planning to load the official subject list first.",
+          );
+        const controller = new AbortController(),
+          version = generation;
         planningReads.add(controller);
         try {
-          const capture = await pullGuideForSubject(publicClient, subject, subjects, now(), AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]));
-          if (closed || version !== generation) throw new Error("Catalog read cancelled; no data was saved.");
+          const capture = await pullGuideForSubject(
+            publicClient,
+            subject,
+            subjects,
+            now(),
+            AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]),
+          );
+          if (closed || version !== generation)
+            throw new Error("Catalog read cancelled; no data was saved.");
           store.ingestPlanning(capture);
-          message = capture.records.length ? "Public course descriptions saved. Term offerings and prerequisites need separate verification." : "The Guide page could not be parsed; previous records were preserved.";
-        } finally { planningReads.delete(controller); }
+          message = capture.records.length
+            ? "Public course descriptions saved. Term offerings and prerequisites need separate verification."
+            : "The Guide page could not be parsed; previous records were preserved.";
+        } finally {
+          planningReads.delete(controller);
+        }
         break;
       }
       case "planning-search":
       case "planning-sections": {
-        if (!options.planningHttp) throw new Error("Term offerings are available through the desktop UW connection.");
-        const controller = new AbortController(), version = generation;
+        if (!options.planningHttp)
+          throw new Error(
+            "Term offerings are available through the desktop UW connection.",
+          );
+        const controller = new AbortController(),
+          version = generation;
         planningReads.add(controller);
-        const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]);
+        const signal = AbortSignal.any([
+          controller.signal,
+          AbortSignal.timeout(30_000),
+        ]);
         try {
           let capture;
           if (command.type === "planning-search") {
-            const search = { termCode: command.termCode, subjectCode: command.subjectCode, page: command.page, observedAt: now() };
-            const response = await options.planningHttp.read(buildUwPublicCourseSearchRequest(search), signal);
-            const result = normalizeUwPublicCourseSearch(response.status === "ok" ? response.data : null, search);
+            const search = {
+              termCode: command.termCode,
+              subjectCode: command.subjectCode,
+              page: command.page,
+              observedAt: now(),
+            };
+            const response = await options.planningHttp.read(
+              buildUwPublicCourseSearchRequest(search),
+              signal,
+            );
+            const result = normalizeUwPublicCourseSearch(
+              response.status === "ok" ? response.data : null,
+              search,
+            );
             capture = result.capture;
-            message = capture.status === "failed" ? "The offering search could not refresh. Saved results remain available and need verification." : `${result.courses.length} course descriptions saved from this search page${result.found === null ? "" : ` (${result.found} source results)`}. Sections are loaded separately; search text does not establish eligibility.`;
+            message =
+              capture.status === "failed"
+                ? "The offering search could not refresh. Saved results remain available and need verification."
+                : `${result.courses.length} course descriptions saved from this search page${result.found === null ? "" : ` (${result.found} source results)`}. Sections are loaded separately; search text does not establish eligibility.`;
           } else {
-            const record = store.planningRecords().find(r => !r.deleted && r.localId === command.recordId && r.accountScope === "public" && r.kind === "catalog_course");
-            const match = record?.id.match(/^course:(1\d{2}[246]):(\d{1,6}):(\d{1,12}(?:\.\d{1,6})?)$/);
-            if (!record || record.kind !== "catalog_course" || !match) throw new Error("Load a verified term search result before requesting its sections.");
-            const course = { termCode: match[1]!, subjectCode: match[2]!, courseId: match[3]!, catalogNumber: record.courseKey.split(":")[2]! };
-            const response = await options.planningHttp.read(buildUwPublicEnrollmentPackagesRequest(course), signal);
-            capture = normalizeUwPublicEnrollmentPackages(response.status === "ok" ? response.data : null, { course, observedAt: now() });
-            message = capture.status === "failed" ? "Sections could not refresh. Saved meetings remain available; seat counts and schedule fit need verification." : `${capture.records.length} section options saved with ${capture.completeness} coverage. Seat counts describe this observation, not a reservation.`;
+            const record = store
+              .planningRecords()
+              .find(
+                (r) =>
+                  !r.deleted &&
+                  r.localId === command.recordId &&
+                  r.accountScope === "public" &&
+                  r.kind === "catalog_course",
+              );
+            const match = record?.id.match(
+              /^course:(1\d{2}[246]):(\d{1,6}):(\d{1,12}(?:\.\d{1,6})?)$/,
+            );
+            if (!record || record.kind !== "catalog_course" || !match)
+              throw new Error(
+                "Load a verified term search result before requesting its sections.",
+              );
+            const course = {
+              termCode: match[1]!,
+              subjectCode: match[2]!,
+              courseId: match[3]!,
+              catalogNumber: record.courseKey.split(":")[2]!,
+            };
+            const response = await options.planningHttp.read(
+              buildUwPublicEnrollmentPackagesRequest(course),
+              signal,
+            );
+            capture = normalizeUwPublicEnrollmentPackages(
+              response.status === "ok" ? response.data : null,
+              { course, observedAt: now() },
+            );
+            message =
+              capture.status === "failed"
+                ? "Sections could not refresh. Saved meetings remain available; seat counts and schedule fit need verification."
+                : `${capture.records.length} section options saved with ${capture.completeness} coverage. Seat counts describe this observation, not a reservation.`;
           }
           signal.throwIfAborted();
-          if (closed || version !== generation) throw new Error("Offering read cancelled; no data was saved.");
+          if (closed || version !== generation)
+            throw new Error("Offering read cancelled; no data was saved.");
           store.ingestPlanning(capture);
-        } finally { planningReads.delete(controller); }
+        } finally {
+          planningReads.delete(controller);
+        }
         break;
       }
       case "planning-compare":
-        return { snapshot: snapshot(), planningComparison: comparePlanning(store, command.termCode, command.style, now()) };
+        return {
+          snapshot: snapshot(),
+          planningComparison: comparePlanning(
+            store,
+            command.termCode,
+            command.style,
+            now(),
+          ),
+        };
       case "planning-import": {
         store.ingestPlanning(command.batch);
         message = "Planning capture saved on this device.";
@@ -398,6 +696,7 @@ export function createCore(store: Store, options: CoreOptions) {
       case "purge":
         interrupt();
         store.purge();
+        semanticAttempts.clear();
         message =
           "Local workspace data deleted. Browser sign-in sessions are separate; remove them in Sources.";
         break;
@@ -414,7 +713,7 @@ export function createCore(store: Store, options: CoreOptions) {
     context,
     wake,
     async settled() {
-      await working;
+      while (working) await working;
     },
     async close() {
       closed = true;

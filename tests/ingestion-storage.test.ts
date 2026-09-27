@@ -491,7 +491,7 @@ test("v2 migration preserves history and missing provenance; settings, grants an
     store.close();
     const legacy = new DatabaseSync(path);
     legacy.exec(
-      "DROP TABLE planning_versions; DROP TABLE planning_records; DROP TABLE planning_captures; DROP TABLE planning_sources; DROP TABLE field_observations; DROP TABLE resource_changes; DROP TABLE scope_baselines; DROP TABLE course_overrides; DROP TABLE sync_runs; DROP TABLE mcp_grants; ALTER TABLE sources DROP COLUMN details; PRAGMA user_version=2;",
+      "DROP TABLE course_intelligence; DROP TABLE planning_versions; DROP TABLE planning_records; DROP TABLE planning_captures; DROP TABLE planning_sources; DROP TABLE field_observations; DROP TABLE resource_changes; DROP TABLE scope_baselines; DROP TABLE course_overrides; DROP TABLE sync_runs; DROP TABLE mcp_grants; ALTER TABLE sources DROP COLUMN details; PRAGMA user_version=2;",
     );
     legacy.close();
     store = createStore(path);
@@ -561,8 +561,9 @@ test("v2 migration preserves history and missing provenance; settings, grants an
     assert.deepEqual(store.privacy(), defaultPrivacy);
     const db = new DatabaseSync(path, { readOnly: true });
     try {
-      assert.equal(db.prepare("PRAGMA user_version").get()!.user_version, 4);
+      assert.equal(db.prepare("PRAGMA user_version").get()!.user_version, 5);
       for (const table of [
+        "course_intelligence",
         "field_observations",
         "resource_changes",
         "scope_baselines",

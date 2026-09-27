@@ -1,3 +1,4 @@
+import { createLocalCourseExtractor } from "@magic/ai";
 import { createStore } from "@magic/storage";
 import { createCore } from "@magic/core";
 import { captureBatchSchema, planningCaptureSchema, type PlanningCapture } from "@magic/contracts";
@@ -22,6 +23,7 @@ const pending = new Map<
 const store = createStore(process.env.MAGIC_DB_PATH!);
 const core = createCore(store, {
   fixture: captureBatchSchema.parse(fixture),
+  courseExtractor: createLocalCourseExtractor(),
   planningHttp: { read: (request, signal) => hostRead("planning-public-read", { request }, signal) },
   ...(process.env.MAGIC_GATEWAY_URL
     ? {

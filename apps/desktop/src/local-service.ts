@@ -12,7 +12,10 @@ import {
 export function createLocalService(
   store: Pick<Store, "resource" | "privacy">,
   core: { context(id: string, recipient: "local"): ContextManifest },
-  adapter = createLocalAi(),
+  adapter: Pick<
+    ReturnType<typeof createLocalAi>,
+    "status" | "generate"
+  > = createLocalAi(),
 ) {
   let generation = 0;
   const active = new Map<string, AbortController>();
@@ -75,7 +78,8 @@ export function createLocalService(
     active.set(id, controller);
     try {
       const result =
-        resource.policy.mode === "restricted"
+        (manifest.effectivePolicy?.mode ?? resource.policy.mode) ===
+        "restricted"
           ? {
               text: "This course restricts AI help on this work. Review the quoted course policy and ask your instructor which preparation is permitted.",
               model: null,
@@ -85,7 +89,8 @@ export function createLocalService(
           : await adapter.generate(
               {
                 question: request.question,
-                policyMode: resource.policy.mode,
+                policyMode:
+                  manifest.effectivePolicy?.mode ?? resource.policy.mode,
                 context: localContextPayload(manifest.payload),
               },
               controller.signal,

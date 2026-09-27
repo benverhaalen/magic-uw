@@ -26,7 +26,11 @@ The later September 26 [pricing/provider decision](decisions.md#pricing-and-ai-a
 
 ## Data and access promises
 
-Hosted sharing is off by default, including Jev. Planning is stored in separate versioned SQLite tables (schema 4) and excluded from hosted context, Jev, local tutoring, and MCP. Native account binding stores opaque links, not the institutional identifiers used to verify them. Grader feedback is collected locally by default; grades and comments require separate sharing permission. MCP also requires an explicit recipient, courses, and categories. GitLab content is conservatively classified as student work. Messages require communications permission. Rechecks apply on every MCP read.
+Course intelligence is now an integrated backend path: ingestion updates versioned profiles in SQLite schema 5; snapshots expose claims and source coverage; compiled policy evidence reaches context and the local tutor's policy gate. The worker schedules optional local semantic extraction with cancellation, stale-result checks, and unavailable-runtime backoff. No new course-intelligence screen was added. See [course intelligence](course-intelligence.md) for exact limits and reference transfers.
+
+Claims combine structured Canvas grading/assessment fields, literal syllabus passages, and optional source-bound model candidates. The model cannot grant permission. Grading weights remain source assertions, not proof that weighting is active or a predicted final grade. Unknown policy does not establish permission, and program/school defaults are not automatically captured. Fourteen isolated adapter/tutoring tests and TypeScript checking passed; live-model extraction and representative syllabus accuracy have not been demonstrated.
+
+Hosted sharing is off by default, including Jev. Planning is stored in separate versioned SQLite tables (introduced in schema 4; schema 5 adds course intelligence) and excluded from hosted context, Jev, local tutoring, and MCP. Native account binding stores opaque links, not the institutional identifiers used to verify them. Grader feedback is collected locally by default; grades and comments require separate sharing permission. MCP also requires an explicit recipient, courses, and categories. GitLab content is conservatively classified as student work. Messages require communications permission. Rechecks apply on every MCP read.
 
 The current Jev payload remains course name, title, bounded instruction text, and policy evidence for one assignment. It excludes structured credentials, account identifiers, grades, comments, and drafts. Local tutoring and selected-provider previews can include directly linked supporting material. Field allowlists and capability-URL removal do not anonymize free text; the planned identity scrubber is still missing. Relevant instructor/author names should survive that future scrubber, while unnecessary student identifiers should not.
 
@@ -45,6 +49,8 @@ Exact URLs within one account/course connect supporting material; exact calendar
 The deadline resolver separates due, lock, and event claims, preserves conflicts, and labels conservative planning dates. Prose extraction, literal-span validation, title-date inference, and the full authority hierarchy are not implemented. MCP answers are source passages with citations; they make no language-model call or claim to solve the question.
 
 ## Verification
+
+The course-intelligence addition passed **275 automated tests**, the final TypeScript/desktop build, and the existing hidden Electron smoke. Compiler tests exercise the real store → core → local tutor path and synthetic background extraction, including stale-result rejection, source/account isolation, restart caching, unavailable-runtime retry, and malformed-candidate rejection. No installed-model extraction or general policy accuracy was demonstrated.
 
 The combined ingestion/planning upgrade passed **255 automated tests** and the TypeScript/desktop build on September 26. Tests use synthetic transports and temporary databases, with no paid model calls. They include:
 
