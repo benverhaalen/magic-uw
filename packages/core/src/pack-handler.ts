@@ -21,6 +21,9 @@ import { findQuote } from "../../retrieval/src/quotes";
 import { courseInclusion } from "./access";
 import { buildReceipt, egressFor } from "./egress";
 import { readPackArtifact, runPack } from "./jobs/pack";
+// owner: guides
+import { generateGuide, guideView, isGuideKind, type GuideRunResult, type GuideViewResult } from "../../packs/guide/src/index";
+// end owner: guides
 
 export type GenerationPackName = "quiz" | "cards";
 /** Command pack names the handler answers to. */
@@ -404,10 +407,21 @@ export function createPackHandler(deps: PackHandlerDeps) {
       return { ...base, status: "needs_student", message: result.question, options: result.options, checkErrors: result.checkErrors };
     return finish(result.artifact, result.cached);
   }
+  // owner: guides. The study-guide kinds (guide, briefing, faq, timeline, compare, conceptmap)
+  // and `<kind>-view`, the 0-token personalised view (op "guide.view"), answer through this seam.
+  const guideDeps = { store, runner: deps.runner, artifacts, ledger, now };
+  function guides(packName: string, scope: PackScope, signal?: AbortSignal): Promise<GuideRunResult | GuideViewResult> | null {
+    if (isGuideKind(packName)) return generateGuide(guideDeps, packName, scope, signal ? { signal } : {});
+    const viewOf = /^([a-z]+)-view$/.exec(packName)?.[1];
+    if (viewOf && isGuideKind(viewOf)) return Promise.resolve(guideView(guideDeps, viewOf, scope));
+    return null;
+  }
+  // end owner: guides
   return {
     run,
+    guides, // owner: guides
     /** The CoreSeams.pack signature. */
-    pack: (packName: string, scope: PackScope, signal: AbortSignal) => run(packName, scope, signal),
+    pack: (packName: string, scope: PackScope, signal: AbortSignal) => guides(packName, scope, signal) /* owner: guides */ ?? run(packName, scope, signal),
   };
 }
 
