@@ -1,0 +1,20 @@
+.magic-date-review { display: inline-flex; vertical-align: middle; }
+.magic-date-review > .magic-ui-action { display: inline-flex; align-items: center; gap: 6px; }
+.magic-date-popover.magic-date-popover { padding: 14px; }
+.magic-date-popover h3 { margin: 0 0 10px; font: 500 17px/1.25 var(--magic-font-editorial); color: var(--magic-ink); }
+.magic-date-options { display: grid; gap: 5px; }
+.magic-date-option { display: grid; gap: 2px; width: 100%; text-align: left; padding: 8px 9px; border: 1px solid var(--magic-line-quiet); border-radius: var(--magic-radius-control); cursor: pointer; color: var(--magic-ink); background: var(--magic-surface-raised); font: 400 12px/1.3 var(--magic-font-interface); }
+.magic-date-option[aria-pressed='true'] { background: var(--magic-fill-confirmation); border-color: var(--magic-focus); }
+.magic-date-option[aria-disabled='true'] { cursor: default; }
+.magic-date-option__date { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.magic-date-option strong { font: 400 13px/1.25 var(--magic-font-interface); }
+.magic-date-option small { font: 400 11px/1.25 var(--magic-font-interface); color: var(--magic-ink-muted-strong); overflow-wrap: anywhere; }
+.magic-date-status { min-height: 30px; padding: 8px 1px 4px; box-sizing: border-box; font: 400 12px/1.35 var(--magic-font-interface); color: var(--magic-ink-muted-strong); }
+.magic-date-status--error { color: var(--magic-ink); }
+.magic-date-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.magic-date-sources,.magic-date-undo { padding: 0; border: 0; background: transparent; color: var(--magic-ink-link); font: 400 12px/1.4 var(--magic-font-interface); cursor: pointer; }
+.magic-date-sources { display: inline-flex; align-items: center; gap: 3px; }
+.magic-date-sources .magic-ui-glyph { width: 12px; height: 12px; }
+.magic-date-unresolved { margin: 7px 0 0; color: var(--magic-ink-muted-strong); font: 400 11px/1.3 var(--magic-font-interface); }
+.magic-date-option:focus-visible,.magic-date-sources:focus-visible,.magic-date-undo:focus-visible { outline: 2px solid var(--magic-focus); outline-offset: 2px; }
+@media (hover:hover) { .magic-date-option:not([aria-disabled='true']):hover { background: var(--magic-fill-confirmation); } .magic-date-sources:hover,.magic-date-undo:hover { text-decoration: underline; text-underline-offset: 3px; } }

@@ -3,8 +3,14 @@
    wizard palette built on UW–Madison cardinal (marketing/logo-design-elements/README.md), so the
    page, the wizard and the product's warm shell read as one family. Ink, surfaces, lines and
    fonts come from the product (docs/design/tokens.css, loaded as /assets/tokens.css). White stays
-   white. Fonts: Geist and Geist Mono as in the product; Fraunces (soft, light) stands in for
-   the product's Cooper Light, which cannot be served publicly (Aidan's choice, September 27). */
+   white. Fonts: Karma Medium 500 for editorial roles, Geist and Geist Mono for interface roles. */
+@font-face {
+  font-family: "Karma";
+  src: url("/assets/fonts/Karma-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
 :root {
   /* Wizard palette */
   --cardinal: #c5050c; /* UW cardinal: robe, primary actions, brand marks */
@@ -32,8 +38,8 @@
   --paper: var(--magic-surface-quiet); /* draft #f5f2ea */
   --mist: var(--magic-surface-quiet); /* draft #f3f3f1 */
   --rule: var(--magic-line-quiet); /* draft #e3dccb */
-  --serif: "Fraunces", var(--magic-font-editorial);
-  --serif-weight: 300;
+  --serif: var(--magic-font-editorial);
+  --serif-weight: 500;
   --sans: "Geist", var(--magic-font-interface);
   --mono: "Geist Mono", ui-monospace, monospace;
   --round: var(--serif);
@@ -630,9 +636,12 @@ button {
   border: 0;
   background: #fff;
   color: var(--navy);
-  font-size: 22px;
+  display: grid;
+  place-items: center;
   cursor: pointer;
 }
+.arrow img { width: 20px; height: 20px; }
+@media (hover: hover) and (pointer: fine) { .arrow:hover { box-shadow: inset 0 0 0 1px var(--magic-line-quiet); } }
 .cards {
   display: flex;
   gap: 16px;

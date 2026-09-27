@@ -1,0 +1,122 @@
+import { playCourseModeEnter, settleCourseMode } from './courses/course-view-motion';
+import { initialWorkListState, type WorkListState } from './courses/course-work-display';
+import type { CoursesMode } from './courses/CoursesViewToggle';
+import { useLayoutEffect, useRef, useState } from 'react';
+import type { CalendarState } from './calendar/model';
+import { pageDirection, playPageEnter, settlePage, type PageDirection } from '../../../../packages/ui/src/motion';
+export type DesktopView = 'chat' | 'today' | 'courses' | 'myuw' | 'calendar' | 'resource' | 'sources' | 'privacy' | 'consent' | 'notebook' | 'practice' | 'insights' | 'settings';
+type Place = { coursesMode?: CoursesMode; courseWorkState?: WorkListState; homeTodayCount?: number; homeUpcomingCount?: number; calendarState?: CalendarState; calendarFocus?: string; view: DesktopView; resourceId: string | null; courseKey: string | null; disclosures: Record<string, boolean>; scroll: number; focus: string | null; anchor: string | null; offset: number };
+const initial: Place = { view: 'today', resourceId: null, courseKey: null, disclosures: {}, scroll: 0, focus: null, anchor: null, offset: 0 };
+/** Hierarchy depth for motion direction only: sections 0, a course or settings page 1, an item 2. */
+const depth = (place: Place) => place.view === 'resource' ? 2 : place.view === 'courses' ? (place.courseKey ? 1 : 0) : ['today', 'myuw', 'calendar'].includes(place.view) ? 0 : 1;
+export const resourceHref = (id: string) => `#resource/${encodeURIComponent(id)}`;
+export function useDesktopNavigation() {
+  const [stack, setStack] = useState<Place[]>([initial]);
+  const [index, setIndex] = useState(0);
+  const pending = useRef<Place | null>(null);
+  const direction = useRef<PageDirection>('lateral');
+  const current = stack[index]!;
+  const courseModeMotion = useRef(false);
+  const coursePlaces = useRef<Partial<Record<CoursesMode, Place>>>({});
+  const isCourseIndex = (place: Place) => place.view === 'courses' && !place.courseKey && !place.resourceId;
+  function rememberCoursePlace(place: Place) {
+    if (isCourseIndex(place)) coursePlaces.current[place.coursesMode ?? 'cards'] = place;
+  }
+  useLayoutEffect(() => () => {
+    const pane = document.querySelector<HTMLElement>('.desktop-workspace');
+    if (pane) settleCourseMode(pane);
+  }, []);
+  const lastWorkspaceFocus = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    lastWorkspaceFocus.current = current.focus;
+    const track = (event: FocusEvent) => {
+      const active = event.target as HTMLElement | null;
+      if (active && document.querySelector('.desktop-workspace')?.contains(active))
+        lastWorkspaceFocus.current = active.getAttribute('data-focus-key') ?? active.closest('a')?.getAttribute('href') ?? null;
+    };
+    document.addEventListener('focusin', track);
+    return () => document.removeEventListener('focusin', track);
+  }, [index]);
+  function capture(): Place {
+    const pane = document.querySelector<HTMLElement>('.desktop-workspace');
+    const active = document.activeElement as HTMLElement | null;
+    const focus = active && pane?.contains(active)
+      ? active.getAttribute('data-focus-key') ?? (active.closest('a')?.getAttribute('href') ?? null)
+      : lastWorkspaceFocus.current ?? current.focus;
+    const anchors = Array.from(pane?.querySelectorAll<HTMLElement>('[data-place-anchor]') ?? []);
+    const top = pane?.getBoundingClientRect().top ?? 0;
+    const anchor = anchors.find(node => node.getBoundingClientRect().bottom > top);
+    const disclosures = Object.fromEntries(Array.from(pane?.querySelectorAll<HTMLDetailsElement>('details[data-place-disclosure]') ?? []).map(node => [node.dataset.placeDisclosure!, node.open]));
+    return { ...current, disclosures, scroll: pane?.scrollTop ?? 0, focus, anchor: anchor?.dataset.placeAnchor ?? null, offset: anchor ? anchor.getBoundingClientRect().top - top : 0 };
+  }
+  /** `arrive` lets an entry point name the destination's focus key and scroll anchor (e.g. a setting). */
+  function navigate(view: DesktopView, resourceId: string | null = null, courseKey: string | null = view === 'resource' ? current.courseKey : null, origin?: Partial<Place>, arrive?: Pick<Place, 'focus' | 'anchor'>) {
+    if (current.view === view && current.resourceId === resourceId && current.courseKey === courseKey) return;
+    const next = { ...initial, ...arrive, view, resourceId, courseKey };
+    const saved = stack.slice(0, index + 1); saved[index] = { ...capture(), ...origin };
+    rememberCoursePlace(saved[index]!); courseModeMotion.current = false;
+    direction.current = pageDirection(depth(current), depth(next), 'push');
+    pending.current = next; setStack([...saved, next]); setIndex(saved.length);
+  }
+  function travel(delta: number) {
+    const nextIndex = index + delta;
+    if (nextIndex < 0 || nextIndex >= stack.length) return;
+    const saved = [...stack]; saved[index] = capture();
+    rememberCoursePlace(saved[index]!);
+    courseModeMotion.current = isCourseIndex(current) && isCourseIndex(saved[nextIndex]!) && (current.coursesMode ?? 'cards') !== (saved[nextIndex]!.coursesMode ?? 'cards');
+    direction.current = delta < 0 ? 'back' : 'forward';
+    pending.current = saved[nextIndex]!; setStack(saved); setIndex(nextIndex);
+  }
+  useLayoutEffect(() => {
+    const place = pending.current; if (!place) return;
+    pending.current = null;
+    const pane = document.querySelector<HTMLElement>('.desktop-workspace');
+    if (!pane) return;
+    for (const node of Array.from(pane.querySelectorAll<HTMLDetailsElement>('details[data-place-disclosure]'))) {
+      const open = place.disclosures[node.dataset.placeDisclosure!]; if (open !== undefined) node.open = open;
+    }
+    const anchor = Array.from(pane.querySelectorAll<HTMLElement>('[data-place-anchor]')).find(node => node.dataset.placeAnchor === place.anchor);
+    pane.scrollTop = anchor ? pane.scrollTop + anchor.getBoundingClientRect().top - pane.getBoundingClientRect().top - place.offset : place.scroll;
+    // Resolve only usable destinations inside this page. Hidden or removed origins
+    // must not leave focus on the outgoing toolbar or in a collapsed disclosure.
+    const usable = (node: HTMLElement) => !node.closest('[hidden], [inert], [aria-hidden="true"]') && node.getClientRects().length > 0;
+    const targets = Array.from(pane.querySelectorAll<HTMLElement>('[id], [data-focus-key], a[href]'));
+    const focus = (place.calendarFocus ? targets.find(node => node.id === place.calendarFocus && usable(node)) : undefined) ??
+      (place.focus ? targets.find(node => (node.dataset.focusKey === place.focus || node.getAttribute('href') === place.focus) && usable(node)) : undefined);
+    focus?.focus({ preventScroll: true });
+    if (!focus || document.activeElement !== focus) {
+      const heading = Array.from(pane.querySelectorAll<HTMLElement>('h1, h2')).find(usable);
+      // Native headings are not focusable by default. Programmatic-only focus
+      // announces the destination without adding a stop to normal Tab order.
+      const destination = heading ?? pane;
+      if (!destination.hasAttribute('tabindex')) destination.tabIndex = -1;
+      destination.focus({ preventScroll: true });
+    }
+    // Scroll, disclosures and focus are already the destination's; only then does it appear.
+    if (courseModeMotion.current) {
+      courseModeMotion.current = false;
+      settlePage(pane);
+      playCourseModeEnter(pane, place.coursesMode ?? 'cards');
+    } else {
+      settleCourseMode(pane);
+      playPageEnter(pane, direction.current);
+    }
+  }, [index, current.view, current.resourceId, current.courseKey]);
+  function updateCalendar(calendarState: CalendarState) {
+    setStack(previous => previous.map((place, i) => i === index ? { ...place, calendarState } : place));
+  }
+  function switchCoursesMode(coursesMode: CoursesMode) {
+    if ((current.coursesMode ?? 'cards') === coursesMode) return;
+    const saved = stack.slice(0, index + 1); saved[index] = capture();
+    rememberCoursePlace(saved[index]!);
+    const next: Place = { ...(coursePlaces.current[coursesMode] ?? initial), view: 'courses', coursesMode,
+      focus: `courses-view-${coursesMode}` };
+    courseModeMotion.current = true;
+    pending.current = next; direction.current = 'lateral'; setStack([...saved, next]); setIndex(saved.length);
+  }
+  return { coursesMode: current.coursesMode ?? 'cards', switchCoursesMode,
+    courseWorkState: current.courseWorkState ?? initialWorkListState(),
+    updateCourseWorkState: (courseWorkState: WorkListState) => setStack(previous=>previous.map((place,i)=>i===index?{...place,courseWorkState}:place)), capturePlace: capture, homeTodayCount: current.homeTodayCount ?? 3, updateHomeTodayCount: (homeTodayCount: number) => setStack(previous => previous.map((place, i) => i === index ? { ...place, homeTodayCount } : place)), homeUpcomingCount: current.homeUpcomingCount ?? 3, updateHomeUpcomingCount: (homeUpcomingCount: number) => setStack(previous => previous.map((place, i) => i === index ? { ...place, homeUpcomingCount } : place)), calendarState: current.calendarState, calendarFocus: current.calendarFocus, updateCalendar,
+    openCalendarResource: (id: string, calendarState: CalendarState, calendarFocus: string) => navigate('resource', id, null, { calendarState, calendarFocus }),
+    view: current.view, selectedId: current.resourceId, courseKey: current.courseKey, navigate, back: () => travel(-1), forward: () => travel(1), canBack: index > 0, canForward: index < stack.length - 1 };
+}

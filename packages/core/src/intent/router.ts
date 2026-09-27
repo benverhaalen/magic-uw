@@ -13,6 +13,7 @@
  * doc, "Command bar and intent router").
  */
 import { randomUUID } from "node:crypto";
+import { courseInclusion } from "../access";
 import type { CommandOutcome, IntentCandidate, IntentCommand, IntentCommandResult, IntentSlots } from "@magic/contracts";
 import type { ModelRunner, WarmRequest } from "../../../runner/src/index";
 import { buildPrompt, memoryArtifactStore, memoryLedgerStore, type ArtifactStore, type CourseFrame, type LedgerStore } from "../../../packs/core/src/index";
@@ -175,7 +176,17 @@ export function createIntentRouter(deps: IntentRouterDeps) {
       signal,
       ask: async (question, courses, s): Promise<AskResult> => {
         const list = courses === "all" ? resolve.courses() : courses;
-        const r = await groundedAsk({ store, runner: () => runnerP, artifacts, ledger, now, protection, ...(deps.coursePrefix ? { coursePrefix: deps.coursePrefix } : {}) /* owner: course-facts */ }, question, list, s); // owner: privacy
+        const selected = request.resourceId ? store.resource(request.resourceId) : undefined;
+        const usesOriginCourse = courses !== 'all' && list.length === 1 && [list[0]!.ref, list[0]!.courseId].includes(request.courseId ?? "");
+        if (request.resourceId && usesOriginCourse && (!selected || selected.deleted)) return {text: '', citations: [], notFound: false, dropped: 0, path: 'none', tokens: {in: 0, cached: 0, out: 0}, unavailable: 'This saved item is no longer available. Choose another item.'};
+        const sourceAccounts = new Map(store.sources().map(source => [source.id, source.accountScope]));
+        const sourceAccount = selected ? sourceAccounts.get(selected.sourceId) : undefined;
+        // An explicit course or all-courses request wins over the originating item.
+        const normalizeTitle = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+        const questionTitle = normalizeTitle(question);
+        const namedOther = selected && store.resources().some(row => !row.deleted && row.id !== selected.id && row.courseId === selected.courseId && sourceAccounts.get(row.sourceId) === sourceAccount && normalizeTitle(row.title).length > 4 && questionTitle.includes(normalizeTitle(row.title)));
+        const resourceId = courses !== "all" && !namedOther && selected && !selected.deleted && list.length === 1 && list[0]!.courseId === selected.courseId && list[0]!.accountScope === sourceAccount ? selected.id : undefined;
+        const r = await groundedAsk({ store, runner: () => runnerP, artifacts, ledger, now, resourceId, protection, ...(deps.coursePrefix ? { coursePrefix: deps.coursePrefix } : {}) }, question, list, s);
         spent.tokens = add(spent.tokens, r.tokens);
         return r;
       },
@@ -205,7 +216,22 @@ export function createIntentRouter(deps: IntentRouterDeps) {
     }
   }
 
-  function runAction(spec: AnyAction, args: ResolvedArgs, host: IntentHost, signal: AbortSignal, runnerP: Promise<ModelRunner | null>, spent: { tokens: Tokens }, request: ActionContext["request"] = {}) {
+  function runAction(spec: AnyAction, args: ResolvedArgs, host: IntentHost, signal: AbortSignal, runnerP: Promise<ModelRunner | null>, spent: { tokens: Tokens }, request: ActionContext["request"] = {}, allowedActions?: readonly string[]) {
+    // The authoritative dispatch boundary, after code/model resolution and before effects.
+    signal.throwIfAborted();
+    if (allowedActions && !allowedActions.includes(spec.name))
+      return { kind: "answer", unavailable: `“${spec.label?.(args) ?? spec.name}” needs review in its action screen before it can change anything. Nothing was changed.` };
+    // Cached lookup finds candidates; current store inclusion authorizes their use.
+    if (args.course || args.assignment) {
+      const rows = store.resources(), included = courseInclusion(store, rows);
+      const sources = new Map(store.sources().map(source => [source.id, source]));
+      const current = rows.filter(row => !row.deleted && included(row));
+      if (args.course && !current.some(row => row.courseId === args.course!.courseId && sources.get(row.sourceId)?.accountScope === args.course!.accountScope))
+        return { kind: "answer", unavailable: "This course is no longer included. Choose an included course and try again." };
+      if (args.assignment && !current.some(row => row.id === args.assignment!.resourceId && (!args.course || (row.courseId === args.course.courseId && sources.get(row.sourceId)?.accountScope === args.course.accountScope))))
+        return { kind: "answer", unavailable: "This item is no longer available in the current course. Choose it again." };
+    }
+    signal.throwIfAborted();
     return spec.run(args, context(host, signal, runnerP, spent, request));
   }
 
@@ -245,7 +271,7 @@ export function createIntentRouter(deps: IntentRouterDeps) {
       if (code.status === "hit") {
         aiAbort.abort();
         const spec = registry.get(code.action)!;
-        const result = await runAction(spec, code.args, host, signal, runnerP, spent, command.context);
+        const result = await runAction(spec, code.args, host, signal, runnerP, spent, command.context, command.allowedActions);
         return done(outcomeOf(spec, code.args, result), "code", spec.name, code.args.course);
       }
       if (code.status === "clarify") {
@@ -277,7 +303,7 @@ export function createIntentRouter(deps: IntentRouterDeps) {
       }
       const checked = resolveSlots(spec, slots, resolve, text, command.context?.courseId);
       if (!checked.ok) return done({ status: "clarify", question: checked.question, candidates: checked.candidates.length ? checked.candidates : alternatives }, path, spec.name, undefined, attempt.model);
-      const result = await runAction(spec, checked.args, host, signal, runnerP, spent, command.context);
+      const result = await runAction(spec, checked.args, host, signal, runnerP, spent, command.context, command.allowedActions);
       return done(outcomeOf(spec, checked.args, result), path, spec.name, checked.args.course, attempt.model);
     } finally {
       signal.removeEventListener("abort", onAbort);

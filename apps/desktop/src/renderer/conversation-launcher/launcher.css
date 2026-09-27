@@ -1,0 +1,130 @@
+/* owner: conversation-launcher leaf. Shared roles come from docs/design/tokens.css; geometry and motion stay local.
+ * Motion (Emil animate/interruption adapter): CSS transitions on the real width, height and radius so a reversal
+ * retargets from the current geometry. Strong ease-out; closing is quicker than opening. Text is never scaled. */
+.conversation-launcher-dock {
+  --cl-ease: cubic-bezier(0.23, 1, 0.32, 1);
+  --cl-open: 240ms;
+  --cl-close: 180ms;
+  --cl-color-duration: 160ms;
+  --cl-color: background-color var(--cl-color-duration) var(--cl-ease), color var(--cl-color-duration) var(--cl-ease), border-color var(--cl-color-duration) var(--cl-ease);
+  --cl-collapsed: 40px;
+  position: absolute; inset: auto 0 16px 0; z-index: 20; container-type: inline-size;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 0 16px; pointer-events: none;
+  font-family: var(--magic-font-interface); font-weight: var(--magic-font-interface-weight); letter-spacing: var(--magic-tracking); color: var(--magic-ink);
+}
+.conversation-launcher {
+  interpolate-size: allow-keywords;
+  pointer-events: auto; box-sizing: border-box;
+  display: flex; align-items: flex-end; gap: 2px;
+  width: fit-content; max-width: 100%; height: var(--cl-collapsed); padding: 3px;
+  overflow: hidden; border-radius: 20px;
+  border: 1px solid var(--magic-line-quiet); background: var(--magic-surface-raised);
+  box-shadow: var(--magic-shadow-launcher, 0 3px 8px #29231f14, 0 10px 28px #29231f24);
+  transition: var(--cl-color), width var(--cl-close) var(--cl-ease), height var(--cl-close) var(--cl-ease), border-radius var(--cl-close) var(--cl-ease);
+}
+.conversation-launcher[data-open] {
+  width: min(34rem, 100%); height: auto; border-radius: 16px;
+  transition: var(--cl-color), width var(--cl-open) var(--cl-ease), height var(--cl-open) var(--cl-ease), border-radius var(--cl-open) var(--cl-ease);
+}
+.conversation-launcher:has(.cl-field:focus) { border-color: var(--magic-focus); }
+
+.cl-icon {
+  position: relative; flex: none; display: grid; place-items: center;
+  width: 32px; height: 32px; padding: 0; border: 0; border-radius: 16px;
+  background: transparent; color: var(--magic-ink-muted-strong); cursor: pointer;
+  transition: var(--cl-color);
+}
+/* Optical separator uses the existing flex gap; it never adds layout width or a hit target. */
+.cl-mic::before {
+  content: ""; position: absolute; left: -2px; top: 7px;
+  width: 1px; height: 18px; border-radius: 1px; pointer-events: none;
+  background: var(--magic-line-quiet);
+  transition: background-color var(--cl-color-duration) var(--cl-ease);
+}
+/* The coral role is a gradient, so fade that fill as a layer while the glyph ink interpolates. */
+.cl-mic::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: var(--magic-fill-identity-coral); opacity: 0;
+  transition: opacity var(--cl-color-duration) var(--cl-ease);
+}
+.cl-mic > .cl-glyph { position: relative; z-index: 1; }
+/* Explicit color properties keep focus outlines immediate and reversals interruptible. */
+.cl-field, .cl-field::placeholder, .cl-text-button, .cl-origin, .cl-error, .cl-note,
+.cl-voice-text, .cl-levels > span, .cl-draft-dot { transition: var(--cl-color); }
+/* Inset: the surface clips overflow while it animates. */
+.cl-icon:focus-visible { outline: 2px solid var(--magic-focus); outline-offset: -2px; }
+.cl-text-button:focus-visible { outline: 2px solid var(--magic-focus); outline-offset: 1px; border-radius: 2px; }
+.cl-icon[aria-disabled=true] { color: var(--magic-ink-disabled); cursor: default; }
+.cl-glyph { width: var(--magic-glyph-control); height: var(--magic-glyph-control); fill: none; stroke: currentColor; stroke-width: var(--magic-icon-stroke-seed); stroke-linecap: round; stroke-linejoin: round; }
+.cl-draft-dot { position: absolute; top: 6px; right: 6px; width: 6px; height: 6px; border-radius: 3px; background: var(--magic-accent-current-time); box-shadow: 0 0 0 1.5px var(--magic-surface-raised); }
+
+/* The composer occupies no width while collapsed; inert keeps it out of focus and pointer reach.
+ * Its content is laid out at the settled width (dock width less border, padding, two icons and gaps) and
+ * revealed by the growing surface, so text never reflows and the height never bounces mid-transition. */
+.cl-composer {
+  flex: 1 1 0; min-width: 0; contain: inline-size; overflow: clip; display: flex; flex-direction: column;
+  opacity: 0; visibility: hidden;
+  transition: opacity 90ms var(--cl-ease), visibility 0s linear 90ms;
+}
+[data-open] > .cl-composer { opacity: 1; visibility: visible; transition: opacity 150ms var(--cl-ease) 70ms, visibility 0s; }
+.cl-composer > * { flex: none; width: calc(min(34rem, 100cqw) - 76px); box-sizing: border-box; }
+.cl-row { display: flex; align-items: flex-end; gap: 2px; }
+.cl-field {
+  flex: 1; min-width: 0; box-sizing: border-box; field-sizing: content;
+  min-height: 32px; max-height: calc(7lh + 12px); margin: 0; padding: 6px 6px;
+  resize: none; overflow-y: auto; border: 0; outline: 0; background: transparent;
+  font: var(--magic-font-interface-weight) var(--magic-type-control)/1.45 var(--magic-font-interface); color: var(--magic-ink);
+}
+.cl-field::placeholder { color: var(--magic-ink-muted); }
+.cl-send { background: var(--magic-fill-action); color: var(--magic-ink-action); }
+.cl-send[aria-disabled=true] { background: var(--magic-fill-disabled); color: var(--magic-ink-disabled); }
+.cl-send[aria-busy=true] { cursor: progress; }
+.cl-origin { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; margin: 0; padding: 6px 6px 0; font-size: var(--magic-type-meta); line-height: 1.4; color: var(--magic-ink-muted-strong); }
+.cl-text-button { padding: 0; border: 0; background: none; font: inherit; color: var(--magic-ink-link); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.cl-text-button:disabled { color: var(--magic-ink-disabled); cursor: default; }
+.cl-error { margin: 0; padding: 6px 6px 0; font-size: var(--magic-type-meta); line-height: 1.4; color: var(--magic-ink-error); }
+.cl-note:empty { display: none; }
+.cl-note {
+  pointer-events: auto; margin: 0; max-height: 5rem; overflow-y: auto; max-width: min(24rem, 100%); padding: 6px 10px; box-sizing: border-box;
+  border-radius: var(--magic-radius-control); background: var(--magic-surface-raised); border: 1px solid var(--magic-line-quiet);
+  box-shadow: var(--magic-shadow-popover); font-size: var(--magic-type-meta); line-height: 1.4; color: var(--magic-ink-muted-strong);
+}
+
+/* Voice: colored only while a session the student started is active. */
+[data-voice] > .cl-mic { color: var(--magic-ink-identity-coral); }
+[data-voice] > .cl-mic::after { opacity: 1; }
+.cl-voice-text { flex: none; align-self: center; padding: 0 4px 0 2px; font-size: var(--magic-type-meta); color: var(--magic-ink-identity-coral); }
+.cl-levels { flex: none; align-self: center; display: flex; align-items: center; gap: 2px; height: 18px; padding: 0 4px 0 2px; }
+.cl-levels > span { width: 3px; height: 18px; border-radius: 2px; background: var(--magic-accent-current-time); }
+
+@media (hover: hover) {
+  .cl-icon:not([aria-disabled=true]):not(.cl-send):hover { background: var(--magic-fill-secondary); color: var(--magic-ink-secondary); }
+  .cl-send:not([aria-disabled=true]):hover { background: var(--magic-fill-action-hover); }
+  [data-voice] > .cl-mic:not([aria-disabled=true]):hover {
+    background: transparent;
+    color: var(--magic-ink-identity-coral);
+  }
+  [data-voice] > .cl-mic:not([aria-disabled=true]):hover::after { opacity: .86; }
+}
+/* Reduced motion: immediate geometry/focus; a brief color blend carries state without travel. */
+@media (prefers-reduced-motion: reduce) {
+  .conversation-launcher-dock { --cl-color-duration: 80ms; }
+  .conversation-launcher, .conversation-launcher[data-open] { transition: var(--cl-color); }
+  .cl-composer, [data-open] > .cl-composer { transition: opacity 80ms linear, visibility 0s; }
+}
+
+/* Shell integration: the dock contributes its actual height to measured clearance. */
+.desktop-launcher > .conversation-launcher-dock { position: relative; inset: auto; padding: 0; }
+.desktop-launcher { pointer-events: none; }
+
+/* owner: voice-learning-media lane. Polite state announcements stay off screen; a voice problem shows its
+   reason with keyboard routes to retry or type, in the same raised note treatment. */
+.cl-voice-live { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.cl-voice-problem {
+  pointer-events: auto; margin: 0; max-width: min(24rem, 100%); padding: 6px 10px; box-sizing: border-box;
+  border-radius: var(--magic-radius-control); background: var(--magic-surface-raised); border: 1px solid var(--magic-line-quiet);
+  box-shadow: var(--magic-shadow-popover); font-size: var(--magic-type-meta); line-height: 1.4; color: var(--magic-ink-muted-strong);
+}
+.cl-voice-problem > p { margin: 0; }
+.cl-voice-actions { display: flex; flex-wrap: wrap; gap: 2px 14px; padding-top: 4px; }

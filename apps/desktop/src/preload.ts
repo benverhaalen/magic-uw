@@ -1,3 +1,4 @@
+import { voiceBridge } from "./voice/preload-bridge";
 import { contextBridge, ipcRenderer } from "electron";
 import type { AppBridge, ClientsBridge } from "@magic/contracts";
 // T80: terminal output arrives before a pane may have subscribed (the sign-in URL is printed
@@ -34,6 +35,7 @@ ipcRenderer.on("magic:terminal-exit", (_event, sessionId: unknown, code: unknown
   }
 });
 const ignore = () => undefined;
+contextBridge.exposeInMainWorld("magicVoice", voiceBridge);
 const clients: ClientsBridge = {
   detect: () => ipcRenderer.invoke("magic:clients-detect"),
   prepare: (id) => ipcRenderer.invoke("magic:clients-prepare", id),
@@ -76,6 +78,8 @@ const clients: ClientsBridge = {
   },
 };
 const bridge: AppBridge = {
+  intentRun: request => ipcRenderer.invoke("magic:intent-run", request),
+  cancelIntent: operationId => ipcRenderer.invoke("magic:intent-cancel", operationId),
   execute: (command) => ipcRenderer.invoke("magic:execute", command),
   // owner: stall-audit. The workspace changed (at most once a second); the window re-reads then.
   onChanged(listener) {
@@ -87,6 +91,7 @@ const bridge: AppBridge = {
   openLink: (url) => ipcRenderer.invoke("magic:open-link", url), // owner: T05b
   openDocument: (url) => ipcRenderer.invoke("magic:open-document", url), // owner: doc-window
   query: (request) => ipcRenderer.invoke("magic:query", request), // owner: T15
+  startWork: (id, previewHash, only) => ipcRenderer.invoke("magic:start-work", id, previewHash, only),
   graph: (request) => ipcRenderer.invoke("magic:graph", request), // owner: pipeline
   importFile: () => ipcRenderer.invoke("magic:import"),
   signInUW: (service) => ipcRenderer.invoke("magic:signin", service),

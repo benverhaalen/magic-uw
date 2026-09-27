@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -100,7 +100,8 @@ test("instant mode: a quiz generates through the student's own signed-in client 
   assert.ok(spawn, "the warm session was started");
   for (const flag of ["-p", "--tools", "--strict-mcp-config", "--no-session-persistence", "--safe-mode"]) assert.ok(spawn.argv.includes(flag), flag);
   assert.equal(spawn.argv[spawn.argv.indexOf("--setting-sources") + 1], "project,local");
-  assert.equal(spawn.cwd, instantWorkDir(userData, "claude"));
+  // The child reports its resolved cwd; on macOS the temp dir under /var is /private/var.
+  assert.equal(realpathSync(spawn.cwd), realpathSync(instantWorkDir(userData, "claude")));
   for (const a of spawn.argv) assert.ok(!a.includes(profileDir(userData, "claude")), a);
 });
 

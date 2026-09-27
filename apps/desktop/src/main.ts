@@ -1,3 +1,7 @@
+import { installDesktopVoice } from './voice/desktop-host';
+import { createInteractiveDispatch, createVoiceTrialDispatch } from './voice/intent-dispatch';
+import type { VoiceContext } from './voice/types';
+import { intentCommandSchema, type Snapshot } from '@magic/contracts';
 import { judgmentFailure } from "./judgment-errors";
 import {
   app,
@@ -11,8 +15,8 @@ import {
   powerMonitor,
   type IpcMainInvokeEvent,
 } from "electron";
-import { readFile, writeFile, mkdir, stat, rm, appendFile } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile, writeFile, mkdir, stat, rm, appendFile, realpath } from "node:fs/promises";
+import { join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { gatewayClient } from "@magic/ai";
@@ -92,9 +96,11 @@ import {
 } from "../../../packages/connectors/src/canvas-http";
 import type { RememberSignInStatus } from "@magic/contracts";
 // end owner: T05e
-import { consentGateAllows } from "../../../packages/core/src/egress"; // owner: T06
+import { CONSENT_DISCLOSURE_VERSION, consentGateAllows } from "../../../packages/core/src/egress"; // owner: T06
 import { logLine, redactForLog } from "../../../packages/core/src/privacy/log"; // owner: privacy
 import { consentRecordSchema, type ConsentRecord } from "@magic/contracts"; // owner: T06
+import { launchWorkSet, materializeCopy, selectWorkRetry } from "../../../packages/core/src/work-set";
+import { startEmbeddedJev } from "./embedded-jev"; // owner: embedded-jev
 import {
   commandSchema,
   captureBatchSchema,
@@ -120,6 +126,7 @@ let sync: AbortController | undefined;
 let quitting = false;
 const root = __dirname;
 const rendererURL = pathToFileURL(join(root, "renderer/index.html")).toString();
+const appIconPath = join(root, "app-icon.png");
 function validateSender(event: IpcMainInvokeEvent) {
   if (
     !window ||
@@ -192,6 +199,7 @@ function allowedLogin(input: string) {
 app
   .whenReady()
   .then(async () => {
+    if (!headless) app.dock?.setIcon(appIconPath);
     const data = app.getPath("userData");
     await mkdir(data, { recursive: true, mode: 0o700 });
     const studentSession = session.fromPartition("persist:uw");
@@ -309,9 +317,17 @@ app
       event.preventDefault();
     });
     // end owner: doc-window
+    // owner: embedded-jev. A configured MAGIC_GATEWAY_URL (hosted or local dev) wins; otherwise a
+    // build carrying the embedded key serves Jev from loopback. The worker learns only the URL.
+    const embeddedJev = process.env.MAGIC_GATEWAY_URL
+      ? null
+      : await startEmbeddedJev(data).catch(() => null); // unavailable: code rules still sort
+    const gatewayUrl = process.env.MAGIC_GATEWAY_URL || embeddedJev?.url || "";
+    // end owner: embedded-jev
     const worker = utilityProcess.fork(join(root, "worker.cjs"), [], {
       env: {
         ...process.env,
+        MAGIC_GATEWAY_URL: gatewayUrl,
         MAGIC_DB_PATH: join(data, "workspace.sqlite"),
         MAGIC_PLANNING_SCOPE: planningAccountScope,
       },
@@ -379,8 +395,8 @@ app
     );
     const evaluations = new Map<string, AbortController>();
     const credentialPath = join(data, "gateway-device.enc");
-    const gateway = process.env.MAGIC_GATEWAY_URL
-      ? gatewayClient(process.env.MAGIC_GATEWAY_URL, {
+    const gateway = gatewayUrl
+      ? gatewayClient(gatewayUrl, {
           async read() {
             if (!safeStorage.isEncryptionAvailable())
               throw new Error("Secure credential storage is unavailable.");
@@ -909,9 +925,21 @@ app
       calls.clear();
       localCalls.clear();
     });
-    async function execute(command: unknown): Promise<CommandResult> {
+    let desktopVoice: Awaited<ReturnType<typeof installDesktopVoice>> | undefined;
+    let voiceAuthority: VoiceContext = { account: '', revision: '', allowed: false };
+    let voiceSnapshot: Snapshot | null = null;
+    const interactiveCalls = new Map<string, AbortController>();
+    const stopInteractive = () => {
+      desktopVoice?.stop('context-changed');
+      for (const controller of interactiveCalls.values()) controller.abort();
+      interactiveCalls.clear();
+    };
+    async function execute(command: unknown, signal?: AbortSignal): Promise<CommandResult> {
+      signal?.throwIfAborted();
       const parsed = commandSchema.parse(command);
+      if (['purge', 'privacy', 'consent', 'course-override', 'ingestion-settings'].includes(parsed.type)) stopInteractive();
       await ready;
+      signal?.throwIfAborted();
       if (parsed.type === "madgrades-token") {
         // Stored only in the OS-protected vault; the workspace, records, and logs never receive it.
         if (parsed.token === null) await vault.deletePrefix("madgrades:");
@@ -929,10 +957,18 @@ app
       const id = randomUUID();
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
-          calls.delete(id);
+          calls.delete(id); finish();
+          worker.postMessage({ kind: "cancel-command", id });
           reject(new Error("Local workspace request timed out."));
         }, 30000);
-        calls.set(id, { resolve, reject, timer });
+        const abort = () => {
+          clearTimeout(timer); calls.delete(id); finish();
+          worker.postMessage({ kind: "cancel-command", id });
+          reject(new Error("Request stopped."));
+        };
+        signal?.addEventListener("abort", abort, { once: true });
+        const finish = () => signal?.removeEventListener("abort", abort);
+        calls.set(id, { resolve: value => { finish(); resolve(value); }, reject: error => { finish(); reject(error); }, timer });
         worker.postMessage({ kind: "command", id, command: parsed });
       });
     }
@@ -948,7 +984,15 @@ app
     let consentRecords: ConsentRecord[] | undefined;
     worker.on("message", (message: any) => {
       if (message?.kind !== "response") return;
-      const records = message.result?.snapshot?.consents;
+      const snapshot = message.result?.snapshot;
+      if (snapshot) {
+        voiceSnapshot = snapshot;
+        const accounts = [...new Set((snapshot.sources ?? []).map((source: {accountScope: string}) => source.accountScope))].sort();
+        const authority = { account: JSON.stringify(accounts), revision: JSON.stringify([snapshot.consents, snapshot.privacy, snapshot.courseOverrides, snapshot.ingestionSettings, accounts]), allowed: true };
+        if (voiceAuthority.allowed && (authority.account !== voiceAuthority.account || authority.revision !== voiceAuthority.revision)) stopInteractive();
+        if (!voiceAuthority.allowed || authority.account !== voiceAuthority.account || authority.revision !== voiceAuthority.revision) voiceAuthority = authority;
+      }
+      const records = snapshot?.consents;
       if (!Array.isArray(records)) return;
       const hadUw = consentGateAllows("source-fetch", consentRecords),
         hadJev = consentGateAllows("evaluate", consentRecords);
@@ -1176,6 +1220,22 @@ app
       throw new Error("Unknown key operation.");
     });
     // end owner: client-health
+    const dispatchInteractive = createInteractiveDispatch(execute);
+    ipcMain.handle("magic:intent-run", async (event, request: unknown) => {
+      validateSender(event);
+      const r = request as { operationId?: unknown; text?: unknown; context?: unknown };
+      if (!r || typeof r.operationId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(r.operationId)) throw new Error('Invalid request identity.');
+      const value = intentCommandSchema.parse({ text: r.text, context: r.context, mode: 'run' });
+      if (interactiveCalls.has(r.operationId)) throw new Error('This request is already running.');
+      const controller = new AbortController(), authority = voiceAuthority;
+      interactiveCalls.set(r.operationId, controller);
+      try { return await dispatchInteractive(value.text, value.context ?? {}, { operationId: r.operationId, signal: controller.signal, current: () => !controller.signal.aborted && authority === voiceAuthority }); }
+      finally { if (interactiveCalls.get(r.operationId) === controller) interactiveCalls.delete(r.operationId); }
+    });
+    ipcMain.handle("magic:intent-cancel", (event, operationId: unknown) => {
+      validateSender(event);
+      if (typeof operationId === 'string') interactiveCalls.get(operationId)?.abort();
+    });
     ipcMain.handle("magic:execute", async (event, command) => {
       validateSender(event);
       const purging = command?.type === "purge";
@@ -1360,6 +1420,49 @@ app
       await shell.openExternal(safeLinkCard(url));
     });
     // end owner: T05b
+    // Only stored destinations from the exact preview can launch. A retry is
+    // restricted to failures in the previous receipt from this renderer.
+    const workFailures = new Map<string, Set<string>>();
+    let workLaunching = false;
+    ipcMain.handle("magic:start-work", async (event, id, previewHash, only) => {
+      validateSender(event);
+      if (typeof id !== "string" || !id || id.length > 1000 ||
+          typeof previewHash !== "string" || !/^[a-f0-9]{64}$/.test(previewHash))
+        throw new Error("Review the prepared destinations before opening.");
+      if (only !== undefined && (!Array.isArray(only) || only.length > 6 ||
+          !only.every(v => typeof v === "string" && v.length <= 1000)))
+        throw new Error("Invalid retry selection.");
+      if (workLaunching) throw new Error("Prepared work is already opening.");
+      workLaunching = true;
+      const key = `${id}:${previewHash}`;
+      try {
+        const prepare = async () => {
+          const { workSet } = await execute({ type: "work-set", id });
+          if (!workSet) throw new Error("This item has nothing to open.");
+          return workSet;
+        };
+        const beforeItem = async () => {
+          if (!(await consentGate("source-fetch"))) throw new Error(consentRefused);
+          selectWorkRetry(await prepare(), previewHash);
+        };
+        const workSet = selectWorkRetry(await prepare(), previewHash, only, workFailures.get(key));
+        await beforeItem();
+        const documentsRoot = await realpath(join(data, "documents")).catch(() => join(data, "documents"));
+        const receipt = await launchWorkSet(workSet, {
+          dryRun: headless,
+          beforeItem,
+          openExternal: async (url, activate) => { await beforeItem(); await shell.openExternal(url, { activate }); },
+          openPath: async path => { await beforeItem(); return shell.openPath(path); },
+          realpath: path => realpath(path),
+          materialize: (path, extension) => materializeCopy(documentsRoot, path, extension),
+          documentsRoot, separator: sep, now: () => new Date(),
+        });
+        // Bounded session receipt state; nothing is persisted or uploaded.
+        if (workFailures.size >= 20) workFailures.delete(workFailures.keys().next().value!);
+        workFailures.set(key, new Set([...(only ? [...(workFailures.get(key) ?? [])].filter(id => !only.includes(id)) : []), ...receipt.failed.map(item => item.resourceId)]));
+        return receipt;
+      } finally { workLaunching = false; }
+    });
     // owner: doc-window. A document link opens the signed-in document window; any other ordinary
     // web link falls back to the default browser.
     ipcMain.handle("magic:open-document", (event, url) => {
@@ -1934,6 +2037,7 @@ app
     });
     ipcMain.handle("magic:signout", async (event) => {
       validateSender(event);
+      stopInteractive();
       planningClears++;
       try {
         sync?.abort();
@@ -2000,6 +2104,7 @@ app
       minHeight: 620,
       show: !headless,
       title: "My Magic UW",
+      icon: appIconPath,
       backgroundColor: "#fbfbfa",
       webPreferences: {
         preload: join(root, "preload.cjs"),
@@ -2011,10 +2116,13 @@ app
     });
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", (event) => event.preventDefault());
+    desktopVoice = await installDesktopVoice({ window, rendererURL, headless, context: () => voiceAuthority, dispatch: createVoiceTrialDispatch(() => voiceSnapshot) });
     window.webContents.session.setPermissionRequestHandler(
-      (_wc, _permission, callback) => callback(false),
+      (sender, permission, callback, details) => callback(desktopVoice?.allowsPermission(sender, permission, details) ?? false),
     );
+    window.webContents.session.setPermissionCheckHandler((sender, permission, _origin, details) => desktopVoice?.allowsPermission(sender, permission, details) ?? false);
     window.on("closed", () => {
+      stopInteractive(); desktopVoice?.dispose(); desktopVoice = undefined;
       window = null;
     });
     await window.loadURL(rendererURL);
@@ -2081,6 +2189,7 @@ app
       for (const c of sourceReads.values()) c.abort();
       for (const c of evaluations.values()) c.abort();
       worker.postMessage({ kind: "shutdown" });
+      void embeddedJev?.close().catch(() => {}); // owner: embedded-jev
       setTimeout(() => {
         worker.kill();
         app.exit(Number(process.exitCode ?? 0));
@@ -2095,6 +2204,9 @@ app
         );
         if (initial.snapshot.resources.length !== 0)
           throw new Error("Unexpected initial data");
+        // owner: embedded-jev. `MAGIC_SMOKE_EXPECT_JEV=1 pnpm test:desktop` checks a keyed build.
+        if (process.env.MAGIC_SMOKE_EXPECT_JEV === "1" && (!embeddedJev || !initial.snapshot.gatewayConfigured))
+          throw new Error("Embedded Jev did not start");
         const imported = await window.webContents.executeJavaScript(
           "window.magic.execute({type:'fixture'})",
         );
@@ -2103,6 +2215,30 @@ app
           !imported.snapshot.fixtureMode
         )
           throw new Error("Fixture import failed");
+        const essay = imported.snapshot.resources.find(
+          (r: { externalId: string }) => r.externalId === "essay-1",
+        );
+        const previewLaunch = `(async()=>{const prepared=await window.magic.execute({type:"work-set",id:${JSON.stringify(essay.id)}});return window.magic.startWork(${JSON.stringify(essay.id)},prepared.workSet.previewHash)})()`;
+        if (await window.webContents.executeJavaScript(previewLaunch).then(() => true, () => false))
+          throw new Error("Start work bypassed setup consent");
+        await window.webContents.executeJavaScript(`window.magic.execute(${JSON.stringify({type:"consent",value:{action:"grant",recipient:"uw",disclosureVersion:CONSENT_DISCLOSURE_VERSION}})})`);
+        const started = await window.webContents.executeJavaScript(
+          `(async()=>{const prepared=await window.magic.execute({type:"work-set",id:${JSON.stringify(essay.id)}});return window.magic.startWork(${JSON.stringify(essay.id)},prepared.workSet.previewHash)})()`,
+        );
+        if (
+          started.mode !== "dry_run" ||
+          started.opened.length !== 2 ||
+          started.failed.length ||
+          (await window.webContents
+            .executeJavaScript("window.magic.startWork('missing-item')")
+            .then(() => true, () => false))
+        )
+          throw new Error("Start work did not rebuild the linked work set");
+        for (const invalidLaunch of [
+          `window.magic.startWork(${JSON.stringify(essay.id)},${JSON.stringify("0".repeat(64))})`,
+          `(async()=>{const p=await window.magic.execute({type:"work-set",id:${JSON.stringify(essay.id)}});return window.magic.startWork(${JSON.stringify(essay.id)},p.workSet.previewHash,[p.workSet.items[0].resourceId])})()`,
+        ]) if (await window.webContents.executeJavaScript(invalidLaunch).then(() => true, () => false))
+          throw new Error("Start work accepted an unreviewed destination or unfailed retry");
         const studyResource = imported.snapshot.resources.find(
           (resource: { kind: string }) => resource.kind === "assignment",
         );
@@ -2180,7 +2316,7 @@ app
         )
           throw new Error("Local purge left data or access credentials");
         console.log(
-          "PASS hidden desktop: renderer → preload → worker → SQLite; synthetic planning import, MCP export and local purge",
+          "PASS hidden desktop: renderer → preload → worker → SQLite; Start work dry run, synthetic planning import, MCP export and local purge",
         );
       } catch (error) {
         console.error(

@@ -629,7 +629,9 @@ const changeWatch = setInterval(() => {
 }, 1_000);
 changeWatch.unref();
 // end owner: stall-audit
+const commandAborts = new Map<string, AbortController>();
 port.on("message", async ({ data }: { data: any }) => {
+  if (data.kind === "cancel-command") { commandAborts.get(data.id)?.abort(); return; }
   // owner: privacy. Main's install secret: at-rest key for the store, pseudonym key for sends.
   if (data.kind === "privacy-key") {
     const secret = typeof data.secret === "string" ? Buffer.from(data.secret, "base64") : null;
@@ -869,8 +871,10 @@ port.on("message", async ({ data }: { data: any }) => {
   if (["import", "planning-import", "fixture", "privacy", "purge", "course-override"].includes(data.command?.type)) {
     local.cancel();
   }
+  const commandAbort = new AbortController();
+  commandAborts.set(data.id, commandAbort);
   try {
-    const result = await core.execute(data.command);
+    const result = await core.execute(data.command, commandAbort.signal);
     // owner: agenda. A completion isn't a source re-read: drop the agenda's cached facts before the
     // renderer's next query.
     if (data.command?.type === "complete") invalidateAgenda(store);
@@ -894,7 +898,7 @@ port.on("message", async ({ data }: { data: any }) => {
           ? error.message
           : "The request did not match the workspace schema.",
     });
-  }
+  } finally { commandAborts.delete(data.id); }
 });
 core.wake();
 port.postMessage({ kind: "ready" });

@@ -1,4 +1,12 @@
+export * from "./course-work";
+import type { CourseWorkAdmission } from "./course-work";
+import { personalWorkChangeSchema, type PersonalWorkChange, type PersonalWorkDescriptor, type PersonalWorkState, type PersonalWorkEvent } from "./personal-work";
+export * from "./personal-work";
+import { personalDeadlineChangeSchema, type PersonalDeadlineChange, type PersonalDeadlineEvent, type PersonalDeadlineProjection, type PersonalDeadlineSource } from "./personal-deadlines";
+export * from "./personal-deadlines";
 import { z } from "zod";
+import { personalReportChangeSchema, type PersonalReportChange, type PersonalReportState, type PersonalReportEvent } from "./personal-reports";
+export * from "./personal-reports";
 import {
   planningCaptureSchema,
   type PlanningCapture,
@@ -206,6 +214,8 @@ export const moduleItemSchema = z
     position: z.number().int().optional(),
     externalUrl: evidenceUrlSchema.optional(),
     pageUrl: z.string().max(4000).optional(),
+    /** The containing module's Canvas id, so a course page can group items by module. */
+    moduleId: id.optional(),
     contentId: id.optional(),
     dueAt: optionalInstant,
     points: z.number().nullable().optional(),
@@ -964,6 +974,22 @@ export const dayPlanEntrySchema = z
   })
   .strict();
 export type DayPlanEntry = z.infer<typeof dayPlanEntrySchema>;
+/** Student-created local calendar event. It never changes a UW, Canvas or external calendar. */
+export const personalCalendarEventSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string().trim().min(1).max(200),
+  date: z.iso.date(),
+  allDay: z.boolean(),
+  startsAt: instant.nullable(),
+  endsAt: instant.nullable(),
+  timeZone: z.string().min(1).max(100),
+  location: z.string().max(300),
+  notes: z.string().max(2000),
+}).strict().superRefine((event, ctx) => {
+  if (event.allDay ? event.startsAt !== null || event.endsAt !== null : !event.startsAt || !event.endsAt || Date.parse(event.endsAt) - Date.parse(event.startsAt) < 15 * 60_000)
+    ctx.addIssue({ code: 'custom', message: 'A timed event needs at least 15 minutes; an all-day event has no instants.' });
+});
+export type PersonalCalendarEvent = z.infer<typeof personalCalendarEventSchema>;
 /**
  * A UW GitLab project the student linked to a course by hand, for courses whose Canvas
  * material never links the project. `projectPath` is the namespace/project path.
@@ -1069,6 +1095,9 @@ export interface Store {
   dayPlan(): DayPlanEntry[];
   setDayPlanEntry(value: DayPlanEntry): void;
   removeDayPlanEntry(key: string, date: string): void;
+  personalCalendarEvents(): PersonalCalendarEvent[];
+  setPersonalCalendarEvent(value: PersonalCalendarEvent): void;
+  removePersonalCalendarEvent(id: string): void;
   /** Read and dismissed notification ids (local preference; cleared by purge). */
   notificationState?(): NotificationState;
   setNotificationState?(value: NotificationState): void;
@@ -1096,6 +1125,17 @@ export interface Store {
   /** Consent seams (T06 implements): read-only records, and the only writer. */
   consents?(): ConsentRecord[];
   setConsent?(change: ConsentChange, at: string): void;
+  personalDeadlineChoices(): PersonalDeadlineEvent[];
+  setPersonalDeadlineChoice(change: PersonalDeadlineChange, currentSource: () => PersonalDeadlineSource): PersonalDeadlineEvent;
+  /** Internal synchronous read projection. supplied resources must be the full saved store read; writes always revalidate. */
+  personalWorkSnapshot(requests: readonly {canonicalResourceId: string; contributorIds?: readonly string[]}[], resources?: readonly Resource[]): {descriptors: PersonalWorkDescriptor[]; reports: PersonalWorkState[]};
+  describePersonalWork(canonicalResourceId: string, contributorIds?: readonly string[]): PersonalWorkDescriptor | undefined;
+  personalWorkReports(): PersonalWorkState[];
+  personalWorkHistory(issueId: string, limit?: number): PersonalWorkEvent[];
+  setPersonalWork(change: PersonalWorkChange): PersonalWorkState;
+  personalReports(): PersonalReportState[];
+  personalReportHistory(issueId: string, limit?: number): PersonalReportEvent[];
+  setPersonalReport(change: PersonalReportChange): PersonalReportState;
   setCompleted(id: string, completed: boolean): void;
   links(): Link[];
   putLink(link: Link): void;
@@ -1142,10 +1182,16 @@ export interface ContextManifest {
   citationProjections?: { resourceId: string; contentHash: string; field: "text"; projectionId: string }[];
 }
 export interface ResourceView extends Resource {
+  personalWork?: PersonalWorkDescriptor;
+  /** Local user choice for planning; raw source deadline and conflict are preserved. */
+  personalDeadline?: PersonalDeadlineProjection;
+  /** Exact local evidence contributors used by the canonical deadline resolver. */
+  deadlineContributors?: Array<{ resourceId: string; contentHash: string }>;
   deadline: DeadlineResolution;
   kindLabel: string | null;
 }
 export interface Snapshot {
+  courseWorkAdmission?: CourseWorkAdmission;
   courseIntelligence?: CourseIntelligenceView[];
   planning?: PlanningSnapshot;
   resources: ResourceView[];
@@ -1165,6 +1211,10 @@ export interface Snapshot {
   mcpGrants?: McpGrant[];
   consents?: ConsentRecord[];
   dayPlan?: DayPlanEntry[];
+  personalCalendarEvents?: PersonalCalendarEvent[];
+  /** Local display only; excluded from AI/MCP contexts. Latest choice per issue, not the journal. */
+  personalWorkReports?: PersonalWorkState[];
+  personalReports?: PersonalReportState[];
   notifications?: NotificationFeed;
   gitlabLinks?: GitlabLink[];
 }
@@ -1601,9 +1651,11 @@ export interface WorkspaceResult {
 // (0 tokens, never the model) for a live hint; `prewarm` readies the AI fallback when the bar opens.
 export const intentCommandSchema = z
   .object({
-    text: z.string().max(500),
+    text: z.string().max(2000),
+    /** Caller restriction, checked after resolution; never grants permission. */
+    allowedActions: z.array(z.string().min(1).max(100)).max(40).optional(),
     context: z
-      .object({ courseId: id.optional(), view: z.string().max(100).optional(), noteId: id.optional() })
+      .object({ courseId: id.optional(), view: z.string().max(100).optional(), noteId: id.optional(), resourceId: id.optional() })
       .strict()
       .optional(),
     /** `preview` here is deprecated: use the `intent.preview` query, which skips the snapshot. */
@@ -1992,6 +2044,8 @@ export const commandSchema = z.discriminatedUnion("type", [
   z
     .object({ type: z.literal("day-plan"), entry: dayPlanEntrySchema })
     .strict(),
+  z.object({ type: z.literal('personal-calendar-save'), event: personalCalendarEventSchema }).strict(),
+  z.object({ type: z.literal('personal-calendar-remove'), id: z.string().uuid() }).strict(),
   z
     .object({
       type: z.literal("day-plan-remove"),
@@ -1999,6 +2053,9 @@ export const commandSchema = z.discriminatedUnion("type", [
       date: z.iso.date(),
     })
     .strict(),
+  z.object({ type: z.literal("personal-deadline"), value: personalDeadlineChangeSchema }).strict(),
+  z.object({ type: z.literal("personal-work"), value: personalWorkChangeSchema }).strict(),
+  z.object({ type: z.literal("personal-report"), value: personalReportChangeSchema }).strict(),
   z
     .object({
       type: z.literal("notifications-read"),
@@ -2049,6 +2106,7 @@ export const commandSchema = z.discriminatedUnion("type", [
     })
     .strict(),
   z.object({ type: z.literal("enrich"), id }).strict(),
+  z.object({ type: z.literal("work-set"), id }).strict(),
   z.object({ type: z.literal("identity-roster"), value: identityRosterSchema }).strict(),
   z.object({ type: z.literal("validate-citations"), claims: z.array(citationClaimSchema).min(1).max(200) }).strict(),
   z
@@ -2096,7 +2154,56 @@ export const commandSchema = z.discriminatedUnion("type", [
   // end owner: notes
 ]);
 export type Command = z.infer<typeof commandSchema>;
+/**
+ * What "Start work" opens for one assignment, rebuilt from the local store.
+ * The renderer supplies only an ID; it never chooses URLs or file paths.
+ */
+export type WorkTarget =
+  | { kind: "web"; url: string }
+  /** `extension` is derived from verified type evidence; cached files have no name of their own. */
+  | { kind: "file"; path: string; extension: string; fallbackUrl: string };
+export interface WorkItem {
+  resourceId: string;
+  title: string;
+  role: "instructions" | "material";
+  reason: string;
+  target: WorkTarget;
+}
+export interface WorkHeldItem {
+  resourceId: string;
+  title: string;
+  reason: string;
+}
+export interface WorkSet {
+  /** Opaque identity of all previewed target versions and destinations. */
+  previewHash: string;
+  assignmentId: string;
+  assignmentTitle: string;
+  contentHash: string;
+  /** Opened in this order; the instructions come last so they end up in front. */
+  items: WorkItem[];
+  /** Related items deliberately not opened (suggested matches, overflow). */
+  held: WorkHeldItem[];
+  notes: string[];
+}
+export interface WorkLaunchReceipt {
+  assignmentId: string;
+  assignmentTitle: string;
+  at: string;
+  /** "dry_run" in headless verification: nothing was opened. */
+  mode: "opened" | "dry_run";
+  opened: {
+    resourceId: string;
+    title: string;
+    via: "browser" | "file" | "browser_fallback";
+  }[];
+  failed: { resourceId: string; title: string; reason: string }[];
+  held: WorkHeldItem[];
+  notes: string[];
+}
 export type CommandResult = {
+  personalWorkReceipt?: PersonalWorkState;
+  workSet?: WorkSet;
   planningComparison?: PlanningComparison;
   planningGrades?: PlanningGradeSummary;
   snapshot: Snapshot;
@@ -2179,6 +2286,9 @@ export interface AccountBridge {
 // end owner: accounts
 
 export interface AppBridge {
+  /** Shared typed/voice read and navigation path; main owns the action restriction. */
+  intentRun?(request: { operationId: string; text: string; context?: IntentCommand["context"] }): Promise<IntentCommandResult>;
+  cancelIntent?(operationId: string): Promise<void>;
   /** owner: accounts. Sign-in and purchase status; absent in builds without the bridge. */
   account?: AccountBridge;
   execute(command: Command): Promise<CommandResult>;
@@ -2197,6 +2307,8 @@ export interface AppBridge {
   openDocument?(url: string): Promise<{ opened: "window" | "browser" }>;
   /** owner: T15. A scoped query (O1); reads only, never a command. */
   query?(request: QueryRequest): Promise<QueryResult>;
+  /** Reviewed destination hash is mandatory; `only` retries previously failed IDs. */
+  startWork?(id: string, previewHash: string, only?: string[]): Promise<WorkLaunchReceipt>;
   /** owner: pipeline. Graph reads: an assignment's references, the agenda, a course's graph and coverage. */
   graph?<Q extends GraphQuery>(request: Q): Promise<GraphResult<Q>>;
   importFile(): Promise<CommandResult | null>;

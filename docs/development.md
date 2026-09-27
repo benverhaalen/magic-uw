@@ -56,7 +56,17 @@ MAGIC_GATEWAY_URL=http://127.0.0.1:8787 pnpm dev
 
 `MAGIC_GATEWAY_URL` contains only the server address. Do not put the TypeSafe key in it, in a `VITE_` variable, or anywhere in the desktop configuration. The desktop enrolls a device automatically and stores its separate gateway token using Electron's OS-backed `safeStorage`. Students need no Jev account or key. Nothing is sent for judgments until the user enables selective cloud access, Jev, and course-text sharing in **Data & AI**.
 
-For the whole team to share the key, deploy this gateway once and give teammates its HTTPS URL. Put the key in the host's secret manager. The gateway is **not deployed yet**. It currently requires one process, persistent SQLite, TLS termination, and deliberately configured global request limits. Anonymous enrollment is not proof of a unique person; the global ceiling protects the bill. Behind a reverse proxy, IP limits currently see the proxy address. See the [gateway README](../apps/gateway/README.md) for spend controls, metadata retention, device revocation, and deployment limitations before exposing it publicly.
+### Temporary: a build that carries the key
+
+By the [September 27 decision](decisions.md#2026-09-27--embedded-jev-key-temporary), the key owner can build a desktop app that serves Jev itself. Set the key only in your own shell for that build (never in a committed file or chat):
+
+```sh
+MAGIC_EMBED_TYPESAFE_KEY=… pnpm build
+```
+
+The build prints whether it embedded a key. The key is compiled into `apps/desktop/dist/main.cjs` only; the app runs the gateway on `127.0.0.1` with the default caps per laptop. Anyone with that build can extract the key, so use a dedicated revocable key and never commit or publicly publish that `dist/`. `MAGIC_GATEWAY_URL`, when set, takes precedence.
+
+For the whole team to share the key without shipping it, deploy this gateway once and give teammates its HTTPS URL. Put the key in the host's secret manager. The gateway is **not deployed yet**. It currently requires one process, persistent SQLite, TLS termination, and deliberately configured global request limits. Anonymous enrollment is not proof of a unique person; the global ceiling protects the bill. Behind a reverse proxy, IP limits currently see the proxy address. See the [gateway README](../apps/gateway/README.md) for spend controls, metadata retention, device revocation, and deployment limitations before exposing it publicly.
 
 ## Local and hosted AI
 
