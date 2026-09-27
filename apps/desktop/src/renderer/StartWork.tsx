@@ -8,7 +8,7 @@ import "./StartWork.css";
 import { reportWorkspaceFailure } from "./workspace-feedback";
 
 export function preparedWorkRevision(snapshot: Snapshot) {
-  return JSON.stringify([snapshot.sources.map(source => [source.id, source.lastAttemptAt, source.status]), snapshot.links, snapshot.privacy, snapshot.consents]);
+  return JSON.stringify([snapshot.sources.map(source => [source.id, source.accountScope, source.scope, source.status, source.complete, source.lastSuccessAt]), snapshot.resources.map(resource => [resource.id, resource.contentHash, resource.deleted, resource.course?.selection, resource.file?.extractionStatus, resource.document?.extractionStatus]), snapshot.links, snapshot.privacy, snapshot.consents, snapshot.courseOverrides, snapshot.ingestionSettings]);
 }
 type Props = {
   resource: ResourceView; refreshKey: string; onInspect?: () => void;

@@ -1,5 +1,6 @@
 import type {
   CourseClaim,
+  CourseEvidence,
   CourseIntelligenceView,
   ResourceView,
   SourceHealth,
@@ -14,11 +15,11 @@ import { projectCourseLabel } from "./course-label";
  * The notebook (T43) later fills the materials section from the same course identity.
  */
 export type CourseFactKind = "ai_policy" | "grading" | "assessment" | "topic";
-export interface CourseFactEvidence {
-  resourceId: string;
+export interface CourseFactEvidence extends CourseEvidence {
   title: string;
-  url: string;
-  quote: string;
+  /** Present only when the stored resource matches the quoted source version exactly. */
+  savedText?: string;
+  capturedAt?: string;
 }
 export interface CourseFactItem {
   text: string;
@@ -88,6 +89,14 @@ export interface CourseCard {
   nextDeadline: CourseDeadlineDisplay | null;
   freshness: CoursePage["freshness"];
   syllabusMissing: boolean;
+  /** Canvas term name, exactly as captured; null when the course record has none. */
+  term: string | null;
+  /** Oldest last-checked time across this course's sources; null when never checked. */
+  lastSuccessAt: string | null;
+  /** Captured assignments of any date or state. */
+  assignments: number;
+  /** Assignments with no due date that are not known to be done. */
+  undated: number;
 }
 export interface CoursePageInput {
   resources: ResourceView[];
@@ -220,25 +229,37 @@ export function buildCoursePage(input: CoursePageInput, key: string): CoursePage
         // Per-group structured weights are shown in the weights table from exact records instead.
         !(kind === "grading" && c.method === "structured"),
     );
-    const seen = new Set<string>();
+    const seen = new Map<string, CourseFactItem>();
     const items: CourseFactItem[] = [];
     for (const c of claims) {
       const text = String(c.value ?? "").trim();
       const dedupe = `${c.assignmentId ?? ""}|${text.toLowerCase()}`;
-      if (!text || seen.has(dedupe)) continue;
-      seen.add(dedupe);
-      items.push({
+      if (!text) continue;
+      const evidence = c.evidence.map((e): CourseFactEvidence => {
+        const resource = byId.get(e.resourceId);
+        const matches = resource && resource.sourceId === e.sourceId && resource.contentHash === e.contentHash && resource.version === e.version;
+        return {
+          ...e,
+          title: resource?.title ?? "Captured source",
+          savedText: matches ? resource.text : undefined,
+          capturedAt: matches ? resource.capturedAt : undefined,
+        };
+      });
+      const existing = seen.get(dedupe);
+      if (existing) {
+        // Equal displayed claims can still have different supporting sources or source versions.
+        existing.evidence.push(...evidence);
+        continue;
+      }
+      const item: CourseFactItem = {
         text,
         method: c.method,
         policyMode: c.policyMode,
-        assignmentTitle: c.assignmentId ? byId.get(c.assignmentId)?.title : undefined,
-        evidence: c.evidence.map((e) => ({
-          resourceId: e.resourceId,
-          title: byId.get(e.resourceId)?.title ?? "Captured source",
-          url: e.url,
-          quote: e.quote,
-        })),
-      });
+        assignmentTitle: c.assignmentId ? byId.get(c.assignmentId)?.title ?? "Assignment policy" : undefined,
+        evidence,
+      };
+      seen.set(dedupe, item);
+      items.push(item);
     }
     // Course-wide statements first; assignment exceptions after.
     items.sort((a, b) => Number(!!a.assignmentTitle) - Number(!!b.assignmentTitle));
@@ -380,6 +401,10 @@ export function buildCourseCards(input: CoursePageInput): CourseCard[] {
         ))) : null,
         freshness: page.freshness,
         syllabusMissing: page.syllabus.state === "missing",
+        term: page.term,
+        lastSuccessAt: page.lastSuccessAt,
+        assignments: page.counts.assignments,
+        undated: page.groups.reduce((n, g) => n + g.undated.length, 0),
       };
     })
     .sort((a, b) => a.courseName.localeCompare(b.courseName));

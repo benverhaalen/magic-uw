@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from "react";
+import { createOperationScope } from "../../../../packages/ui/src/operation-scope";
+import { requirePlanSave } from "./today-plan-save";
 import type {
   Command,
   DayPlanEntry,
@@ -67,7 +69,7 @@ function duration(min: number) {
   return h ? `${h} h${m ? ` ${m} m` : ""}` : `${m} m`;
 }
 
-export function TodayRail({
+function TodayRailContent({
   resources,
   sources,
   plan = [],
@@ -95,7 +97,7 @@ export function TodayRail({
   /** Opens a meeting's https join link in the browser. Without it, no Join button is shown. */
   onJoin?: (url: string) => void;
   onSelect: (id: string) => void;
-  /** Saves a day-plan decision locally; resolves after the snapshot refreshes. */
+  /** Returns a non-null save receipt after the snapshot refreshes; rejects on failure. */
   onPlan: (command: Command) => Promise<unknown>;
 }) {
   const [clockNow, setNow] = useState(() => new Date().toISOString());
@@ -163,29 +165,81 @@ export function TodayRail({
     visible.find((s) => s.state === "planned") ??
     visible.find((s) => s.state === "suggested");
 
-  // Day-plan actions. Each one saves through core; the rail re-derives from the saved plan.
+  // Recovery comes from saved entries, so it survives leaving Home and returning.
+  // Keep dates seen during this visit reachable across midnight too.
+  const recoveryDates = useRef(new Set([rail.date]));
+  recoveryDates.current.add(rail.date);
+  const undoEntries = plan.filter(p => p.status === "skipped" && recoveryDates.current.has(p.date));
+  const railRoot = useRef<HTMLElement>(null);
+  const operationScope = useRef(createOperationScope());
+  const pendingRef = useRef(false);
+  const [pending, setPending] = useState("");
+  const [actionError, setActionError] = useState("");
+  const focusAfterSave = useRef<{ key: string; origin: Element | null } | null>(null);
+  useEffect(() => () => {
+    operationScope.current.invalidate();
+    pendingRef.current = false;
+    focusAfterSave.current = null;
+  }, []);
+  useLayoutEffect(() => {
+    const target = focusAfterSave.current;
+    if (!target) return;
+    focusAfterSave.current = null;
+    // Only move focus if this action still owns it, or removed its focused origin.
+    if (document.activeElement !== target.origin &&
+        !(document.activeElement === document.body && !target.origin?.isConnected)) return;
+    const next = Array.from(railRoot.current?.querySelectorAll<HTMLElement>("[data-plan-focus]") ?? [])
+      .find(node => node.dataset.planFocus === target.key);
+    (next ?? railRoot.current)?.focus({ preventScroll: true });
+  });
+  const savePlan = async (command: Command, label: string, onSaved?: () => void) => {
+    if (pendingRef.current) return false;
+    pendingRef.current = true;
+    const ticket = operationScope.current.start();
+    setPending(label);
+    setActionError("");
+    try {
+      await requirePlanSave(onPlan, command);
+      if (!ticket.isCurrent()) return false;
+      onSaved?.();
+      return true;
+    } catch {
+      if (ticket.isCurrent()) setActionError(`${label} could not finish. Try again.`);
+      return false;
+    } finally {
+      if (ticket.isCurrent()) {
+        pendingRef.current = false;
+        setPending("");
+      }
+    }
+  };
   const saved = (s: RailSuggestion) =>
     plan.find((p) => p.key === s.id && p.date === rail.date);
   const accept = (s: RailSuggestion) =>
-    onPlan({ type: "day-plan", entry: planEntry(s, rail.date, "accepted") });
+    savePlan({ type: "day-plan", entry: planEntry(s, rail.date, "accepted") }, "Saving to your plan");
   const remove = (s: RailSuggestion) =>
-    onPlan({ type: "day-plan-remove", key: s.id, date: rail.date });
+    savePlan({ type: "day-plan-remove", key: s.id, date: rail.date }, "Removing from your plan");
   const markDone = (s: RailSuggestion, done: boolean) => {
     const entry = saved(s) ?? planEntry(s, rail.date, "accepted");
-    return onPlan({
+    return savePlan({
       type: "day-plan",
       entry: { ...entry, doneAt: done ? new Date().toISOString() : null },
+    }, "Saving your progress");
+  };
+  const skip = (s: RailSuggestion) => {
+    const entry = planEntry(s, rail.date, "skipped");
+    const origin = document.activeElement;
+    return savePlan({ type: "day-plan", entry }, "Skipping this suggestion", () => {
+      focusAfterSave.current = { key: `undo:${entry.date}:${entry.key}`, origin };
     });
   };
-  const [undo, setUndo] = useState<RailSuggestion | null>(null);
-  useEffect(() => {
-    if (!undo) return;
-    const timer = window.setTimeout(() => setUndo(null), 6000);
-    return () => window.clearTimeout(timer);
-  }, [undo]);
-  const skip = async (s: RailSuggestion) => {
-    await onPlan({ type: "day-plan", entry: planEntry(s, rail.date, "skipped") });
-    setUndo(s);
+  const undoSkip = (entry: DayPlanEntry) => {
+    const origin = document.activeElement;
+    return savePlan({ type: "day-plan-remove", key: entry.key, date: entry.date }, "Restoring this suggestion", () => {
+      setShowSuggestions(true);
+      setFocusId(entry.key);
+      focusAfterSave.current = { key: `suggestion:${entry.key}`, origin };
+    });
   };
 
   const [editing, setEditing] = useState<RailSuggestion | null>(null);
@@ -201,7 +255,7 @@ export function TodayRail({
   const saveEdit = async () => {
     if (!editing || !check.ok) return;
     const base = saved(editing) ?? planEntry(editing, rail.date, "accepted");
-    await onPlan({
+    await savePlan({
       type: "day-plan",
       entry: {
         ...base,
@@ -214,8 +268,7 @@ export function TodayRail({
           endMin: fromHhmm(form.end),
         },
       },
-    });
-    setEditing(null);
+    }, "Saving your changes", () => setEditing(null));
   };
 
   function tools(s: RailSuggestion) {
@@ -224,10 +277,12 @@ export function TodayRail({
         key={label}
         className={`rail-tool ${tone}`}
         title={label}
+        aria-disabled={!!pending}
+        data-plan-focus={label === "Accept" ? `suggestion:${s.id}` : undefined}
         aria-label={`${label}: ${s.title}`}
         onClick={(event) => {
           event.stopPropagation();
-          void fn();
+          if (!pendingRef.current) void fn();
         }}
       >
         {icon}
@@ -303,7 +358,7 @@ export function TodayRail({
   };
 
   return (
-    <aside className={`today-rail${isCompactEmpty ? " is-compact-empty" : ""}`} aria-label="Today's schedule">
+    <aside ref={railRoot} tabIndex={-1} className={`today-rail${isCompactEmpty ? " is-compact-empty" : ""}`} aria-label="Today's schedule">
       <div className="rail-heading">
         <span>Due today</span>
         <span>{due.length || ""}</span>
@@ -336,6 +391,7 @@ export function TodayRail({
 
       {editing ? (
         <form
+          aria-busy={!!pending}
           className="rail-edit"
           aria-label={`Edit ${editing.title}`}
           onSubmit={(event) => {
@@ -351,6 +407,7 @@ export function TodayRail({
             <input
               value={form.title}
               maxLength={200}
+              readOnly={!!pending}
               autoFocus
               onChange={(e) => setForm({ ...form, title: e.target.value })}
             />
@@ -360,6 +417,7 @@ export function TodayRail({
               Start
               <input
                 type="time"
+                readOnly={!!pending}
                 step={300}
                 value={form.start}
                 onChange={(e) => setForm({ ...form, start: e.target.value })}
@@ -369,6 +427,7 @@ export function TodayRail({
               End
               <input
                 type="time"
+                readOnly={!!pending}
                 step={300}
                 value={form.end}
                 onChange={(e) => setForm({ ...form, end: e.target.value })}
@@ -387,10 +446,10 @@ export function TodayRail({
             ) : null}
           </p>
           <div className="rail-edit-actions">
-            <button className="button primary" type="submit" disabled={!check.ok}>
+            <button className="button primary" type="submit" disabled={!check.ok} aria-disabled={!!pending}>
               Save to plan
             </button>
-            <button className="button" type="button" onClick={() => setEditing(null)}>
+            <button className="button" type="button" aria-disabled={!!pending} onClick={() => { if (!pendingRef.current) setEditing(null); }}>
               Cancel
             </button>
           </div>
@@ -566,20 +625,34 @@ export function TodayRail({
           )}
         </div>
       </div>}
-      {undo ? (
-        <div className="rail-undo" role="status">
-          <span>Skipped “{undo.title}”</span>
+      <div className="rail-action-feedback" role={actionError ? "alert" : "status"}>
+        {actionError || (pending ? `${pending}…` : "")}
+      </div>
+      <div role="status" aria-live="polite">
+      {undoEntries.map(entry => (
+        <div className="rail-undo" key={`${entry.date}:${entry.key}`}>
+          <span>Skipped “{entry.block.title}”{entry.date !== rail.date ? ` (${entry.date})` : ""}</span>
           <button
-            onClick={() => {
-              void onPlan({ type: "day-plan-remove", key: undo.id, date: rail.date });
-              setUndo(null);
-            }}
+            data-plan-focus={`undo:${entry.date}:${entry.key}`}
+            aria-label={`Undo skip: ${entry.block.title}`}
+            aria-disabled={!!pending}
+            onClick={() => { void undoSkip(entry); }}
           >
             Undo
           </button>
         </div>
-      ) : null}
+      ))}
+      </div>
       <p className="rail-foot">{freshness}</p>
     </aside>
   );
+}
+
+/** Reset transient actions when the source accounts change; saved recovery stays in their snapshot. */
+export function TodayRail(props: ComponentProps<typeof TodayRailContent>) {
+  const accounts = [...new Set([
+    ...props.sources.map(source => source.accountScope),
+    ...(props.sources.length ? [] : props.resources.map(resource => resource.sourceId)),
+  ].filter(Boolean))].sort();
+  return <TodayRailContent key={JSON.stringify(accounts)} {...props} />;
 }

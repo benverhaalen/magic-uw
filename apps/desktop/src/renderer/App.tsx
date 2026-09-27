@@ -1,4 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { ConversationLauncher } from "./conversation-launcher";
+import { ChatPane, chatCourse, chatScopeForPage, chatPromptError, startChat, continueChat, getChat, type ChatOrigin } from "./chat";
+import { resetChats } from "./chat/store";
+import { EvidenceInfo } from "../../../../packages/ui/src/evidence-info";
+import { requirePlanSave } from "./today-plan-save";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type {
   Command,
   CommandResult,
@@ -11,7 +16,8 @@ import type {
 import { createAssignmentTypeHues } from "../../../../packages/ui/src/deadline-emphasis";
 import { SourcesPage } from "./sources";
 import { MyUw, PlanningAlerts } from "./MyUw";
-import { CoursePageView, CoursesOverview } from "./courses/CoursePage";
+import { CoursePageView } from "./courses/CoursePage";
+import { CoursesIndex } from "./courses/CoursesIndex";
 import { buildCourseCards, buildCoursePage, courseKey } from "../../../../packages/domain/src/course-page";
 import { LocalAiPanel } from "./LocalAiPanel";
 import { LearningPanel } from "./LearningPanel";
@@ -21,6 +27,7 @@ import { IngestionControls, McpConnections } from "./IngestionControls";
 import { ConsentSetup, hasUwConsent, missingConsents } from "./consent/ConsentSetup";
 // owner: T81
 import { Onboarding, needsFirstRunSetup } from "./onboarding";
+import { signInMessage } from "./sign-in";
 import { CalendarPage } from "./CalendarPage";
 import { DesktopShell, Glyph } from "./DesktopShell";
 import { Home, ObjectLink } from "./Home";
@@ -161,6 +168,15 @@ export function App() {
   const setView = (next: View) => navigation.navigate(next);
   const setSelectedId = (id: string | null) => id ? navigation.navigate("resource", id) : navigation.back();
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const chatAccountKey = snapshot ? `${snapshot.fixtureMode ? 'sample' : 'live'}:${[...new Set(snapshot.sources.map(source => source.accountScope ?? source.id))].sort().join('|')}` : 'loading';
+  const previousChatAccount = useRef(chatAccountKey);
+  useLayoutEffect(() => {
+    if (previousChatAccount.current === chatAccountKey) return;
+    const hadAccount = previousChatAccount.current !== 'loading';
+    previousChatAccount.current = chatAccountKey;
+    resetChats();
+    if (hadAccount) { void window.magic.cancelLocal?.(); if (view === 'chat') navigation.navigate('today'); }
+  }, [chatAccountKey]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -295,8 +311,11 @@ export function App() {
     setSignInStage("signin");
     try {
       await perform(async () => {
-        await window.magic.signInUW!(service);
-        // The bridge does not report cancellation. Only source evidence clears the action.
+        const outcome = await window.magic.signInUW!(service);
+        if (!outcome || outcome.status !== "confirmed") {
+          setNotice(outcome ? signInMessage(outcome) : "Sign-in was not confirmed. Try again.");
+          return;
+        }
         setSignInStage("checking");
         return window.magic.syncCanvas ? window.magic.syncCanvas() : undefined;
       });
@@ -372,6 +391,12 @@ export function App() {
   const needsSignIn = unavailableSources.some(
     (source) => source.status === "needs_sign_in",
   );
+  const pageTitle = view === "chat" ? "Chat" : view === "resource" ? selected?.title ?? "Saved item" : view === "courses" && coursePage ? coursePage.code || coursePage.courseName : ({today:"Home", courses:"Courses", myuw:"My UW", calendar:"Calendar", sources:"Connected sources", privacy:"Data & AI", consent:"Agreements"} as Partial<Record<View,string>>)[view] ?? "Workspace";
+  const captureChatOrigin = (): ChatOrigin => {
+    const place = navigation.capturePlace();
+    return { view, resourceId: selectedId, courseKey: navigation.courseKey, label: pageTitle, focusKey: place.focus, anchor: place.anchor, offset: place.offset, scroll: place.scroll,
+      scope: view === 'chat' && selectedId && getChat(selectedId) ? getChat(selectedId)!.origin.scope : chatScopeForPage({page:pageTitle, resource:selected, course:coursePage, cards:courseCards, sources:snapshot?.sources ?? []}) };
+  };
   // owner: T81. First run, or setup still incomplete: the onboarding flow replaces the shell
   // (and T06's in-Home consent entry) until the student opens the workspace.
   if (snapshot && needsFirstRunSetup(snapshot))
@@ -395,7 +420,7 @@ export function App() {
     );
   // end owner: T81
   return (
-    <DesktopShell view={view} title={view === "resource" ? selected?.title ?? "Saved item" : view === "courses" && coursePage ? coursePage.code || coursePage.courseName : ({today:"Home", courses:"Courses", myuw:"My UW", calendar:"Calendar", sources:"Connected sources", privacy:"Data & AI", consent:"Agreements"} as Partial<Record<View,string>>)[view] ?? "Workspace"}
+    <DesktopShell view={view} title={pageTitle}
       courses={courseCards} selectedCourseKey={navigation.courseKey} sample={snapshot?.fixtureMode ?? false} busy={busy && signInStage === "idle"}
       canBack={navigation.canBack} canForward={navigation.canForward} onBack={navigation.back} onForward={navigation.forward}
       onNavigate={setView} onCourse={key => navigation.navigate("courses", null, key)}
@@ -408,10 +433,16 @@ export function App() {
           <div><span>{error ? workspaceFailureMessage(error) : notice}</span>{error && <details><summary>Error details</summary><p>{error}</p></details>}</div><button aria-label={error ? "Dismiss error" : "Dismiss notice"} onClick={() => { setError(""); setNotice(""); }}>×</button>
         </div>}
       </>}
-      onCompose={() => {
-        if (selected) { document.querySelector<HTMLElement>(".local-ai-panel")?.scrollIntoView({ behavior: "smooth" }); }
-        setNotice(selected ? "Ask about this item in its Local AI section. Your model and sharing settings still apply." : "Page-wide chat is not connected yet. Open a course item to ask about its saved context with Local AI.");
-      }}>
+      launcher={snapshot ? <ConversationLauncher<ChatOrigin> key={chatAccountKey} here={{key:`${view}:${selectedId ?? ''}:${navigation.courseKey ?? ''}`,label:pageTitle}} captureOrigin={captureChatOrigin} mode={view === 'chat' && selectedId ? 'follow-up' : 'new-chat'} chatId={view === 'chat' ? selectedId ?? undefined : undefined} onSubmit={entry => {
+        const invalid = chatPromptError(entry.prompt); if (invalid) return {accepted:false,message:invalid};
+        if (entry.destination.kind === 'follow-up') {
+          if (!continueChat(entry.destination.chatId, entry.prompt, entry.idempotencyKey)) return {accepted:false,message:'This chat is no longer open. Start a new chat.'};
+          navigation.navigate('chat',entry.destination.chatId); return {accepted:true};
+        }
+        const result = startChat(entry); if (!result) return {accepted:false,message:'Enter a message to start a chat.'};
+        navigation.navigate('chat',result.chat.id); return {accepted:true};
+      }}/> : undefined}
+      onCompose={() => { const toggle=document.querySelector<HTMLButtonElement>('.cl-toggle'); if(toggle?.getAttribute('aria-expanded') === 'true')document.querySelector<HTMLTextAreaElement>('.conversation-launcher textarea,.cl-root textarea')?.focus(); else toggle?.click(); }}>
         <WorkspaceCommandBarSlot snapshot={snapshot} /* owner: T05b */ />
         {!snapshot ? (
           <section className="initial-state">
@@ -452,9 +483,11 @@ export function App() {
                 onSample={() => run({ type: "fixture" })}
               />
             ) : (
-              <Home todayCount={navigation.homeTodayCount} onTodayCountChange={navigation.updateHomeTodayCount} upcomingCount={navigation.homeUpcomingCount} onUpcomingCountChange={navigation.updateHomeUpcomingCount} snapshot={snapshot} resources={resources} onSelect={setSelectedId} onCourses={() => { setQuery(""); setView("courses"); }} onSources={() => setView("sources")} onPlan={command => run(command)} onJoin={window.magic.openLink ? url => { void perform(() => window.magic.openLink!(url)); } : undefined} report={resource => <PersonalReport resource={resource} snapshot={snapshot} run={run}/>} />
+              <Home todayCount={navigation.homeTodayCount} onTodayCountChange={navigation.updateHomeTodayCount} upcomingCount={navigation.homeUpcomingCount} onUpcomingCountChange={navigation.updateHomeUpcomingCount} snapshot={snapshot} resources={resources} onSelect={setSelectedId} onCourses={() => { setQuery(""); setView("courses"); }} onSources={() => setView("sources")} onPlan={command => requirePlanSave(run, command)} onJoin={window.magic.openLink ? url => { void perform(() => window.magic.openLink!(url)); } : undefined} report={(resource, summary) => <PersonalReport resource={resource} snapshot={snapshot} run={run} compactWhenHandled summary={summary}/>} onSetup={() => openConsent()} onNotice={setNotice} />
             )}
           </>
+        ) : view === "chat" ? (
+          <ChatPane typeHueOf={typeHueOf} chatId={selectedId ?? ''} bridge={window.magic} resources={resources} sources={snapshot.sources} courses={courseCards.map(card => chatCourse(card))} now={new Date().toISOString()} Info={EvidenceInfo} onBack={() => navigation.canBack ? navigation.back() : setView('today')} onOpenSetup={target => setView(target === 'sources' ? 'sources' : 'privacy')}/>
         ) : view === "resource" ? (
           selected ? <ResourceDetail key={selected.id} resource={selected} snapshot={snapshot} busy={busy} run={run} open={open} onClose={navigation.back} />
             : <section className="initial-state"><h1 tabIndex={-1}>This item is no longer available.</h1><p>The saved item may have been removed or excluded. Your previous page is still available.</p><button className="button" onClick={navigation.back}>Go back</button></section>
@@ -464,11 +497,11 @@ export function App() {
             onSelect={navigation.openCalendarResource} formatCourseLabel={(id, fallback) => { const resource = resources.find(r => r.id === id); const account = resource && accountBySource.get(resource.sourceId); const card = resource && courseCards.find(c => c.key === courseKey(account ?? resource.sourceId, resource.courseId)); return card?.code ?? card?.courseName ?? fallback; }} onPlan={async command => { const result = await run(command); if (!result) throw new Error("Calendar change was not saved"); return result; }}/></section>
         ) : view === "myuw" ? (
           <MyUw snapshot={snapshot} busy={busy} run={run} open={open}
-            refresh={() => void perform(async () => window.magic.syncPlanning?.())}
-            signIn={(service) => uwConsented /* owner: T06 */ ? void perform(async () => { await window.magic.signInUW?.(service); return window.magic.syncPlanning?.(); }) : openConsent()} />
+            refresh={() => perform(async () => window.magic.syncPlanning?.())}
+            signIn={(service) => uwConsented /* owner: T06 */ ? void perform(async () => { const outcome = await window.magic.signInUW?.(service); if (outcome?.status !== "confirmed") { setNotice(outcome ? signInMessage(outcome) : "Sign-in was not confirmed. Try again."); return; } return window.magic.syncPlanning?.(); }) : openConsent()} />
         ) : view === "courses" ? (
           <section className="desktop-courses">
-            {navigation.courseKey ? coursePage ? <CoursePageView typeHueOf={typeHueOf} key={coursePage.key} page={coursePage} selectedId={null} onSelect={setSelectedId} onBack={() => navigation.navigate("courses")} open={open} detail={null}/> : <><h1 tabIndex={-1}>Course unavailable</h1><p>This course is no longer included in the saved workspace.</p><Action onClick={() => navigation.navigate("courses")}>View courses</Action></> : <CoursesOverview cards={courseCards} onOpen={key => navigation.navigate("courses", null, key)}/>}
+            {navigation.courseKey ? coursePage ? <CoursePageView typeHueOf={typeHueOf} key={coursePage.key} page={coursePage} selectedId={null} onSelect={setSelectedId} onBack={() => navigation.navigate("courses")} open={open} detail={null}/> : <><h1 tabIndex={-1}>Course unavailable</h1><p>This course is no longer included in the saved workspace.</p><Action onClick={() => navigation.navigate("courses")}>View courses</Action></> : <CoursesIndex cards={courseCards} now={courseInput.now} typeHueOf={typeHueOf} onOpen={key => navigation.navigate("courses", null, key)} onSources={() => setView("sources")}/>}
           </section>
         ) : view === "consent" ? (
           // owner: T06. Consent route: setup, a new recipient's consent, or Agreements.

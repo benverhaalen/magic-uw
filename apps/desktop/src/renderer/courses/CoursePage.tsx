@@ -5,6 +5,7 @@ import {
   courseDeadlineDisplay,
   type CourseCard,
   type CourseFact,
+  type CourseFactItem,
   type CourseFactKind,
   type CoursePage as CoursePageModel,
 } from "../../../../../packages/domain/src/course-page";
@@ -104,19 +105,42 @@ const Chevron = () => (
   </span>
 );
 
-function Evidence({ fact, open }: { fact: CourseFact; open: (url: string) => void }) {
-  const evidence = fact.items.flatMap((item) => item.evidence).slice(0, 4);
+function Evidence({ fact, open, onSelect }: { fact: CourseFact; open: (url: string) => void; onSelect: (id: string) => void }) {
+  const seen = new Set<string>();
+  const evidence = fact.items.flatMap((item) => item.evidence).filter((e) => {
+    const key = JSON.stringify([e.resourceId, e.sourceId, e.contentHash, e.version, e.field, e.start, e.end, e.quote, e.url]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
   if (!evidence.length) return null;
   return (
-    <details className="course-evidence">
-      <summary><Chevron />Source</summary>
+    <details className="course-evidence" data-place-disclosure={`evidence-${fact.kind}`}>
+      <summary data-focus-key={`evidence-${fact.kind}`}><Chevron />Saved evidence ({evidence.length})</summary>
       {evidence.map((e, index) => (
-        <figure key={`${e.resourceId}:${index}`}>
-          <blockquote>{e.quote.length > 600 ? `${e.quote.slice(0, 600)}…` : e.quote}</blockquote>
+        <figure key={`${e.resourceId}:${e.version}:${index}`}>
+          <blockquote>{e.quote}</blockquote>
           <figcaption>
-            <button className="link-button" onClick={() => open(e.url)}>
-              {e.title}
-            </button>
+            <span>{e.title}</span>
+            <EvidenceInfo label={`About saved evidence from ${e.title}`}>
+              Saved version {e.version}, {e.field}.
+              {e.capturedAt ? ` Captured ${when(e.capturedAt, true)}.` : " The matching full saved source is not available in this course view."}
+              {e.start !== undefined && e.end !== undefined ? ` Passage characters ${e.start} to ${e.end}.` : ""}
+            </EvidenceInfo>
+            <div className="course-evidence-actions">
+              {e.savedText !== undefined ? (
+                <button className="link-button" data-focus-key={`saved-evidence-${fact.kind}-${index}`} data-place-anchor={`saved-evidence-${fact.kind}-${index}`} onClick={() => onSelect(e.resourceId)}>
+                  Open saved source
+                </button>
+              ) : null}
+              <button className="link-button" onClick={() => open(e.url)}>Open current original</button>
+            </div>
+            {e.savedText ? (
+              <details className="course-full-text" data-place-disclosure={`saved-text-${fact.kind}-${index}`}>
+                <summary data-focus-key={`saved-text-${fact.kind}-${index}`}>Full saved source text</summary>
+                <div className="course-saved-text">{e.savedText}</div>
+              </details>
+            ) : null}
           </figcaption>
         </figure>
       ))}
@@ -124,41 +148,58 @@ function Evidence({ fact, open }: { fact: CourseFact; open: (url: string) => voi
   );
 }
 
-function FactRow({
-  label,
-  fact,
-  open,
-  children,
-}: {
+/** Never show a character-cut claim as though it were the complete rule. */
+function FactText({ item, label, placeKey, limit }: { item: CourseFactItem; label: string; placeKey: string; limit: number }) {
+  const text = <p className="course-fact-text">{item.text}
+    {item.method === "local_model" ? <span className="badge">Found by local model</span> : null}
+  </p>;
+  return item.text.length <= limit ? text : (
+    <details className="course-full-text" data-place-disclosure={placeKey}>
+      <summary data-focus-key={placeKey}>Read complete {label.toLowerCase()} statement</summary>
+      {text}
+    </details>
+  );
+}
+
+function FactStatements({ fact, label, initial = 3, limit = 280 }: { fact: CourseFact; label: string; initial?: number; limit?: number }) {
+  const course = fact.items.filter((item) => !item.assignmentTitle);
+  const exceptions = fact.items.filter((item) => item.assignmentTitle);
+  const row = (item: CourseFactItem, index: number) => <FactText key={index} item={item} label={label} placeKey={`fact-${fact.kind}-${index}`} limit={limit} />;
+  return <>
+    {course.slice(0, initial).map(row)}
+    {course.length > initial ? (
+      <details className="course-full-text" data-place-disclosure={`more-facts-${fact.kind}`}>
+        <summary data-focus-key={`more-facts-${fact.kind}`}>{course.length - initial} more {label.toLowerCase()} {course.length - initial === 1 ? "statement" : "statements"}</summary>
+        {course.slice(initial).map((item, index) => row(item, index + initial))}
+      </details>
+    ) : null}
+    {exceptions.length ? (
+      <details className="course-full-text" data-place-disclosure={`assignment-facts-${fact.kind}`}>
+        <summary data-focus-key={`assignment-facts-${fact.kind}`}>{exceptions.length === 1 ? `${exceptions[0]!.assignmentTitle} has its own policy` : `${exceptions.length} assignments have their own policy`}</summary>
+        {exceptions.map((item, index) => <div key={index}>
+          <p className="course-quiet">{item.assignmentTitle}</p>
+          <p className="course-fact-text">{item.text}{item.method === "local_model" ? <span className="badge">Found by local model</span> : null}</p>
+        </div>)}
+      </details>
+    ) : null}
+  </>;
+}
+
+function FactRow({ label, fact, open, onSelect, children }: {
   label: string;
   fact: CourseFact;
   open: (url: string) => void;
+  onSelect: (id: string) => void;
   children?: ReactNode;
 }) {
-  const course = fact.items.filter((item) => !item.assignmentTitle);
-  const exceptions = fact.items.filter((item) => item.assignmentTitle);
   return (
     <div className="course-fact">
       <h3>{label}</h3>
       <div className="course-fact-body">
-        {fact.state === "conflict" ? (
-          <p className="attention-text">Sources disagree. Compare them before relying on this.</p>
-        ) : null}
+        {fact.state === "conflict" ? <p className="attention-text">Sources disagree. Compare them before relying on this.</p> : null}
         {children}
-        {course.slice(0, 3).map((item, index) => (
-          <p key={index} className="course-fact-text">
-            {item.text.length > 280 ? `${item.text.slice(0, 280)}…` : item.text}
-            {item.method === "local_model" ? <span className="badge">Found by local model</span> : null}
-          </p>
-        ))}
-        {exceptions.length ? (
-          <p className="course-quiet">
-            {exceptions.length === 1
-              ? `${exceptions[0]!.assignmentTitle} has its own policy.`
-              : `${exceptions.length} assignments have their own policy.`}
-          </p>
-        ) : null}
-        <Evidence fact={fact} open={open} />
+        <FactStatements fact={fact} label={label} />
+        <Evidence fact={fact} open={open} onSelect={onSelect} />
       </div>
     </div>
   );
@@ -442,7 +483,7 @@ export function CoursePageView({
       {grades || gradingText.state !== "not_found" ? (
         <section aria-labelledby="course-grading">
           <h2 id="course-grading">
-            Grading
+            {grades ? "Listed category weights" : "Grading"}
             <EvidenceInfo label="About grading sources">
               {grades ? "Category weights as listed on the course's Canvas assignment groups. Canvas may not use them for your final grade, and they do not say what a single assignment is worth. " : ""}
               {syllabusNote}
@@ -460,13 +501,8 @@ export function CoursePageView({
               {gradingText.state === "conflict" ? (
                 <p className="attention-text">Sources disagree. Compare them before relying on this.</p>
               ) : null}
-              {gradingText.items.filter((item) => !item.assignmentTitle).slice(0, 2).map((item, index) => (
-                <p key={index}>
-                  {item.text.length > 200 ? `${item.text.slice(0, 200)}…` : item.text}
-                  {item.method === "local_model" ? <span className="badge">Found by local model</span> : null}
-                </p>
-              ))}
-              <Evidence fact={gradingText} open={open} />
+              <FactStatements fact={gradingText} label="Grading" initial={2} limit={200} />
+              <Evidence fact={gradingText} open={open} onSelect={onSelect} />
             </div>
           ) : null}
         </section>
@@ -505,7 +541,7 @@ export function CoursePageView({
             ) : null}
           </h2>
           {facts.map((kind) => (
-            <FactRow key={kind} label={factLabel[kind]} fact={page.facts[kind]} open={open} />
+            <FactRow key={kind} label={factLabel[kind]} fact={page.facts[kind]} open={open} onSelect={onSelect} />
           ))}
           {unknown.aiMissing ? (
             <p className="course-overview-cue">No AI use policy found. Ask your instructor before using AI.</p>

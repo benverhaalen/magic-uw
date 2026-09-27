@@ -6,6 +6,8 @@
 :root {
   --magic-font-editorial: "Lora", Georgia, serif;
   --magic-font-interface: Geist, system-ui, sans-serif;
+  /* September 27: every app-authored Geist role uses one rendered weight/tracking. */
+  --magic-font-interface-weight: 400;
   --magic-tracking: normal;
   --magic-type-identity: 1.1875rem;
   --magic-type-page-title: 1.125rem;

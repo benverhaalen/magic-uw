@@ -104,19 +104,24 @@ export function scopeLabel(scope: ChatScope): string {
 export function scopeCourses(scope: ChatScope): ChatCourse[] {
   return scope.kind === "workspace" ? scope.courses : scope.course ? [scope.course] : [];
 }
-/**
- * Courses a chat may read: what the origin page showed plus the included courses, keyed by account
- * and course so a same-numbered course in an account that is not included never matches.
- */
-export function permittedCourses(origin: ChatScope, included: ChatCourse[]): ChatCourse[] {
-  const all = new Map<string, ChatCourse>();
-  for (const c of [...scopeCourses(origin), ...included]) if (!all.has(c.key)) all.set(c.key, c);
-  return [...all.values()];
+/** Current inclusion is authoritative; a historical origin is only a context hint. */
+export function permittedCourses(_origin: ChatScope, included: ChatCourse[]): ChatCourse[] {
+  return [...new Map(included.map(c => [c.key, c])).values()];
 }
-/** An item may be used when its course is permitted, or when it is the item the chat was opened on. */
-export function permits(permitted: ChatCourse[], item: ChatItem, origin?: ChatScope): boolean {
-  if (origin?.kind === "item" && origin.item.id === item.id) return true;
+export function permits(permitted: ChatCourse[], item: ChatItem, _origin?: ChatScope): boolean {
   return !!item.courseKey && permitted.some((c) => c.key === item.courseKey);
+}
+
+/** Refresh course facts from the current allowed set; never revive a removed course from chat memory. */
+export function permittedScope(scope: ChatScope, permitted: ChatCourse[]): ChatScope | null {
+  const byKey = new Map(permitted.map(c => [c.key, c]));
+  if (scope.kind === "workspace") return { ...scope, courses: scope.courses.flatMap(c => byKey.has(c.key) ? [byKey.get(c.key)!] : []) };
+  if (scope.kind === "course") {
+    const course = byKey.get(scope.course.key);
+    return course ? { ...scope, course } : null;
+  }
+  const course = scope.item.courseKey ? byKey.get(scope.item.courseKey) : null;
+  return course ? { ...scope, course } : null;
 }
 
 export type CourseMention =

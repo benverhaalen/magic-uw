@@ -126,8 +126,8 @@ test("destination comes from the actual target: a Canvas-hosted PDF is a PDF, si
   assert.equal(web("https://git.doit.wisc.edu/cs400/project-3/-/blob/main/README.md").category, "gitlab");
   // Look-alike hosts and other schools' Canvas stay generic; the host is shown, never a borrowed name.
   for (const url of ["https://canvas.wisc.edu.evil.test/x", "http://canvas.wisc.edu/x", "https://canvas.example.edu/x", "https://gitlab.com/a/b"]) assert.equal(web(url).category, "web", url);
-  assert.equal(web("https://www.example.org/a").name, "example.org");
-  assert.equal(web("not a url").name, "Web page");
+  assert.equal(web("https://www.example.org/a").name, "www.example.org");
+  assert.equal(web("not a url").name, "Destination unavailable");
   assert.equal(destinationPhrase({ role: "material", target: file(".pdf") }), "Saved PDF in its usual app");
   assert.equal(destinationPhrase({ role: "instructions", target: { kind: "web", url: "https://canvas.wisc.edu/courses/1/assignments/3" } }), "Canvas page in your browser, opens in front");
   assert.equal(destinationPhrase({ role: "material", target: { kind: "web", url: "https://example.org/a" } }), "Page on example.org in your browser");
@@ -137,7 +137,7 @@ test("summary deduplicates by destination category and keeps every resource", ()
   const groups = destinationGroups(set.items);
   // Fixture set: a saved PDF and two pages on a non-UW Canvas host.
   assert.deepEqual(groups.map(group => [group.category, group.count, group.resourceIds]), [["pdf", 1, ["slides"]], ["web", 2, ["reading", "essay"]]]);
-  assert.equal(destinationSummary(groups), "1 PDF and 2 web pages");
+  assert.equal(destinationSummary(groups), "1 PDF and 2 pages on canvas.example.edu");
   assert.equal(groups.reduce((sum, group) => sum + group.resourceIds.length, 0), set.items.length);
   assert.doesNotMatch(destinationSummary(groups), /open|all/i);
 });
@@ -214,4 +214,23 @@ test("coming back after a real handoff restores focus to the saved control only 
   } finally {
     for (const key of ["window", "document", "requestAnimationFrame"]) Reflect.deleteProperty(globalThis, key);
   }
+});
+
+
+test("destination identity rejects credentialed and non-web URLs and preserves unknown hosts", () => {
+  const web = (url: string) => destinationOf({ kind: "web", url });
+  assert.equal(web("https://CANVAS.WISC.EDU:443/path").icon, "canvas");
+  for (const url of ["https://user:secret@canvas.wisc.edu/a", "https://canvas.wisc.edu@evil.test/a", "ftp://canvas.wisc.edu/a", "javascript:alert(1)", "not a URL"]) {
+    const d = web(url);
+    assert.equal(d.category, "web");
+    assert.equal(d.name, "Destination unavailable", url);
+    assert.doesNotMatch(JSON.stringify(d), /secret|user:/);
+  }
+  for (const url of ["https://canvas.wisc.edu.evil.test/a", "https://git.doit.wisc.edu.evil.test/a", "https://canvas.wısc.edu/a", "https://canvas.wisc.edu:8443/a"]) assert.equal(web(url).category, "web", url);
+  assert.equal(web("https://www.reading.example:8443/chapter?private=1").name, "www.reading.example:8443");
+  const urls = ["https://one.example/a", "https://two.example/a", "https://one.example/b"];
+  const groups = destinationGroups(urls.map((url, i) => ({ resourceId: String(i), target: {kind: "web", url} })));
+  assert.equal(groups.length, 2);
+  assert.equal(destinationSummary(groups), "2 pages on one.example and 1 page on two.example");
+  assert.equal(destinationPhrase({role: "material", target: {kind: "web", url: "file:///secret"}}), "Destination unavailable");
 });

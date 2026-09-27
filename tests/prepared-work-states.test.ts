@@ -201,7 +201,7 @@ test("literal action names and shell notice", () => {
   const action = tile(controller({ set: only }), { action: true });
   assert.match(action, /Open assignment/);
   assert.doesNotMatch(action, /<small>/, "a single page shows no prepared-work subtitle");
-  assert.match(text(tile(controller(), { action: true })), /^Start work Sends 1 PDF, 1 web page and 1 Canvas page/);
+  assert.match(text(tile(controller(), { action: true })), /^Start work Sends 1 PDF, 1 page on example.org and 1 Canvas page/);
   assert.equal(pageViewApplies(set), true);
   const all = outcomeFromReceipt(set, receipt({ opened: set.items.map(item => ({ resourceId: item.resourceId, title: item.title, via: "browser" as const })) }));
   assert.equal(noticeLine(all), "Essay 2: sent 3 items to your browser and apps.");
@@ -212,3 +212,16 @@ test("literal action names and shell notice", () => {
 // Keep the stub from leaking into other files in the same process.
 test.after(() => { Reflect.deleteProperty(globalThis, "window"); resetStore(); });
 export type { LaunchOutcome };
+
+
+test("destination mark is decorative, small and shares exact provider/host wording", () => {
+  const html = tile(controller());
+  assert.match(html, /magic-prepared__icon--canvas/);
+  assert.match(html, /width="16" height="16" aria-hidden="true"/);
+  assert.match(html, /Sends 1 PDF, 1 page on example.org and 1 Canvas page/);
+  assert.doesNotMatch(html, /VS Code|graduation-cap/);
+  const detailHtml = detail(controller());
+  assert.match(detailHtml, /Canvas page in your browser/);
+  assert.match(detailHtml, /Page on example.org in your browser/);
+  assertStableTile(html);
+});

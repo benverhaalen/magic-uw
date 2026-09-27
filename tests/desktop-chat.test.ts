@@ -8,10 +8,10 @@ import {
   studentError, withoutMention,
 } from "../apps/desktop/src/renderer/chat/model";
 import {
-  answerLocally, choose, chooseCourse, continueChat, drive, getChat, goneOrigin, resetChats, retry, searchAll, startChat, stop, subscribe,
+  answerLocally, chatPromptError, choose, chooseCourse, continueChat, drive, getChat, goneOrigin, resetChats, retry, searchAll, startChat, stop, subscribe,
   type ChatBridge, type ChatOrigin, type ChatRuntime,
 } from "../apps/desktop/src/renderer/chat/store";
-import { intentSupport, resetIntentSupport, type IntentResult } from "../apps/desktop/src/renderer/chat/intent";
+import { previewIntent, runIntent, intentSupport, resetIntentSupport, type IntentResult } from "../apps/desktop/src/renderer/chat/intent";
 
 // Synthetic fixtures and fake bridges only; no live model, Canvas, database or auth.
 const now = "2026-09-27T15:00:00Z";
@@ -61,7 +61,7 @@ test("account boundary: an included course may be used; another account's same-n
   assert.equal(permits(permitted, chatItem(resources[5]!, sources)), true, "an explicitly named included course is allowed");
   assert.equal(permits(permitted, chatItem(resources[2]!, sources)), false, "other account's 220 is not included");
   const item = chatScopeForPage({ page: "resource", resource: resources[2], cards, sources });
-  assert.equal(permits(permitted, chatItem(resources[2]!, sources), item), true, "the item the chat was opened on stays usable");
+  assert.equal(permits(permitted, chatItem(resources[2]!, sources), item), false, "historical origin cannot override current course inclusion");
 });
 
 test("course mentions resolve by code only against permitted courses; ambiguity and unknown codes are explicit", () => {
@@ -191,7 +191,7 @@ test("due answer is code-resolved, account-scoped and honest about coverage", as
   resetChats();
   const home = chatScopeForPage({ page: "today", cards, sources });
   const { chat } = startChat({ prompt: "what's due this week", origin: { ...origin(home), view: "today", label: "Home" }, idempotencyKey: "d" })!;
-  drive(chat, runtime({}, [])); await settle();
+  drive(chat, runtime({}, cards.map(card => chatCourse(card)))); await settle();
   const r = chat.exchanges[0]!.result;
   assert.equal(r?.kind, "due");
   if (r?.kind !== "due") return;
@@ -475,4 +475,42 @@ test("router: an old schema is detected once and a raw IPC blob becomes one sent
   const c2 = startChat({ prompt: "What is a seam?", origin: origin(), idempotencyKey: "b" })!.chat;
   drive(c2, runtime(broken)); await settle(); await settle();
   assert.deepEqual(c2.exchanges[0]!.error, { text: "Magic could not finish this request. Try again.", detail: blob, setup: null });
+});
+
+
+test("long input stays in the draft instead of becoming an accepted truncated request", () => {
+  resetChats();
+  const tooLong = "x".repeat(2001);
+  assert.match(chatPromptError(tooLong)!, /2,000/);
+  assert.equal(startChat({ prompt: tooLong, origin: origin(), idempotencyKey: "long" }), null);
+  const accepted = startChat({ prompt: "x".repeat(1990) + " BIOLOGY", origin: origin(), idempotencyKey: "fits" })!;
+  assert.equal(accepted.chat.exchanges[0]!.prompt.endsWith(" BIOLOGY"), true);
+  assert.equal(continueChat(accepted.chat.id, tooLong, "long-follow"), false);
+  assert.equal(accepted.chat.exchanges.length, 1);
+});
+
+test("router never executes a truncated message that omits a trailing correction", async () => {
+  resetIntentSupport();
+  let calls = 0;
+  const bridge = { query: async () => { calls++; }, execute: async () => { calls++; } } as unknown as ChatBridge;
+  const prompt = "what is due ".repeat(50) + "actually in BIOLOGY 120";
+  assert.equal(await previewIntent(bridge, prompt, "uw:220"), null);
+  await assert.rejects(() => runIntent(bridge, prompt, "uw:220"), /too long/);
+  assert.equal(calls, 0);
+});
+
+
+test("a removed origin cannot send a command or read an item; an explicit included course still wins", async () => {
+  resetChats(); resetIntentSupport();
+  let calls = 0;
+  const bridge = { query: async () => { calls++; throw new Error("must not read"); }, execute: async () => { calls++; throw new Error("must not run"); } } as unknown as ChatBridge;
+  const chat = startChat({ prompt: "what's due this week", origin: origin(), idempotencyKey: "revoked" })!.chat;
+  drive(chat, runtime(bridge, [chatCourse(bioCard)])); await settle();
+  assert.equal(chat.exchanges[0]!.state, "failed");
+  assert.match(chat.exchanges[0]!.error!.text, /no longer included/);
+  assert.equal(calls, 0);
+  continueChat(chat.id, "what's due in BIOLOGY 120 this week", "permitted-new-target");
+  drive(chat, runtime({}, [chatCourse(bioCard)])); await settle();
+  const result = chat.exchanges[1]!.result;
+  assert.deepEqual(result?.kind === "due" && result.rows.map(r => r.id), ["bio1"]);
 });

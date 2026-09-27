@@ -2,6 +2,6 @@
 export { ChatPane, type ChatInfo, type ChatPaneProps } from "./ChatPane";
 export { chatCourse, chatScopeForPage, scopeLabel, type ChatCourse, type ChatScope } from "./model";
 export {
-  continueChat, followUpHint, getChat, goneOrigin, startChat, subscribe,
+  chatPromptError, continueChat, followUpHint, getChat, goneOrigin, startChat, subscribe,
   type Chat, type ChatBridge, type ChatEntry, type ChatOrigin, type ChatRuntime,
 } from "./store";

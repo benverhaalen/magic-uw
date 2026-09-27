@@ -1,6 +1,6 @@
 import type { AppBridge, LocalAnswer, ResourceView, SourceHealth } from "@magic/contracts";
 import {
-  chatItem, dueCaveat, dueInScope, localErrorIsBusy, localErrorNeedsSetup, namesAnotherItem, permits, permittedCourses,
+  chatItem, dueCaveat, dueInScope, localErrorIsBusy, localErrorNeedsSetup, namesAnotherItem, permits, permittedCourses, permittedScope,
   resolveCourseMention, routeIntent, safeWebLink, scopeCourses, scopeLabel, studentError, withoutMention,
   type ChatCourse, type ChatItem, type ChatScope, type DueRow, type DueWindow,
 } from "./model";
@@ -124,15 +124,21 @@ function exchange(prompt: string, key: string, target: ChatItem | null = null): 
   return { id: nextId("x"), key, prompt, target, course: null, wide: false, local: false, state: "queued", step: null, result: null, error: null };
 }
 
+/** Matches the existing local-question contract; callers show this before clearing a draft. */
+export function chatPromptError(text: string): string | null {
+  if (!text.trim()) return "Write a message first.";
+  return text.trim().length > 2000 ? "Keep this message to 2,000 characters. Your full draft is still here." : null;
+}
+
 /** Nonempty submit from the shell composer. Returns null for an empty prompt or a replayed key of a dropped chat. */
 export function startChat(entry: ChatEntry, now = new Date().toISOString()): { chat: Chat; created: boolean } | null {
   const prompt = entry.prompt.trim();
-  if (!prompt || !entry.idempotencyKey) return null;
+  if (chatPromptError(entry.prompt) || !entry.idempotencyKey) return null;
   const id = byKey.get(entry.idempotencyKey);
   const existing = getChat(id ?? null);
   if (existing) return { chat: existing, created: false };
   if (id) return null;
-  const chat: Chat = { id: nextId("c"), origin: entry.origin, createdAt: now, exchanges: [exchange(prompt.slice(0, 2000), entry.idempotencyKey)], course: null, narrowed: null, version: 0 };
+  const chat: Chat = { id: nextId("c"), origin: entry.origin, createdAt: now, exchanges: [exchange(prompt, entry.idempotencyKey)], course: null, narrowed: null, version: 0 };
   chats.set(chat.id, chat);
   byKey.set(entry.idempotencyKey, chat.id);
   evict();
@@ -143,9 +149,9 @@ export function startChat(entry: ChatEntry, now = new Date().toISOString()): { c
 /** A follow-up typed into the shell composer while this chat is shown. */
 export function continueChat(chatId: string, text: string, idempotencyKey: string): boolean {
   const chat = getChat(chatId), prompt = text.trim();
-  if (!chat || !prompt || !idempotencyKey) return false;
+  if (!chat || chatPromptError(text) || !idempotencyKey) return false;
   if (chat.exchanges.some((x) => x.key === idempotencyKey)) return true;
-  chat.exchanges = [...chat.exchanges, exchange(prompt.slice(0, 2000), idempotencyKey)];
+  chat.exchanges = [...chat.exchanges, exchange(prompt, idempotencyKey)];
   emit(chat);
   return true;
 }
@@ -250,10 +256,18 @@ async function run(chat: Chat, x: Exchange, rt: ChatRuntime) {
   update(chat, x, { state: "running", error: null, result: null, step: null });
   try {
     const permitted = permittedCourses(chat.origin.scope, rt.courses);
+    // Current inclusion wins over historical context. A new explicit target can recover a removed origin.
+    let allowedBase = permittedScope(currentScope(chat), permitted);
+    if (!allowedBase) {
+      const initialPlan = plan(chat, x, permitted);
+      if (initialPlan.kind === "pick") return update(chat, x, { state: "done", result: initialPlan.result });
+      allowedBase = permittedScope(initialPlan.scope, permitted);
+    }
+    if (!allowedBase) return update(chat, x, { state: "failed", error: { text: "This course is no longer included. Choose an included course or update Sources.", setup: "sources" } });
     const intent = routeIntent(x.prompt);
     let said: string | null = null;
     if (!x.target && !x.local && !x.course && !x.wide) {
-      const base = currentScope(chat);
+      const base = allowedBase;
       const item = base.kind === "item" ? base.item : null;
       // A remembered item answers its own follow-ups on this device unless another item is named.
       const itemFirst = item && intent.kind === "ask" && !namesAnotherItem(x.prompt, item, rt.resources.filter((r) => !r.deleted).map((r) => chatItem(r, rt.sources)).filter((i) => i.courseKey === item.courseKey));
@@ -273,7 +287,8 @@ async function run(chat: Chat, x: Exchange, rt: ChatRuntime) {
     }
     const p = x.target ? null : plan(chat, x, permitted, said);
     if (p?.kind === "pick") return update(chat, x, { state: "done", result: p.result });
-    const scope = p?.scope ?? currentScope(chat);
+    const scope = permittedScope(p?.scope ?? currentScope(chat), permitted);
+    if (!scope) return update(chat, x, { state: "failed", error: { text: "This course is no longer included. Choose an included course or update Sources.", setup: "sources" } });
 
     if (intent.kind === "due" && !x.target) {
       const courses = scopeCourses(scope);

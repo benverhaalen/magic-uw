@@ -1,7 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ComponentType, type ReactNode } from "react";
 import { localContextPayload, type ContextManifest } from "@magic/contracts";
 import { Action } from "../../../../../packages/ui/src";
-import { courseTone } from "../Home";
+import { deadlineSurface, deadlineEmphasis, type AssignmentTypeHue } from "../../../../../packages/ui/src/deadline-emphasis";
+import type { ResourceView } from "@magic/contracts";
+import { localTime } from "@magic/domain";
 import { answerIsStale, chatItem, coverageBlocker, coverageLine, dueParts, permittedCourses, safeWebLink, scopeCourses, scopeLabel, spanLabel, when, type ChatItem } from "./model";
 import {
   answerLocally, choose, chooseCourse, continueChat, currentScope, drive, getChat, goneOrigin, openSource, retry, searchAll, setCourse, setNarrowed, stop, subscribe,
@@ -18,6 +20,7 @@ import "./chat.css";
 export type ChatInfo = ComponentType<{ label: string; children: ReactNode }>;
 export interface ChatPaneProps extends ChatRuntime {
   chatId: string;
+  typeHueOf?: (resource: ResourceView) => AssignmentTypeHue | null;
   /** Integrator returns to origin: route, scroll anchor and focus key. Null when the chat and its origin are gone. */
   onBack(origin: ChatOrigin | null): void;
   /** Integrator routes to local-model setup or to Sources. */
@@ -143,7 +146,7 @@ function ExchangeView({ chat, x, runtime, onOpenSetup, Info }: ViewProps) {
   if (!r) return null;
   if (r.kind === "note") return <p className="magic-chat-prose">{r.text}</p>;
   if (r.kind === "opened") return <p className="magic-chat-prose">Opened {r.item.title} in your browser. Opening it does not mark anything done.</p>;
-  if (r.kind === "due") return <Due r={r} now={runtime.now} Info={Info} />;
+  if (r.kind === "due") return <Due r={r} now={runtime.now} Info={Info} resources={runtime.resources} typeHueOf={(runtime as ChatPaneProps).typeHueOf} />;
   if (r.kind === "grounded") return <Grounded chat={chat} x={x} r={r} busy={busy} Info={Info} />;
   if (r.kind === "unavailable") return <div className="magic-chat-body">
     <p className="magic-chat-prose">{r.reason}</p>
@@ -167,7 +170,7 @@ function ExchangeView({ chat, x, runtime, onOpenSetup, Info }: ViewProps) {
 
 type ResultOf<K extends NonNullable<Exchange["result"]>["kind"]> = Extract<NonNullable<Exchange["result"]>, { kind: K }>;
 
-function Due({ r, now, Info }: { r: ResultOf<"due">; now: string; Info?: ChatInfo }) {
+function Due({ r, now, Info, resources, typeHueOf }: { r: ResultOf<"due">; now: string; Info?: ChatInfo; resources: ResourceView[]; typeHueOf?: ChatPaneProps["typeHueOf"] }) {
   const span = spanLabel(r.span);
   const past = r.rows.filter((row) => row.pastDue).length;
   return <div className="magic-chat-body">
@@ -178,12 +181,15 @@ function Due({ r, now, Info }: { r: ResultOf<"due">; now: string; Info?: ChatInf
     {r.caveat ? <p className="magic-chat-warning">{r.caveat}</p> : null}
     {r.rows.length ? <ul className="magic-chat-due">{r.rows.map((row) => {
       const when = dueParts(row.dueAt, now);
-      return <li key={row.id}><a className={`magic-chat-due-row is-${courseTone(row.toneKey)}`} href={itemHref(row.id)} data-focus-key={`chat-due-${row.id}`}>
+      const resource = resources.find(item => item.id === row.id);
+      const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const surface = deadlineSurface(deadlineEmphasis({today:localTime(now,zone).date,due:resource?.deadline.conflict ? null : localTime(row.dueAt,zone).date,completed:row.submitted}).bin, resource ? typeHueOf?.(resource)?.hue ?? null : null);
+      return <li key={row.id}><a {...surface} className="magic-chat-due-row" href={itemHref(row.id)} data-focus-key={`chat-due-${row.id}`}>
         <span className="magic-chat-due-main">
           <span className="magic-chat-due-course">{row.courseCode ?? row.courseLabel}{row.kindLabel ? <span>{row.kindLabel}</span> : null}{row.submitted ? <span>Submitted in Canvas</span> : null}</span>
           <span className="magic-chat-due-title">{row.title}</span>
         </span>
-        <span className="magic-chat-due-when"><strong>{row.pastDue ? `Past due · ${when.day}` : when.day}</strong>{when.time}</span>
+        <span className="magic-chat-due-when"><strong>{resource?.deadline.conflict ? "Dates disagree" : row.pastDue ? `Past due · ${when.day}` : when.day}</strong>{resource?.deadline.conflict ? "Review dates" : when.time}</span>
         <Icon name="chevron" />
       </a></li>;
     })}</ul> : null}

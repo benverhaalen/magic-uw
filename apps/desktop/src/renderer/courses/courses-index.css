@@ -1,0 +1,155 @@
+/* Courses index: centered course choices. Scoped to .courses-index; reads shared tokens and the
+   [data-magic-hue] role pairs from deadline-emphasis.css (strong, pale, ink). No new palette. */
+
+/* Rest 70% leading stop fading to 20% matches the reference rows' strong-edge-to-light fill.
+   Registered so the card fill can transition (and reverse mid-way) between rest, hover and press. */
+@property --ci-level {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 70%;
+}
+
+.courses-index {
+  --ci-card: 312px;
+  --ci-gap: 16px;
+  container-type: inline-size;
+  max-width: calc(3 * var(--ci-card) + 2 * var(--ci-gap));
+  margin: 0 auto;
+}
+
+.ci-header {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 20px;
+  color: var(--magic-ink-muted);
+}
+.courses-index .ci-header h1 {
+  margin: 0;
+  color: var(--magic-ink);
+  font: 500 var(--magic-type-section) / 1.3 var(--magic-font-editorial);
+  letter-spacing: 0;
+  text-align: center;
+}
+.ci-coverage { display: block; }
+.ci-coverage + .ci-coverage { margin-top: 6px; }
+
+.ci-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: stretch;
+  gap: var(--ci-gap);
+  margin: 0;
+  padding: 0 0 32px;
+  list-style: none;
+}
+/* Four reads better as two rows of two than three over one. */
+.ci-grid[data-count="4"] { max-width: calc(2 * var(--ci-card) + var(--ci-gap)); margin-inline: auto; }
+
+.ci-card {
+  --ci-level: 70%;
+  position: relative;
+  flex: 0 1 var(--ci-card);
+  min-width: 0;
+  min-height: 172px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px 18px;
+  border-radius: var(--magic-radius-card);
+  color: var(--magic-deadline-ink);
+  background: linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--magic-deadline-strong) var(--ci-level), var(--magic-deadline-pale)),
+    color-mix(in oklab, var(--magic-deadline-strong) calc(var(--ci-level) - 50%), var(--magic-deadline-pale))
+  );
+  transition: --ci-level 160ms var(--magic-motion-ease-out, ease-out);
+}
+@media (hover: hover) {
+  /* The whole card answers the pointer, except while the pointer is on its own link or info control. */
+  .ci-card:hover:not(:has(.ci-next a:hover, .magic-info-trigger:hover)) { --ci-level: 82%; }
+}
+.ci-card:has(.ci-open:active) { --ci-level: 92%; transition-duration: 80ms; }
+/* Keyboard focus rings the card; a pointer click shows no ring. */
+.ci-card:has(.ci-open:focus-visible) { outline: 2px solid var(--magic-focus); outline-offset: 3px; }
+.courses-index .ci-open:focus-visible { outline: none; }
+
+.ci-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  min-height: 28px;
+}
+.ci-code {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #fff 38%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 38%, transparent);
+  font: var(--magic-font-interface-weight) 0.875rem / 1.3 var(--magic-font-interface);
+  letter-spacing: var(--magic-tracking);
+  overflow-wrap: anywhere;
+}
+.ci-arrow { display: grid; place-items: center; flex: none; }
+.ci-arrow svg { width: 18px; height: 18px; transition: transform 160ms var(--magic-motion-ease-out, ease-out); }
+@media (hover: hover) {
+  .ci-card:hover:not(:has(.ci-next a:hover, .magic-info-trigger:hover)) .ci-arrow svg { transform: translateX(2px); }
+}
+
+.courses-index .ci-title { margin: 0; font: 500 var(--magic-type-section) / 1.25 var(--magic-font-editorial); letter-spacing: 0; }
+.ci-open {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+/* The course target covers the card; the assignment link sits above it as its own target. */
+.ci-open::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+
+.ci-next {
+  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  font: var(--magic-font-interface-weight) 1rem / 1.4 var(--magic-font-interface);
+}
+.ci-next .magic-inline-entity { position: relative; z-index: 1; overflow-wrap: anywhere; }
+/* On a hue fill the shared link blue measured 3.5:1 (indigo); the card ink stays >= 6.6:1 at every level. */
+.courses-index .ci-next .magic-inline-entity > a { color: inherit; }
+.ci-due-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.ci-due {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--magic-deadline-ink) 28%, transparent);
+  font: var(--magic-font-interface-weight) 0.875rem / 1.3 var(--magic-font-interface);
+  font-variant-numeric: tabular-nums;
+}
+.ci-flag { font: var(--magic-font-interface-weight) 0.875rem / 1.3 var(--magic-font-interface); }
+
+.ci-quiet {
+  margin: 2px 0 0;
+  font: var(--magic-font-interface-weight) 0.9375rem / 1.45 var(--magic-font-interface);
+}
+.ci-quiet span { display: block; margin-top: 2px; }
+
+.ci-none { max-width: 440px; margin: 8px auto 0; text-align: center; color: var(--magic-ink-muted); }
+.ci-none p { margin-bottom: 16px; font-size: 1rem; line-height: 1.5; }
+
+@container (max-width: 600px) {
+  .ci-card { flex-basis: 100%; max-width: 460px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ci-arrow svg { transition: none; }
+  .ci-card:hover .ci-arrow svg { transform: none; }
+}

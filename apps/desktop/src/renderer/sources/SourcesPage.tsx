@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AppBridge, Command, CommandResult, Snapshot } from "@magic/contracts";
 import { Action } from "../../../../../packages/ui/src";
 import {
@@ -123,24 +123,29 @@ export function SourcesPage(props: SourcesPageProps) {
   // The accounts this snapshot reads. A reply that started under other accounts (sign-out, a
   // different NetID, a rebuilt snapshot) is dropped instead of being reported on this one.
   const scopeKey = accountScopeKey(snapshot);
-  const scopeRef = useRef(scopeKey);
-  scopeRef.current = scopeKey;
+  const requestScope = useMemo(() => ({}), [scopeKey, bridge]);
+  const scopeRef = useRef(requestScope);
+  scopeRef.current = requestScope;
+  const refreshPending = useRef(false);
+  const refreshSequence = useRef(0);
   const outlookSeq = useRef(0);
 
   const readOutlook = useCallback(async () => {
+    const startedFor = scopeRef.current;
     const seq = ++outlookSeq.current;
     const [ics, g] = await Promise.all([
       bridge.outlookCalendarStatus?.().then((s) => s.connected).catch(() => null) ?? Promise.resolve(null),
       bridge.outlookStatus?.().catch(() => null) ?? Promise.resolve(null),
     ]);
-    if (!live.current || seq !== outlookSeq.current) return; // a newer read or an action already answered
+    if (!live.current || startedFor !== scopeRef.current || seq !== outlookSeq.current) return; // a newer read or an action already answered
     setIcsConnected(g?.icsConnected ?? ics);
     setGraph(g);
   }, [bridge]);
   useEffect(() => {
     live.current = true;
+    setGraph(null); setIcsConnected(null); setRefreshNote(null);
     void readOutlook();
-    return () => { live.current = false; };
+    return () => { live.current = false; outlookSeq.current++; };
   }, [readOutlook, scopeKey]);
 
   const model = buildSourcesModel(snapshot, {
@@ -156,29 +161,43 @@ export function SourcesPage(props: SourcesPageProps) {
   const setOpen = (id: string, open: boolean) => setExpanded((e) => (open ? (e.includes(id) ? e : [...e, id]) : e.filter((x) => x !== id)));
 
   const refresh = async () => {
-    if (!bridge.syncCanvas || refreshing) return;
+    if (!bridge.syncCanvas || refreshPending.current) return;
+    refreshPending.current = true;
+    const refreshRequest = ++refreshSequence.current;
     const startedFor = scopeRef.current;
     setRefreshing(true);
     setRefreshNote({ text: "Reading Canvas and your calendar feeds. Saved coursework stays available, and partial results are kept as they arrive.", tone: "status" });
-    const result = await props.onSync();
+    let result: CommandResult | undefined;
+    try { result = await props.onSync(); } catch { /* The same recovery applies to a rejected read. */ }
+    finally { refreshPending.current = false; }
     if (!live.current) return;
     setRefreshing(false);
-    if (startedFor !== scopeRef.current) { setRefreshNote(null); return; }
+    if (startedFor !== scopeRef.current || refreshRequest !== refreshSequence.current) { setRefreshNote(null); return; }
     setRefreshNote(result
       ? { text: `Refresh finished ${formatWhen(new Date().toISOString(), new Date())}. Each source below shows what was read.`, tone: "status" }
-      : { text: "The refresh did not finish. Saved coursework is unchanged. Try again, or check the source that needs attention below.", tone: "alert" });
+      : { text: "The refresh did not finish. Saved coursework, including any partial results, stays available. Try again, or check the source that needs attention below.", tone: "alert" });
     // A row's Try again disappears once its source reads cleanly; keep focus on the page's refresh.
     settleFocus(() => page.current?.querySelector<HTMLElement>('[data-focus-key="sources-refresh"]'), () => page.current?.querySelector<HTMLElement>("h1"));
     void readOutlook();
   };
-  // Outlook status answered by an action is newer than any read still in flight.
+  // Reserve status ownership at activation. A newer read/scope supersedes this reply.
+  const beginOutlookAction = () => {
+    const seq = ++outlookSeq.current;
+    return () => live.current && requestScope === scopeRef.current && seq === outlookSeq.current;
+  };
   const outlookChanged = (g: OutlookGraphStatus | null, ics?: boolean) => {
-    outlookSeq.current++;
-    if (g) setGraph(g);
+    if (!live.current || requestScope !== scopeRef.current) return;
+    if (g) { setGraph(g); setIcsConnected(g.icsConnected); }
     if (ics !== undefined) setIcsConnected(ics);
   };
   // A finished refresh no longer describes the rows once the session ends.
-  const signOut = async () => { setRefreshNote(null); await props.onSignOut(); };
+  const signOut = async () => {
+    const startedFor = scopeRef.current;
+    outlookSeq.current++; refreshSequence.current++;
+    setRefreshNote(null);
+    await props.onSignOut();
+    if (live.current && startedFor === scopeRef.current) void readOutlook();
+  };
   const connected = model.connections.filter((c) => c.state !== "not_connected" && c.state !== "sample");
   const nothingConnected = !connected.length;
 
@@ -203,10 +222,10 @@ export function SourcesPage(props: SourcesPageProps) {
           <ConnectionRow key={c.id} connection={c} open={expanded.includes(c.id)} onOpen={(open) => setOpen(c.id, open)}
             action={<RowAction connection={c} {...props} bridge={bridge} busy={busy || refreshing} onRefresh={refresh} onReveal={() => reveal(c.id)} />}>
             {c.id === "canvas" ? (
-              <CanvasDetails connection={c} {...props} onSignOut={signOut} bridge={bridge} busy={busy || refreshing} at={now} />
+              <CanvasDetails key={scopeKey} connection={c} {...props} onSignOut={signOut} bridge={bridge} busy={busy || refreshing} at={now} />
             ) : c.id === "outlook" ? (
-              <OutlookDetails connection={c} bridge={bridge} busy={busy || refreshing} graph={graph} icsConnected={icsConnected}
-                onChanged={outlookChanged} onSync={props.onSync} onSourcesChanged={props.onSourcesChanged} now={now} />
+              <OutlookDetails key={scopeKey} requestScope={requestScope} connection={c} bridge={bridge} busy={busy || refreshing} graph={graph} icsConnected={icsConnected}
+                onBegin={beginOutlookAction} onChanged={outlookChanged} onSync={props.onSync} onSourcesChanged={props.onSourcesChanged} now={now} />
             ) : c.id === "myuw" ? (
               <PlanningDetails connection={c} now={now} onOpenMyUw={props.onOpenMyUw} />
             ) : (
@@ -460,10 +479,17 @@ function KeepSignedIn({ bridge, busy }: { bridge: SourcesBridge; busy: boolean }
   const [value, setValue] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const generation = useRef(0);
+  const active = useRef(false);
+  const savingRef = useRef(false);
+  const currentBridge = useRef(bridge);
+  currentBridge.current = bridge;
   useEffect(() => {
-    let live = true;
-    bridge.keepSignedIn?.().then((v) => { if (live) setValue(v); }).catch(() => {});
-    return () => { live = false; };
+    active.current = true;
+    const seq = ++generation.current;
+    setValue(null); setError(""); setSaving(savingRef.current);
+    bridge.keepSignedIn?.().then((v) => { if (seq === generation.current && bridge === currentBridge.current) setValue(v); }).catch(() => {});
+    return () => { active.current = false; generation.current++; };
   }, [bridge]);
   if (!bridge.keepSignedIn || value === null) return null;
   return (
@@ -475,63 +501,117 @@ function KeepSignedIn({ bridge, busy }: { bridge: SourcesBridge; busy: boolean }
       </span>
       <input type="checkbox" role="switch" checked={value} disabled={busy || saving}
         onChange={(e) => {
+          if (savingRef.current) return;
+          savingRef.current = true;
+          const seq = ++generation.current;
+          const current = () => seq === generation.current && bridge === currentBridge.current;
           setSaving(true); setError("");
-          bridge.keepSignedIn!(e.target.checked).then(setValue).catch(() => setError("That setting could not be saved. It is unchanged.")).finally(() => setSaving(false));
+          bridge.keepSignedIn!(e.target.checked)
+            .then((v) => { if (current()) setValue(v); })
+            .catch(() => { if (current()) setError("That setting could not be confirmed. Check it before trying again."); })
+            .finally(() => { savingRef.current = false; if (active.current) setSaving(false); });
         }} />
     </label>
   );
 }
 
-function OutlookDetails({ connection: c, bridge, busy, graph, icsConnected, onChanged, onSync, onSourcesChanged, now }: {
+function OutlookDetails({ connection: c, bridge, busy, graph, icsConnected, onChanged, onSync, onSourcesChanged, now, requestScope, onBegin }: {
+  requestScope: object;
+  onBegin: () => () => boolean;
   connection: Connection; bridge: SourcesBridge; busy: boolean; graph: OutlookGraphStatus | null; icsConnected: boolean | null;
   onChanged: (graph: OutlookGraphStatus | null, ics?: boolean) => void; onSync: SourcesPageProps["onSync"]; onSourcesChanged: SourcesPageProps["onSourcesChanged"]; now: Date;
 }) {
   const [link, setLink] = useState("");
-  const [message, setMessage] = useState<{ text: string; alert: boolean } | null>(null);
+  const [message, setMessage] = useState<{ text: string; alert: boolean; field?: boolean } | null>(null);
+  const [validation, setValidation] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
   const inputId = useId();
+  const feedbackId = `${inputId}-feedback`;
+  const validationId = `${inputId}-validation`;
+  const active = useRef(false);
+  const currentScope = useRef(requestScope);
+  currentScope.current = requestScope;
+  const operation = useRef(0);
+  const pending = useRef(false);
+  useEffect(() => {
+    active.current = true;
+    setMessage(null); setValidation(null); setLink("");
+    return () => { active.current = false; operation.current++; };
+  }, [requestScope]);
+  const begin = () => {
+    if (pending.current) return null;
+    pending.current = true;
+    const seq = ++operation.current;
+    const scope = currentScope.current;
+    const ownsStatus = onBegin();
+    setWorking(true); setMessage(null); setValidation(null);
+    return () => active.current && scope === currentScope.current && seq === operation.current && ownsStatus();
+  };
+  const finish = () => { pending.current = false; if (active.current) setWorking(false); };
   // Microsoft sign-in is offered only when this build reports it set up; it has not been proven
   // against UW, which may need to approve the app first.
   const graphBuilt = Boolean(bridge.outlookConnect && bridge.outlookStatus);
   const hasGraph = graphBuilt && graph !== null && graph.outlook !== "not_set_up";
   const graphConnected = graph?.outlook === "connected";
   const saveIcs = async (value: string | null) => {
-    if (!bridge.setOutlookCalendar) return;
-    setWorking(true); setMessage(null);
+    if (!bridge.setOutlookCalendar || pending.current) return;
+    if (value !== null) {
+      // Validate only facts available here; a host/network failure is not a field validation result.
+      let valid = false;
+      try { const url = new URL(value.trim()); valid = url.protocol === "https:" && !url.username && !url.password; } catch { /* Invalid URL. */ }
+      if (!valid) {
+        setMessage(null); setValidation("Paste the complete HTTPS calendar link copied from Outlook.");
+        document.getElementById(inputId)?.focus();
+        return;
+      }
+    }
+    const current = begin();
+    if (!current) return;
+    let saved = false;
     try {
-      const result = await bridge.setOutlookCalendar(value);
+      const result = await bridge.setOutlookCalendar(value === null ? null : value.trim());
+      if (!current()) return;
+      saved = true;
       onChanged(null, result.connected);
-      setLink(""); // the link is cleared only after it was saved; a failure keeps the draft
-      setMessage({ text: result.connected ? "Saved. Reading your calendar now." : "Disconnected. Its meetings were removed from this device.", alert: false });
+      setLink(""); // Clear only the confirmed saved draft; a failed save keeps it.
+      setMessage({ text: result.connected ? "Saved. Reading your calendar now." : "Disconnected. Its meetings were removed from this device.", alert: false, field: true });
       if (result.connected) {
         const read = await onSync();
-        setMessage(read ? { text: "Saved. Your calendar was read; this row shows what was found.", alert: false } : { text: "Saved, but the first read did not finish. Refresh now tries again.", alert: true });
+        if (!current()) return;
+        setMessage(read ? { text: "Saved. Your calendar was read; this row shows what was found.", alert: false, field: true } : { text: "Saved, but the first read did not finish. Any partial results stay available. Refresh now tries again.", alert: true, field: true });
       } else await onSourcesChanged?.();
     } catch (cause) {
-      setMessage({ text: cause instanceof Error ? cause.message : "The link could not be saved. Nothing changed.", alert: true });
-    } finally { setWorking(false); }
+      if (!current()) return;
+      setMessage({ text: saved ? "Saved, but the follow-up check did not finish. Any partial results stay available. Refresh now tries again." : cause instanceof Error ? cause.message : "The calendar change could not be confirmed. Check its status before trying again.", alert: true, field: true });
+    } finally { finish(); }
   };
   const connectGraph = async () => {
-    setWorking(true); setMessage(null);
+    const current = begin();
+    if (!current) return;
     try {
       const status = await bridge.outlookConnect!();
+      if (!current()) return;
       onChanged(status);
-      // The row's lead states the reason for a state it reports; this line reports the action's outcome.
+      // The row's lead states the reason; this line reports the action's outcome.
       const reported = status.outlook === "needs_uw_approval" || status.outlook === "expired" || status.outlook === "error";
       setMessage(status.outlook === "connected" ? { text: "Connected. Mail and calendar are read on the next check.", alert: false } : { text: reported ? "Microsoft did not connect." : graphMessage(status.outlook), alert: true });
     } catch (cause) {
-      setMessage({ text: cause instanceof Error ? cause.message : "Microsoft sign-in did not finish. Nothing changed.", alert: true });
-    } finally { setWorking(false); }
+      if (current()) setMessage({ text: cause instanceof Error ? cause.message : "Microsoft sign-in did not finish. Check its status before trying again.", alert: true });
+    } finally { finish(); }
   };
   const disconnectGraph = async () => {
+    const current = begin();
+    if (!current) return;
     try {
       const status = await bridge.outlookDisconnectGraph!();
+      if (!current()) return;
       onChanged(status);
       await onSourcesChanged?.();
+      if (!current()) return;
       setMessage({ text: "Disconnected. Mail, calendar events, OneNote pages and OneDrive files read through Microsoft were removed from this device.", alert: false });
     } catch (cause) {
-      setMessage({ text: cause instanceof Error ? cause.message : "Outlook could not be disconnected. Nothing was removed.", alert: true });
-    }
+      if (current()) setMessage({ text: cause instanceof Error ? cause.message : "Outlook disconnection could not be confirmed. Check its status before trying again.", alert: true });
+    } finally { finish(); }
   };
   const disabled = busy || working;
   return (
@@ -576,14 +656,16 @@ function OutlookDetails({ connection: c, bridge, busy, graph, icsConnected, onCh
             <p>Adds your meetings and appointments to Home and Calendar. In Outlook on the web, open Settings, Calendar, Shared calendars, then Publish a calendar with "Can view titles and locations" and copy the ICS link. Anyone with that link can see those titles and locations, so Magic stores it encrypted on this device.</p>
             <label htmlFor={inputId} className="sources-fine">Published calendar ICS link</label>
             <div className="source-link-row">
-              <input id={inputId} className="source-input" value={link} onChange={(e) => setLink(e.target.value)} autoComplete="off" spellCheck={false}
-                placeholder="https://outlook.office365.com/owa/calendar/…/calendar.ics" aria-invalid={message?.alert || undefined} />
+              <input id={inputId} className="source-input" value={link} readOnly={working} onChange={(e) => { setLink(e.target.value); setValidation(null); if (message?.field) setMessage(null); }} autoComplete="off" spellCheck={false}
+                placeholder="https://outlook.office365.com/owa/calendar/…/calendar.ics" aria-invalid={validation ? true : undefined}
+                aria-describedby={validation ? validationId : message?.field ? feedbackId : undefined} />
               <Action type="submit" disabled={disabled || !link.trim()} pending={working}>Connect</Action>
             </div>
           </form>
         )}
       </div>
-      {message ? <p className={message.alert ? "source-error" : "sources-fine"} role={message.alert ? "alert" : "status"}>{message.text}</p> : null}
+      {validation ? <p id={validationId} className="source-error" role="alert">{validation}</p> : null}
+      {message ? <p id={feedbackId} className={message.alert ? "source-error" : "sources-fine"} role={message.alert ? "alert" : "status"}>{message.text}</p> : null}
       {c.state !== "not_connected" && c.sources.some((s) => s.notes.length) ? <ul className="source-scopes">{c.sources.filter((s) => s.notes.length).map((s) => <li key={s.id}><span>{scopeName(s.scope)}</span><span className="source-scope-notes">{s.notes.join(" ")}</span></li>)}</ul> : null}
     </>
   );

@@ -6,11 +6,13 @@ import { destinationGroups, destinationOf, destinationPhrase, type DestinationIc
 import { usePreparedWork, type PreparedWorkController } from "./usePreparedWork";
 import "../StartWork.css";
 import "./PreparedWork.css";
+import { CanvasMark } from "./canvas-mark";
 
 // Lucide v0.468.0 nodes, ISC; attribution in packages/ui/LICENSE.icons.
 // file-text, refresh-cw, x and arrow-right match docs/design/lab/vendor; the others are copied from lucide-react 0.468.0.
 type IconName = DestinationIcon | "retry" | "close" | "forward" | "alert" | "info";
 function Icon({ name }: { name: IconName }) {
+  if (name === "canvas") return <CanvasMark/>;
   const sheet = <><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></>;
   const paths = {
     globe: <><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></>,
@@ -18,7 +20,7 @@ function Icon({ name }: { name: IconName }) {
     file: sheet,
     "file-spreadsheet": <>{sheet}<path d="M8 13h2"/><path d="M14 13h2"/><path d="M8 17h2"/><path d="M14 17h2"/></>,
     presentation: <><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></>,
-    "graduation-cap": <><path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"/><path d="M22 10v6"/><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"/></>,
+
     "git-branch": <><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></>,
     retry: <><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></>,
     close: <><path d="M18 6 6 18"/><path d="m6 6 12 12"/></>,
@@ -79,7 +81,7 @@ function PreparedWorkInner(props: PreparedWorkProps) {
 
 /** Rendering only, driven by a controller. Exported as a test seam for rendered states. */
 export function WorkView(props: PreparedWorkProps & { work: PreparedWorkController; anchor: string; container?: RefObject<HTMLElement | null> }) {
-  return props.compact || props.action ? <Tile {...props}/> : <FullWork work={props.work} anchor={props.anchor} onSetup={props.onSetup} onOpenOriginal={props.onOpenOriginal}/>;
+  return props.compact || props.action ? <Tile {...props}/> : <FullWork work={props.work} anchor={props.anchor} onSetup={props.onSetup} onOpenOriginal={props.onOpenOriginal} info={props.info}/>;
 }
 
 /** What the tile's main target does right now. */
@@ -97,7 +99,7 @@ function Tile({ resource, work, anchor, container, compact, action, onInspect, o
   const target = tileTarget(work, onInspect);
   const activate = () => { if (!target.disabled && !pending) target.run(); };
   const facts = [compact?.description, set ? sendsLine(set) : null, set && pageViewApplies(set) ? "Canvas may record a page view" : null].filter(Boolean).join(". ");
-  const titles = set ? `${target.label}. ${set.items.map(item => item.title).join(" + ")}${pageViewApplies(set) ? ". Canvas may record a page view." : ""}` : undefined;
+  const titles = set ? `${target.label}. ${sendsLine(set)}. ${set.items.map(item => item.title).join(" + ")}${pageViewApplies(set) ? ". Canvas may record a page view." : ""}` : undefined;
   const slot = <StatusSlot work={work} anchor={anchor} onSetup={onSetup} onInspect={onInspect} info={info}/>;
   if (compact) return <section ref={container as RefObject<HTMLElement>} className="magic-start-work magic-start-work--compact magic-prepared-tile" aria-label={`Prepared work: ${resource.title}`} data-place-anchor={anchor}>
     <div className={`home-work-card magic-prepared-card ${compact.className}`} {...compact.surface}>
@@ -125,8 +127,8 @@ function Marks({ work }: { work: PreparedWorkController }) {
   if (!work.set) return null;
   const groups = destinationGroups(work.set.items);
   return <span className="magic-prepared-slot__marks" aria-hidden="true">
-    {groups.slice(0, 3).map(group => <span key={group.category} className="magic-prepared-slot__mark" title={group.label}><Icon name={group.icon}/></span>)}
-    {groups.length > 3 && <span className="magic-prepared-slot__more">+{groups.length - 3}</span>}
+    {groups.slice(0, 3).map(group => <span key={group.key} className="magic-prepared-slot__mark" title={group.label}><Icon name={group.icon}/></span>)}
+
   </span>;
 }
 
@@ -191,7 +193,8 @@ function stageOf(outcome: LaunchOutcome | null): Stage {
 const STAGE_TITLE: Record<Stage, string> = { ready: "Start work", sending: "Start work", verify: "Verification run", return: "Return to your work", problem: "Start work" };
 
 /** Assignment detail: one flat region whose state changes; rows are separated by lines, not an inner card. */
-function FullWork({ work, anchor, onSetup, onOpenOriginal }: { work: PreparedWorkController; anchor: string; onSetup?: () => void; onOpenOriginal?: () => void }) {
+function FullWork({ work, anchor, onSetup, onOpenOriginal, info }: { work: PreparedWorkController; anchor: string; onSetup?: () => void; onOpenOriginal?: () => void; info?: InfoRenderer }) {
+  const Info = info ?? LocalInfo;
   const heading = useId();
   const { set, prepare, pending, canLaunch, outcome, earlier, returnedAt } = work;
   const current = outcome && !earlier ? outcome : null;
@@ -225,28 +228,6 @@ function FullWork({ work, anchor, onSetup, onOpenOriginal }: { work: PreparedWor
       {current && !pending && <button type="button" className="magic-prepared__dismiss" onClick={() => { work.dismiss(); focusAnchor(anchor); }} aria-label="Clear this Start work result"><Icon name="close"/></button>}
     </header>
     {set ? <>
-      <ol className="magic-prepared__list" aria-label="Destinations prepared to open">
-        {set.items.map(item => {
-          const row = current?.items.find(entry => entry.resourceId === item.resourceId);
-          const tone = row ? stateTone(row.state) : "quiet";
-          const where = destinationOf(item.target);
-          const retryable = row?.state.kind === "not_sent" && !row.state.stale;
-          return <li key={item.resourceId} className={`magic-prepared__row is-${tone}`}>
-            <span className="magic-prepared__kind" title={where.name}><Icon name={where.icon}/></span>
-            <span className="magic-prepared__what">
-              <span className="magic-prepared__title">{item.title}</span>
-              <small>{row?.state.kind === "fallback" ? `Saved copy not used because ${row.state.reason}` : `${destinationPhrase(item)} · ${item.reason}`}</small>
-            </span>
-            <span className="magic-prepared__state">
-              {row && row.state.kind !== "ready" && <span className={`magic-prepared__status is-${tone}`}>{tone === "attention" && <Icon name="alert"/>}{stateLabel(row.state)}</span>}
-              {retryable && <Action tone="quiet" pending={pending} onClick={() => void work.launch([item.resourceId])} aria-label={`Try sending ${item.title} again`}><Icon name="retry"/> Try again</Action>}
-            </span>
-          </li>;
-        })}
-      </ol>
-      {set.held.length > 0 && <Disclosure label={`${set.held.length} related ${set.held.length === 1 ? "item" : "items"} held back`}>
-        <ul>{set.held.map(item => <li key={item.resourceId}>{item.title} · {item.reason}</li>)}</ul>
-      </Disclosure>}
       <div className="magic-prepared__actions">
         {setupNeeded && onSetup ? <Action data-focus-key={anchor} onClick={onSetup}>Finish setup <Icon name="forward"/></Action>
           : !sentBefore ? <Action data-focus-key={anchor} disabled={!canLaunch} pending={pending} onClick={() => void work.launch()}>
@@ -258,6 +239,29 @@ function FullWork({ work, anchor, onSetup, onOpenOriginal }: { work: PreparedWor
         {problem?.kind === "busy" && <Action tone="quiet" pending={pending} onClick={() => void work.launch()}>Try again</Action>}
         {problem?.kind === "unavailable" && <Action tone="quiet" onClick={work.refresh}>Refresh destinations</Action>}
       </div>
+      <ol className="magic-prepared__list" aria-label="Destinations prepared to open">
+        {set.items.map(item => {
+          const row = current?.items.find(entry => entry.resourceId === item.resourceId);
+          const tone = row ? stateTone(row.state) : "quiet";
+          const where = destinationOf(item.target);
+          const retryable = row?.state.kind === "not_sent" && !row.state.stale;
+          return <li key={item.resourceId} className={`magic-prepared__row is-${tone}`}>
+            <span className="magic-prepared__kind" title={where.name}><Icon name={where.icon}/></span>
+            <span className="magic-prepared__what">
+              <span className="magic-prepared__title">{item.title}</span>
+              <span className="magic-prepared__source"><small>{where.name}</small><Info label={`Why ${item.title} is included`}><span>{destinationPhrase(item)}. {item.reason}</span></Info></span>
+              {row?.state.kind === "fallback" && <small>Saved copy not used because {row.state.reason}</small>}
+            </span>
+            <span className="magic-prepared__state">
+              {row && row.state.kind !== "ready" && <span className={`magic-prepared__status is-${tone}`}>{tone === "attention" && <Icon name="alert"/>}{stateLabel(row.state)}</span>}
+              {retryable && <Action tone="quiet" pending={pending} onClick={() => void work.launch([item.resourceId])} aria-label={`Try sending ${item.title} again`}><Icon name="retry"/> Try again</Action>}
+            </span>
+          </li>;
+        })}
+      </ol>
+      {set.held.length > 0 && <Disclosure label={`${set.held.length} related ${set.held.length === 1 ? "item" : "items"} held back`}>
+        <ul>{set.held.map(item => <li key={item.resourceId}>{item.title} · {item.reason}</li>)}</ul>
+      </Disclosure>}
       <p className="magic-start-work__note">{[...set.notes, ...(current?.notes ?? [])].map(note => readableNote(note)).concat(footnote).join(" ")}</p>
     </> : prepare.kind === "loading" ? <p role="status">Preparing your materials…</p> : null}
     {prepare.kind === "error" && <div className="magic-prepared__problem" role="status">

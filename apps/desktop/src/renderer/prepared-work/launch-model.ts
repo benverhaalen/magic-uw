@@ -1,5 +1,5 @@
 import type { WorkItem, WorkLaunchReceipt, WorkSet } from "@magic/contracts";
-import { CANVAS_ORIGIN, destinationGroups, destinationSummary } from "./destination";
+import { destinationOf, destinationGroups, destinationSummary } from "./destination";
 
 /**
  * What Magic can truthfully say about one prepared destination.
@@ -249,7 +249,7 @@ export function launchLabel(set: Pick<WorkSet, "items">) {
 
 /** Canvas can record a page view only when a destination, or its fallback, is on Canvas. */
 export function pageViewApplies(set: Pick<WorkSet, "items">) {
-  const onCanvas = (url: string | undefined) => { try { return !!url && new URL(url).origin === CANVAS_ORIGIN; } catch { return false; } };
+  const onCanvas = (url: string) => destinationOf({ kind: "web", url }).category === "canvas";
   return set.items.some(({ target }) => target.kind === "web" ? onCanvas(target.url) : onCanvas(target.fallbackUrl));
 }
 

@@ -1,21 +1,8 @@
 import type { ChatBridge } from "./store";
 
-// owner: chat lane. Consumer side of the intent router on main (ae66b91, #24): the `intent.preview`
-// query and the `{type:"command"}` command. Core resolves courses, dates and actions; this file only
-// decides which results the chat may run and render. The types mirror @magic/contracts on main,
-// because this branch's contracts predate them; replace them with imports once main is merged.
-
-export interface IntentSlots { course?: string | null; assignment?: string | null; date?: string | null; query?: string | null; scope?: "course" | "all" | null }
-export interface IntentCandidate { action: string; args: IntentSlots; label: string }
-export interface IntentCitation { sourceId: string; resourceId: string; title: string; url: string; quote: string; start: number | null; end: number | null }
-export type IntentOutcome =
-  | { status: "ran"; action: string; args: Record<string, unknown>; result: unknown }
-  | { status: "clarify"; question: string; candidates: IntentCandidate[] }
-  | { status: "answer"; text: string; citations: IntentCitation[]; notFound: boolean; dropped: number }
-  | { status: "unavailable"; reason: string }
-  | { status: "preview"; hint: string | null; action: string | null; slots: IntentSlots }
-  | { status: "ready"; ai: boolean };
-export type IntentResult = IntentOutcome & { path: "code" | "ai" | "cache" | "none"; latencyMs: number; tokens: { in: number; cached: number; out: number } };
+// Shared canonical router contracts.
+import type { IntentSlots, IntentCandidate, IntentCitation, CommandOutcome as IntentOutcome, IntentCommandResult as IntentResult } from "@magic/contracts";
+export type { IntentSlots, IntentCandidate, IntentCitation, IntentOutcome, IntentResult };
 /** Core's resolved course: `ref` is `accountScope:courseId`, the same key as the chat's courses. */
 export interface IntentCourse { ref: string; accountScope: string; courseId: string; code: string | null; name: string }
 export interface IntentRange { from: string; to: string; label?: string }
@@ -38,10 +25,11 @@ function unsupported(message: string) {
 
 /** The code resolver's reading of the prompt: 0 tokens, never the model. Null when the router is not available. */
 export async function previewIntent(bridge: ChatBridge, text: string, courseRef: string | null): Promise<Extract<IntentResult, { status: "preview" }> | null> {
-  if (support === "no" || !bridge.query || !bridge.execute) return null;
+  // The command contract is 500 characters. Never remove a trailing correction to make it fit.
+  if (text.length > 500 || support === "no" || !bridge.query || !bridge.execute) return null;
   try {
     const query = bridge.query as unknown as (q: unknown) => Promise<{ view?: string; preview?: IntentResult }>;
-    const found = await query({ view: "intent.preview", text: text.slice(0, 500), ...(courseRef ? { courseId: courseRef } : {}) });
+    const found = await query({ view: "intent.preview", text, ...(courseRef ? { courseId: courseRef } : {}) });
     if (found?.view !== "intent.preview" || found.preview?.status !== "preview") { support = "no"; return null; }
     support = "yes";
     return found.preview;
@@ -53,8 +41,9 @@ export async function previewIntent(bridge: ChatBridge, text: string, courseRef:
 
 /** Runs the prompt through the router. Only call after `previewIntent` returned an action in CHAT_READS. */
 export async function runIntent(bridge: ChatBridge, text: string, courseRef: string | null): Promise<IntentResult> {
+  if (text.length > 500) throw new Error("This message is too long for the command router.");
   const execute = bridge.execute as unknown as (c: unknown) => Promise<{ command?: IntentResult }>;
-  const result = await execute({ type: "command", value: { text: text.slice(0, 500), context: { view: "chat", ...(courseRef ? { courseId: courseRef } : {}) }, mode: "run" } });
+  const result = await execute({ type: "command", value: { text, context: { view: "chat", ...(courseRef ? { courseId: courseRef } : {}) }, mode: "run" } });
   if (!result?.command) throw new Error("The app returned no result for this request.");
   return result.command;
 }

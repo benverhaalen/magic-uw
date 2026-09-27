@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import {
   beginSubmit, collapse, edit, expand, initialLauncher, isBlank, rebase, settleSubmit,
-  type LauncherEntry, type LauncherState, type SubmitOutcome,
+  type LauncherDestination, type LauncherEntry, type LauncherState, type SubmitOutcome,
 } from "./model";
 import "./launcher.css";
 
@@ -42,13 +42,15 @@ export interface ConversationLauncherProps<O extends { label: string }> {
   onSubmit: (entry: LauncherEntry<O>) => SubmitOutcome | Promise<SubmitOutcome>;
   /** Proposal: "follow-up" only relabels the control while a chat is shown; the integrator routes the entry. */
   mode?: "new-chat" | "follow-up";
+  /** Required for follow-up mode. Captured with the draft, never inferred at submit. */
+  chatId?: string;
   placeholder?: string;
   voice?: LauncherVoice;
   newKey?: () => string;
 }
 
 export function ConversationLauncher<O extends { label: string }>({
-  here, captureOrigin, onSubmit, mode = "new-chat", placeholder, voice = NO_VOICE, newKey = () => crypto.randomUUID(),
+  here, captureOrigin, onSubmit, mode = "new-chat", chatId, placeholder, voice = NO_VOICE, newKey = () => crypto.randomUUID(),
 }: ConversationLauncherProps<O>) {
   const [state, setState] = useState<LauncherState<O>>(initialLauncher);
   // Transitions read and write the ref synchronously so a double press in one tick cannot send twice.
@@ -61,7 +63,10 @@ export function ConversationLauncher<O extends { label: string }>({
   const id = useId();
   const { open, draft, sending, error } = state;
   const moved = !!draft && draft.originKey !== here.key;
-  const capture = () => ({ origin: captureOrigin(), originKey: here.key });
+  const currentDestination: LauncherDestination = mode === "follow-up" && chatId
+    ? { kind: "follow-up", chatId } : { kind: "new-chat" };
+  const destination = draft?.destination ?? currentDestination;
+  const capture = () => ({ origin: captureOrigin(), originKey: here.key, destination: currentDestination });
 
   const openComposer = () => { focusAfter.current = "field"; setNote(null); apply(expand(live.current, capture)); };
   /** `restore` only when the dismissal started inside the launcher; outside presses keep the student's new target. */
@@ -152,7 +157,7 @@ export function ConversationLauncher<O extends { label: string }>({
     else voice.onStop?.();
   };
 
-  const followUp = mode === "follow-up";
+  const followUp = destination.kind === "follow-up";
   const toggleLabel = open ? "Close message box"
     : draft ? `Resume draft${moved ? ` from ${draft.origin.label}` : ""}`
     : followUp ? "Ask a follow-up" : "New chat";
@@ -180,7 +185,7 @@ export function ConversationLauncher<O extends { label: string }>({
           <textarea ref={field} className="cl-field" rows={1} value={draft?.text ?? ""} readOnly={!!sending}
             aria-label={followUp ? "Follow-up message" : "Message for a new chat"}
             aria-describedby={[moved ? `${id}-origin` : "", error ? `${id}-error` : ""].filter(Boolean).join(" ") || undefined}
-            placeholder={placeholder ?? (followUp ? "Ask a follow-up" : "Ask a question")}
+            placeholder={(!moved ? placeholder : undefined) ?? (followUp ? "Ask a follow-up" : "Ask a question")}
             onChange={event => apply(edit(live.current, event.target.value))} onKeyDown={onFieldKey}/>
           <button type="button" className="cl-icon cl-send" aria-label={followUp ? "Send follow-up" : "Start chat"}
             aria-disabled={sendBlocked || undefined} aria-busy={!!sending || undefined}

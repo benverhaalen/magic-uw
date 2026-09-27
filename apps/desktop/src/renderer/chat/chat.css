@@ -1,6 +1,6 @@
 /* owner: chat lane. Full-pane chat calibrated to the approved Home: same pane padding, section type,
    briefing prose and action size, Upcoming row geometry. Colors, fonts and radii are canonical tokens. */
-.magic-chat { max-width: 920px; padding: 22px 38px 48px; color: var(--magic-ink); font-family: var(--magic-font-interface); }
+.magic-chat { max-width: 920px; padding: 22px 38px 48px; color: var(--magic-ink); font-family: var(--magic-font-interface); font-weight: var(--magic-font-interface-weight); letter-spacing: var(--magic-tracking); }
 .magic-chat-icon { width: 14px; height: 14px; flex: 0 0 14px; }
 
 .magic-chat-origin { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; margin-bottom: 26px; }
@@ -22,7 +22,7 @@
 .magic-chat-thread { list-style: none; margin: 0; padding: 0; display: grid; gap: 34px; }
 .magic-chat-exchange { display: grid; gap: 14px; scroll-margin-top: 16px; }
 .desktop-workspace .magic-chat-prompt, .magic-chat-prompt { margin: 0; font: 500 var(--magic-type-section)/1.35 var(--magic-font-editorial); color: var(--magic-ink); white-space: pre-wrap; overflow-wrap: anywhere; outline: 0; }
-.desktop-workspace .magic-chat-prompt.is-long, .magic-chat-prompt.is-long { font: 400 var(--magic-type-prose)/var(--magic-leading-prose) var(--magic-font-interface); color: var(--magic-ink-prose); }
+.desktop-workspace .magic-chat-prompt.is-long, .magic-chat-prompt.is-long { font: var(--magic-font-interface-weight) var(--magic-type-prose)/var(--magic-leading-prose) var(--magic-font-interface); color: var(--magic-ink-prose); }
 .magic-chat-body { display: grid; gap: 12px; }
 .magic-chat-prose { margin: 0; font-size: var(--magic-type-prose); line-height: var(--magic-leading-prose); color: var(--magic-ink-prose); overflow-wrap: anywhere; }
 .magic-chat-prose.is-answer { white-space: pre-wrap; }
@@ -51,21 +51,21 @@
 .magic-chat-evidence a { color: var(--magic-ink-link); text-underline-offset: 3px; }
 .magic-chat-read summary { width: fit-content; list-style-position: inside; font-size: var(--magic-type-meta); color: var(--magic-ink-muted-strong); cursor: pointer; }
 .magic-chat-read[open] { display: grid; gap: 6px; }
-.magic-chat-read pre { margin: 0; max-height: 220px; overflow: auto; padding: 10px 12px; border-radius: var(--magic-radius-field); background: var(--magic-surface-quiet); font: 12px/1.55 var(--magic-font-interface); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--magic-ink-muted-strong); }
+.magic-chat-read pre { margin: 0; max-height: 220px; overflow: auto; padding: 10px 12px; border-radius: var(--magic-radius-field); background: var(--magic-surface-quiet); font: var(--magic-font-interface-weight) 12px/1.55 var(--magic-font-interface); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--magic-ink-muted-strong); }
 
 /* Due: the Upcoming row, same geometry. */
 .magic-chat-due, .magic-chat-choices { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-.magic-chat-due-row { display: flex; align-items: center; gap: 15px; min-height: 74px; padding: 13px 14px; border-radius: var(--magic-radius-card); text-decoration: none; }
+.magic-chat-due-row { display: flex; align-items: center; gap: 15px; min-height: 74px; padding: 13px 14px; border-radius: var(--magic-radius-card); text-decoration: none; background: var(--magic-deadline-fill); color: var(--magic-deadline-ink); }
 .magic-chat-due-row.is-rose { background: var(--magic-fill-identity-rose); color: var(--magic-ink-identity-rose); }
 .magic-chat-due-row.is-blue { background: var(--magic-fill-identity-blue); color: var(--magic-ink-identity-blue); }
 .magic-chat-due-row.is-coral { background: var(--magic-fill-identity-coral); color: var(--magic-ink-identity-coral); }
 .magic-chat-due-row:hover { box-shadow: inset 0 0 0 999px var(--magic-fill-pressed-overlay); }
 .magic-chat-due-main { flex: 1; min-width: 0; display: grid; }
-.magic-chat-due-course { font-size: 10px; line-height: 1.4; margin-bottom: 3px; font-weight: 600; text-transform: uppercase; }
-.magic-chat-due-course span { margin-left: 9px; font-weight: 400; text-transform: none; }
+.magic-chat-due-course { font-size: 10px; line-height: 1.4; margin-bottom: 3px; font-weight: inherit; text-transform: uppercase; }
+.magic-chat-due-course span { margin-left: 9px; font-weight: inherit; text-transform: none; }
 .magic-chat-due-title { font: 500 var(--magic-type-work-title)/1.25 var(--magic-font-editorial); overflow-wrap: anywhere; }
 .magic-chat-due-when { flex: 0 0 auto; display: grid; gap: 4px; text-align: right; font-size: 11px; }
-.magic-chat-due-when strong { font-size: 12px; font-weight: 550; }
+.magic-chat-due-when strong { font-size: 12px; font-weight: inherit; }
 
 .magic-chat-choices button { width: 100%; display: flex; gap: 11px; align-items: center; text-align: left; border: 0; background: var(--magic-fill-secondary); border-radius: var(--magic-radius-card); padding: 11px 14px; font: inherit; color: var(--magic-ink-secondary); cursor: pointer; }
 .magic-chat-choices button:hover:not(:disabled) { background: var(--magic-fill-secondary-hover); }
@@ -84,4 +84,4 @@
 .magic-chat-quotes blockquote::before { content: "“"; }
 .magic-chat-quotes blockquote::after { content: "”"; }
 .magic-chat-tech summary { width: fit-content; font-size: var(--magic-type-meta); cursor: pointer; }
-.magic-chat-tech pre { margin: 6px 0 0; max-height: 160px; overflow: auto; font: 11px/1.5 var(--magic-font-interface); white-space: pre-wrap; overflow-wrap: anywhere; }
+.magic-chat-tech pre { margin: 6px 0 0; max-height: 160px; overflow: auto; font: var(--magic-font-interface-weight) 11px/1.5 var(--magic-font-interface); white-space: pre-wrap; overflow-wrap: anywhere; }

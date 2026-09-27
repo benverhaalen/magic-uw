@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { CalendarState } from './calendar/model';
 import { pageDirection, playPageEnter, type PageDirection } from '../../../../packages/ui/src/motion';
-export type DesktopView = 'today' | 'courses' | 'myuw' | 'calendar' | 'resource' | 'sources' | 'privacy' | 'consent' | 'notebook' | 'practice' | 'insights' | 'settings';
+export type DesktopView = 'chat' | 'today' | 'courses' | 'myuw' | 'calendar' | 'resource' | 'sources' | 'privacy' | 'consent' | 'notebook' | 'practice' | 'insights' | 'settings';
 type Place = { homeTodayCount?: number; homeUpcomingCount?: number; calendarState?: CalendarState; calendarFocus?: string; view: DesktopView; resourceId: string | null; courseKey: string | null; disclosures: Record<string, boolean>; scroll: number; focus: string | null; anchor: string | null; offset: number };
 const initial: Place = { view: 'today', resourceId: null, courseKey: null, disclosures: {}, scroll: 0, focus: null, anchor: null, offset: 0 };
 /** Hierarchy depth for motion direction only: sections 0, a course or settings page 1, an item 2. */
@@ -13,12 +13,23 @@ export function useDesktopNavigation() {
   const pending = useRef<Place | null>(null);
   const direction = useRef<PageDirection>('lateral');
   const current = stack[index]!;
+  const lastWorkspaceFocus = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    lastWorkspaceFocus.current = current.focus;
+    const track = (event: FocusEvent) => {
+      const active = event.target as HTMLElement | null;
+      if (active && document.querySelector('.desktop-workspace')?.contains(active))
+        lastWorkspaceFocus.current = active.getAttribute('data-focus-key') ?? active.closest('a')?.getAttribute('href') ?? null;
+    };
+    document.addEventListener('focusin', track);
+    return () => document.removeEventListener('focusin', track);
+  }, [index]);
   function capture(): Place {
     const pane = document.querySelector<HTMLElement>('.desktop-workspace');
     const active = document.activeElement as HTMLElement | null;
     const focus = active && pane?.contains(active)
       ? active.getAttribute('data-focus-key') ?? (active.closest('a')?.getAttribute('href') ?? null)
-      : current.focus;
+      : lastWorkspaceFocus.current ?? current.focus;
     const anchors = Array.from(pane?.querySelectorAll<HTMLElement>('[data-place-anchor]') ?? []);
     const top = pane?.getBoundingClientRect().top ?? 0;
     const anchor = anchors.find(node => node.getBoundingClientRect().bottom > top);
@@ -57,7 +68,7 @@ export function useDesktopNavigation() {
   function updateCalendar(calendarState: CalendarState) {
     setStack(previous => previous.map((place, i) => i === index ? { ...place, calendarState } : place));
   }
-  return { homeTodayCount: current.homeTodayCount ?? 3, updateHomeTodayCount: (homeTodayCount: number) => setStack(previous => previous.map((place, i) => i === index ? { ...place, homeTodayCount } : place)), homeUpcomingCount: current.homeUpcomingCount ?? 3, updateHomeUpcomingCount: (homeUpcomingCount: number) => setStack(previous => previous.map((place, i) => i === index ? { ...place, homeUpcomingCount } : place)), calendarState: current.calendarState, calendarFocus: current.calendarFocus, updateCalendar,
+  return { capturePlace: capture, homeTodayCount: current.homeTodayCount ?? 3, updateHomeTodayCount: (homeTodayCount: number) => setStack(previous => previous.map((place, i) => i === index ? { ...place, homeTodayCount } : place)), homeUpcomingCount: current.homeUpcomingCount ?? 3, updateHomeUpcomingCount: (homeUpcomingCount: number) => setStack(previous => previous.map((place, i) => i === index ? { ...place, homeUpcomingCount } : place)), calendarState: current.calendarState, calendarFocus: current.calendarFocus, updateCalendar,
     openCalendarResource: (id: string, calendarState: CalendarState, calendarFocus: string) => navigate('resource', id, null, { calendarState, calendarFocus }),
     view: current.view, selectedId: current.resourceId, courseKey: current.courseKey, navigate, back: () => travel(-1), forward: () => travel(1), canBack: index > 0, canForward: index < stack.length - 1 };
 }

@@ -20,12 +20,12 @@
 .magic-prepared__state { display:flex; flex-direction:column; align-items:flex-end; gap:.25rem; max-width:16rem; text-align:right; }
 .magic-prepared__status { display:inline-flex; align-items:center; gap:.35rem; font-size:var(--magic-type-control); line-height:1.4; }
 .magic-prepared__status.is-sent { color:var(--magic-ink-feedback); }
-.magic-prepared__status.is-attention { color:var(--magic-ink-status-warning-candidate); font-weight:550; text-align:left; }
+.magic-prepared__status.is-attention { color:var(--magic-ink-status-warning-candidate); font-weight: inherit; text-align:left; }
 .magic-prepared__state .magic-ui-action { min-height:30px; padding:2px 6px; display:inline-flex; align-items:center; gap:.3rem; }
 .magic-prepared__actions { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; margin:.25rem 0 .5rem; }
 .magic-prepared__actions .magic-ui-action { display:inline-flex; align-items:center; gap:.4rem; }
-.magic-prepared__return strong { font-weight:550; }
-.magic-prepared__problem-text { color:var(--magic-ink-status-warning-candidate); font-weight:550; }
+.magic-prepared__return strong { font-weight: inherit; }
+.magic-prepared__problem-text { color:var(--magic-ink-status-warning-candidate); font-weight: inherit; }
 .magic-prepared__technical { margin-top:.35rem; font-size:var(--magic-type-meta); }
 .magic-prepared__technical summary { cursor:pointer; }
 .magic-prepared__technical code, .magic-prepared-info__technical code { display:block; margin-top:.25rem; white-space:pre-wrap; overflow-wrap:anywhere; font-size:var(--magic-type-meta); }
@@ -52,12 +52,12 @@
 
 /* Slot contents: one line, never wider than the reserved slot. */
 .magic-prepared-slot__text { min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
-.magic-prepared-slot.is-attention .magic-prepared-slot__text { font-weight:600; }
+.magic-prepared-slot.is-attention .magic-prepared-slot__text { font-weight: inherit; }
 .magic-prepared-slot__remedy { white-space:nowrap; }
-.magic-prepared-slot__marks { display:flex; align-items:center; gap:4px; opacity:.82; }
+.magic-prepared-slot__marks { display:flex; align-items:center; gap:4px; }
 .magic-prepared-slot__mark { display:inline-flex; }
-.magic-prepared-slot__mark .magic-prepared__icon { width:15px; height:15px; }
-.magic-prepared-slot__more { font-size:12px; font-weight:550; }
+.magic-prepared-slot__mark .magic-prepared__icon { width:16px; height:16px; }
+.magic-prepared-slot__more { font-size:12px; font-weight: inherit; }
 .magic-prepared-info > summary .magic-prepared__icon { width:15px; height:15px; }
 .magic-prepared-info > summary::-webkit-details-marker { display:none; }
 .magic-prepared-info > summary:focus-visible, .magic-prepared-slot__remedy:focus-visible { outline:2px solid var(--magic-focus); outline-offset:2px; border-radius:4px; }
@@ -70,3 +70,5 @@
 .magic-prepared-action.magic-start-work--action > .magic-ui-action { flex:1 1 auto; width:auto; min-width:0; }
 /* The Home row's slot overlays its card; beside the action it stays in flow (the shared rule is unscoped). */
 .magic-prepared-action.magic-start-work--action > .magic-prepared-slot { position:relative; inset:auto; align-self:stretch; pointer-events:auto; }
+
+.magic-prepared__source { display:flex; align-items:center; gap:.35rem; }

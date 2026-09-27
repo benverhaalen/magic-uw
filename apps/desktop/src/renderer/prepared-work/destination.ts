@@ -8,8 +8,8 @@ import type { WorkItem, WorkTarget } from "@magic/contracts";
  * terminal targets, so none are shown.
  */
 export type DestinationCategory = "pdf" | "document" | "slides" | "spreadsheet" | "canvas" | "gitlab" | "web";
-/** Lucide v0.468.0 generic icons; no brand marks are bundled for these sites. */
-export type DestinationIcon = "file-text" | "file" | "presentation" | "file-spreadsheet" | "graduation-cap" | "git-branch" | "globe";
+/** Official MIT Canvas mark; other glyphs are Lucide v0.468.0 (see adjacent source/license). */
+export type DestinationIcon = "file-text" | "file" | "presentation" | "file-spreadsheet" | "canvas" | "git-branch" | "globe";
 
 export interface Destination {
   category: DestinationCategory;
@@ -43,15 +43,25 @@ export function destinationOf(target: WorkTarget): Destination {
     return { ...file, noun: [...file.noun], opensIn: "app" };
   }
   let origin = "", host = "";
-  try { const url = new URL(target.url); origin = url.origin; host = url.hostname.replace(/^www\./, ""); } catch { /* unreadable link stays generic */ }
-  if (origin === CANVAS_ORIGIN) return { category: "canvas", icon: "graduation-cap", name: "Canvas", noun: ["Canvas page", "Canvas pages"], opensIn: "browser" };
+  try {
+    const url = new URL(target.url);
+    // Presentation follows the same ordinary web boundary as launch. Userinfo,
+    // non-web schemes and deceptive suffix hosts never receive a service mark.
+    if ((url.protocol === "https:" || url.protocol === "http:") && !url.username && !url.password) {
+      origin = url.origin;
+      host = url.host;
+    }
+  } catch { /* unreadable link stays unbranded */ }
+  if (origin === CANVAS_ORIGIN) return { category: "canvas", icon: "canvas", name: "Canvas", noun: ["Canvas page", "Canvas pages"], opensIn: "browser" };
   if (origin === GITLAB_ORIGIN) return { category: "gitlab", icon: "git-branch", name: "UW GitLab", noun: ["UW GitLab page", "UW GitLab pages"], opensIn: "browser" };
-  return { category: "web", icon: "globe", name: host || "Web page", noun: ["web page", "web pages"], opensIn: "browser" };
+  return { category: "web", icon: "globe", name: host || "Destination unavailable",
+    noun: host ? [`page on ${host}`, `pages on ${host}`] : ["unavailable destination", "unavailable destinations"], opensIn: "browser" };
 }
 
 /** Where one item goes, as a clause. Instructions are opened last so they end up in front. */
 export function destinationPhrase(item: Pick<WorkItem, "role" | "target">) {
   const where = destinationOf(item.target);
+  if (where.name === "Destination unavailable") return where.name;
   const base = where.opensIn === "app" ? `Saved ${where.category === "pdf" ? "PDF" : where.noun[0]} in its usual app`
     : where.category === "web" ? `${where.name === "Web page" ? "Web page" : `Page on ${where.name}`} in your browser`
     : `${where.noun[0]} in your browser`;
@@ -59,10 +69,11 @@ export function destinationPhrase(item: Pick<WorkItem, "role" | "target">) {
 }
 
 export interface DestinationGroup {
+  key: string;
   category: DestinationCategory;
   icon: DestinationIcon;
   count: number;
-  /** "2 Canvas pages". Web groups merge hosts; per-item names stay on each row. */
+  /** "2 Canvas pages". Web groups retain exact hosts; every item stays counted. */
   label: string;
   resourceIds: string[];
 }
@@ -72,14 +83,15 @@ export interface DestinationGroup {
  * only: it is not a control and does not imply that anything opens together.
  */
 export function destinationGroups(items: readonly Pick<WorkItem, "resourceId" | "target">[]): DestinationGroup[] {
-  const groups = new Map<DestinationCategory, DestinationGroup>();
+  const groups = new Map<string, DestinationGroup>();
   for (const item of items) {
     const where = destinationOf(item.target);
-    const group = groups.get(where.category) ?? { category: where.category, icon: where.icon, count: 0, label: "", resourceIds: [] };
+    const key = where.category === "web" ? `web:${where.name}` : where.category;
+    const group = groups.get(key) ?? { key, category: where.category, icon: where.icon, count: 0, label: "", resourceIds: [] };
     group.count++;
     group.resourceIds.push(item.resourceId);
     group.label = `${group.count} ${group.count === 1 ? where.noun[0] : where.noun[1]}`;
-    groups.set(where.category, group);
+    groups.set(key, group);
   }
   return [...groups.values()];
 }

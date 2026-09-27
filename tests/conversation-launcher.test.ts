@@ -80,3 +80,16 @@ test("collapsing while a submit is in flight keeps it and lets it settle", () =>
   s = settleSubmit(s, begun.entry.idempotencyKey, { accepted: true });
   assert.equal(s.draft, null);
 });
+
+
+test("a moved draft retains its destination, and explicit rebasing changes both context and destination", () => {
+  const home = () => ({ ...at("Home")(), destination: { kind: "new-chat" as const } });
+  const chat = () => ({ ...at("Existing chat")(), destination: { kind: "follow-up" as const, chatId: "c1" } });
+  let s = edit(expand(initialLauncher<Origin>(), home), "Question about Home");
+  s = expand(collapse(s), chat);
+  assert.deepEqual(beginSubmit(s, key)!.entry.destination, { kind: "new-chat" }, "navigation cannot redirect the held draft into the current chat");
+  s = rebase(s, chat);
+  assert.deepEqual(beginSubmit(s, key)!.entry.destination, { kind: "follow-up", chatId: "c1" });
+  s = expand(collapse(s), () => ({ ...at("Second chat")(), destination: { kind: "follow-up" as const, chatId: "c2" } }));
+  assert.deepEqual(beginSubmit(s, key)!.entry.destination, { kind: "follow-up", chatId: "c1" }, "another chat cannot steal the follow-up draft");
+});

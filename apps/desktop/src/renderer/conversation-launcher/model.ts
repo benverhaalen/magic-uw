@@ -1,9 +1,13 @@
 // owner: conversation-launcher leaf. Pure launcher state; the component only renders it.
 // Drafts live in renderer memory: they can contain coursework and are never saved or sent before submit.
 
+export type LauncherDestination = { kind: "new-chat" } | { kind: "follow-up"; chatId: string };
+
 /** What a nonempty submit hands to the integrator. Structurally the chat lane's `ChatEntry` when `O` is its `ChatOrigin`. */
 export interface LauncherEntry<O> {
   prompt: string;
+  /** Captured with the draft; route changes never silently redirect a message. */
+  destination: LauncherDestination;
   /** Captured once when the draft started (or explicitly rebased). Never refreshed behind the student's back. */
   origin: O;
   /** One per submit gesture. Retrying unchanged text reuses it, so the owner can return the same chat. */
@@ -18,6 +22,7 @@ export interface Draft<O> {
   origin: O;
   /** `here.key` when the origin was captured, to tell the student when they have moved away from it. */
   originKey: string;
+  destination?: LauncherDestination;
   /** Latched at the first submit of this text; cleared when the text or origin changes. */
   key: string | null;
 }
@@ -35,7 +40,7 @@ export const initialLauncher = <O>(): LauncherState<O> => ({ open: false, draft:
 export const isBlank = (text: string) => text.trim() === "";
 
 /** Opening never captures again while a draft is held: the draft keeps the context it was written in. */
-export function expand<O>(state: LauncherState<O>, capture: () => { origin: O; originKey: string }): LauncherState<O> {
+export function expand<O>(state: LauncherState<O>, capture: () => { origin: O; originKey: string; destination?: LauncherDestination }): LauncherState<O> {
   if (state.open) return state;
   const draft = state.draft ?? { text: "", ...capture(), key: null };
   return { ...state, open: true, draft };
@@ -55,7 +60,7 @@ export function edit<O>(state: LauncherState<O>, text: string): LauncherState<O>
 }
 
 /** Explicit "Use this page": the only way a held draft changes context. */
-export function rebase<O>(state: LauncherState<O>, capture: () => { origin: O; originKey: string }): LauncherState<O> {
+export function rebase<O>(state: LauncherState<O>, capture: () => { origin: O; originKey: string; destination?: LauncherDestination }): LauncherState<O> {
   if (!state.draft || state.sending) return state;
   return { ...state, draft: { ...state.draft, ...capture(), key: null }, error: null };
 }
@@ -67,7 +72,7 @@ export function beginSubmit<O>(state: LauncherState<O>, freshKey: () => string):
   const key = draft.key ?? freshKey();
   return {
     state: { ...state, sending: key, error: null, draft: { ...draft, key } },
-    entry: { prompt: draft.text, origin: draft.origin, idempotencyKey: key },
+    entry: { prompt: draft.text, origin: draft.origin, destination: draft.destination ?? { kind: "new-chat" }, idempotencyKey: key },
   };
 }
 

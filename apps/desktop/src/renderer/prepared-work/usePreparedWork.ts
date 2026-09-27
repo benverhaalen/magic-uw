@@ -3,6 +3,9 @@ import type { WorkSet } from "@magic/contracts";
 import { classifyLaunchError, counts, noticeLine, outcomeFromError, outcomeFromReceipt, retryableIds, sendingOutcome, type LaunchProblem } from "./launch-model";
 import { getEntry, getVersion, putOutcome, subscribe, clearEntry, patchEntry, noteReturn } from "./session-store";
 
+import { createPreparationCache } from "./prepare-cache";
+const preparationCache = createPreparationCache<WorkSet | undefined>();
+
 export type PrepareState =
   | { kind: "loading" }
   | { kind: "ready"; set: WorkSet }
@@ -28,6 +31,7 @@ export function usePreparedWork(resourceId: string, refreshKey: string, anchor: 
   callbacks.current = options;
   const [prepare, setPrepare] = useState<PrepareState>({ kind: "loading" });
   const [reload, setReload] = useState(0);
+  const consumedReload = useRef(0);
   const [local, setLocal] = useState(false);
   const busy = useRef(false);
   const reloadedFor = useRef<string | null>(null);
@@ -37,9 +41,10 @@ export function usePreparedWork(resourceId: string, refreshKey: string, anchor: 
   useEffect(() => {
     if (!enabled) return;
     let current = true;
-    window.magic.execute({ type: "work-set", id: resourceId }).then(result => {
+    const force = reload !== consumedReload.current;
+    consumedReload.current = reload;
+    preparationCache.read(`${resourceId}:${refreshKey}`, async () => (await window.magic.execute({ type: "work-set", id: resourceId })).workSet, force).then(set => {
       if (!current) return;
-      const set = result.workSet;
       setPrepare(set ? { kind: "ready", set } : { kind: "error", problem: { kind: "unavailable", message: "This item has nothing to open.", raw: "" } });
     }).catch(cause => {
       if (!current) return;

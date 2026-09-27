@@ -9,7 +9,7 @@
   position: absolute; inset: auto 0 16px 0; z-index: 20; container-type: inline-size;
   display: flex; flex-direction: column; align-items: center; gap: 6px;
   padding: 0 16px; pointer-events: none;
-  font-family: var(--magic-font-interface); color: var(--magic-ink);
+  font-family: var(--magic-font-interface); font-weight: var(--magic-font-interface-weight); letter-spacing: var(--magic-tracking); color: var(--magic-ink);
 }
 .conversation-launcher {
   interpolate-size: allow-keywords;
@@ -54,7 +54,7 @@
   flex: 1; min-width: 0; box-sizing: border-box; field-sizing: content;
   min-height: 32px; max-height: calc(7lh + 12px); margin: 0; padding: 6px 6px;
   resize: none; overflow-y: auto; border: 0; outline: 0; background: transparent;
-  font: 400 var(--magic-type-control)/1.45 var(--magic-font-interface); color: var(--magic-ink);
+  font: var(--magic-font-interface-weight) var(--magic-type-control)/1.45 var(--magic-font-interface); color: var(--magic-ink);
 }
 .cl-field::placeholder { color: var(--magic-ink-muted); }
 .cl-send { background: var(--magic-fill-action); color: var(--magic-ink-action); }
@@ -85,3 +85,7 @@
 @media (prefers-reduced-motion: reduce) {
   .conversation-launcher, .conversation-launcher[data-open] { transition: none; }
 }
+
+/* Shell integration: the dock contributes its actual height to measured clearance. */
+.desktop-launcher > .conversation-launcher-dock { position: relative; inset: auto; padding: 0; }
+.desktop-launcher { pointer-events: none; }

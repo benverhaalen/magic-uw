@@ -3,4 +3,4 @@ export {
   ConversationLauncher,
   type ConversationLauncherProps, type LauncherHere, type LauncherVoice, type LauncherVoiceState,
 } from "./ConversationLauncher";
-export type { LauncherEntry, SubmitOutcome } from "./model";
+export type { LauncherDestination, LauncherEntry, SubmitOutcome } from "./model";
