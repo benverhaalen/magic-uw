@@ -6,12 +6,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStore } from '@magic/storage';
 import { defaultPrivacy } from '@magic/contracts';
+import { CONSENT_DISCLOSURE_VERSION } from '@magic/domain';
 import { createMcpService } from '../packages/core/src/mcp';
 
 test('MCP course_text grant must not reveal announcement-derived deadline text', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'audit-mcp-derived-'));
   const store = createStore(join(dir, 'db.sqlite'));
-  store.setConsent!({action:'grant',recipient:'claude',disclosureVersion:'setup-2026-09-26'},'2026-09-26T12:00:00Z');
+  store.setConsent!({action:'grant',recipient:'claude',disclosureVersion: CONSENT_DISCLOSURE_VERSION},'2026-09-26T12:00:00Z');
   const token = 'synthetic-local-test-token';
   store.setPrivacy({ ...defaultPrivacy, mode: 'selective_cloud', hostedProvider: 'claude', shareCourseText: true, shareCommunications: false });
   store.setMcpGrant({ id: 'g', label: 'synthetic', recipient: 'claude', enabled: true, courses: [{accountScope:'a',courseId:'c'}], categories:['course_text'], tokenHash:createHash('sha256').update(token).digest('hex') });
@@ -56,7 +57,7 @@ test('same course ID in another account cannot retain or scrub names in this acc
 test('MCP search ranks using the same account-scoped projection it returns', async () => {
   const store = createStore(':memory:');
   const token = 'synthetic-search-token';
-  store.setConsent!({action:'grant',recipient:'claude',disclosureVersion:'setup-2026-09-26'}, '2026-09-26T12:00:00Z');
+  store.setConsent!({action:'grant',recipient:'claude',disclosureVersion: CONSENT_DISCLOSURE_VERSION}, '2026-09-26T12:00:00Z');
   store.setPrivacy({...defaultPrivacy, mode:'selective_cloud', hostedProvider:'claude', shareCourseText:true});
   store.setMcpGrant({id:'search',label:'synthetic',recipient:'claude',enabled:true,courses:[{accountScope:'a',courseId:'c'}],categories:['course_text'],tokenHash:createHash('sha256').update(token).digest('hex')});
   store.ingest({source:{id:'a-material',label:'Material',kind:'canvas',accountScope:'a',courseId:'c',scope:'pages'},observedAt:'2026-09-26T12:00:00Z',status:'ok',complete:true,resources:[{externalId:'x',kind:'material',courseId:'c',courseName:'Course',title:'Method',text:'Alex Smith method describes the procedure.',url:'https://example.org/method',deadlines:[],policy:{mode:'unknown',evidence:''}}]});

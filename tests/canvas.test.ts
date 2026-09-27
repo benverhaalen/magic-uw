@@ -125,7 +125,7 @@ test("Canvas maps current-user due and lock separately, uses submission evidence
     assert.equal(call.init.method, "GET");
     assert.equal(call.init.credentials, "include");
     assert.equal(call.init.redirect, "manual");
-    assert.deepEqual(call.init.headers, { Accept: "application/json" });
+    assert.deepEqual(call.init.headers, { Accept: 'application/json+canvas-string-ids' });
   }
   assert.equal(
     mock.calls

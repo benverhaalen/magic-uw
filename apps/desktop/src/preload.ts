@@ -84,5 +84,13 @@ const bridge: AppBridge = {
   clients,
   setOutlookCalendar: (url) => ipcRenderer.invoke("magic:outlook-calendar", url),
   outlookCalendarStatus: () => ipcRenderer.invoke("magic:outlook-calendar-status"),
+  // owner: T30. Outlook through the app's own Microsoft sign-in; no token crosses this bridge.
+  outlookConnect: () => ipcRenderer.invoke("magic:outlook-connect"),
+  outlookStatus: () => ipcRenderer.invoke("magic:outlook-status"),
+  outlookDisconnectGraph: () => ipcRenderer.invoke("magic:outlook-disconnect-graph"),
+  outlookMailBody: (id) => ipcRenderer.invoke("magic:outlook-mail-body", id),
+  calendarProposeEvent: (input) => ipcRenderer.invoke("magic:calendar-propose-event", input),
+  calendarCreateEvent: (proposalId) => ipcRenderer.invoke("magic:calendar-create-event", proposalId),
+  // end owner: T30
 };
 contextBridge.exposeInMainWorld("magic", bridge);

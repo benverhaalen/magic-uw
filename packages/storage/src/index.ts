@@ -10,9 +10,9 @@ import {
 import { basename, dirname, join, resolve } from "node:path";
 import { backup, DatabaseSync, type StatementSync } from "node:sqlite";
 import { planningMigration, planningRepository, type PlanningRepository } from "./planning";
-import { PLANNING_V9 } from "./planning-v9"; // owner: planning-perf
+import { PLANNING_V12 } from "./planning-v12"; // owner: planning-perf
 import { textHash } from "../../retrieval/src/index";
-import { COURSE_CORE_SCHEMA, courseCoreRepository } from "./course-core";
+import { COURSE_CORE_SCHEMA, COURSE_SPACE_OBSERVATION_MIGRATION, courseCoreRepository } from "./course-core";
 import { createPassageIndex, scopeToken } from "./passages";
 import { LEARNING_SCHEMA } from "./learning";
 import { LEARNING_V8 } from "./learning-v8";
@@ -75,7 +75,7 @@ import {
   type Store,
 } from "@magic/contracts";
 
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 12;
 const MAX_ATTEMPTS = 3;
 /** The latest pre-migration backup, beside the database (one kept; purge deletes it). */
 export function migrationBackupPath(path: string): string {
@@ -346,7 +346,10 @@ export function createStore(
   // v7: learning and practice tables (T10L, D17).
   steps.push([7, () => db.exec(LEARNING_SCHEMA + "PRAGMA user_version = 7;")]);
   steps.push([8, () => db.exec(LEARNING_V8 + "PRAGMA user_version = 8;")]);
-  steps.push([9, () => db.exec(PLANNING_V9 + "PRAGMA user_version = 9;")]); // owner: planning-perf
+  steps.push([9, () => db.exec(COURSE_SPACE_OBSERVATION_MIGRATION + "PRAGMA user_version = 9;")]);
+  // owner: planning-perf. v12 is this branch's reserved number; v10 and v11 may be absent here,
+  // and the step is idempotent (IF NOT EXISTS), so it applies from v9 or any later version.
+  steps.push([12, () => db.exec(PLANNING_V12 + "PRAGMA user_version = 12;")]);
   const migrationBackup = file ? migrationBackupPath(path) : null;
   const passageIndex = createPassageIndex(db, prepare);
   const courseScope = (accountScope: string, courseId: string) =>
@@ -846,7 +849,10 @@ export function createStore(
               .length / count
           : 0;
         const drift: string[] = [];
-        if (complete && baseline && Number(baseline.record_count) >= 5) {
+        // owner: T30: a Graph source's set is built from Microsoft's own delta, whose removals are
+        // authoritative (a student archiving mail), so a drop there is real, not a failed read.
+        const deltaAuthoritative = source.scope.startsWith("graph_");
+        if (complete && baseline && !deltaAuthoritative && Number(baseline.record_count) >= 5) {
           if (count < Number(baseline.record_count) * 0.3)
             drift.push("record_count_drop");
           if (
