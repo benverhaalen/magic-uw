@@ -131,3 +131,36 @@ test("the Outlook feed expands a weekly class into one event per meeting", async
   assert.ok(lectures.length > 5, `expanded (${lectures.length})`);
   assert.equal(batches[0]!.diagnostics?.some((d) => d.code === "recurrence_not_expanded") ?? false, false);
 });
+
+test("a canceled or moved day in an all-day repeating series is applied too", async () => {
+  const ics = [
+    "BEGIN:VCALENDAR", "VERSION:2.0",
+    "BEGIN:VEVENT", "UID:ad@x", "SUMMARY:Study week", "DTSTART;VALUE=DATE:20261026", "DTEND;VALUE=DATE:20261027",
+    "RRULE:FREQ=DAILY;COUNT=5", "EXDATE;VALUE=DATE:20261028", "END:VEVENT",
+    "BEGIN:VEVENT", "UID:ad@x", "RECURRENCE-ID;VALUE=DATE:20261029", "SUMMARY:Study week (moved)",
+    "DTSTART;VALUE=DATE:20261031", "DTEND;VALUE=DATE:20261101", "END:VEVENT",
+    "END:VCALENDAR", "",
+  ].join("\r\n");
+  const { resources } = await parseCalendar(ics, {
+    canvasOrigin: "https://canvas.wisc.edu", accountScope: "a", courseId: "574", courseName: "C", now: () => NOW,
+    expandRecurrence: true,
+  });
+  const days = resources.filter((r) => r.calendar?.uid === "ad@x").map((r) => r.calendar!.start).sort();
+  assert.deepEqual(days, ["2026-10-26", "2026-10-27", "2026-10-30", "2026-10-31"]);
+  assert.equal(resources.find((r) => r.calendar!.start === "2026-10-31")?.title, "Study week (moved)");
+});
+
+test("expansion has an overall cap, and hitting it marks the read incomplete", async () => {
+  // Ten hourly series: each hits the per-series cap, and together they pass the feed-wide cap.
+  const events = Array.from({ length: 10 }, (_, i) => [
+    "BEGIN:VEVENT", `UID:hourly-${i}@x`, `SUMMARY:Hourly ${i}`,
+    "DTSTART:20261026T000000Z", "DTEND:20261026T001500Z", "RRULE:FREQ=HOURLY", "END:VEVENT",
+  ]).flat();
+  const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", ...events, "END:VCALENDAR", ""].join("\r\n");
+  const { resources, diagnostics } = await parseCalendar(ics, {
+    canvasOrigin: "https://canvas.wisc.edu", accountScope: "a", courseId: "574", courseName: "C", now: () => NOW,
+    expandRecurrence: true,
+  });
+  assert.ok(resources.length <= 3000, `bounded (${resources.length})`);
+  assert.ok(diagnostics.some((d) => d.code === "recurrence_truncated"));
+});

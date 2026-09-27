@@ -772,7 +772,8 @@ app
         await studentSession.clearCache();
         await gitlabSession.clearStorageData();
         await gitlabSession.clearCache();
-        await vault.deletePrefix("calendar:");
+        // Canvas feed links go with the Canvas session; a connected Outlook calendar is separate.
+        await vault.deletePrefix("calendar:", ["calendar:outlook"]);
         await resetPlanningScope();
         if (signOutEpoch !== planningEpoch) return;
         const result = await execute({ type: "snapshot" });

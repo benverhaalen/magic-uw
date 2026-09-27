@@ -190,10 +190,16 @@ export async function parseCalendar(
         event.end && event.start ? event.end.getTime() - event.start.getTime() : 0;
       const exdates = new Set(Object.keys(event.exdate ?? {}));
       const occurrences = event.rrule.between(windowStart, windowEnd, true);
-      if (occurrences.length > MAX_OCCURRENCES)
+      const room = Math.max(0, MAX_EXPANDED_TOTAL - resources.length);
+      const limit = Math.min(MAX_OCCURRENCES, room);
+      if (occurrences.length > limit)
         diagnostics.push({ code: "recurrence_truncated", path: [], severity: "warning" });
-      for (const occurrence of occurrences.slice(0, MAX_OCCURRENCES)) {
-        const key = occurrence.toISOString();
+      for (const occurrence of occurrences.slice(0, limit)) {
+        // The parser keys all-day exceptions by calendar date (occurrences are local midnight)
+        // and timed ones by instant.
+        const key = allDay
+          ? `${occurrence.getFullYear()}-${String(occurrence.getMonth() + 1).padStart(2, "0")}-${String(occurrence.getDate()).padStart(2, "0")}`
+          : occurrence.toISOString();
         if (exdates.has(key)) continue;
         const moved = event.recurrences?.[key] as VEvent | undefined;
         if (moved) {
@@ -285,6 +291,8 @@ export function calendarConnector(
 const RECURRENCE_PAST_MS = 86400000;
 const RECURRENCE_AHEAD_MS = 21 * 86400000;
 const MAX_OCCURRENCES = 400;
+// Feed-wide bound on expanded meetings, so a huge feed cannot produce hundreds of thousands of records.
+const MAX_EXPANDED_TOTAL = 3000;
 export const OUTLOOK_CALENDAR_URL = "https://outlook.office.com/calendar/view/day";
 /** The student's own published Outlook calendar: meetings and appointments, not coursework. */
 export function outlookCalendarConnector(options: {

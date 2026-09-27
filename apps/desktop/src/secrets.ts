@@ -73,10 +73,11 @@ export function createSecretVault(path: string, encryption: SecretEncryption) {
         values[key] = value;
       });
     },
-    deletePrefix(prefix: string) {
+    /** Deletes every key with the prefix except the exact keys listed in `keep`. */
+    deletePrefix(prefix: string, keep: string[] = []) {
       return mutate((values) => {
         for (const key of Object.keys(values))
-          if (key.startsWith(prefix)) delete values[key];
+          if (key.startsWith(prefix) && !keep.includes(key)) delete values[key];
       });
     },
     async clear() {

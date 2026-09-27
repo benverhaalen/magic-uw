@@ -42,3 +42,23 @@ test("vault persists only encrypted bytes, serializes concurrent updates and fai
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("signing out of Canvas clears Canvas feed links but keeps the separately connected Outlook link", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "magic-vault-test-"));
+  try {
+    const encryption = {
+      available: () => true,
+      encrypt: (s: string) => Buffer.from(s).map((b) => b ^ 0x55),
+      decrypt: (b: Uint8Array) => Buffer.from(b).map((v) => v ^ 0x55).toString(),
+    };
+    const vault = createSecretVault(join(dir, "secrets.enc"), encryption);
+    await vault.set("calendar:acct:101", "canvas-feed-101");
+    await vault.set("calendar:acct:102", "canvas-feed-102");
+    await vault.set("calendar:outlook", "outlook-published-link");
+    await vault.deletePrefix("calendar:", ["calendar:outlook"]);
+    assert.deepEqual((await vault.list("calendar:")).map((e) => e.key), ["calendar:outlook"]);
+    assert.equal(await vault.get("calendar:outlook"), "outlook-published-link");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
