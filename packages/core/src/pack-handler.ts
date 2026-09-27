@@ -7,6 +7,7 @@
  */
 import { aiRecipientSchema, type CourseCoreStore, type PackScope, type Resource, type Store } from "@magic/contracts";
 import { maySend } from "@magic/domain";
+import { effectiveCoursePolicy } from "../../domain/src/course-intelligence";
 import type { BackendCall, ModelRunner } from "../../runner/src/index";
 import { buildPrompt, packCacheKey, type ArtifactStore, type CourseFrame, type LedgerStore, type PackSpec, type Passage } from "../../packs/core/src/index";
 import { learningArtifactStore, sqlLedgerStore } from "../../packs/core/src/learning-stores";
@@ -86,6 +87,8 @@ interface Scoped {
   label: string;
   resources: Resource[];
   restricted: boolean;
+  /** The effective course policy (profile claims first; a restriction wins), as tutoring reads it. */
+  policy: { mode: string; evidence: string } | undefined;
 }
 
 /** The course (and optional module or resources) the scope names, with only eligible, included study sources. */
@@ -97,7 +100,13 @@ function resolveScope(store: WorkspaceStore, scope: PackScope): Scoped | null {
   if (!accountScope) return null;
   const course = inCourse.filter((r) => sources.get(r.sourceId)!.accountScope === accountScope);
   // Conservative: any restricted statement in the course blocks AI-made practice (N06 stage 1).
-  const restricted = course.some((r) => r.policy.mode === "restricted");
+  // One policy source with tutoring: the course profile's claims, where a restriction wins.
+  const profile = store
+    .courseIntelligence()
+    .filter((ci) => ci.accountScope === accountScope && ci.courseId === scope.courseId)
+    .sort((a, b) => b.version - a.version)[0];
+  const policies = course.map((r) => effectiveCoursePolicy(profile, r));
+  const restricted = policies.some((p) => p.mode === "restricted");
   const resources = course
     .filter((r) => included(r) && eligibleStudySource(r) && r.text.trim().length > 0)
     .filter((r) => !scope.resourceIds?.length || scope.resourceIds.includes(r.id))
@@ -111,6 +120,7 @@ function resolveScope(store: WorkspaceStore, scope: PackScope): Scoped | null {
     label,
     resources,
     restricted,
+    policy: policies.find((p) => p.mode !== "unknown") ?? policies[0],
   };
 }
 
@@ -142,7 +152,7 @@ function pickPassages(store: WorkspaceStore, s: Scoped, focus: string[], budget:
 }
 
 function frameFor(s: Scoped, units: Concept[]): CourseFrame {
-  const policy = s.resources.find((r) => r.policy.mode !== "unknown")?.policy ?? s.resources[0]?.policy;
+  const policy = s.policy;
   return {
     courseId: s.courseRef,
     course: s.label,
