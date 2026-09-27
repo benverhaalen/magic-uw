@@ -19,7 +19,10 @@ import {
   type SelectableCanvasCourse,
 } from "../packages/connectors/src/canvas-selection";
 import { createIngestion } from "../apps/desktop/src/ingestion";
-import { courseChoices, emptyProgress, firstIncompleteStep } from "../apps/desktop/src/renderer/onboarding/model";
+import { courseChoices, emptyProgress, enrolledWithoutCanvas, firstIncompleteStep } from "../apps/desktop/src/renderer/onboarding/model";
+import { signInAndSync } from "../apps/desktop/src/renderer/sign-in";
+import { syncUwPlanning } from "../packages/connectors/src/uw-planning-sync";
+import type { UwPlanningReadRequest, UwPlanningReadResult } from "../packages/connectors/src/uw-planning-http";
 
 const origin = "https://canvas.wisc.edu";
 const now = new Date("2026-09-27T15:00:00Z");
@@ -103,7 +106,7 @@ function planning(store: Store) {
     meetings: [], meetingsComplete: false, seatsAvailable: null, capacity: null, waitlistCount: null, instructorNames: [],
     provenance: provenance("enrollment_term", termCode),
   });
-  save([pkg("uw:901:510", "1272", "LEC 002"), pkg("uw:901:690", "1272", "SEM 001")] as never, "uw_enroll", "uw-account:synthetic");
+  save([pkg("uw:901:510", "1272", "LEC 002"), pkg("uw:901:690", "1272", "SEM 001"), pkg("uw:901:999", "1272", "LEC 001")] as never, "uw_enroll", "uw-account:synthetic");
   save([pkg("uw:901:777", "1264", "SEM 001")] as never, "uw_enroll", "uw-account:synthetic");
 }
 
@@ -350,4 +353,82 @@ test("stored nameless rows: a named earlier version is restored (never deleted);
     await ingestion.stop();
     w.close();
   }
+});
+
+test("enrollment first: this term's UW enrollment decides; Canvas-only courses go to Other; an enrolled class without a Canvas course is listed", async () => {
+  const mock = canvas();
+  const w = workspace(mock);
+  const ingestion = w.make();
+  try {
+    planning(w.store);
+    await ingestion.discover();
+    const snapshot = { sources: w.store.sources(), resources: w.store.resources(), courseOverrides: [], planning: { records: w.store.planningRecords(), sources: [] } } as unknown as Snapshot;
+    const choices = courseChoices(snapshot);
+    const row = (id: string) => choices.find((c) => c.courseId === id)!;
+    assert.deepEqual([row("102").group, row("102").checked, row("102").decidedBy], ["this-term", true, "enrollment"]);
+    assert.deepEqual([row("202").group, row("202").checked, row("202").decidedBy], ["this-term", true, "enrollment"]);
+    // Canvas lists 101 in the current term, but the student isn't enrolled in it.
+    assert.deepEqual([row("101").group, row("101").checked, row("101").decidedBy], ["other", false, "enrollment"]);
+    assert.deepEqual(enrolledWithoutCanvas(snapshot, now).map((c) => c.title), ["SYNTH 999"]);
+    await ingestion.confirmCourses();
+    assert.deepEqual(mock.contentReads(), ["102", "202"], "only the enrolled classes are read");
+  } finally {
+    await ingestion.stop();
+    w.close();
+  }
+});
+
+test("without an enrollment read, Canvas's term dates decide, and the chooser says so", async () => {
+  const store = createStore(":memory:");
+  try {
+    for (const batch of await pull({ fetch: canvas().fetch, catalogOnly: true })) store.ingest(batch);
+    const snapshot = { sources: store.sources(), resources: store.resources(), courseOverrides: [] } as unknown as Snapshot;
+    const choices = courseChoices(snapshot);
+    assert.ok(choices.every((c) => c.decidedBy === "canvas"));
+    assert.deepEqual(enrolledWithoutCanvas(snapshot, now), []);
+  } finally {
+    store.close();
+  }
+});
+
+test("onboarding sign-in: enrollment read first, then the course list, then degree history in the background; a slow read falls back", async () => {
+  const order: string[] = [];
+  const bridge = (planningHangs: boolean) => ({
+    signInUW: async () => ({ status: "confirmed", service: "canvas" }),
+    syncPlanning: (options?: { phase?: "enrollment" }) => {
+      order.push(options?.phase === "enrollment" ? "enrollment" : "planning");
+      return planningHangs && options?.phase ? new Promise<never>(() => {}) : Promise.resolve({} as never);
+    },
+    syncCanvas: async (options?: { discover?: boolean }) => {
+      order.push(options?.discover ? "discover" : "sync");
+      return {} as never;
+    },
+  });
+  await signInAndSync(bridge(false) as never, undefined, { discover: true, enrollmentFirst: true });
+  assert.deepEqual(order, ["enrollment", "discover", "planning"]);
+  order.length = 0;
+  const started = Date.now();
+  const result = await signInAndSync(bridge(true) as never, undefined, { discover: true, enrollmentFirst: true, enrollmentTimeoutMs: 50 });
+  assert.equal(result.synced, true);
+  assert.deepEqual(order, ["enrollment", "discover", "planning"], "a slow enrollment read never blocks discovery");
+  assert.ok(Date.now() - started < 5000);
+});
+
+test("the enrollment phase reads the student record and this term's enrollment, never degree history or audits", async () => {
+  const requests: UwPlanningReadRequest[] = [];
+  const ok = (data: unknown): UwPlanningReadResult => ({ status: "ok", data, bytes: 0, elapsedMs: 0, schemaVerified: false });
+  const http = {
+    async read(request: UwPlanningReadRequest) {
+      requests.push(request);
+      if (request.kind === "student-info")
+        return ok({ personAttributes: { emplid: "12345678901234" }, primaryCareer: { careerCode: "UGRD", programName: "Undergraduate", termCode: "1272" }, enrollmentImpacts: { holds: [], registrationAppointments: [] }, studentAdvisorRelationships: [] });
+      if (request.kind === "current-enrollment") return ok([]);
+      return ok({});
+    },
+  };
+  const result = await syncUwPlanning({ http, accountSeed: "synthetic-installation-seed-0000000000000000", now: () => now, phase: "enrollment" });
+  const kinds = new Set(requests.map((r) => r.kind));
+  assert.ok(kinds.has("current-enrollment"));
+  assert.ok(!kinds.has("degree-plans") && !kinds.has("audit-metadata"), [...kinds].join(","));
+  assert.ok(!result.invalidated.some((i) => i.source === "uw_dars"), "saved audits are not marked unconfirmed");
 });

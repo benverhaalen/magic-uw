@@ -186,3 +186,78 @@ test("populating reports reading while a source is in flight, and empty with not
   assert.equal(summarize(snapshot(), true).outcome, "reading");
   assert.equal(summarize(snapshot({ sources: [source({})] }), false).outcome, "ready");
 });
+
+// fix/current-courses-only: "partly ready" names what wasn't read, why, and one action; excluded
+// courses, hidden lists and sources still reading are not issues; files may still be arriving.
+function courseRow(courseId: string, included: boolean, name = `Synthetic ${courseId}`): ResourceView {
+  return {
+    id: `course-${courseId}`, sourceId: `canvas:a:${courseId}:course`, externalId: courseId, kind: "course", courseId, courseName: name,
+    title: name, url: `https://canvas.wisc.edu/courses/${courseId}`, text: "", deadlines: [], deleted: false,
+    course: { selection: { score: 5, included, reasons: [] } },
+  } as unknown as ResourceView;
+}
+const at = (courseId: string, scope: string, parts: Partial<SourceHealth> = {}) =>
+  source({ id: `canvas:a:${courseId}:${scope}`, courseId, scope, ...parts });
+const courseSources = (courseId: string) => [at(courseId, "course"), at(courseId, "assignments"), at(courseId, "modules")];
+
+test("populating: ready when assignments and modules are read, with files still coming in", () => {
+  const s = snapshot({
+    sources: [
+      ...courseSources("101"),
+      at("101", "file:1", { status: "partial", complete: false, diagnostics: [{ code: "file_budget_deferred", path: [], severity: "warning" }] }),
+      at("101", "file:2"),
+      at("101", "pages", { status: "inaccessible", complete: false }),
+    ],
+    resources: [courseRow("101", true)],
+  });
+  const summary = summarize(s, true);
+  assert.equal(summary.outcome, "ready");
+  assert.equal(summary.filesArriving, 1);
+  assert.equal(summary.hiddenLists, 1, "a Pages list hidden from students is not partial");
+  const files = summary.sources.find((l) => l.id.startsWith("files:"))!;
+  assert.equal(files.status, "Still coming in");
+  assert.equal(files.detail, "1 of 2 read");
+  assert.ok(!summary.sources.some((l) => l.state === "partial" || l.state === "failed"));
+});
+
+test("populating: an excluded course and a source still reading are not issues", () => {
+  const s = snapshot({
+    sources: [
+      ...courseSources("101"),
+      at("201", "course"),
+      at("201", "assignments", { status: "error", complete: false }),
+      at("201", "modules"),
+      at("101", "announcements", { status: "ok", complete: false, progress: { phase: "reading", completed: 1, total: 3 } }),
+    ],
+    resources: [courseRow("101", true), courseRow("201", false)],
+  });
+  const summary = summarize(s, false);
+  assert.ok(!summary.sources.some((l) => l.id.includes(":201:")), "the excluded course isn't listed");
+  assert.equal(summary.sources.find((l) => l.id.endsWith(":announcements"))!.state, "reading");
+  assert.equal(summary.outcome, "ready", "assignments and modules of the included course are read");
+});
+
+test("populating: each issue names its reason and one action (sign in again, retry, why)", () => {
+  const s = snapshot({
+    sources: [
+      at("101", "course"),
+      at("101", "assignments", { status: "needs_sign_in", complete: false }),
+      at("101", "modules", { status: "error", complete: false, diagnostics: [{ code: "http_failure", path: [], severity: "error" }] }),
+      at("101", "quizzes", { status: "needs_attention", complete: false, diagnostics: [{ code: "record_count_drop", path: [], severity: "error" }] }),
+      at("101", "file:9", { status: "error", complete: false }),
+    ],
+    resources: [courseRow("101", true)],
+  });
+  const summary = summarize(s, false);
+  assert.equal(summary.outcome, "issues");
+  const line = (scope: string) => summary.sources.find((l) => l.id.endsWith(`:${scope}`))!;
+  assert.equal(line("assignments").action, "sign-in");
+  assert.equal(line("modules").action, "retry");
+  assert.match(line("modules").why ?? "", /Canvas answered with an error/);
+  assert.equal(line("quizzes").action, "why");
+  assert.match(line("quizzes").why ?? "", /earlier copy was kept/);
+  for (const scope of ["assignments", "modules", "quizzes"]) assert.ok(line(scope).reason, scope);
+  const files = summary.sources.find((l) => l.id.startsWith("files:"))!;
+  assert.equal(files.state, "partial");
+  assert.equal(files.action, "why");
+});

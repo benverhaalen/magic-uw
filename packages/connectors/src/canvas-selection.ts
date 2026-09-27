@@ -42,6 +42,12 @@ export interface CanvasSelectionOptions {
    * to AI, Jev or MCP. Without planning data Canvas's own signals decide alone.
    */
   enrolledThisTerm?: (course: SelectableCanvasCourse) => boolean;
+  /**
+   * The enrollment read succeeded for the current term: it is the primary definition of "this
+   * term". A current Canvas course that matches no enrolled class goes to "Other Canvas sites".
+   * Canvas's own term rules decide only when this is false (the read failed or never ran).
+   */
+  enrollmentAuthoritative?: boolean;
 }
 /**
  * The reasons that place a course; the course chooser groups by them (stable strings).
@@ -53,6 +59,7 @@ export const COURSE_REASONS = {
   past: "Past course: its term ended",
   future: "Its term hasn't started",
   termless: "No academic term: an organization or community site",
+  notEnrolled: "Not in your UW enrollment this term",
   stillOpen: "Its term ended, but Canvas keeps the course open until its own end date",
 } as const;
 const DAY = 86400_000;
@@ -115,25 +122,8 @@ export function academicTermDates(course: SelectableCanvasCourse): boolean {
     end = Date.parse(course.term?.end_at ?? "");
   return Number.isFinite(start) && Number.isFinite(end) && end > start && end - start <= 400 * DAY;
 }
-/**
- * A UW Canvas course code's parts: "FA26 COMP SCI 400 001" → subject "COMP SCI", catalog "400",
- * sections ["001"]. Undefined when the code has no catalog number.
- */
-export function canvasCourseCode(
-  code: string | null | undefined,
-): { subject: string; catalog: string; sections: string[] } | undefined {
-  const text = (code ?? "")
-    .toUpperCase()
-    .replace(/^(?:FA|SP|SU)(?:20)?\d{2}[\s:_-]+/, "")
-    .trim();
-  const match = text.match(/^([A-Z][A-Z &/]*?)\s*(\d{3,4}[A-Z]?)\b((?:\s+\d{3})*)/);
-  if (!match) return undefined;
-  return {
-    subject: match[1]!.trim().replace(/\s+/g, " "),
-    catalog: match[2]!,
-    sections: match[3]!.trim() ? match[3]!.trim().split(/\s+/) : [],
-  };
-}
+// The Canvas course code parser is shared with onboarding's chooser (packages/domain).
+export { canvasCourseCode } from "../../domain/src/enrollment-match";
 export function parseAcademicTerm(
   input: string | null | undefined,
 ): { season: string; year: number; endYear: number; key: string } | null {
@@ -260,6 +250,10 @@ export function courseSelection(
   } else if (timing === "extended") {
     included = false;
     reasons.push(COURSE_REASONS.stillOpen);
+  } else if (options.enrollmentAuthoritative && listedOpen) {
+    // Course Search & Enroll decides among the courses Canvas lists as current or term-less.
+    included = enrolled;
+    reasons.push(enrolled ? COURSE_REASONS.enrolled : COURSE_REASONS.notEnrolled);
   } else if (!term && !academicTermDates(course)) {
     if (enrolled) {
       included = true;
