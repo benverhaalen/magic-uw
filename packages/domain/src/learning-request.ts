@@ -131,7 +131,15 @@ export function learningSource(
   // With claims present, effectiveCoursePolicy reads only the claims. The resource's own captured rule
   // still applies, so it is combined here rather than silently replaced.
   const own = resource.policy;
-  const ownApplies = effective.claimIds.length > 0 && (own.mode !== "unknown" || !!own.evidence.trim());
+  // A captured reading's default unknown is not a second course permission requirement.
+  // A real source or item rule may still narrow the verified syllabus rule.
+  const ownApplies = effective.claimIds.length > 0 && (
+    // Even an incomplete captured restriction or coaching rule narrows course permission.
+    own.mode === "restricted" || own.mode === "coaching" ||
+    // An unquoted default unknown on a reading is absence of a local rule. A quoted
+    // ambiguous rule is real evidence and must hold until it is resolved.
+    !!own.evidence.trim() && resource.text.includes(own.evidence.trim())
+  );
   let mode = ownApplies ? stricter(effective.mode, own.mode) : effective.mode;
   if (stale && mode === "allowed") mode = "coaching";
   const modes = ownApplies ? [effective.mode, own.mode] : [effective.mode];

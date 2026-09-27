@@ -68,6 +68,8 @@ export const passageSearchSchema = z
     courses: z.array(courseRefSchema).max(200).optional(),
     /** Exact saved-resource selection applied inside FTS before ranking. Empty selects none. */
     resourceIds: z.array(idText).max(100).optional(),
+    /** Exact trusted topic passage selection, also applied before FTS ranking. Empty selects none. */
+    passageIds: z.array(z.number().int().positive()).max(5000).optional(),
     k: z.number().int().min(1).max(20).optional(),
     /** question: OR + bm25 + the not-found gate (default). lookup: every term, prefix-matched. */
     mode: z.enum(["question", "lookup"]).optional(),

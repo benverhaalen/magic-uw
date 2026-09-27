@@ -77,6 +77,14 @@ export interface AskOptions {
   searchText?: string;
   /** owner: study-prep. Only these sources (the Study prepper's ticked Sources); absent: the whole course. */
   resourceIds?: readonly string[];
+  /** Passage allowlist resolved from the current Study target's topic anchors. */
+  passageIds?: readonly number[];
+  /** Exact selected topic excerpts; never send unrelated text in an allowed passage. */
+  passageText?: ReadonlyMap<number, string>;
+  /** Trusted quoted effective directive, additional to the runner's all-source policy decision. */
+  policyInstruction?: string;
+  /** Recheck the authenticated Study target, source versions, and permission before use. */
+  validate?: () => void;
 }
 
 const ASSESSMENT_WORD = /\b(exams?|midterms?|finals?|quiz(?:zes)?|tests?)\b/i;
@@ -148,13 +156,19 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
   // A question that refers back is searched with the question it refers to, so "why does it resize" finds its passages.
   const words = options.searchText?.trim() || question;
   const query = previous ? `${previous.question} ${words}` : words;
-  // owner: study-prep: an ask scoped to ticked sources searches wider, then keeps only those sources.
+  // Study narrows the shared FTS query before ranking, including exact topic passages.
   const allowed = options.resourceIds ? new Set(options.resourceIds) : null;
-  const wide = store.searchPassages({ query, courses: courses.map((c) => ({ accountScope: c.accountScope, courseId: c.courseId })), k: allowed ? 20 : 12 });
-  const found = allowed ? { ...wide, hits: wide.hits.filter((h) => allowed.has(h.resourceId)).slice(0, 12) } : wide;
+  const allowedPassages = options.passageIds ? new Set(options.passageIds) : null;
+  const accountOf = (sourceId: string) => store.sources().find((s) => s.id === sourceId)?.accountScope;
+  const found = store.searchPassages({ query,
+    courses: courses.map((c) => ({ accountScope: c.accountScope, courseId: c.courseId })),
+    ...(allowed ? { resourceIds: [...allowed] } : {}),
+    ...(allowedPassages ? { passageIds: [...allowedPassages] } : {}), k: 12 });
   // A one-course exam question also reads what code holds about that course's exams.
   const allFacts = courses.length === 1 ? assessmentFacts(store, courses[0]!, question, deps.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone) : { facts: [], pids: [] };
-  const facts = allowed ? { facts: allFacts.facts.filter((f) => allowed.has(f.resourceId)), pids: allFacts.pids } : allFacts;
+  const facts = allowed ? { facts: allFacts.facts.filter((f) => allowed.has(f.resourceId) && !allowedPassages),
+    pids: allFacts.pids.filter((pid) => (!allowedPassages || allowedPassages.has(pid)) &&
+      allowed.has(store.passage(pid)?.passage.resourceId ?? "")) } : allFacts;
   // The coverage gate: nothing in the materials or the exam facts supports the question, so no model call.
   const searched = found.notFound ? [] : found.hits;
   if (!searched.length && !facts.facts.length && !facts.pids.length) return none(NOT_IN_MATERIALS);
@@ -164,13 +178,18 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
   // Every source whose passage text goes into the prompt, fixed when that text was read: its account and
   // content hash. The set is never rebuilt from what still resolves later, so a source that disappears
   // while the runner is acquired can't drop out of the policy decision while its passage stays in the prompt.
-  const accountOf = (sourceId: string) => store.sources().find((s) => s.id === sourceId)?.accountScope;
   const expected = new Map<string, { accountScope: string | undefined; contentHash: string | undefined }>();
+  const capture = (id: string) => {
+    if (expected.has(id)) return;
+    const r = store.resource(id);
+    expected.set(id, { accountScope: r ? accountOf(r.sourceId) : undefined, contentHash: r?.contentHash });
+  };
   let used = 0;
   for (const f of facts.facts) {
     if (deps.resourceId && f.resourceId !== deps.resourceId) continue; // an item-scoped ask stays within that item
     passages.push({ sourceId: f.sourceId, text: f.text });
     meta.set(f.sourceId, { resourceId: f.resourceId, title: f.title, url: f.url });
+    capture(f.resourceId);
     used += Math.ceil(f.text.length / 4);
   }
   const claimHits = facts.pids.flatMap((pid) => {
@@ -182,20 +201,22 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
     if (seen.has(h.pid)) continue;
     seen.add(h.pid);
     if (deps.resourceId && h.resourceId !== deps.resourceId) continue;
+    if (allowed && !allowed.has(h.resourceId)) continue;
+    if (allowedPassages && !allowedPassages.has(h.pid)) continue;
     if (passages.length >= ASK_MAX_PASSAGES) break;
     const p = store.passage(h.pid);
-    if (!p || p.passage.redacted || !p.text.trim()) continue;
-    if (used + p.passage.tokEst > budget && passages.length) continue;
-    used += p.passage.tokEst;
+    const excerpt = options.passageText ? options.passageText.get(h.pid) : p?.text;
+    if (!p || p.passage.redacted || !excerpt?.trim()) continue;
+    const tokens = Math.ceil(excerpt.length / 4);
+    if (used + tokens > budget && passages.length) continue;
+    used += tokens;
     const sourceId = `p${h.pid}`;
-    passages.push({ sourceId, text: p.text });
+    passages.push({ sourceId, text: excerpt });
     meta.set(sourceId, { resourceId: h.resourceId, title: h.title, url: h.url });
-    if (!expected.has(h.resourceId)) {
-      const r = store.resource(h.resourceId);
-      expected.set(h.resourceId, { accountScope: r ? accountOf(r.sourceId) : undefined, contentHash: r?.contentHash });
-    }
+    capture(h.resourceId);
   }
   if (!passages.length) return none(deps.resourceId ? "I could not find matching passages in this selected item. Try naming the section you want to discuss." : NOT_IN_MATERIALS);
+  options.validate?.();
   const runner = await deps.runner();
   if (!runner)
     return none("", { notFound: false, unavailable: "Answering needs your AI: choose Claude or Codex in Settings and sign in. Search still works without it." });
@@ -213,7 +234,7 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
   if (!resources) return none("", { notFound: false, unavailable: UNCONFIRMED });
   // owner: course-facts. One course: the shared course prefix opens the prompt, as for packs and guides;
   // the brief's sources are sent too, so their categories are checked and receipted.
-  const prefix = courses.length === 1 ? deps.coursePrefix?.(courses[0]!.ref) : undefined;
+  const prefix = !allowed && courses.length === 1 ? deps.coursePrefix?.(courses[0]!.ref) : undefined;
   const briefResources = (prefix?.resourceIds ?? []).flatMap((id) => store.resource(id) ?? []);
   const categories = [...new Set([...resources, ...briefResources].flatMap((r) => contentCategories(r)))].sort();
   const pack = { ...askPack, categories };
@@ -238,7 +259,7 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
     course: label,
     skeleton: courses.map((c) => `Course: ${c.code ? `${c.code}: ` : ""}${c.name}`).join("\n"),
     // The system prompt's "Course AI policy" section: task mode, help boundary, exact scope and each course's quoted rule.
-    policy: decision.request.system,
+    policy: options.policyInstruction ? `${decision.request.system}\nStudy target rule: ${options.policyInstruction}` : decision.request.system,
   };
   // owner: course-facts
   // The learning decision's policy text (task mode, help boundary, each course's quotes) stays whole;
@@ -280,6 +301,7 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
   // retried call under a changed rule never goes out) and after every model call and before the artifact
   // is stored (an answer produced under a changed rule is neither cached nor shown).
   const unchanged = () => {
+    options.validate?.();
     const now = decide();
     if (now?.status !== "ready" || now.request.system !== decision.request.system) throw new LearningContextChanged(CONTEXT_CHANGED);
   };

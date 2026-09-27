@@ -122,6 +122,16 @@ test("a resource's own captured rule still applies when course-intelligence clai
   assert.equal(decideLearning(concept, [s], { learningContract: LEARNING_CONTRACT }).status, "withheld");
 });
 
+test("an explicit source restriction applies even without a captured quote; default unknown does not override verified course permission", () => {
+  const profile = { accountScope: "uw", courseId: "c220", inputHash: "ih2", claims: [{ id: "cl2", kind: "ai_policy", scope: "course", policyMode: "allowed", evidence: [{ resourceId: "syl", quote: "AI is allowed for concept study." }] }] } as never;
+  const restricted = res({ sourceId: "s-a", courseId: "c220", text: "A reading on SQL joins.", policy: { mode: "restricted", evidence: "" } });
+  const held = learningSource(restricted, sources, [profile])!;
+  assert.equal(held.policy.mode, "restricted");
+  assert.equal(decideLearning(concept, [held], { learningContract: LEARNING_CONTRACT }).status, "withheld");
+  const ordinary = res({ sourceId: "s-a", courseId: "c220", text: "A reading on SQL joins.", policy: { mode: "unknown", evidence: "" } });
+  assert.equal(learningSource(ordinary, sources, [profile])!.policy.mode, "allowed");
+});
+
 test("course videos come from citations, links in cited sources and module placement only", () => {
   const video = res({ sourceId: "s-a", courseId: "c220", title: "Hash tables walkthrough", url: "https://canvas.wisc.edu/courses/1/modules/items/9",
     moduleItem: { type: "ExternalUrl", externalUrl: "https://www.youtube.com/watch?v=abc123&t=90", moduleId: "m1" } as Resource["moduleItem"] });

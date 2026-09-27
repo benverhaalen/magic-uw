@@ -266,3 +266,25 @@ test("exact selected resources are constrained inside shared FTS before top-k", 
     assert.deepEqual(store.searchPassages({query:"Krebs cycle",resourceIds:[],k:5}).hits,[]);
   } finally { store.close(); }
 });
+
+test("short AI and SQL queries retain resource and passage scope before the FTS limit", () => {
+  const store = createStore(":memory:");
+  try {
+    store.ingest(capture(0, [
+      page("AI systems can summarize notes. SQL joins combine table rows.", { externalId: "selected", title: "Selected notes" }),
+      ...Array.from({ length: 18 }, (_, i) => page("AI systems can summarize notes. SQL joins combine table rows.", {
+        externalId: `distractor-${i}`, title: `Distractor ${i}`,
+      })),
+    ]));
+    const selected = store.resources().find((r) => r.externalId === "selected")!;
+    const selectedPassage = store.passages(selected.id)[0]!;
+    const scope = { courses: [{ accountScope: source.accountScope, courseId: source.courseId }], resourceIds: [selected.id], passageIds: [selectedPassage.pid], k: 1 };
+    for (const query of ["AI", "SQL"]) {
+      const result = store.searchPassages({ query, ...scope });
+      assert.equal(result.notFound, false, `${query} must be searchable`);
+      assert.equal(result.hits[0]?.resourceId, selected.id);
+      assert.equal(result.hits[0]?.pid, selectedPassage.pid);
+    }
+    assert.equal(store.searchPassages({ query: "SQL", ...scope, passageIds: [] }).notFound, true);
+  } finally { store.close(); }
+});
