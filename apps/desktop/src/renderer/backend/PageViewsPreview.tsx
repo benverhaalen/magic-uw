@@ -17,7 +17,7 @@ import type {
 } from "@magic/contracts";
 import { openExternal, pack, query, useAction, useLoad, type Course } from "./bridge";
 import { Empty, ErrorLine, Loaded, Partial, PreviewSection, formatWhen, topicStateLabel } from "./ui";
-import { StudyPrep } from "../study-prep"; // owner: study-prep
+import { ItemSpace } from "../study-prep"; // owner: study-prep
 const EXAM_KINDS = new Set(["exam", "midterm", "final", "quiz"]); // owner: study-prep
 
 const views = [
@@ -223,8 +223,8 @@ export function PageViewsPreview({
           {(p) => (
             <>
               <h3>{p.assessment.title} <span className="badge">{p.assessment.kind}</span></h3>
-              {/* owner: study-prep: sources, studio and ask for an upcoming exam or quiz */}
-              {EXAM_KINDS.has(p.assessment.kind) ? <StudyPrep courseId={course.courseId} assessmentId={p.assessment.id} /> : null}
+              {/* owner: study-prep: the item's space (what you need, study actions) for an exam or quiz */}
+              {EXAM_KINDS.has(p.assessment.kind) ? <ItemSpace courseId={course.courseId} itemId={p.assessment.id} /> : null}
               <ul className="backend-list">
                 {p.details.map((d) => (
                   <li key={d.field}>
