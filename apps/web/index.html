@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>My Magic UW</title>
     <style>
+      /* Build copies the bundled Lora Medium and its OFL into dist/fonts. */
+      @font-face {
+        font-family: "Lora";
+        src: url("fonts/Lora-Medium.ttf") format("truetype");
+        font-weight: 500;
+        font-style: normal;
+        font-display: swap;
+      }
       body {
         font:
           16px/1.6 system-ui,
@@ -14,6 +22,11 @@
         max-width: 760px;
         margin: 12vh auto;
         padding: 24px;
+      }
+      h1,
+      h2 {
+        font-family: "Lora", Georgia, serif;
+        font-weight: 500;
       }
       h1 {
         font-size: 48px;

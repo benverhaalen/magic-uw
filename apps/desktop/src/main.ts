@@ -11,8 +11,8 @@ import {
   powerMonitor,
   type IpcMainInvokeEvent,
 } from "electron";
-import { readFile, writeFile, mkdir, stat, rm, appendFile } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile, writeFile, mkdir, stat, rm, appendFile, realpath } from "node:fs/promises";
+import { join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { gatewayClient } from "@magic/ai";
@@ -63,8 +63,9 @@ import {
   type TrayAction,
 } from "./keep-signed-in";
 // end owner: T05c
-import { consentGateAllows } from "../../../packages/core/src/egress"; // owner: T06
+import { CONSENT_DISCLOSURE_VERSION, consentGateAllows } from "../../../packages/core/src/egress"; // owner: T06
 import { consentRecordSchema, type ConsentRecord } from "@magic/contracts"; // owner: T06
+import { launchWorkSet, materializeCopy, selectWorkRetry } from "../../../packages/core/src/work-set";
 import {
   commandSchema,
   captureBatchSchema,
@@ -1149,6 +1150,49 @@ app
       await shell.openExternal(safeLinkCard(url));
     });
     // end owner: T05b
+    // Only stored destinations from the exact preview can launch. A retry is
+    // restricted to failures in the previous receipt from this renderer.
+    const workFailures = new Map<string, Set<string>>();
+    let workLaunching = false;
+    ipcMain.handle("magic:start-work", async (event, id, previewHash, only) => {
+      validateSender(event);
+      if (typeof id !== "string" || !id || id.length > 1000 ||
+          typeof previewHash !== "string" || !/^[a-f0-9]{64}$/.test(previewHash))
+        throw new Error("Review the prepared destinations before opening.");
+      if (only !== undefined && (!Array.isArray(only) || only.length > 6 ||
+          !only.every(v => typeof v === "string" && v.length <= 1000)))
+        throw new Error("Invalid retry selection.");
+      if (workLaunching) throw new Error("Prepared work is already opening.");
+      workLaunching = true;
+      const key = `${id}:${previewHash}`;
+      try {
+        const prepare = async () => {
+          const { workSet } = await execute({ type: "work-set", id });
+          if (!workSet) throw new Error("This item has nothing to open.");
+          return workSet;
+        };
+        const beforeItem = async () => {
+          if (!(await consentGate("source-fetch"))) throw new Error(consentRefused);
+          selectWorkRetry(await prepare(), previewHash);
+        };
+        const workSet = selectWorkRetry(await prepare(), previewHash, only, workFailures.get(key));
+        await beforeItem();
+        const documentsRoot = await realpath(join(data, "documents")).catch(() => join(data, "documents"));
+        const receipt = await launchWorkSet(workSet, {
+          dryRun: headless,
+          beforeItem,
+          openExternal: async (url, activate) => { await beforeItem(); await shell.openExternal(url, { activate }); },
+          openPath: async path => { await beforeItem(); return shell.openPath(path); },
+          realpath: path => realpath(path),
+          materialize: (path, extension) => materializeCopy(documentsRoot, path, extension),
+          documentsRoot, separator: sep, now: () => new Date(),
+        });
+        // Bounded session receipt state; nothing is persisted or uploaded.
+        if (workFailures.size >= 20) workFailures.delete(workFailures.keys().next().value!);
+        workFailures.set(key, new Set([...(only ? [...(workFailures.get(key) ?? [])].filter(id => !only.includes(id)) : []), ...receipt.failed.map(item => item.resourceId)]));
+        return receipt;
+      } finally { workLaunching = false; }
+    });
     ipcMain.handle("magic:import", async (event) => {
       validateSender(event);
       if (headless)
@@ -1684,6 +1728,30 @@ app
           !imported.snapshot.fixtureMode
         )
           throw new Error("Fixture import failed");
+        const essay = imported.snapshot.resources.find(
+          (r: { externalId: string }) => r.externalId === "essay-1",
+        );
+        const previewLaunch = `(async()=>{const prepared=await window.magic.execute({type:"work-set",id:${JSON.stringify(essay.id)}});return window.magic.startWork(${JSON.stringify(essay.id)},prepared.workSet.previewHash)})()`;
+        if (await window.webContents.executeJavaScript(previewLaunch).then(() => true, () => false))
+          throw new Error("Start work bypassed setup consent");
+        await window.webContents.executeJavaScript(`window.magic.execute(${JSON.stringify({type:"consent",value:{action:"grant",recipient:"uw",disclosureVersion:CONSENT_DISCLOSURE_VERSION}})})`);
+        const started = await window.webContents.executeJavaScript(
+          `(async()=>{const prepared=await window.magic.execute({type:"work-set",id:${JSON.stringify(essay.id)}});return window.magic.startWork(${JSON.stringify(essay.id)},prepared.workSet.previewHash)})()`,
+        );
+        if (
+          started.mode !== "dry_run" ||
+          started.opened.length !== 2 ||
+          started.failed.length ||
+          (await window.webContents
+            .executeJavaScript("window.magic.startWork('missing-item')")
+            .then(() => true, () => false))
+        )
+          throw new Error("Start work did not rebuild the linked work set");
+        for (const invalidLaunch of [
+          `window.magic.startWork(${JSON.stringify(essay.id)},${JSON.stringify("0".repeat(64))})`,
+          `(async()=>{const p=await window.magic.execute({type:"work-set",id:${JSON.stringify(essay.id)}});return window.magic.startWork(${JSON.stringify(essay.id)},p.workSet.previewHash,[p.workSet.items[0].resourceId])})()`,
+        ]) if (await window.webContents.executeJavaScript(invalidLaunch).then(() => true, () => false))
+          throw new Error("Start work accepted an unreviewed destination or unfailed retry");
         const studyResource = imported.snapshot.resources.find(
           (resource: { kind: string }) => resource.kind === "assignment",
         );
@@ -1761,7 +1829,7 @@ app
         )
           throw new Error("Local purge left data or access credentials");
         console.log(
-          "PASS hidden desktop: renderer → preload → worker → SQLite; synthetic planning import, MCP export and local purge",
+          "PASS hidden desktop: renderer → preload → worker → SQLite; Start work dry run, synthetic planning import, MCP export and local purge",
         );
       } catch (error) {
         console.error(

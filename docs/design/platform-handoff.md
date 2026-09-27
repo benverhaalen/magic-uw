@@ -10,7 +10,7 @@ Share identity, font roles, semantic colors/gradients, icon grammar, spacing, bo
 
 **Website / Aiden handoff:** `apps/web/index.html` is an informational/download/GitHub page. Its journey is understand value → inspect availability/privacy → obtain the app when available. Apply the palette, type and interaction quality to that journey, without copying Mac traffic lights, a student sidebar, pretend live data or unavailable download claims. No alternate website framework was established in the reviewed branch; inspect Aiden's actual work before selecting dependencies. If using React, reuse suitable accessible primitives; do not introduce Tailwind/shadcn solely because a reference skill names them.
 
-**Fonts:** exact Cooper Light BT in local mocks; Geist for interface text. Font binaries are not included. Resolve lawful production availability before shipping the exact font or agree a replacement using real screenshots and matching hierarchy. Do not claim a fallback matches the accepted reference. Do not derive a replacement typeface from the screenshot.
+**Fonts:** Lora Medium at weight 500 for editorial roles, shipped unmodified with its SIL OFL in `packages/ui/assets/fonts` (replaced Cooper Light BT on September 27); Geist for interface text. Geist binaries are not included; resolve lawful production availability before shipping Geist or agree a replacement using real screenshots and matching hierarchy. Keep the OFL beside every copied Lora file. Do not claim a fallback matches the accepted reference. Do not derive a replacement typeface from the screenshot.
 
 ## Later minimum Electron integration slice
 
@@ -40,7 +40,7 @@ Before integration inspect these concrete gaps:
 
 ## Other upstream findings and human conflict
 
-`northcutt-frontend` at `3dc26e7` contains logo assets and research inventory, not a separate frontend implementation. Its logo README proposes Fredoka SemiBold; Ben's accepted Home uses Cooper and no logo. This may be an intentional website distinction or an unresolved opinion. Ask the affected humans directly rather than replacing either artifact. Branch activity does not confirm present ownership.
+`northcutt-frontend` at `3dc26e7` contains logo assets and research inventory, not a separate frontend implementation. Its logo README proposes Fredoka SemiBold; Ben's accepted Home used Cooper and no logo; on September 27 Lora Medium replaced both Cooper and the marketing drafts' display faces, including that wordmark. This may be an intentional website distinction or an unresolved opinion. Ask the affected humans directly rather than replacing either artifact. Branch activity does not confirm present ownership.
 
 [PR #1](https://github.com/benverhaalen/magic-uw/pull/1) is research/specification, not shipped learning features. Its backend map targets earlier schema v3; inspected main includes planning schema v4. Reconcile references before adopting migration/API proposals. Current paid-AI/consent resolution is already on main; do not revive superseded disagreements.
 

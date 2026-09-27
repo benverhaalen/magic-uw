@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { personalReportChangeSchema, type PersonalReportChange, type PersonalReportState, type PersonalReportEvent } from "./personal-reports";
+export * from "./personal-reports";
 import {
   planningCaptureSchema,
   type PlanningCapture,
@@ -200,6 +202,8 @@ export const moduleItemSchema = z
     position: z.number().int().optional(),
     externalUrl: evidenceUrlSchema.optional(),
     pageUrl: z.string().max(4000).optional(),
+    /** The containing module's Canvas id, so a course page can group items by module. */
+    moduleId: id.optional(),
     contentId: id.optional(),
     dueAt: optionalInstant,
     points: z.number().nullable().optional(),
@@ -1068,6 +1072,9 @@ export interface Store {
   /** Consent seams (T06 implements): read-only records, and the only writer. */
   consents?(): ConsentRecord[];
   setConsent?(change: ConsentChange, at: string): void;
+  personalReports(): PersonalReportState[];
+  personalReportHistory(issueId: string, limit?: number): PersonalReportEvent[];
+  setPersonalReport(change: PersonalReportChange): PersonalReportState;
   setCompleted(id: string, completed: boolean): void;
   links(): Link[];
   putLink(link: Link): void;
@@ -1112,6 +1119,8 @@ export interface ContextManifest {
   citationProjections?: { resourceId: string; contentHash: string; field: "text"; projectionId: string }[];
 }
 export interface ResourceView extends Resource {
+  /** Exact local evidence contributors used by the canonical deadline resolver. */
+  deadlineContributors?: Array<{ resourceId: string; contentHash: string }>;
   deadline: DeadlineResolution;
   kindLabel: string | null;
 }
@@ -1136,6 +1145,8 @@ export interface Snapshot {
   consents?: ConsentRecord[];
   dayPlan?: DayPlanEntry[];
   gitlabLinks?: GitlabLink[];
+  /** Local display only; excluded from AI/MCP contexts. Latest choice per issue, not the journal. */
+  personalReports?: PersonalReportState[];
 }
 // owner: T05b. The integration seams: the learning channel (spec §8.1 of the learning spec,
 // its practice addendum, and T47/T53's practice.target and practice.assessmentQuiz), the
@@ -1738,6 +1749,7 @@ export const commandSchema = z.discriminatedUnion("type", [
       date: z.iso.date(),
     })
     .strict(),
+  z.object({ type: z.literal("personal-report"), value: personalReportChangeSchema }).strict(),
   z.object({ type: z.literal("fixture") }).strict(),
   // A student-supplied UW GitLab project for a course the connector could not discover.
   z
@@ -1776,6 +1788,7 @@ export const commandSchema = z.discriminatedUnion("type", [
     })
     .strict(),
   z.object({ type: z.literal("enrich"), id }).strict(),
+  z.object({ type: z.literal("work-set"), id }).strict(),
   z.object({ type: z.literal("identity-roster"), value: identityRosterSchema }).strict(),
   z.object({ type: z.literal("validate-citations"), claims: z.array(citationClaimSchema).min(1).max(200) }).strict(),
   z
@@ -1823,7 +1836,55 @@ export const commandSchema = z.discriminatedUnion("type", [
   // end owner: notes
 ]);
 export type Command = z.infer<typeof commandSchema>;
+/**
+ * What "Start work" opens for one assignment, rebuilt from the local store.
+ * The renderer supplies only an ID; it never chooses URLs or file paths.
+ */
+export type WorkTarget =
+  | { kind: "web"; url: string }
+  /** `extension` is derived from verified type evidence; cached files have no name of their own. */
+  | { kind: "file"; path: string; extension: string; fallbackUrl: string };
+export interface WorkItem {
+  resourceId: string;
+  title: string;
+  role: "instructions" | "material";
+  reason: string;
+  target: WorkTarget;
+}
+export interface WorkHeldItem {
+  resourceId: string;
+  title: string;
+  reason: string;
+}
+export interface WorkSet {
+  /** Opaque identity of all previewed target versions and destinations. */
+  previewHash: string;
+  assignmentId: string;
+  assignmentTitle: string;
+  contentHash: string;
+  /** Opened in this order; the instructions come last so they end up in front. */
+  items: WorkItem[];
+  /** Related items deliberately not opened (suggested matches, overflow). */
+  held: WorkHeldItem[];
+  notes: string[];
+}
+export interface WorkLaunchReceipt {
+  assignmentId: string;
+  assignmentTitle: string;
+  at: string;
+  /** "dry_run" in headless verification: nothing was opened. */
+  mode: "opened" | "dry_run";
+  opened: {
+    resourceId: string;
+    title: string;
+    via: "browser" | "file" | "browser_fallback";
+  }[];
+  failed: { resourceId: string; title: string; reason: string }[];
+  held: WorkHeldItem[];
+  notes: string[];
+}
 export type CommandResult = {
+  workSet?: WorkSet;
   planningComparison?: PlanningComparison;
   planningGrades?: PlanningGradeSummary;
   snapshot: Snapshot;
@@ -1884,6 +1945,8 @@ export interface AppBridge {
   openLink?(url: string): Promise<void>;
   /** owner: T15. A scoped query (O1); reads only, never a command. */
   query?(request: QueryRequest): Promise<QueryResult>;
+  /** Reviewed destination hash is mandatory; `only` retries previously failed IDs. */
+  startWork?(id: string, previewHash: string, only?: string[]): Promise<WorkLaunchReceipt>;
   /** owner: pipeline. Graph reads: an assignment's references, the agenda, a course's graph and coverage. */
   graph?<Q extends GraphQuery>(request: Q): Promise<GraphResult<Q>>;
   importFile(): Promise<CommandResult | null>;

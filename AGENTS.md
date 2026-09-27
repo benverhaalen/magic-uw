@@ -12,6 +12,8 @@ For discovering unfinished features, choosing what to build next, or planning an
 
 Use the repo’s [Magic design skill](.agents/skills/magic-design/SKILL.md) for UI design, implementation and audit. The governing entry point is [DESIGN.md](DESIGN.md); load only the relevant contracts. Preserve the near-approved Home and current user corrections; external skills are selective references. For cross-platform handoffs, use [the design foundation](docs/design-handoff.md). At natural task boundaries, reread relevant changed guidance; pulling alone does not load it into an active agent.
 
+For UI changes, follow the [adoption agreement](docs/design/adoption.md): inspect and reuse suitable [shared components](packages/ui/README.md), verify the rendered interaction/return, and include the compact adoption record in the existing handoff. Record intentional exceptions; do not create CI or hooks for this workflow. Existing screens are not adopted merely because these instructions exist.
+
 ## How we work here
 
 - Before substantial work, establish the normal entry point, default state, complete student journey, and observable success. Include correction and recovery where consequential. Keep simple changes simple.

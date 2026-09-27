@@ -9,6 +9,8 @@ import type {
   SourceHealth,
 } from "@magic/contracts";
 import { MyUw, PlanningAlerts } from "./MyUw";
+import { CoursePageView, CoursesOverview } from "./courses/CoursePage";
+import { buildCourseCards, buildCoursePage, courseKey } from "../../../../packages/domain/src/course-page";
 import { LocalAiPanel } from "./LocalAiPanel";
 import { LearningPanel } from "./LearningPanel";
 import { ProviderGuidance } from "./ProviderGuidance";
@@ -17,21 +19,18 @@ import { IngestionControls, McpConnections } from "./IngestionControls";
 import { ConsentSetup, hasUwConsent, missingConsents } from "./consent/ConsentSetup";
 // owner: T81
 import { Onboarding, needsFirstRunSetup } from "./onboarding";
+import { CalendarPage } from "./CalendarPage";
+import { DesktopShell, Glyph } from "./DesktopShell";
+import { Home, ObjectLink } from "./Home";
+import { SnapshotGate } from "./snapshot-gate";
+import { StartWork, preparedWorkRevision } from "./StartWork";
+import { WORKSPACE_FAILURE, workspaceFailureMessage } from "./workspace-feedback";
+import { PersonalReport } from "./PersonalReport";
+import { Action, Disclosure } from "../../../../packages/ui/src";
+import { useDesktopNavigation, type DesktopView } from "./navigation";
 import { CourseSpaceDetails } from "./CourseSpaceDetails";
-import { TodayRail } from "./TodayRail";
 
-type View =
-  | "today"
-  | "courses"
-  | "myuw"
-  | "sources"
-  | "privacy"
-  | "consent"
-  // owner: T05b. Route slots; each owning task fills its slot and adds its navigation.
-  | "notebook"
-  | "practice"
-  | "insights"
-  | "settings";
+type View = DesktopView;
 // owner: T05b. Route slots, each rendering nothing until its task fills it: the notebook (T43),
 // practice and insights (P17), settings (T40) and the workspace command bar (D40).
 function NotebookSlot(_: { snapshot: Snapshot | null }) {
@@ -155,34 +154,50 @@ function Icon({
 }
 
 export function App() {
-  const [view, setView] = useState<View>("today");
+  const navigation = useDesktopNavigation();
+  const { view, selectedId } = navigation;
+  const setView = (next: View) => navigation.navigate(next);
+  const setSelectedId = (id: string | null) => id ? navigation.navigate("resource", id) : navigation.back();
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [signInStage, setSignInStage] = useState<"idle" | "signin" | "checking">("idle");
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const requestVersion = useRef(0);
+
+  const snapshotGate = useRef(new SnapshotGate());
   const busyRef = useRef(false);
   const mounted = useRef(true);
 
+  useEffect(() => {
+    const handle = (event: Event) => navigation.navigate("resource", (event as CustomEvent<string>).detail);
+    document.addEventListener("magic-resource-open", handle);
+    return () => document.removeEventListener("magic-resource-open", handle);
+  }, [navigation]);
+
   const refresh = useCallback(async () => {
-    const version = ++requestVersion.current;
+    const version = snapshotGate.current.beginRead();
+    if (version === null) return;
     try {
       if (!window.magic)
         throw new Error(
           "The desktop connection is unavailable. Open My Magic UW from the desktop app.",
         );
       const result = await window.magic.execute({ type: "snapshot" });
-      if (mounted.current && version === requestVersion.current)
+      if (mounted.current && snapshotGate.current.accepts(version)) {
         setSnapshot(result.snapshot);
+        setError(previous => /timed? ?out|timeout/i.test(previous) ? '' : previous);
+      }
     } catch (cause) {
-      if (mounted.current && version === requestVersion.current)
+      if (mounted.current && snapshotGate.current.accepts(version))
         setError(
           cause instanceof Error
             ? cause.message
             : "Could not read local data. Try again.",
         );
+    } finally {
+      snapshotGate.current.endRead();
+      if (mounted.current && snapshotGate.current.takeQueued()) void refresh();
     }
   }, []);
 
@@ -194,10 +209,18 @@ export function App() {
     }, 2000);
     return () => {
       mounted.current = false;
-      requestVersion.current++;
+      snapshotGate.current.invalidate();
       window.clearInterval(timer);
     };
   }, [refresh]);
+
+  useEffect(() => {
+    const failed = (event: Event) => setError((event as CustomEvent<string>).detail);
+    const setup = () => setView('consent');
+    window.addEventListener(WORKSPACE_FAILURE, failed);
+    window.addEventListener('magic-open-setup', setup);
+    return () => { window.removeEventListener(WORKSPACE_FAILURE, failed); window.removeEventListener('magic-open-setup', setup); };
+  }, []);
 
   const perform = useCallback(
     async (
@@ -209,12 +232,13 @@ export function App() {
       setBusy(true);
       setError("");
       setNotice("");
-      requestVersion.current++;
+      snapshotGate.current.beginMutation();
+      let suppliedSnapshot = false;
       try {
         const result = await operation();
         if (!mounted.current) return;
         if (result) {
-          requestVersion.current++;
+          suppliedSnapshot = true;
           setSnapshot(result.snapshot);
         }
         if (result?.message || message)
@@ -230,10 +254,14 @@ export function App() {
         return undefined;
       } finally {
         busyRef.current = false;
-        if (mounted.current) setBusy(false);
+        snapshotGate.current.endMutation(!suppliedSnapshot);
+        if (mounted.current) {
+          setBusy(false);
+          if (snapshotGate.current.takeQueued()) void refresh();
+        }
       }
     },
-    [],
+    [refresh],
   );
 
   const run: Run = useCallback(
@@ -262,11 +290,16 @@ export function App() {
   // end owner: T06
   const startSignIn = async () => {
     if (!window.magic.signInUW) return;
-    await perform(async () => {
-      await window.magic.signInUW!();
-      return window.magic.syncCanvas ? window.magic.syncCanvas() : undefined;
-    });
-    await refresh();
+    setSignInStage("signin");
+    try {
+      await perform(async () => {
+        await window.magic.signInUW!();
+        // The bridge does not report cancellation. Only source evidence clears the action.
+        setSignInStage("checking");
+        return window.magic.syncCanvas ? window.magic.syncCanvas() : undefined;
+      });
+      await refresh();
+    } finally { setSignInStage("idle"); }
   };
   const sync = () =>
     window.magic.syncCanvas
@@ -324,17 +357,11 @@ export function App() {
       return course?.course?.selection?.included ?? true;
     }) ?? [];
   const accountBySource = new Map(snapshot?.sources.map((source) => [source.id, source.accountScope]));
-  const courses = [...new Map(resources.map((resource) => [
-    `${accountBySource.get(resource.sourceId) ?? resource.sourceId}:${resource.courseId}`, resource,
-  ])).values()];
+  const courseInput = { resources, sources: snapshot?.sources ?? [], courseIntelligence: snapshot?.courseIntelligence, now: snapshot?.generatedAt ?? new Date().toISOString() };
+  const courseCards = buildCourseCards(courseInput);
+  const coursePage = navigation.courseKey ? buildCoursePage(courseInput, navigation.courseKey) : null;
   const selected =
     resources.find((resource) => resource.id === selectedId) ?? null;
-  const openItems = resources.filter(
-    (resource) =>
-      resource.kind === "assignment" &&
-      !resource.completed &&
-      resource.submitted !== true,
-  ).length;
   const unavailableSources =
     snapshot?.sources.filter(
       (source) => source.status !== "ok" || !source.complete,
@@ -342,12 +369,6 @@ export function App() {
   const needsSignIn = unavailableSources.some(
     (source) => source.status === "needs_sign_in",
   );
-  const oldestCapture = resources.reduce<string | null>(
-    (oldest, resource) =>
-      !oldest || resource.observedAt < oldest ? resource.observedAt : oldest,
-    null,
-  );
-
   // owner: T81. First run, or setup still incomplete: the onboarding flow replaces the shell
   // (and T06's in-Home consent entry) until the student opens the workspace.
   if (snapshot && needsFirstRunSetup(snapshot))
@@ -371,95 +392,24 @@ export function App() {
     );
   // end owner: T81
   return (
-    <div className="app-shell">
-      <aside className="sidebar" aria-label="Workspace">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            m
-          </span>
-          <span>My Magic UW</span>
-        </div>
-        <nav aria-label="Main navigation">
-          {(
-            [
-              ["today", "Home"],
-              ["courses", "Courses"],
-              ["myuw", "My UW"],
-              ["sources", "Sources"],
-              ["privacy", "Data & AI"],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              className={`nav-button ${key === "sources" ? "nav-utility" : ""} ${view === key ? "active" : ""}`}
-              aria-current={view === key ? "page" : undefined}
-              onClick={() => setView(key)}
-            >
-              <Icon name={key === "privacy" ? "privacy" : key} />
-              {label}
-              {key === "today" && openItems > 0 ? (
-                <span className="nav-count">{openItems}</span>
-              ) : null}
-            </button>
-          ))}
-        </nav>
-        <div className="sidebar-bottom">
-          <div className="storage-label">
-            <Icon name="privacy" />
-            <span>Stored on this device</span>
-          </div>
-          <button
-            className="subtle-button privacy-shortcut"
-            onClick={() => setView("privacy")}
-          >
-            {snapshot?.privacy.mode === "selective_cloud"
-              ? "Selective cloud access"
-              : "Cloud access is off"}
-            <span aria-hidden="true">↗</span>
-          </button>
-        </div>
-      </aside>
-      <main className="workspace">
+    <DesktopShell view={view} title={view === "resource" ? selected?.title ?? "Saved item" : view === "courses" && coursePage ? coursePage.code || coursePage.courseName : ({today:"Home", courses:"Courses", myuw:"My UW", calendar:"Calendar", sources:"Connected sources", privacy:"Data & AI", consent:"Agreements"} as Partial<Record<View,string>>)[view] ?? "Workspace"}
+      courses={courseCards} selectedCourseKey={navigation.courseKey} sample={snapshot?.fixtureMode ?? false} busy={busy && signInStage === "idle"}
+      canBack={navigation.canBack} canForward={navigation.canForward} onBack={navigation.back} onForward={navigation.forward}
+      onNavigate={setView} onCourse={key => navigation.navigate("courses", null, key)}
+      status={<>
+        {snapshot?.sources.some(source => source.kind === "canvas" && source.status === "needs_sign_in") && window.magic.signInUW ?
+          <button className="desktop-source-action" aria-label="Canvas needs sign-in. Sign in to check saved coursework for updates." aria-busy={signInStage !== "idle" || undefined} aria-disabled={busy || undefined} onClick={() => { if (!busy) void signIn(); }}>
+            <Glyph name="school"/><span>{signInStage === "signin" ? "Opening sign-in…" : signInStage === "checking" ? "Checking Canvas…" : "Canvas · Sign in"}</span>
+          </button> : needsSignIn ? <button className="desktop-source-action" onClick={() => setView("sources")}><Glyph name="settings"/><span>Review sign-in</span></button> : null}
+        {(error || notice) && <div className={`desktop-feedback ${error ? "is-error" : ""}`} role={error ? "alert" : "status"}>
+          <div><span>{error ? workspaceFailureMessage(error) : notice}</span>{error && <details><summary>Error details</summary><p>{error}</p></details>}</div><button aria-label={error ? "Dismiss error" : "Dismiss notice"} onClick={() => { setError(""); setNotice(""); }}>×</button>
+        </div>}
+      </>}
+      onCompose={() => {
+        if (selected) { document.querySelector<HTMLElement>(".local-ai-panel")?.scrollIntoView({ behavior: "smooth" }); }
+        setNotice(selected ? "Ask about this item in its Local AI section. Your model and sharing settings still apply." : "Page-wide chat is not connected yet. Open a course item to ask about its saved context with Local AI.");
+      }}>
         <WorkspaceCommandBarSlot snapshot={snapshot} /* owner: T05b */ />
-        <header className="topbar">
-          <span>
-            {view === "today"
-              ? "Your workspace"
-              : view === "sources"
-                ? "Connected sources"
-                : view === "privacy" ? "Privacy & models" : view === "myuw" ? "My UW" : "Your courses"}
-          </span>
-          <div className="topbar-end">
-            {snapshot?.fixtureMode ? (
-              <span className="badge">Synthetic sample</span>
-            ) : null}
-            {busy ? (
-              <span role="status" className="muted">
-                Working…
-              </span>
-            ) : (
-              <span className="muted">Local workspace</span>
-            )}
-          </div>
-        </header>
-        <div className="feedback-region">
-          {error ? (
-            <div className="message error" role="alert">
-              <span>{error}</span>
-              <button aria-label="Dismiss error" onClick={() => setError("")}>
-                ×
-              </button>
-            </div>
-          ) : null}
-          {notice ? (
-            <div className="message" role="status">
-              <span>{notice}</span>
-              <button aria-label="Dismiss notice" onClick={() => setNotice("")}>
-                ×
-              </button>
-            </div>
-          ) : null}
-        </div>
         {!snapshot ? (
           <section className="initial-state">
             <h1>Your classes, in one place.</h1>
@@ -476,72 +426,7 @@ export function App() {
           </section>
         ) : view === "today" ? (
           <>
-            <div className="page-heading">
-              <div>
-                <p className="eyebrow">
-                  {new Intl.DateTimeFormat(undefined, {
-                    weekday: "long",
-                    month: "long",
-                    day: "numeric",
-                  }).format(new Date())}
-                </p>
-                <h1>Today</h1>
-              </div>
-              <div className="toolbar">
-                <button
-                  className="button"
-                  disabled={busy}
-                  onClick={() => void importFile()}
-                >
-                  Import capture
-                </button>
-                {window.magic.syncCanvas ? (
-                  <button
-                    className="button"
-                    disabled={busy}
-                    onClick={() => void sync()}
-                  >
-                    Refresh Canvas
-                  </button>
-                ) : null}
-              </div>
-            </div>
             <PlanningAlerts snapshot={snapshot} open={open} onPlanning={() => setView("myuw")} />
-            {/* owner: T05c. Sign-in banner: an ended Canvas session is one click from a sign-in. */}
-            {unavailableSources.some(
-              (source) =>
-                source.kind === "canvas" && source.status === "needs_sign_in",
-            ) && window.magic.signInUW ? (
-              <div className="evidence-note" role="status">
-                <p>
-                  Your UW session ended. Saved coursework is still here and may
-                  have changed since it was last checked.
-                </p>
-                <button
-                  className="button primary"
-                  disabled={busy}
-                  onClick={() => void signIn()}
-                >
-                  Sign in again
-                </button>
-              </div>
-            ) : /* end owner: T05c */ unavailableSources.length > 0 ? (
-              <div className="evidence-note" role="status">
-                <p>
-                  {needsSignIn
-                    ? "A source needs sign-in before it can be checked. Saved coursework may have changed."
-                    : "Some sources could not be checked completely. Saved coursework may have changed."}
-                </p>
-                <button
-                  className="subtle-button"
-                  onClick={() => setView("sources")}
-                >
-                  {needsSignIn
-                    ? "Review sign-in and sources"
-                    : "Review sources"}
-                </button>
-              </div>
-            ) : null}
             {resources.length === 0 && !uwConsented ? (
               // owner: T06: the first-run screen replaces the empty workspace until agreed.
               <ConsentSetup
@@ -564,82 +449,24 @@ export function App() {
                 onSample={() => run({ type: "fixture" })}
               />
             ) : (
-              <div className={`today-layout ${selected ? "has-detail" : ""}`}>
-                <section className="resource-panel" aria-label="Coursework">
-                  <label className="search-box">
-                    <Icon name="search" />
-                    <input
-                      aria-label="Search coursework"
-                      placeholder="Find in your classes"
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                    />
-                    <kbd aria-hidden="true">⌕</kbd>
-                  </label>
-                  <ResourceList
-                    resources={resources}
-                    sources={snapshot.sources}
-                    query={query}
-                    selectedId={selected?.id ?? null}
-                    busy={busy}
-                    onSelect={setSelectedId}
-                    onComplete={(resource, checked) =>
-                      void run({
-                        type: "complete",
-                        id: resource.id,
-                        completed: checked,
-                      })
-                    }
-                  />
-                  <p className="list-footnote">
-                    Based on saved sources.
-                    {oldestCapture
-                      ? ` Oldest saved item capture: ${formatDate(oldestCapture, true)}.`
-                      : ""}{" "}
-                    Open an item to inspect its dates and evidence.
-                  </p>
-                </section>
-                {selected ? (
-                  <ResourceDetail
-                    key={selected.id}
-                    resource={selected}
-                    snapshot={snapshot}
-                    busy={busy}
-                    run={run}
-                    open={open}
-                    onClose={() => setSelectedId(null)}
-                  />
-                ) : (
-                  <div className="detail-placeholder">
-                    <Icon name="file" />
-                    <p>Select an item to see what’s behind it.</p>
-                  </div>
-                )}
-                <TodayRail
-                  resources={resources}
-                  sources={snapshot.sources}
-                  plan={snapshot.dayPlan}
-                  changes={snapshot.changes}
-                  onJoin={
-                    window.magic.openLink
-                      ? (url) => void perform(() => window.magic.openLink!(url))
-                      : undefined
-                  }
-                  onSelect={setSelectedId}
-                  onPlan={(command) => run(command)}
-                />
-              </div>
+              <Home todayCount={navigation.homeTodayCount} onTodayCountChange={navigation.updateHomeTodayCount} upcomingCount={navigation.homeUpcomingCount} onUpcomingCountChange={navigation.updateHomeUpcomingCount} snapshot={snapshot} resources={resources} onSelect={setSelectedId} onCourses={() => { setQuery(""); setView("courses"); }} onSources={() => setView("sources")} onPlan={command => run(command)} onJoin={window.magic.openLink ? url => { void perform(() => window.magic.openLink!(url)); } : undefined} report={resource => <PersonalReport resource={resource} snapshot={snapshot} run={run}/>} />
             )}
           </>
+        ) : view === "resource" ? (
+          selected ? <ResourceDetail key={selected.id} resource={selected} snapshot={snapshot} busy={busy} run={run} open={open} onClose={navigation.back} />
+            : <section className="initial-state"><h1 tabIndex={-1}>This item is no longer available.</h1><p>The saved item may have been removed or excluded. Your previous page is still available.</p><button className="button" onClick={navigation.back}>Go back</button></section>
+        ) : view === "calendar" ? (
+          <section className="desktop-calendar"><CalendarPage resources={resources} sources={snapshot.sources} plan={snapshot.dayPlan ?? []}
+            state={navigation.calendarState} onStateChange={navigation.updateCalendar} restoreFocusId={navigation.calendarFocus}
+            onSelect={navigation.openCalendarResource} formatCourseLabel={(id, fallback) => { const resource = resources.find(r => r.id === id); const account = resource && accountBySource.get(resource.sourceId); const card = resource && courseCards.find(c => c.key === courseKey(account ?? resource.sourceId, resource.courseId)); return card?.code ?? card?.courseName ?? fallback; }} onPlan={async command => { const result = await run(command); if (!result) throw new Error("Calendar change was not saved"); return result; }}/></section>
         ) : view === "myuw" ? (
           <MyUw snapshot={snapshot} busy={busy} run={run} open={open}
             refresh={() => void perform(async () => window.magic.syncPlanning?.())}
             signIn={(service) => uwConsented /* owner: T06 */ ? void perform(async () => { await window.magic.signInUW?.(service); return window.magic.syncPlanning?.(); }) : openConsent()} />
         ) : view === "courses" ? (
-          <><div className="page-heading"><h1>Courses</h1></div><div className="planning-content">
-            {courses.map((course) => <article className="planning-row" key={course.id}><h2>{course.courseName}</h2><button className="button" onClick={() => { setQuery(course.courseName); setSelectedId(null); setView("today"); }}>View coursework</button></article>)}
-            {!resources.length ? <p className="muted">Connect Canvas from Home to see your courses here.</p> : null}
-          </div></>
+          <section className="desktop-courses">
+            {navigation.courseKey ? coursePage ? <CoursePageView key={coursePage.key} page={coursePage} selectedId={null} onSelect={setSelectedId} onBack={() => navigation.navigate("courses")} open={open} detail={null}/> : <><h1 tabIndex={-1}>Course unavailable</h1><p>This course is no longer included in the saved workspace.</p><Action onClick={() => navigation.navigate("courses")}>View courses</Action></> : <CoursesOverview cards={courseCards} onOpen={key => navigation.navigate("courses", null, key)}/>}
+          </section>
         ) : view === "consent" ? (
           // owner: T06. Consent route: setup, a new recipient's consent, or Agreements.
           <ConsentSetup
@@ -695,8 +522,7 @@ export function App() {
             onConsent={openConsent /* owner: T06 */}
           />
         )}
-      </main>
-    </div>
+    </DesktopShell>
   );
 }
 
@@ -877,6 +703,8 @@ function ResourceDetail({
 }) {
   const [recipient, setRecipient] = useState<Recipient>("local");
   const [manifest, setManifest] = useState<ContextManifest | null>(null);
+  const initialVersion = useRef(resource.contentHash);
+  const changedWhileReading = initialVersion.current !== resource.contentHash;
   const source = snapshot.sources.find(
     (candidate) => candidate.id === resource.sourceId,
   );
@@ -900,18 +728,10 @@ function ResourceDetail({
   ]);
   return (
     <section className="resource-detail" aria-label="Selected item">
-      <div className="detail-top">
-        <span className="eyebrow">{resource.kindLabel ?? resource.kind}</span>
-        <button
-          className="icon-button"
-          aria-label="Close item"
-          onClick={onClose}
-        >
-          ×
-        </button>
-      </div>
+      <p className="eyebrow">{resource.kindLabel ?? resource.kind}</p>
       <p className="detail-course">{resource.courseName}</p>
-      <h2>{resource.title}</h2>
+      <h2 tabIndex={-1}>{resource.title}</h2>
+      {changedWhileReading && <p className="evidence-note" role="status">This saved item changed while you were reading. Its requirements and dates below reflect the latest capture; your position has been kept.</p>}
       <dl className="facts">
         <div>
           <dt>Due</dt>
@@ -956,12 +776,7 @@ function ResourceDetail({
           last successful capture.
         </div>
       ) : null}
-      <button
-        className="button source-button"
-        onClick={() => open(resource.url)}
-      >
-        Open original <Icon name="arrow" />
-      </button>
+      <Action onClick={() => open(resource.url)}>Open original <Glyph name="external" /></Action>
       <p className="source-url">{resource.url}</p>
       <section className="detail-section">
         <h3>Instructions</h3>
@@ -971,55 +786,7 @@ function ResourceDetail({
           <p className="muted">No instructions were found in this capture.</p>
         )}
       </section>
-      <section className="detail-section">
-        <h3>Deadline evidence</h3>
-        <p className="muted small">{resource.deadline.reason}</p>
-        {resource.deadline.conflict && resource.deadline.planningAt ? (
-          <p className="evidence-note">
-            For planning: {formatDate(resource.deadline.planningAt, true)}.
-            Confirm the date in the source.
-          </p>
-        ) : null}
-        {resource.deadline.claims.length ? (
-          <ul className="evidence-list">
-            {resource.deadline.claims.map((claim, index) => (
-              <li key={`${claim.kind}-${claim.value}-${index}`}>
-                <div>
-                  <span className="badge">{claim.kind}</span>
-                  <span>{formatDate(claim.value, true)}</span>
-                </div>
-                <blockquote>
-                  {claim.quote || "Structured source field"}
-                </blockquote>
-                {!claim.scopeConfirmed ? (
-                  <span className="small attention-text">
-                    Not confirmed to apply to this item
-                  </span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="small muted">
-            No date claims are available in this capture.
-          </p>
-        )}
-      </section>
-      <section className="detail-section">
-        <h3>
-          Course AI policy <span className="badge">{resource.policy.mode}</span>
-        </h3>
-        <p className="source-text">
-          {resource.policy.evidence ||
-            "No AI policy was found in the captured material. Coaching is the default."}
-        </p>
-      </section>
-      <LearningPanel key={`${resource.id}:${source?.accountScope}:${resource.contentHash}:${JSON.stringify(snapshot.privacy)}`} resource={resource} accountScope={source?.accountScope} />
-      <LocalAiPanel
-        key={`${resource.contentHash}:${JSON.stringify(snapshot.privacy)}`}
-        resource={resource}
-        privacyKey={JSON.stringify(snapshot.privacy)}
-      />
+      {resource.kind === "assignment" && <StartWork resource={resource} refreshKey={preparedWorkRevision(snapshot)}/> }
       {links.length ? (
         <section className="detail-section">
           <h3>Related material</h3>
@@ -1031,7 +798,7 @@ function ResourceDetail({
             );
             return (
               <div key={link.id} className="link-evidence">
-                <strong>{other?.title ?? "Related source"}</strong>
+                <strong>{other ? <ObjectLink resource={other}/> : "Related source is unavailable"}</strong>
                 <span className="small muted">
                   {link.type.replaceAll("_", " ")} · {link.status}
                 </span>
@@ -1073,6 +840,52 @@ function ResourceDetail({
           })}
         </section>
       ) : null}
+      <Disclosure label="Deadline evidence">
+        <p className="muted small">{resource.deadline.reason}</p>
+        {resource.deadline.conflict && resource.deadline.planningAt ? (
+          <p className="evidence-note">
+            For planning: {formatDate(resource.deadline.planningAt, true)}.
+            Confirm the date in the source.
+          </p>
+        ) : null}
+        {resource.deadline.claims.length ? (
+          <ul className="evidence-list">
+            {resource.deadline.claims.map((claim, index) => (
+              <li key={`${claim.kind}-${claim.value}-${index}`}>
+                <div>
+                  <span className="badge">{claim.kind}</span>
+                  <span>{formatDate(claim.value, true)}</span>
+                </div>
+                <blockquote>
+                  {claim.quote || "Structured source field"}
+                </blockquote>
+                {!claim.scopeConfirmed ? (
+                  <span className="small attention-text">
+                    Not confirmed to apply to this item
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="small muted">
+            No date claims are available in this capture.
+          </p>
+        )}
+      </Disclosure>
+      <Disclosure label={`Course AI policy · ${resource.policy.mode}`}>
+        <p className="source-text">
+          {resource.policy.evidence ||
+            "No AI policy was found in the captured material. Coaching is the default."}
+        </p>
+      </Disclosure>
+      <LearningPanel key={`${resource.id}:${source?.accountScope}:${resource.contentHash}:${JSON.stringify(snapshot.privacy)}`} resource={resource} accountScope={source?.accountScope} />
+      <LocalAiPanel
+        key={`${resource.contentHash}:${JSON.stringify(snapshot.privacy)}`}
+        resource={resource}
+        privacyKey={JSON.stringify(snapshot.privacy)}
+      />
+
       <section className="detail-section">
         <h3>Data preview</h3>
         <p className="small muted">

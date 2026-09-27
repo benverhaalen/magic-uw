@@ -23,6 +23,7 @@ import { createSqlLearningStore, type SqlLearningStore } from "../../learning/sr
 import { NOTES_V11 } from "./notes-v11"; // owner: notes
 import { createSqlNotesStore, type SqlNotesStore } from "../../notes/src/sql-store"; // owner: notes
 import { decodePayload, encodePayload } from "./payload";
+import { personalReportRepository } from "./personal-reports";
 import {
   LIFE_COURSE_ID,
   subjectJobSchema,
@@ -833,6 +834,28 @@ export function createStore(
   }
   const sameLink = (a: GitlabLink, account: string, course: string, path: string) =>
     a.accountScope === account && a.courseId === course && a.projectPath.toLowerCase() === path.toLowerCase();
+  const personalReports = personalReportRepository(prepare, transaction, (id) => {
+    const row = resourceRow(id);
+    if (!row || row.deleted) return undefined;
+    const resource = readResource(row);
+    const source = prepare("SELECT account_scope,status FROM sources WHERE id=?").get(resource.sourceId) as Row | undefined;
+    if (!source || source.status === "inaccessible") return undefined;
+    const accountScope = String(source.account_scope);
+    const override = prepare("SELECT included FROM course_overrides WHERE account_scope=? AND course_id=?")
+      .get(accountScope, resource.courseId) as Row | undefined;
+    const courses = prepare(`SELECT r.*,v.payload FROM resources r JOIN sources s ON s.id=r.source_id
+      JOIN resource_versions v ON v.resource_id=r.id AND v.version=r.version
+      WHERE s.account_scope=? AND s.course_id=? AND s.scope='course' AND r.deleted=0`)
+      .all(accountScope, resource.courseId) as Row[];
+    const course = courses.map(readResource).find(r => r.kind === "course")?.course;
+    if (course?.accessRestricted || (course?.accessState && course.accessState !== "open") ||
+        course?.selection?.reasons.some(reason => /absent|no longer|not returned/i.test(reason))) return undefined;
+    const settings = prepare("SELECT value FROM preferences WHERE key='ingestion'").get() as Row | undefined;
+    const selectedTerm = settings ? ingestionSettingsSchema.parse(JSON.parse(String(settings.value))).selectedTerm : null;
+    if (selectedTerm && course && selectedTerm !== course.termName && selectedTerm !== course.termId) return undefined;
+    if (override ? !override.included : course?.selection?.included === false) return undefined;
+    return { contentHash: resource.contentHash, accountScope };
+  }, clock);
   // owner: platform-fix. Receipts: the one validated insert, the 90-day roll-up, the reader's log.
   function addReceiptRow(value: EgressReceipt) {
     assertText(value.id, "receipt ID");
@@ -942,6 +965,7 @@ export function createStore(
   }
   // end owner: platform-fix
   const api: LocalStore = {
+    ...personalReports,
     learning,
     notes, // owner: notes
     courseIntelligence() {

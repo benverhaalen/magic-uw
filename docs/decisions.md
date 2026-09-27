@@ -19,7 +19,7 @@ A context register, not an implementation backlog. No ownership is assigned.
 | School actions          | Read only: no submitting, enrolling, or posting                                                                                                                              |
 | Learning policy         | Course policy first; coach when vague or silent                                                                                                                              |
 | Honesty                 | No false reassurance or unsupported readiness, speed, or reliability claims                                                                                                  |
-| Visual taste            | Warm ivory/ember-red compact shell; selective Cooper Light BT and readable Geist; vibrant flat cards under comparison                                                                              |
+| Visual taste            | Warm ivory/ember-red compact shell; selective Lora Medium (500, bundled; replaced Cooper Light BT September 27) and readable Geist; vibrant flat cards under comparison |
 | Current collaboration   | Shared context is pushed; runnable skeleton is pushed and implementation is authorized. Keep teammates informed without assigning work ownership                             |
 
 ## Resolved product decisions — September 26
@@ -157,3 +157,7 @@ Merged in [PR #18](https://github.com/benverhaalen/magic-uw/pull/18). GitLab pro
 - Links are local preferences, capped at 200 and cleared by Delete local data. No new network access: a linked project is read by the existing GitLab connector with the app-owned GitLab session.
 
 Open for Ben: where the "link a GitLab project" input belongs on screen (Sources, or the course page). Until it has a screen, students cannot use it.
+
+## 2026-09-27 — Editorial face: Lora Medium
+
+Ben supplied `Lora-Medium.ttf` and asked: “replace the cooper font with this font across everything in the app including website and everything mentioning cooper and then push the changes” (recorded September 27; message time unknown). Unmodified Lora Medium at weight 500 now fills the former Cooper roles in the desktop app, the informational website headings, the design lab and the marketing drafts' display text. Geist and layout are unchanged. The font and its OFL are tracked in `packages/ui/assets/fonts` and copied into both build outputs. Provenance and the treatment of earlier Cooper screenshots are in the [decision record](design/decision-record.md#editorial-face--recorded-september-27-2026-original-message-timestamp-unknown).

@@ -958,7 +958,7 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
             const resources: ResourceInput[] = [];
             const diagnostics: CaptureDiagnostic[] = entry.diagnostics.map(code => ({ code, path: [], severity: "error" as const }));
             for (const item of entry.items) {
-              try { resources.push(itemResource(item, course, origin)); }
+              try { resources.push(itemResource(item, course, origin, entry.module.id)); }
               catch (error) { diagnostics.push(...diagnostic(error).map(d => ({ ...d, severity: "error" as const }))); }
             }
             emit(course.id, courseName(course), `module-items:${entry.module.id}`, resources,

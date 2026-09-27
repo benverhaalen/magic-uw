@@ -23,9 +23,11 @@ import {
 import { maySend, resolveDeadline } from "@magic/domain";
 import type { JudgmentGateway } from "@magic/ai";
 import { contentCategories, courseIncluded, courseInclusion } from "./access";
-import { evidenceFor } from "./evidence";
+import { evidenceFor, linkExactEvidence } from "./evidence";
 import { rebaseFixture } from "./fixture-dates";
 export { rebaseFixture } from "./fixture-dates";
+import { buildWorkSet } from "./work-set";
+export { buildWorkSet, launchWorkSet, materializeCopy, safeWebLink, selectWorkRetry, MAX_WORK_ITEMS, type WorkLaunchHost } from "./work-set";
 import { clearOutgoingProjections, outgoingProjection, payloadScrubber, validateCitations } from "./identity";
 export { scrubText, rosterFor, toOriginalSpan, validateCitations } from "./identity";
 import { pullGuideForSubject } from "../../connectors/src/planning-public";
@@ -190,7 +192,16 @@ export function createCore(store: Store, options: CoreOptions) {
   }
   function snapshot(search?: string): Snapshot {
     // owner: T15. The full snapshot stays for debugging; views use scoped queries (queries.ts).
-    const resources = resourceViews(store, store.resources(search));
+    // The renderer never reads captured raw HTML or document parts; on a real term they were ~75%
+    // of every command's payload (78 MB of 110 MB), which stalled first paint. Bodies stay in the
+    // store for MCP, context and scoped queries (queries.ts), which remain the long-term path.
+    const resources = resourceViews(store, store.resources(search)).map((view) => {
+      const { rawHtml: _html, parts: _parts, ...rest } = view as typeof view & {
+        rawHtml?: unknown;
+        parts?: unknown;
+      };
+      return rest as typeof view;
+    });
     const sources = store.sources();
     return {
       courseIntelligence: store.courseIntelligence().map((p) => ({
@@ -231,6 +242,7 @@ export function createCore(store: Store, options: CoreOptions) {
       consents: store.consents?.() ?? [],
       dayPlan: store.dayPlan(),
       gitlabLinks: store.gitlabLinks(),
+      personalReports: store.personalReports(),
     };
   }
   function context(
@@ -354,6 +366,9 @@ export function createCore(store: Store, options: CoreOptions) {
   async function extractCourses() {
     if (!options.courseExtractor || closed) return;
     for (const profile of store.courseIntelligence()) {
+      // Let interactive IPC run between profiles; reuse access lookup within this synchronous batch.
+      await new Promise<void>(resolve => setImmediate(resolve));
+      if (closed) return;
       const key = `${profile.id}:${profile.inputHash}:${options.courseExtractor.version ?? "v1"}`;
       if (
         options.courseExtractor.version &&
@@ -371,15 +386,16 @@ export function createCore(store: Store, options: CoreOptions) {
         continue;
       const attemptedAt = now();
       semanticAttempts.set(key, { status: "running", attemptedAt });
+      const included = courseInclusion(store);
       const resources = profile.dependencies
         .map((d) => store.resource(d.resourceId))
         .filter(
           (r): r is Resource =>
             !!r &&
             !r.deleted &&
-            courseIncluded(store, r) &&
             !r.gitlab &&
-            (r.externalId === "syllabus" || r.kind === "assignment"),
+            (r.externalId === "syllabus" || r.kind === "assignment") &&
+            included(r),
         );
       if (!resources.length) {
         semanticAttempts.set(key, { status: "unavailable", attemptedAt });
@@ -592,6 +608,8 @@ export function createCore(store: Store, options: CoreOptions) {
       case "import": {
         store.ingest(command.batch);
         saved(command.batch.source.id); // owner: T05b
+        // Same exact-link pass as live ingestion, so imported captures keep their evidence links.
+        linkExactEvidence(store);
         wake();
         message = "Capture imported locally.";
         break;
@@ -710,6 +728,8 @@ export function createCore(store: Store, options: CoreOptions) {
         }
         break;
       }
+      case "work-set":
+        return { snapshot: snapshot(), workSet: buildWorkSet(store, command.id) };
       case "planning-compare":
         return {
           snapshot: snapshot(),
@@ -764,10 +784,14 @@ export function createCore(store: Store, options: CoreOptions) {
         );
         store.ingest({ ...moved, observedAt: now() });
         saved(options.fixture.source.id); // owner: T05b
+        linkExactEvidence(store);
         wake();
         message = "Loaded a synthetic sample course.";
         break;
       }
+      case "personal-report":
+        store.setPersonalReport(command.value);
+        break;
       case "complete":
         store.setCompleted(command.id, command.completed);
         break;

@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Magic Canvas · Action sizing comparison</title>
+    <link rel="stylesheet" href="components.css" />
+    <script src="local-fonts.js"></script>
+    <style>
+      body {
+        padding: 28px;
+      }
+      .comparison-sheet {
+        max-width: 1080px;
+        margin: auto;
+        background: var(--magic-surface-workspace);
+        padding: 32px;
+        border-radius: var(--magic-radius-workspace);
+      }
+      h1 {
+        font-size: 25px;
+      }
+      header p {
+        margin: 8px 0 24px;
+      }
+      section {
+        margin: 24px 0;
+        padding-top: 20px;
+        border-top: 1px solid var(--magic-line-quiet);
+      }
+      h2 {
+        font-size: 21px;
+        margin-bottom: 6px;
+      }
+      .explanation {
+        font-size: 13px;
+        color: var(--magic-ink-muted-strong);
+        margin-bottom: 18px;
+      }
+      .mc-context {
+        max-width: 950px;
+      }
+      .mc-context + .mc-context {
+        margin-top: 14px;
+      }
+      .equal .mc-context > .mc-action,
+      .equal .mc-compound {
+        min-height: 84px;
+      }
+      .mc-action {
+        cursor: default;
+      }
+      .mc-action svg {
+        width: 16px;
+        height: 16px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.65;
+      }
+      .mc-confirmation {
+        font-size: 12px;
+      }
+      footer {
+        font-size: 12px;
+        margin-top: 20px;
+        color: var(--magic-ink-muted-strong);
+      }
+      @media (max-width: 540px) {
+        body {
+          padding: 10px;
+        }
+        .comparison-sheet {
+          padding: 20px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="comparison-sheet">
+      <header>
+        <h1>Action sizing</h1>
+        <p>
+          Same type, color and controls. Two treatments for the unresolved Home
+          detail.
+        </p>
+      </header>
+      <section class="">
+        <h2>A · Match each passage</h2>
+        <p class="explanation">
+          Recommended. The action follows its own text block; the compound
+          control keeps review and confirmation separate.
+        </p>
+        <div class="mc-context">
+          <p>
+            <span class="mc-link">CS 220’s next lecture</span> has three
+            assigned readings covering testing, APIs and debugging before
+            <time class="mc-time" datetime="2026-10-07T13:00:00-05:00"
+              >tomorrow · 1 PM</time
+            >.
+          </p>
+          <div class="mc-action">
+            <span>Review assigned<br />readings</span
+            ><svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 12h14" />
+              <path d="m12 5 7 7-7 7" />
+            </svg>
+          </div>
+        </div>
+        <div class="mc-context">
+          <p>
+            Your
+            <span class="mc-link">CS 310 and CS 220 midterms</span> overlap:
+            both are scheduled for
+            <time class="mc-time" datetime="2026-11-12T17:45:00-06:00"
+              >Nov 12 · 5:45–7:15 PM</time
+            >. CS 220 lists a Nov 13 alternate; you’ll need to confirm whether
+            you can take it.
+          </p>
+          <div class="mc-compound">
+            <div class="mc-action">
+              <span>Review exam options</span
+              ><svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 12h14" />
+                <path d="m12 5 7 7-7 7" />
+              </svg>
+            </div>
+            <div class="mc-confirmation">□ &nbsp; I’ve handled this</div>
+          </div>
+        </div>
+      </section>
+      <section class="equal">
+        <h2>B · Equal minimum footprint</h2>
+        <p class="explanation">
+          Both action regions keep the earlier 84 px minimum. Shorter passages
+          leave extra space beside the control.
+        </p>
+        <div class="mc-context">
+          <p>
+            <span class="mc-link">CS 220’s next lecture</span> has three
+            assigned readings covering testing, APIs and debugging before
+            <time class="mc-time" datetime="2026-10-07T13:00:00-05:00"
+              >tomorrow · 1 PM</time
+            >.
+          </p>
+          <div class="mc-action">
+            <span>Review assigned<br />readings</span
+            ><svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 12h14" />
+              <path d="m12 5 7 7-7 7" />
+            </svg>
+          </div>
+        </div>
+        <div class="mc-context">
+          <p>
+            Your
+            <span class="mc-link">CS 310 and CS 220 midterms</span> overlap:
+            both are scheduled for
+            <time class="mc-time" datetime="2026-11-12T17:45:00-06:00"
+              >Nov 12 · 5:45–7:15 PM</time
+            >. CS 220 lists a Nov 13 alternate; you’ll need to confirm whether
+            you can take it.
+          </p>
+          <div class="mc-compound">
+            <div class="mc-action">
+              <span>Review exam options</span
+              ><svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 12h14" />
+                <path d="m12 5 7 7-7 7" />
+              </svg>
+            </div>
+            <div class="mc-confirmation">□ &nbsp; I’ve handled this</div>
+          </div>
+        </div>
+      </section>
+      <footer>
+        Documentation comparison · synthetic content · static specimens, not
+        interactive product controls. Lora Medium loads from the bundled asset;
+        Geist requires the local font configuration.
+      </footer>
+    </main>
+  </body>
+</html>

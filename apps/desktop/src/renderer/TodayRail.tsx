@@ -7,6 +7,7 @@ import type {
 } from "@magic/contracts";
 import {
   buildTodayRail,
+  localTime,
   changeNotes,
   layoutLanes,
   planEntry,
@@ -24,6 +25,25 @@ const RESPONSE_LABEL = {
   pending: "Not answered",
   organizer: "You're organizing",
 } as const;
+/** Home shows every due item up to this count; beyond it, one fewer plus an explicit "more". */
+const HOME_DUE_ALL = 6;
+const HOME_ALL_DAY_ALL = 3;
+
+/** Saved capture coverage is not a promise that no unobserved event exists. */
+export function calendarCoverageNeedsCheck(sources: SourceHealth[], now: string): boolean {
+  const calendars = sources.filter(source => source.kind === "calendar" || source.scope === "calendar");
+  return !calendars.length || calendars.some(source => source.status !== "ok" || !source.complete ||
+    !source.lastSuccessAt || !Number.isFinite(Date.parse(source.lastSuccessAt)) ||
+    Date.parse(now) - Date.parse(source.lastSuccessAt) > 24 * 60 * 60 * 1000);
+}
+export function emptyScheduleMessage(sources: SourceHealth[], hasAllDay: boolean, now: string): string {
+  const calendars = sources.filter(source => source.kind === "calendar" || source.scope === "calendar");
+  if (!calendars.length) return "No calendar source checked yet.";
+  if (calendars.some(source => source.status !== "ok" || !source.complete || !source.lastSuccessAt))
+    return "No timed events found. Calendar coverage is incomplete.";
+  if (calendarCoverageNeedsCheck(sources, now)) return "No timed events in the saved calendar. It may be out of date.";
+  return hasAllDay ? "No timed events in today’s saved schedule." : "No events today in the saved calendar.";
+}
 
 function clock(min: number) {
   const h = Math.floor(min / 60) % 24,
@@ -54,8 +74,19 @@ export function TodayRail({
   changes = [],
   onSelect,
   onPlan,
+  compactEmpty = false,
+  now: suppliedNow,
+  homeDueItems, homeDueCount = 3, onHomeDueCountChange,
+  courseLabel,
+  onInspectSources,
   onJoin,
 }: {
+  compactEmpty?: boolean;
+  now?: string;
+  homeDueItems?: ResourceView[];
+  homeDueCount?: number; onHomeDueCountChange?: (count: number) => void;
+  courseLabel?: (resource: ResourceView) => string;
+  onInspectSources?: () => void;
   resources: ResourceView[];
   sources: SourceHealth[];
   plan?: DayPlanEntry[];
@@ -67,7 +98,7 @@ export function TodayRail({
   /** Saves a day-plan decision locally; resolves after the snapshot refreshes. */
   onPlan: (command: Command) => Promise<unknown>;
 }) {
-  const [now, setNow] = useState(() => new Date().toISOString());
+  const [clockNow, setNow] = useState(() => new Date().toISOString());
   useEffect(() => {
     const timer = window.setInterval(
       () => setNow(new Date().toISOString()),
@@ -75,17 +106,56 @@ export function TodayRail({
     );
     return () => window.clearInterval(timer);
   }, []);
+  const now = suppliedNow ?? clockNow;
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const rail = useMemo(
     () => buildTodayRail(resources, now, timeZone, plan),
     [resources, now, timeZone, plan],
   );
+  const due = homeDueItems ? homeDueItems.map(r => ({id:r.id,title:r.title,courseName:r.courseName,dueMin:localTime(r.deadline.planningAt!,timeZone).min,conflict:r.deadline.conflict})) : rail.due;
   const notes = useMemo(() => changeNotes(changes, now, timeZone), [changes, now, timeZone]);
+  // Home keeps crowded days scannable without hiding a lone item behind a control.
+  const dueShown = homeDueItems ? Math.min(homeDueCount, due.length) : due.length;
+  const allDayShown = homeDueItems && rail.allDay.length > HOME_ALL_DAY_ALL ? HOME_ALL_DAY_ALL - 1 : rail.allDay.length;
+  const dueRow = (d: (typeof due)[number]) => (
+    <li key={d.id}>
+      <button
+        className="rail-row"
+        data-focus-key={`today-${d.id}`}
+        title={`${d.title} · ${d.courseName}${d.conflict ? " · dates disagree, planning for the earlier one" : ""}${notes.get(d.id) ? ` · ${notes.get(d.id)!.join(" · ")}` : ""}`}
+        onClick={() => onSelect(d.id)}
+      >
+        <span className="rail-time">{clock(d.dueMin)}</span>
+        <span className="rail-row-main">
+          <span className="rail-row-title">{d.title}</span>
+          {homeDueItems && courseLabel && <span className="rail-course">{courseLabel(homeDueItems.find(r=>r.id===d.id)!)}</span>}
+          {(notes.get(d.id) ?? []).map((n) => (
+            <span key={n} className="rail-change">{n}</span>
+          ))}
+        </span>
+        {d.conflict ? (
+          <span className="rail-flag" aria-label="Dates disagree">
+            !
+          </span>
+        ) : null}
+      </button>
+    </li>
+  );
+  const allDayEntry = (e: (typeof rail.allDay)[number]) => homeDueItems ? (
+    <button key={e.id} className="rail-allday rail-allday--home" data-focus-key={`allday-${e.id}`} title={e.title} aria-label={`${e.title}, all day. Open details`} onClick={() => onSelect(e.id)}>
+      <span>All day</span>{e.title}
+    </button>
+  ) : (
+    <div key={e.id} className="rail-allday" title={e.title}>
+      {e.title}
+    </div>
+  );
   // Normal content is commitments and accepted blocks; suggestions appear on request.
   const [showSuggestions, setShowSuggestions] = useState(false);
   const visible = rail.suggestions.filter(
     (s) => s.state !== "suggested" || showSuggestions,
   );
+  const isCompactEmpty = compactEmpty && rail.events.length === 0 && visible.length === 0;
   const pendingCount = rail.suggestions.filter((s) => s.state === "suggested").length;
   const [focusId, setFocusId] = useState<string | null>(null);
   const focused =
@@ -233,39 +303,27 @@ export function TodayRail({
   };
 
   return (
-    <aside className="today-rail" aria-label="Today's schedule">
+    <aside className={`today-rail${isCompactEmpty ? " is-compact-empty" : ""}`} aria-label="Today's schedule">
       <div className="rail-heading">
         <span>Due today</span>
-        <span>{rail.due.length || ""}</span>
+        <span>{due.length || ""}</span>
       </div>
-      <ul className="rail-due">
-        {rail.due.length ? (
-          rail.due.map((d) => (
-            <li key={d.id}>
-              <button
-                className="rail-row"
-                title={`${d.title} · ${d.courseName}${d.conflict ? " · dates disagree, planning for the earlier one" : ""}${notes.get(d.id) ? ` · ${notes.get(d.id)!.join(" · ")}` : ""}`}
-                onClick={() => onSelect(d.id)}
-              >
-                <span className="rail-time">{clock(d.dueMin)}</span>
-                <span className="rail-row-main">
-                  <span className="rail-row-title">{d.title}</span>
-                  {(notes.get(d.id) ?? []).map((n) => (
-                    <span key={n} className="rail-change">{n}</span>
-                  ))}
-                </span>
-                {d.conflict ? (
-                  <span className="rail-flag" aria-label="Dates disagree">
-                    !
-                  </span>
-                ) : null}
-              </button>
-            </li>
-          ))
+      <ul className={`rail-due${homeDueItems ? " rail-due--home" : ""}`}>
+        {due.length ? (
+          due.slice(0, dueShown).map(dueRow)
         ) : (
           <li className="rail-empty-line">{dueEmpty}</li>
         )}
       </ul>
+      {due.length > dueShown ? (
+        <button className="home-show-next" data-focus-key="today-next" aria-label={`Show next ${Math.min(3,due.length-dueShown)} due today; ${dueShown} of ${due.length} shown`} onClick={event => {
+          const pane=event.currentTarget.closest('.desktop-workspace') as HTMLElement | null;
+          const scroll=pane?.scrollTop ?? 0;
+          const next=Math.min(due.length,dueShown+3);
+          onHomeDueCountChange?.(next);
+          requestAnimationFrame(()=>{ if(pane) pane.scrollTop=scroll; if(next===due.length) pane?.querySelector<HTMLElement>('.rail-due--home li:last-child button')?.focus({preventScroll:true}); });
+        }}>Show next {Math.min(3,due.length-dueShown)}</button>
+      ) : null}
 
       {editing ? (
         <form
@@ -376,12 +434,17 @@ export function TodayRail({
         <span>Schedule</span>
         <span>{heading}</span>
       </div>
-      {rail.allDay.map((e) => (
-        <div key={e.id} className="rail-allday" title={e.title}>
-          {e.title}
-        </div>
-      ))}
-      <div className="rail-grid" ref={grid}>
+      {rail.allDay.slice(0, allDayShown).map(allDayEntry)}
+      {rail.allDay.length > allDayShown ? (
+        <details className="rail-more" data-place-disclosure="today-allday-more">
+          <summary data-focus-key="today-allday-more">{rail.allDay.length - allDayShown} more all day</summary>
+          {rail.allDay.slice(allDayShown).map(allDayEntry)}
+        </details>
+      ) : null}
+      {isCompactEmpty ? <div className="rail-empty-schedule" role="status">
+        <p>{emptyScheduleMessage(sources, rail.allDay.length > 0, now)}</p>
+        {onInspectSources && calendarCoverageNeedsCheck(sources, now) && <button onClick={onInspectSources}>Check sources</button>}
+      </div> : <div className="rail-grid" ref={grid}>
         <div
           className="rail-grid-inner"
           style={{ height: hourCount * HOUR_PX + 12 }}
@@ -493,7 +556,7 @@ export function TodayRail({
             </p>
           )}
         </div>
-      </div>
+      </div>}
       {undo ? (
         <div className="rail-undo" role="status">
           <span>Skipped “{undo.title}”</span>

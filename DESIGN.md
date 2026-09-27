@@ -1,51 +1,76 @@
-# Magic Canvas design system
+# My Magic UW design system
 
-Version 2 · September 26, 2026 · **Design specification and handoff, with independent document review. Production adoption is separate.**
+Version 3 · September 26, 2026 · Component system candidate; foundation palette/type accepted (D27). Evidence for rendered components and transfer lives in the [coverage map](docs/design/system-coverage.md); a rule is not proof of implementation.
 
-This is the governing entry point for Magic Canvas interfaces. The repo skill routes agent work; it does not replace the system. Read this page, the relevant contract and its reference. Do not load every linked document for a small change.
+Magic helps students understand what matters, inspect the evidence, and begin useful work without assembling the context again. Its cohesive Home establishes the visual language. The original image collections helped establish that language; expert references now improve specific interaction and craft gaps within it. [D24 and the original decisions](docs/design/decision-record.md) govern this interpretation.
 
-## What the experience must accomplish
+## What travels, and how far
 
-A UW–Madison student arrives with fragmented course information. Magic makes the important implication understandable, shows where it came from, and brings the right working context within reach. The hackathon demonstration must show this complete benefit: **understand → inspect evidence → begin the right work → return without losing your place**. A polished dashboard that sends the student searching again misses the goal.
-
-## Governing principles
-
-| Principle | Decision it changes | Evidence to inspect |
+| Layer | Keep | Adapt |
 | --- | --- | --- |
-| Be useful before being impressive | Lead with assigned reading needed for a lecture, a changed requirement or a deadline conflict. Omit a greeting/title that adds no information. | Can a student say what matters and take the next step without the presenter explaining the screen? |
-| Assemble context without overstating knowledge | Source-backed work bundles and topic-specific practice; distinguish verified status, student report and inferred knowledge. | Missing/stale sources remain visible; opening a reading never establishes understanding. |
-| Familiar operation, recognizable identity | Compact native-feeling shell, Cooper/Geist, Lucide, warm wrap, continuous ivory workspace, deliberate vibrant action surfaces. | Compare the entire page and nested navigation with the accepted image, including menus and focus states. |
-| Density follows meaning | Briefing first; optional actions; compact flat graded work; specific learning actions; Today supplies timing. | No mandatory card per sentence, redundant summary or decorative preview. Test long and no-action content. |
-| Preserve continuity | History restores place, selection, focus and drafts while changed facts refresh honestly. | Exercise Back after scrolling, opening a source, refreshing and a recoverable failure. |
-| Make consistency affordable | Shared semantic values and recurring behavior recipes; local page composition. | Changing a font/color role updates consumers without a second palette or copied component cascade. |
+| Reusable experience principles | Clear hierarchy, recognizable actions, honest state, recoverable changes, continuity, readable density | Apply to the audience and task; the principles do not prescribe a student dashboard everywhere. |
+| Magic identity across surfaces | Lora Medium (500) / Geist roles, Lucide, warm outer material with ivory content, deliberate blue and colorful action/identity surfaces, restrained boundaries | Desktop extensions retain the actual fonts, Lucide glyphs, sidebar construction, shell gradient and corner treatment; task content can vary within that frame. A public website uses its own composition. Lora Medium and its OFL ship from `packages/ui/assets/fonts`; Geist distribution and the site's remaining branding difference are unresolved. |
+| Product/page requirements | Home's briefing-first composition, flat Upcoming, specific Study actions and separate Today; desktop navigation; evidence and completion semantics | Keep explicit choices on their named surfaces. Courses, assignment detail, chat and website each need their own useful hierarchy. |
+| Platform implementation | Same role meanings, resource identity, behavior and visible state | Use the actual framework's routing, semantics, focus, persistence and capabilities. Electron window controls belong only in the desktop adapter. |
+| Ben's broader taste | Familiar operation, controlled distinctiveness, compact readability, consistency, assembled context | These are provisional preference hypotheses for unrelated projects, not a global serif/ember/sidebar brand. Revalidate against their users and brief. |
 
-These principles generalize the reasons behind Ben's corrections; they do not authorize changing accepted composition. [Exact decisions and provenance](docs/design/decision-record.md) distinguish his words from our inferences.
+## Principles that decide a design
 
-## Authority and unresolved choices
+| Principle | Producing decision | Observable check |
+| --- | --- | --- |
+| Organize around the next useful understanding or action | Choose what must be noticed first, what can wait, and which context the action needs. Omit unnecessary controls. | At normal entry, the intended audience can identify the point and next step without a narrator. |
+| Make meaning and operation legible | Differentiate object links, commands, selection and status. Color reinforces those meanings; wording and semantics carry them. | Keyboard and pointer users can predict what will happen, including in nested navigation and muted states. |
+| Reveal enough evidence to judge a claim | Keep source identity, uncertainty and freshness available where they affect a decision. Preserve distinctions between observed, inferred and self-reported facts. | Missing, changed and conflicting inputs produce visibly different outcomes; attractive copy never implies unsupported certainty. |
+| Preserve the user's place and ability to correct | Design return, reversal and interrupted work alongside the happy path. | Back restores useful context; failure preserves input; Undo changes the intended fact only. |
+| Let density follow relationships | Use alignment, type and spacing before adding enclosure. Keep associated content close and unrelated tasks distinct. | Long content, no-action content and narrow layouts remain readable without shrinking the text or adding a card to every sentence. |
+| Make consistency inexpensive to maintain | Reuse semantic values and recurring recipes; compose each page for its job. | A shared role change reaches its real consumers; new surfaces do not need copied page CSS or a second palette. |
 
-Current explicit human instructions and resolutions control. Then use accepted decisions, the near-approved visual anchor with its documented exceptions, component contracts and tokens. External skills and agent preferences are proposals. A newer statement from a different teammate is a conflict to resolve, not automatic replacement. Tell the affected people directly and request their agreement; continue unaffected work.
+These principles are working design rules, not measured claims about student outcomes. The [foundations](docs/design/foundations.md) apply them to the settled language; [recipes](docs/design/component-recipes.md) turn them into bounded reusable families; [product contracts](docs/design/component-contracts.md) bind them to Magic's facts and journeys.
 
-Home is approximately 95% desired in Ben's judgment. Preserve its structure. New navigation adds My UW and Calendar. Action/tag outlines, link backing, glyph scale and combined review/confirmation proportions remain local comparisons, not settled universal rules. Cooper font distribution and intentional website branding divergence remain open.
+## Authority and calibration
 
-## Find the right specification
+Current explicit human direction controls, followed by accepted decisions, the cohesive Home anchor with its recorded exceptions, and the system's rules and semantic tokens. Expert guidance supplies a mechanism for an identified gap; it cannot replace the language through a library preset. Conflicting human direction requires a concrete resolution, not an agent vote. Continue unaffected work.
 
-| Building or evaluating | Read |
+The Home anchor is approximately 95% desired as a static screen in Ben's judgment. That establishes strong visual authority without approving every detail or state. Link backing, action/tag outlines, glyph scale and review/confirmation proportions remain comparisons. Preserve the original anchor; version refinements separately.
+
+Before presenting a new desktop family as Magic, demonstrate the identity in code against the actual Home reference: loaded Lora Medium/Geist, real Lucide glyphs, the matched sidebar, shell treatment and curves. Approximate serif lettering, generic icons and a vaguely warm palette do not pass this gate. Generated images can explore a component but cannot establish exact typography or icon fidelity. Use the matched desktop context when judging shell relationships. Standalone component and foundation sheets are appropriate for bounded details; they do not prove whole-frame fidelity.
+
+Calibrate a useful subset of typography, materials and recipes through **intended image → extracted roles/relationships → fresh component code → rendered comparison and interaction checks**. Then test a related surface from a fresh description without supplying its bespoke layout or the old Home CSS. A copied Home cannot establish transfer. New features may extend the first version as their needs become clear; all future screens need not be specified now. See the [image-to-code sequence](.agents/skills/magic-design/references/image-to-code.md).
+
+## Accepted corrections that govern current consumers
+
+Recorded September 27, 2026 from the active build conversation; exact quotes and scope are in the [decision record](docs/design/decision-record.md#current-desktop-corrections--recorded-september-27-2026-original-message-timestamps-unknown).
+
+- **Hard constraints:** visible name My Magic UW; no decorative left-edge accent stripes; no em dashes in app-authored UI copy. Preserve raw source evidence separately. Calendar grid separators and semantic full outlines are not accent stripes.
+- **Reference-judged direction:** restore the original Home’s richer filled colors and warm gradient through meaningful identity, action and compact content selection. Arbitrary positional recoloring or higher saturation alone does not satisfy this direction. Compare the actual Home reference at the normal viewport.
+- **Editorial face:** supplied Lora Medium at weight 500 replaces Cooper in the same roles across app, website, lab and marketing drafts; Geist, geometry and branding are unchanged ([record](docs/design/decision-record.md#editorial-face--recorded-september-27-2026-original-message-timestamp-unknown)). Earlier Cooper captures are not Lora evidence.
+- **Content and behavior:** audit source → structured projection → UI. Preserve raw titles and stable account/course identity while selecting concise labels. Home’s empty day uses a small honest message instead of an empty hour grid; due-today tasks and all-day entries stay independently accessible. Partial or stale coverage must not imply a free day. The full Calendar retains its week/month structure.
+
+These corrections supersede any older examples showing accent stripes, authored em dashes, an always-visible empty Home hour grid or the former visible brand. They do not relax Lora Medium/Geist, Lucide, geometry, keyboard/focus, evidence or capability rules. Uncorrected consumers remain pending in the [adoption record](docs/design/adoption.md), regardless of passing documentation review.
+
+## Read only the relevant packet
+
+| Need | Specification |
 | --- | --- |
-| Visual language, exact asset, token values | [Visual baseline](docs/design/visual-baseline.md) and [tokens](docs/design/tokens.css) |
-| Type/color/boundary choices, accessibility, responsive adaptation | [Foundations](docs/design/foundations.md) |
-| Controls, evidence, Courses and complete interaction states | [Component contracts](docs/design/component-contracts.md) |
-| Scope of each screen and what is actually demonstrated | [Surface and evidence map](docs/design/system-coverage.md) |
-| Platform integration / website handoff | [Platform handoff](docs/design/platform-handoff.md) |
-| Original product detail | [Home direction](docs/home-design-direction.md) and [product](docs/product.md) |
-| Why external advice was adopted or rejected | [Reference selection](docs/design/reference-selection.md) and [system research](docs/design/system-research.md) |
-| Independent generation, critique and repair | [Iteration and review](.agents/skills/magic-design/references/iteration-and-review.md) |
+| Identity and visual comparison | [Visual baseline](docs/design/visual-baseline.md), [tokens](docs/design/tokens.css), [foundations](docs/design/foundations.md) |
+| Organize information or generate interface copy | [Content design](docs/design/content-design.md) |
+| Inspect working foundations and components | [Foundations gallery](docs/design/lab/foundations.html), [component lab](docs/design/lab/index.html) |
+| Build a recurring UI family | [Component recipes](docs/design/component-recipes.md) |
+| Connect UI to Magic behavior | [Product and interaction contracts](docs/design/component-contracts.md) |
+| Understand what is demonstrated | [Surface and evidence map](docs/design/system-coverage.md), [current validation](docs/design/validation-v3.md) |
+| Begin a component implementation | [Compact v3 handoff](docs/design/handoff-v3.md) |
+| Adapt to a framework or website | [Platform handoff](docs/design/platform-handoff.md) |
+| Resolve product scope or provenance | [Home direction](docs/home-design-direction.md), [product](docs/product.md), [decision record](docs/design/decision-record.md) |
+| Apply expert help to a specific gap | [Reference selection](docs/design/reference-selection.md), [source adapters](.agents/skills/magic-design/references/source-adapters.md) |
 
-The [intent-to-output audit trail](docs/design/validation-v2.md#intent-to-output-audit-trail) connects your source decisions and inspected references to the affected rule and the observation that should catch drift. It is a scoped check set, not an instruction to load every source.
+## Adoption in code
 
-## Extend without drifting
+Use the [adoption agreement](docs/design/adoption.md) and [shared React patterns](packages/ui/README.md). The consumer map distinguishes examples from production use. Both agent entry points route here; no CI or hooks enforce it.
 
-For a new feature, choose its student job and nearest existing recipe; provide source/identity, all consequential states, destination and return behavior. Change an existing recipe only when the new case shows it is insufficient. Keep new geometry provisional until an actual render and complete journey support it. Show Ben a concrete comparison at a new visual family or consequential workflow choice; routine repairs need no approval ceremony.
+## Evolve while features proceed in parallel
 
-A contribution names the changed rule, affected consumers, representative before/after state, evidence and outstanding choice. Mark it **proposed**, **accepted direction**, **demonstrated in isolation**, or **integrated**; no global “approved” badge hides untested states. Review only the affected siblings and journeys. Keep original quotes immutable and link superseding decisions. Do not accumulate a parallel transcript.
+Start with the audience, normal entry/default state, useful outcome and one complete journey. Choose the nearest recipe and state its domain binding. Reuse stable roles; keep page geometry local. A new family or consequential taste choice warrants a concrete comparison with Ben; routine fixes within accepted direction do not.
 
-One integrator owns a shared token/contract change at a time; other workers build bounded surfaces against a named revision. Pull/fetch relevant changes at natural boundaries, inspect before integration, and never overwrite another worker's changes. A new feature can proceed against stable behavior and visual roles while a local detail is being refined. No hooks, new platform framework or global agent settings are required.
+One integrator owns a shared token/contract edit at a time. Workers name their system revision and own bounded surfaces; inspect relevant upstream changes before integration. A contribution records changed rule/recipe, affected consumers, before/after evidence and remaining uncertainty. Review its actual dependents and a representative sibling, not every unrelated screen.
+
+Use distinct claims: **proposed**, **accepted direction**, **demonstrated in isolation**, **integrated**, and **demonstrated in the real journey**. A passing screenshot does not prove source correctness, accessibility, framework portability or teammate adoption. Keep the smallest useful evidence and repair the producing rule when observed use contradicts it.
