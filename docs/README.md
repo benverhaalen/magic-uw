@@ -39,6 +39,7 @@ We are entering Applied AI & Automation, DoIT's Badgers Building for Badgers, an
 | [AI and privacy](ai-and-privacy.md)                   | Paid AI direction, existing local adapter, sign-in, and data disclosures                                |
 | [Technical direction](architecture.md)                | Access, connectors, records, deadlines, Jev, models, stack proposals                                     |
 | [Pipeline details](pipeline-details.md)               | Actual endpoints and limits; proposed reconnect, scrubbing, citation checks, and link thresholds         |
+| [Sync resilience handoff](sync-resilience-review.md) | In-progress shared acquisition, linked-file capture, durable access observations, interfaces and remaining verification |
 | [Course ingestion](ingestion-upgrade.md)              | Expanded sources, refresh, local materials, privacy, and verified limits                                 |
 | [Course intelligence](course-intelligence.md)          | Versioned course claims, source-bound policy interpretation, optional local extraction, and evidence limits |
 | [Planning integration](planning-upgrade.md)           | My UW adapters, source reconciliation, privacy, live evidence, and remaining work                         |
