@@ -8,7 +8,7 @@ import {
   runProcess,
   type CliCommand,
 } from "@magic/runner";
-import { parseClaudeAuth, parseCodexLogin } from "../onboarding";
+import { parseClaudeAuth, parseCodexLogin } from "./auth-parse";
 
 /**
  * T80. The student's AI command-line clients, each run in an app-owned profile under

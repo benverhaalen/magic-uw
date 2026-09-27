@@ -15,6 +15,7 @@ import {
 } from "@magic/contracts";
 import { createMcpService } from "../packages/core/src/mcp";
 import { CONSENT_DISCLOSURE_VERSION } from "@magic/domain";
+import { restrictToCurrentUser } from "../apps/desktop/src/mcp-connection-acl";
 
 const at = (minute: number) =>
   new Date(Date.UTC(2099, 0, 1, 12, minute)).toISOString();
@@ -442,6 +443,7 @@ test(
       }),
       { mode: 0o600 },
     );
+    await restrictToCurrentUser(configPath);
     const client = new Client({
       name: "Synthetic MCP integration client",
       version: "1.0.0",
