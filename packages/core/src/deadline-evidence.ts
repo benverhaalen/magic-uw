@@ -51,8 +51,13 @@ export function proseDeadlines(
   const courseKey = (r: Resource) =>
     `${sources.get(r.sourceId)?.accountScope}:${r.courseId}`;
   const byCourse = new Map<string, Resource[]>();
-  for (const r of resources)
-    byCourse.set(courseKey(r), [...(byCourse.get(courseKey(r)) ?? []), r]);
+  // Appended in place: copying the course's list on every resource was quadratic in its size.
+  for (const r of resources) {
+    const key = courseKey(r);
+    const list = byCourse.get(key);
+    if (list) list.push(r);
+    else byCourse.set(key, [r]);
+  }
   const terms = new Map<string, ExtractionAnchors["term"]>();
   function term(key: string) {
     if (!terms.has(key)) {

@@ -12,6 +12,12 @@ import { DatabaseSync, StatementSync } from "node:sqlite";
 import { createStore } from "@magic/storage";
 import { judgmentResultSchema } from "@magic/ai";
 import { courseIncluded, courseInclusion } from "../packages/core/src/access";
+import { evidenceFor, linkExactEvidence } from "../packages/core/src/evidence";
+import { proseDeadlines } from "../packages/core/src/deadline-evidence";
+import { createCore } from "@magic/core";
+import { captureBatchSchema } from "@magic/contracts";
+import { intelligenceView } from "../packages/domain/src/course-intelligence";
+import fixture from "../fixtures/course.json";
 import { codeAssignmentKind, resourceViews, runQuery } from "../packages/core/src/queries";
 import { agenda, compileCourse, courseGraph, courseIndex, graphCall, references } from "../packages/core/src/graph/index";
 import { readOnce } from "../packages/core/src/graph/read-once";
@@ -294,5 +300,185 @@ test("guide view scope: the same status, course and resources as the full select
     assert.equal(same({ courseId: course.courseId }), "empty");
   } finally {
     close();
+  }
+});
+
+// ------------------------------------------------------------------ core reads (S1, S2, S3, S5, S6)
+const INGESTION = /FROM preferences WHERE key='ingestion'/;
+const PRIVACY = /FROM preferences WHERE key = 'privacy'/;
+const LINKS = /SELECT l\.\* FROM links l/;
+const SOURCES = /FROM sources s ORDER BY s\.id/;
+
+test("inclusion reads the ingestion settings once per map, and a selected term decides as before", () => {
+  const store = seededStore();
+  try {
+    for (const b of syntheticCorpus(40).batches) store.ingest(b);
+    const all = store.resources();
+    const { value: open, sql } = counted(() => {
+      const included = courseInclusion(store, all);
+      return all.map((r) => included(r));
+    });
+    assert.equal(sql.filter((s) => INGESTION.test(s)).length, 1, "one settings read for every resource checked");
+    // A selected term excludes a course whose stated term differs; the rest decide as before.
+    const term = all.find((r) => r.kind === "course" && r.course?.termName)?.course?.termName ?? "Fall 2026";
+    store.setIngestionSettings({ ...store.ingestionSettings(), selectedTerm: `${term} (other)` });
+    const included = courseInclusion(store, all);
+    for (const [i, r] of all.entries()) {
+      const source = store.sources().find((s) => s.id === r.sourceId)!;
+      const course = all.find(
+        (c) =>
+          c.kind === "course" &&
+          c.courseId === r.courseId &&
+          store.sources().find((s) => s.id === c.sourceId)?.scope === "course" &&
+          store.sources().find((s) => s.id === c.sourceId)?.accountScope === source.accountScope,
+      )?.course;
+      const otherTerm = !!course && course.termName !== `${term} (other)` && course.termId !== `${term} (other)`;
+      assert.equal(included(r), otherTerm ? false : open[i]!, r.id);
+    }
+  } finally {
+    store.close();
+  }
+});
+
+test("snapshot: one sources read for every profile, one resource list; profiles as intelligenceView gives them", async () => {
+  const store = seededStore();
+  const core = createCore(store, { fixture: captureBatchSchema.parse(fixture), now: () => new Date(NOW) });
+  try {
+    for (const b of syntheticCorpus(60).batches) store.ingest(b);
+    const profiles = store.courseIntelligence();
+    assert.ok(profiles.length >= 3);
+    const { value: snap, sql } = counted(() => core.snapshot());
+    assert.equal(sql.filter((s) => LIST.test(s)).length, 1, "one full resource read");
+    const sourceReads = sql.filter((s) => SOURCES.test(s)).length;
+    assert.ok(sourceReads < profiles.length, `sources reads: ${sourceReads} for ${profiles.length} profiles`);
+    const sources = store.sources();
+    assert.deepEqual(
+      snap.courseIntelligence!.map(({ semantic: _semantic, ...view }) => view),
+      profiles.map((p) => intelligenceView(p, sources, NOW)),
+    );
+    assert.deepEqual(snap.resources, resourceViews(store, store.resources()));
+  } finally {
+    await core.close();
+  }
+});
+
+test("context: one resource list, one privacy read; the manifest matches the store-wide helpers", async () => {
+  const store = seededStore();
+  const core = createCore(store, { fixture: captureBatchSchema.parse(fixture), now: () => new Date(NOW) });
+  try {
+    // Jev on, so the hosted path (scrubber and roster) runs too.
+    store.setPrivacy({ ...store.privacy(), jevEnabled: true });
+    await compileCourse(store, course, NOW);
+    for (const b of syntheticCorpus(60).batches) store.ingest(b);
+    linkExactEvidence(store);
+    const listed = store.resources().filter((r) => r.kind === "assignment" || r.kind === "material");
+    // Every item of the fixture course (Homework 1 carries a supporting page) and some synthetic ones.
+    const targets = [...listed.filter((r) => r.courseId === course.courseId), ...listed.filter((r) => r.courseId !== course.courseId).slice(0, 20)];
+    let withSupport = 0;
+    for (const recipient of ["local", "jev"] as const)
+      for (const r of targets) {
+        const { value: m, sql } = counted(() => core.context(r.id, recipient));
+        assert.equal(sql.filter((s) => LIST.test(s)).length, 1, `${recipient} ${r.id}: one full read`);
+        assert.equal(sql.filter((s) => PRIVACY.test(s)).length, 1, `${recipient} ${r.id}: one privacy read`);
+        // The same supporting set and inclusion the per-resource helpers decide.
+        const supporting =
+          recipient === "jev" ? [] : evidenceFor(store).supporting(r).filter((s) => courseIncluded(store, s)).map((s) => s.id);
+        if (supporting.length) withSupport++;
+        for (const id of supporting) assert.ok(m.resourceIds.includes(id), id);
+        assert.equal(m.resourceIds[0], r.id);
+        if (!courseIncluded(store, r)) assert.equal(m.allowed, false);
+      }
+    assert.ok(withSupport > 0, "some items carry supporting material");
+    // An excluded course still blocks sharing.
+    store.setCourseOverride({ accountScope: course.accountScope, courseId: course.courseId, included: false });
+    const blocked = core.context(targets.find((r) => r.courseId === course.courseId)!.id, "local");
+    assert.equal(blocked.allowed, false);
+    assert.match(blocked.reason, /excluded/);
+  } finally {
+    await core.close();
+  }
+});
+
+test("prose deadlines: grouping in place gives each resource the claims of its own course alone", () => {
+  const store = seededStore();
+  try {
+    for (const b of syntheticCorpus(120).batches) store.ingest(b);
+    const all = store.resources();
+    const sources = new Map(store.sources().map((s) => [s.id, s]));
+    const whole = proseDeadlines(all, sources);
+    for (const courseId of new Set(all.map((r) => r.courseId))) {
+      const own = all.filter((r) => r.courseId === courseId);
+      const alone = proseDeadlines(own, sources);
+      for (const r of own) assert.deepEqual(whole(r), alone(r), r.id);
+    }
+  } finally {
+    store.close();
+  }
+});
+
+test("exact evidence links: rejections read once, calendar targets indexed; the expected links", () => {
+  const BASE = "https://canvas.wisc.edu/courses/101";
+  const item = (externalId: string, kind: "assignment" | "material" | "event", extra: Record<string, unknown> = {}) => ({
+    externalId,
+    kind,
+    courseId: "101",
+    courseName: "Linear Algebra Example",
+    title: `Item ${externalId}`,
+    url: `${BASE}/items/${externalId}`,
+    text: "",
+    deadlines: [],
+    points: null,
+    submitted: null,
+    policy: { mode: "unknown" as const, evidence: "" },
+    ...extra,
+  });
+  const batch = (scope: string, resources: ReturnType<typeof item>[]) =>
+    captureBatchSchema.parse({
+      source: { id: `src-${scope}`, label: "Example", kind: "canvas", accountScope: "student-1", courseId: "101", scope },
+      observedAt: "2026-09-30T12:00:00.000Z",
+      complete: true,
+      status: "ok",
+      resources,
+    });
+  const store = createStore(":memory:");
+  try {
+    const materials = Array.from({ length: 30 }, (_, i) => item(`m${i}`, "material", { text: `Notes ${i}`, url: `${BASE}/pages/notes-${i}` }));
+    const assignments = Array.from({ length: 30 }, (_, i) =>
+      // Each assignment links two materials, one of them twice (a duplicate pointer).
+      item(`${1000 + i}`, "assignment", {
+        url: `${BASE}/assignments/${1000 + i}`,
+        links: [materials[i]!.url, materials[(i + 1) % 30]!.url, materials[i]!.url],
+      }),
+    );
+    const events = Array.from({ length: 30 }, (_, i) =>
+      item(`cal${i}`, "event", {
+        calendar: { uid: `event-assignment-${1000 + i}`, start: "2026-10-02T05:00:00.000Z", allDay: false, assignmentExternalId: `${1000 + i}` },
+      }),
+    );
+    store.ingest(batch("pages", materials));
+    store.ingest(batch("assignments", assignments));
+    store.ingest(batch("account-todo", assignments.slice(0, 5).map((a) => ({ ...a, url: `${a.url}?todo` })))); // not targets
+    store.ingest(batch("calendar_feed", events));
+    linkExactEvidence(store);
+    const first = store.links();
+    const byId = new Map(store.resources().map((r) => [r.id, r]));
+    const scopeOf = new Map(store.sources().map((s) => [s.id, s.scope]));
+    const sameAs = first.filter((l) => l.type === "same_as");
+    assert.equal(sameAs.length, 30, "each calendar item links its assignment");
+    for (const l of sameAs) {
+      assert.equal(scopeOf.get(byId.get(l.toId)!.sourceId), "assignments", "the assignments-list copy is the target");
+      assert.equal(byId.get(l.fromId)!.calendar!.assignmentExternalId, byId.get(l.toId)!.externalId);
+    }
+    assert.equal(first.filter((l) => l.type === "specifies").length, 70, "2 distinct pairs per assignment copy (30 listed, 5 to-do)");
+    // A rejected link stays rejected and is not re-proposed; one links read however many are linked.
+    store.decideLink(first[0]!.id, "rejected");
+    const { sql } = counted(() => linkExactEvidence(store));
+    assert.equal(sql.filter((s) => LINKS.test(s)).length, 1);
+    assert.deepEqual(
+      store.links().map((l) => [l.id, l.status]),
+      first.map((l, i) => [l.id, i === 0 ? "rejected" : l.status]),
+    );
+  } finally {
+    store.close();
   }
 });
