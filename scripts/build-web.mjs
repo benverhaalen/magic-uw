@@ -26,7 +26,7 @@ const head = `<link rel="icon" href="/assets/logo/favicon.svg" type="image/svg+x
     <link rel="stylesheet" href="/assets/site.css" />`;
 
 const header = (current) => `<header class="site-header">
-        <a class="brand" href="/"><img src="/assets/logo/head-color.svg" alt="" width="46" height="100" /><span>Magic Canvas</span></a>
+        <a class="brand" href="/"><img src="/assets/logo/head-color.svg" alt="" width="46" height="100" /><span>My Magic UW</span></a>
         <nav class="site-nav" aria-label="Main">${nav
           .map(([key, href, label]) => `<a href="${href}"${key === current && key !== "home" ? ' aria-current="page"' : ""}>${label}</a>`)
           .join("")}</nav>
@@ -34,7 +34,7 @@ const header = (current) => `<header class="site-header">
       </header>`;
 
 const footer = `<footer class="site-footer">
-        <div>Magic Canvas · Built for Badger BuildFest 2026<small>Student project. Not an official UW–Madison service.</small></div>
+        <div>My Magic UW · Built for Badger BuildFest 2026<small>My Magic UW is an independent student project. It is not affiliated with, sponsored by or endorsed by the University of Wisconsin–Madison.</small></div>
         <nav aria-label="Footer"><a href="${github}">GitHub</a><a href="/faq/#privacy">Privacy</a><a href="/about/">About us</a><a href="/faq/">FAQ</a></nav>
       </footer>`;
 
