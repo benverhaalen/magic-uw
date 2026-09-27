@@ -39,8 +39,8 @@ test("your AI: a hosted choice selects it with cloud access on; this computer an
   assert.equal(aiChoicePatch(defaultPrivacy, "off"), null);
   assert.equal(aiChoiceOf({ ...hosted, mode: "local_only" }, false), "off", "a hosted pick with all sharing off is not answering");
   assert.deepEqual(shownChoices("off", false), ["claude", "codex", "off"], "this computer shows only once found");
-  assert.deepEqual(shownChoices("off", true), ["claude", "codex", "local", "off"]);
-  assert.deepEqual(shownChoices("gemini", false), ["claude", "codex", "gemini", "off"], "Gemini only while it is the saved choice");
+  assert.deepEqual(shownChoices("off", true), ["claude", "codex", "off"], "on-device answering is no longer offered");
+  assert.deepEqual(shownChoices("gemini", false), ["claude", "codex", "off"], "Gemini is no longer offered");
 });
 
 test("your AI: each card says Connected, Signed out (Sign in), Not installed, or Usage limit with its reset time", () => {
