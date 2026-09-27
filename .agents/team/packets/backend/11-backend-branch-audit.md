@@ -13,3 +13,9 @@ See [full audit](../../../../docs/backend-branch-audit.md) for evidence, limits 
 - Backend check and 51 focused tests pass; the new privacy assertion fails. Integration with current main remains unverified.
 
 Next action: frontend retains Start work; backend integration starts with privacy/egress adaptation and focused regression checks. No active worktree was reset, stashed or merged by this audit.
+
+## Authorized integration in progress
+
+Ben authorized selective backend integration after this audit. Base refreshed to main `274f738`, including Nate's T17 sync scheduling. Isolated integration branch: `integration/backend-current`; scoped backoff worker: `fix/scoped-jev-backoff`. No frontend ownership change.
+
+Current scope: identity/citation projection and contributing-evidence privacy; deadline extraction through canonical queries; provider-scoped Jev refusal handling. Preserve current sync scheduler, consent/egress, learning v8 and registered jobs. Avoid App/preload/Start Work changes. Fuzzy and Madgrades remain partial unless separately integrated and verified; do not infer their adoption from this handoff. Driver will fetch/reconcile before publishing tested product changes.
