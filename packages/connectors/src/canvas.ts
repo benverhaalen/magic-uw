@@ -14,6 +14,7 @@ import {
   CanvasFailure,
   canvasNextPage,
   type CanvasHttpOptions,
+  type CanvasScopeStats,
 } from "./canvas-http";
 import { readCanvasModules, createCanvasModuleRun, type CanvasModuleRun } from "./canvas-modules";
 import { canvasContent } from "./canvas-content";
@@ -88,6 +89,12 @@ export interface CanvasConnectorOptions
   announcementsStartDate?: string;
   /** owner: T33. A warm read: only these courses get per-course reads (D37); the account reads still run. */
   onlyCourses?: string[];
+  /**
+   * fix/sync-events. A page body this same refresh already read (the content probe's page
+   * revalidation): reused from knownResources instead of read again, even when the Pages list
+   * is hidden and gives no updated_at to compare.
+   */
+  pageReadThisRun?: (url: string) => boolean;
   moduleRun?: CanvasModuleRun;
   onModuleRun?: (run: CanvasModuleRun) => void;
   /**
@@ -95,6 +102,8 @@ export interface CanvasConnectorOptions
    * can choose courses before the first full read. No account lists, no course content.
    */
   catalogOnly?: boolean;
+  /** fix/sync-events. With catalogOnly: also emit each included course's syllabus from the list row. */
+  syllabusFromCatalog?: boolean;
 }
 /**
  * Canvas returns a course the student can no longer open as `{id, access_restricted_by_date:
@@ -331,10 +340,11 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
         complete: boolean;
         status: CaptureBatch["status"];
       }> {
-        const scopeSignal = AbortSignal.any([
-          combined,
-          AbortSignal.timeout(options.scopeTimeoutMs ?? 120_000),
-        ]);
+        // The scope's own time budget starts when its first request holds a scheduler slot, not
+        // while it queues behind other scopes (a course's page wave starts every page at once).
+        const budget = new AbortController(),
+          scopeSignal = AbortSignal.any([combined, budget.signal]);
+        let budgetTimer: ReturnType<typeof setTimeout> | undefined;
         const items: T[] = [],
           resources: ResourceInput[] = [],
           diagnostics: CaptureDiagnostic[] = [];
@@ -342,7 +352,18 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
           seenIds = new Set<string>(),
           started = performance.now(),
           initial = url,
-          requestStats = { requests: 0 };
+          requestStats: CanvasScopeStats = {
+            requests: 0,
+            onStart: () => {
+              budgetTimer ??= setTimeout(
+                () =>
+                  budget.abort(
+                    new DOMException("Scope time limit reached", "TimeoutError"),
+                  ),
+                options.scopeTimeoutMs ?? 120_000,
+              );
+            },
+          };
         let next: string | null = url,
           pages = 0,
           status: CaptureBatch["status"] = "ok",
@@ -488,11 +509,11 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
           if (invalid) status = "partial";
         } catch (error) {
           combined.throwIfAborted();
-          status = scopeSignal.aborted
+          status = budget.signal.aborted
             ? "partial"
             : failure(error, resources.length > 0);
           diagnostics.push(
-            ...(scopeSignal.aborted
+            ...(budget.signal.aborted
               ? [
                   {
                     code: "scope_time_limit",
@@ -502,6 +523,8 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
                 ]
               : diagnostic(error)),
           );
+        } finally {
+          clearTimeout(budgetTimer);
         }
         const complete = status === "ok";
         emit(
@@ -870,6 +893,9 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
         });
         const reconciled = Promise.allSettled([reconcileCatalog]);
         if (http.needsSignIn || options.catalogOnly) {
+          if (!http.needsSignIn && options.syllabusFromCatalog)
+            for (const course of catalog.items)
+              if (courseSelection(course, selection()).included) syllabus(course);
           await Promise.all([accountSettled, historicalSettled, reconciled]);
           return;
         }
@@ -1085,16 +1111,17 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
               };
               const metadata = pageList.items.find((page) => page.url === slug);
               const scope = `page:${metadata?.page_id ?? hashCanvas(slug).slice(0, 24)}`;
+              const pageSource = source(course.id, courseName(course), scope).id;
               const known = options.knownResources?.find(
                 (row) =>
-                  row.sourceId ===
-                    source(course.id, courseName(course), scope).id &&
-                  row.externalId === metadata?.page_id &&
+                  row.sourceId === pageSource &&
                   !row.deleted &&
-                  row.updatedAt &&
-                  row.updatedAt === metadata.updated_at &&
                   row.rawHtml !== undefined &&
-                  row.contentHash,
+                  !!row.contentHash &&
+                  ((row.externalId === metadata?.page_id &&
+                    !!row.updatedAt &&
+                    row.updatedAt === metadata.updated_at) ||
+                    options.pageReadThisRun?.(row.url) === true),
               );
               if (known) {
                 expand([known]);
@@ -1115,7 +1142,11 @@ export function canvasConnector(options: CanvasConnectorOptions): Connector {
                   true,
                   [
                     {
-                      code: "unchanged_page_reused",
+                      // fix/sync-events: reused because this refresh already read it, not deferred.
+                      code:
+                        metadata && known.updatedAt === metadata.updated_at
+                          ? "unchanged_page_reused"
+                          : "page_read_this_run",
                       path: ["updated_at"],
                       severity: "warning",
                     },

@@ -414,7 +414,8 @@ test("runtime refresh saves scoped evidence, compiles supporting context, and ke
               resource.calendar?.assignmentExternalId === "1001",
           )!;
         assert.equal(event.deadlines[0]?.value, "2026-10-01T18:00:00.000Z");
-        assert.equal(publicReads.feedCalls.length, 15);
+        // fix/sync-events: each course feed is read once per run (it was read twice).
+        assert.equal(publicReads.feedCalls.length, 10);
       },
     );
 
@@ -428,7 +429,7 @@ test("runtime refresh saves scoped evidence, compiles supporting context, and ke
         assert.equal(backoff?.action, "feeds_only");
         assert.equal(backoff?.needsSignIn, true);
         assert.equal(university.calls.length, canvasCallsBeforeBackoff);
-        assert.equal(publicReads.feedCalls.length, 20);
+        assert.equal(publicReads.feedCalls.length, 15); // fix/sync-events: once per run
         assert.equal(publicReads.pageCalls.length, publicCallsBeforeBackoff);
         assert.equal(store.syncRuns().length, 3);
         assert.equal(store.syncRuns()[0]?.action, "background");

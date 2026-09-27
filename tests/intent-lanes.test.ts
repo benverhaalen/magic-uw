@@ -142,7 +142,7 @@ test("notes: the notes lane's notesActions (#16) run from their patterns and fro
   assert.deepEqual(h.notesCalls[0], { request: null, session: ["c400", "2026-09-29", "lecture"] });
 });
 
-test("warm start: prewarm spawns the pooled session with the catalogue prefix, so commands spawn nothing", { timeout: 60_000 }, async () => {
+test("warm start: prewarm spawns the pooled session with the catalogue prefix, so no command waits on a spawn", { timeout: 60_000 }, async () => {
   const h = await setup([{ output: { kind: "intent-classify", data: { action: "agenda.due", args: slots({ date: "tomorrow" }), confidence: "high", alternatives: null, question: null } } }], { pool: true });
   try {
     const ready = (await h.core.execute({ type: "command", value: { text: "", mode: "prewarm" } })).command!;
@@ -155,8 +155,17 @@ test("warm start: prewarm spawns the pooled session with the catalogue prefix, s
     assert.equal(await messages(), 0, "and sent nothing (0 tokens)");
     assert.equal((await h.router.prewarm()).status, "ready");
     assert.equal(await spawns(), 1, "a second prewarm reuses the live session");
-    for (const text of ["zq sort out thing one for me", "zq sort out thing two for me"]) assert.equal((await h.run(text)).path, "ai");
-    assert.equal(await spawns(), 1, "both commands ran in the warm session: 0 spawns");
+    // Each ask runs in a session started before it (fresh turns, pool.ts): the first in the prewarmed
+    // one, the next in the spare started as the previous ask returned. None starts a CLI on its path.
+    for (const text of ["zq sort out thing one for me", "zq sort out thing two for me"]) {
+      for (let i = 0; i < 100 && (await spawns()) <= (await messages()); i++) await new Promise((r) => setTimeout(r, 20));
+      const before = await spawns();
+      assert.ok(before > (await messages()), `a session is waiting before "${text}"`);
+      assert.equal((await h.run(text)).path, "ai");
+      const log = await h.events();
+      const lastMessage = log.map((e) => e.event).lastIndexOf("message");
+      assert.ok(log.slice(0, lastMessage).filter((e) => e.event === "spawn").length <= before, "the command didn't start a CLI before its message");
+    }
     assert.equal(await messages(), 2);
   } finally {
     await h.pool!.close();

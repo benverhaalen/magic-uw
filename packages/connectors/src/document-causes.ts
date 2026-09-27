@@ -65,6 +65,7 @@ export function causeFromError(error: unknown): DocumentOutcome {
     if (error.code === "login_page") return { cause: "needs_sign_in" };
     if (error.code === "network_error" || error.code === "empty_download")
       return { cause: "network_error" };
+    if (error.code === "timeout") return { cause: "timeout" }; // main's time limit (causeHeaders)
     if (error.code === "file_metadata_invalid") return { cause: "metadata_invalid" };
     if (error.code === "file_locked") return { cause: "locked" };
     return { cause: "read_failed" };

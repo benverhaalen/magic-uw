@@ -24,7 +24,7 @@ function timestamp(value: string) {
     : date.toLocaleString();
 }
 async function study(request: LearningRequest) {
-  const response = await window.magic.execute({ type: "learning", request });
+  const response = await window.magic.execute({ type: "learning", request, reply: "result" });
   const result = response.learning;
   if (!result || result.status !== "ok")
     throw new Error(

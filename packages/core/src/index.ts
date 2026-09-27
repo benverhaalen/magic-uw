@@ -18,6 +18,8 @@ import {
   type Store,
   type ContextManifest,
   type CommandResult,
+  type ResultOnlyCommand,
+  type ResultOnlyCommandResult,
   type Snapshot,
   type CaptureBatch,
   type Resource,
@@ -91,8 +93,8 @@ export interface CoreSeams {
   map?(courseId: string, accountScope: string | undefined): unknown;
   /** D33 corrections; the data builder stores them, and a correction wins. */
   correct?(value: Correction, at: string): string;
-  /** The runtime builder's pack runner (packages/runner, packages/packs). */
-  pack?(pack: string, scope: PackScope, signal: AbortSignal): Promise<unknown>;
+  /** The runtime builder's pack runner (packages/runner, packages/packs). `options.count`: how many the student asked for. */
+  pack?(pack: string, scope: PackScope, signal: AbortSignal, options?: { count?: number }): Promise<unknown>;
   /** ui_events (schema v5). */
   uiEvent?(value: UiEvent, at: string): void;
   // owner: intent. The command bar's intent router (packages/core/src/intent). Core hands it
@@ -281,23 +283,54 @@ export function createCore(store: Store, options: CoreOptions) {
       gitlabLinks: store.gitlabLinks(),
     };
   }
+  /**
+   * One call's reads: every resource once (evidence and inclusion share it), privacy and sources
+   * once. A batch (`contexts`) shares them across its items, and the evidence index too.
+   */
+  function contextReads() {
+    const all = store.resources();
+    const sources = store.sources();
+    const view = withReads(readOnce(store, all), { sources });
+    let evidence: ReturnType<typeof evidenceFor> | undefined;
+    return {
+      sources,
+      view,
+      included: courseInclusion(view, all),
+      privacy: store.privacy(),
+      evidence: () => (evidence ??= evidenceFor(view)),
+    };
+  }
   function context(
     id: string,
     recipient: ContextManifest["recipient"],
   ): ContextManifest {
     const r = store.resource(id);
     if (!r || r.deleted) throw new Error("This item is no longer available.");
-    // One call's reads: every resource once (evidence and inclusion share it), privacy and sources once.
-    const all = store.resources();
-    const sources = store.sources();
-    const view = withReads(readOnce(store, all), { sources });
-    const included = courseInclusion(view, all);
-    const privacy = store.privacy();
+    return contextOf(r, recipient, contextReads());
+  }
+  /** Each item's manifest (the same as `context` gives), or null for an item no longer available. */
+  function contexts(
+    ids: readonly string[],
+    recipient: ContextManifest["recipient"],
+  ): (ContextManifest | null)[] {
+    const items = ids.map((id) => store.resource(id));
+    if (!items.some((r) => r && !r.deleted)) return items.map(() => null);
+    const reads = contextReads();
+    return items.map((r) => (r && !r.deleted ? contextOf(r, recipient, reads) : null));
+  }
+  function contextOf(
+    r: Resource,
+    recipient: ContextManifest["recipient"],
+    reads: ReturnType<typeof contextReads>,
+  ): ContextManifest {
+    const id = r.id;
+    const { sources, view, included, privacy } = reads;
     // An explicit allowlist: no source URLs, cookies, credentials, account IDs, grades, or student drafts.
     const supporting =
       recipient === "jev"
         ? []
-        : evidenceFor(view)
+        : reads
+            .evidence()
             .supporting(r)
             .filter(
               (s) =>
@@ -640,7 +673,11 @@ export function createCore(store: Store, options: CoreOptions) {
     return { verb, status: "ok" };
   }
   // end owner: T05b
-  async function execute(raw: unknown, requestSignal?: AbortSignal): Promise<CommandResult> {
+  // An untyped caller (`command as never`) gets the full reply, not the result-only overload a `never` would otherwise match.
+  function execute(raw: never, requestSignal?: AbortSignal): Promise<CommandResult>;
+  function execute(raw: ResultOnlyCommand, requestSignal?: AbortSignal): Promise<ResultOnlyCommandResult>;
+  function execute(raw: unknown, requestSignal?: AbortSignal): Promise<CommandResult>;
+  async function execute(raw: unknown, requestSignal?: AbortSignal): Promise<CommandResult | ResultOnlyCommandResult> {
     requestSignal?.throwIfAborted();
     if (closed) throw new Error("Workspace is closed.");
     const command = commandSchema.parse(raw);
@@ -652,6 +689,7 @@ export function createCore(store: Store, options: CoreOptions) {
       case "snapshot":
         return { snapshot: snapshot(command.search) };
       case "import": {
+        store.bumpGeneration?.(); // fix/sync-events: the workspace was replaced, not refreshed
         store.ingest(command.batch);
         saved(command.batch.source.id); // owner: T05b
         // Same exact-link pass as live ingestion, so imported captures keep their evidence links.
@@ -828,6 +866,7 @@ export function createCore(store: Store, options: CoreOptions) {
           options.now?.() ?? new Date(),
           options.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
         );
+        store.bumpGeneration?.(); // fix/sync-events
         store.ingest({ ...moved, observedAt: now() });
         saved(options.fixture.source.id); // owner: T05b
         linkExactEvidence(store);
@@ -1079,8 +1118,10 @@ export function createCore(store: Store, options: CoreOptions) {
       }
       // end owner: T05b
     }
+    // A result-only reply (learning, notes, ui_event) skips the workspace snapshot entirely.
+    const resultOnly = "reply" in command && command.reply === "result";
     return {
-      snapshot: snapshot(),
+      ...(resultOnly ? {} : { snapshot: snapshot() }),
       ...(manifest ? { manifest } : {}),
       ...(message ? { message } : {}),
       ...seamResult, // owner: T05b
@@ -1090,6 +1131,7 @@ export function createCore(store: Store, options: CoreOptions) {
     execute,
     snapshot,
     context,
+    contexts,
     wake,
     saved, // owner: T05b
     jobs, // owner: T05b

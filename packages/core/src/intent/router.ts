@@ -20,10 +20,11 @@ import { buildPrompt, memoryArtifactStore, memoryLedgerStore, type ArtifactStore
 import { classifyPack, SLOT_GLOSSARY, type ClassifyInput, type ClassifyOutput, type ClassifySlots } from "../../../packs/intent/src/index";
 import { readPackArtifact, runPack } from "../jobs/pack";
 import { defaultActions } from "./adapters";
-import { groundedAsk } from "./ask";
-import type { CoursePrefixSource } from "../course-facts/prefix"; // owner: course-facts
+import { groundedAsk, refersBack, type PreviousExchange } from "./ask";
+import { coursePrefixes, type CoursePrefixSource } from "../course-facts/prefix"; // owner: course-facts
+import { createCourseBriefs } from "../course-facts/brief";
 import { authorizer } from "./consent";
-import { buildIndex, createResolve, indexSignature, refreshTopics, type IntentIndex } from "./courses";
+import { buildIndex, createResolve, findCourseMentions, indexSignature, norm, refreshTopics, type IntentIndex } from "./courses";
 import { createRegistry, type ActionRegistry, type AnyAction } from "./registry";
 import { candidate, courseDisplay, normaliseUtterance, resolveCode, resolveSlots, type CodeOutcome } from "./resolve";
 import type { ActionContext, AskResult, IntentHost, IntentStore, ResolvedArgs, ResolvedCourse } from "./types";
@@ -58,6 +59,8 @@ const zero = () => ({ in: 0, cached: 0, out: 0 });
 type Tokens = ReturnType<typeof zero>;
 const add = (a: Tokens, b: Tokens): Tokens => ({ in: a.in + b.in, cached: a.cached + b.cached, out: a.out + b.out });
 const INDEX_RECHECK_MS = 2000;
+/** How long the last ask's exchange stays available to a question that refers back (the pool's idle close). */
+export const PREVIOUS_EXCHANGE_MS = 10 * 60 * 1000;
 export const NO_CLIENT_REASON =
   "Only exact commands work without an AI connected (like \"what's due tomorrow\" or \"quiz me on recursion in CS 400\"). Connect Claude or Codex in Settings to ask in your own words.";
 
@@ -88,6 +91,13 @@ export function createIntentRouter(deps: IntentRouterDeps) {
   const speculation = deps.speculation ?? "gate";
   // owner: privacy: runs only in classify (after a code miss) and in ask; warmed with the index.
   const protection = intentProtection(store, deps.protect !== false);
+  // The course prefix (brief + pack catalogue) opens every one-course ask, so the pooled session's
+  // prefix is byte-stable and past the prompt-cache minimum. Built in memory when the host passes
+  // none, the same default as the pack handler's.
+  const coursePrefix = deps.coursePrefix ?? coursePrefixes(createCourseBriefs({ store }).courseBrief);
+  // The last answered exchange per ask scope. Each ask sends only its question and passages; this one
+  // exchange goes along only when the next question refers back to it.
+  const exchanges = new Map<string, PreviousExchange & { at: number }>();
 
   let cached: IntentIndex | null = null;
   let checkedAt = -Infinity;
@@ -186,7 +196,15 @@ export function createIntentRouter(deps: IntentRouterDeps) {
         const questionTitle = normalizeTitle(question);
         const namedOther = selected && store.resources().some(row => !row.deleted && row.id !== selected.id && row.courseId === selected.courseId && sourceAccounts.get(row.sourceId) === sourceAccount && normalizeTitle(row.title).length > 4 && questionTitle.includes(normalizeTitle(row.title)));
         const resourceId = courses !== "all" && !namedOther && selected && !selected.deleted && list.length === 1 && list[0]!.courseId === selected.courseId && list[0]!.accountScope === sourceAccount ? selected.id : undefined;
-        const r = await groundedAsk({ store, runner: () => runnerP, artifacts, ledger, now, resourceId, protection, ...(deps.coursePrefix ? { coursePrefix: deps.coursePrefix } : {}) }, question, list, s);
+        const key = list.map((c) => c.ref).sort().join("\n");
+        const last = exchanges.get(key);
+        const previous = last && now().getTime() - last.at <= PREVIOUS_EXCHANGE_MS && refersBack(question) ? { question: last.question, answer: last.answer } : null;
+        // Retrieval searches without the course the question names ("in cs 400"): code already resolved it, and no passage contains it.
+        const said = norm(question);
+        const mentions = findCourseMentions(current(), said);
+        const searchText = mentions.length ? [...mentions].reverse().reduce((t, m) => `${t.slice(0, m.start)} ${t.slice(m.end)}`, said).replace(/\s+/g, " ").trim() : undefined;
+        const r = await groundedAsk({ store, runner: () => runnerP, artifacts, ledger, now, resourceId, protection, timeZone, coursePrefix /* owner: course-facts */ }, question, list, s, { previous, ...(searchText ? { searchText } : {}) }); // owner: privacy
+        if (!r.notFound && !r.unavailable) exchanges.set(key, { question, answer: r.text, at: now().getTime() });
         spent.tokens = add(spent.tokens, r.tokens);
         return r;
       },
