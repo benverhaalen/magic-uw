@@ -185,8 +185,37 @@ The map of what exists is [the backend map](notes/backend-map.md).
 | Fuzzy supporting-material candidates after each sync (rule `link.fuzzy.v1`) | the input to Jev's link judgments (spec C4), not a second candidate generator |
 | Known-identity scrubber and citation-span validation | applied to every hosted payload, MCP output and platform export |
 | Madgrades adapter | planning (local only) |
-| Judgment queue that pauses on gateway budget refusals | kept in the extended drain |
+| Judgment queue that pauses on gateway budget refusals | kept as the `enrich.resource` handler's retry-after in the one drain (§4.2a) |
 | Recurring ICS events expanded within a bounded window | the unified schedule |
+
+### 4.2a Jobs: one drain and how a kind registers
+
+There is exactly **one job drain** in the app: core's pipeline loop (`packages/core/src/jobs/pipeline.ts`, over `createDrain` in `packages/core/src/drain.ts`). Core has no inline drain; `saved()` and `wake()` only wake the loop. Every kind runs there as a registered handler: the material pipeline's code jobs (`passages.resource`, `link.resource`, `compile.course`) and Jev's `enrich.resource` (`jobs/enrich.ts`).
+- **Idle-only and sliced:** a slice starts after a quiet gap (3 s), leases at most 20 jobs while the student is present (200 away), then yields.
+- **Never during a sync:** `syncStarted()` aborts the slice between jobs and nothing is leased, whatever wakes it, until `syncEnded()`. The desktop worker wraps `ingestion.tick` with both.
+- **Retry-after:** a handler's `defer` returns the job to pending without spending an attempt and sets a durable per-kind cooldown; the loop wakes itself when it ends, also after a restart.
+- **Errors:** a thrown handler error is a retry, and its message is recorded on the job.
+- **Cancellation:** purge, a privacy change and close abort the running slice between jobs and cancel an in-flight Jev call (its result is discarded; no receipt claims a failure).
+
+**Registering a kind** (for example a `course.facts` job): add a `JobHandler` to the registry passed to `createCore({ jobs })` (the worker passes `pipelineJobRegistry()` in `jobs/default-registry.ts`). Register before `createCore`: the loop fixes its kinds when it starts. Core adds `enrich.resource` itself.
+
+```ts
+interface JobHandler {
+  kind: string;                         // "area.name", unique
+  subject: "resource" | "course" | "assessment";
+  ready: boolean;                       // false: a stub, never enqueued or leased
+  owner: string;
+  onSave?(resource: Resource): boolean; // save → enqueue for resource subjects; course subjects get one job per course at its inventory hash
+  available?(ctx: { store }): boolean;  // checked before every lease; false leaves the kind queued (Jev: gateway + maySend)
+  run(job, { store, now, signal }): Promise<
+    | { status: "done" }
+    | { status: "retry"; error: string }               // backoff, then the store's retry limit
+    | { status: "stop"; error: string }                // refused (consent): finish with the error, end this wake
+    | { status: "defer"; until: string; error: string } // retry-after: no attempt spent, the kind waits
+  >;
+}
+```
+A handler that sends goes through egress itself (manifest, receipt, re-check after the call), as `enrich.resource` does. `signal` aborts between jobs for a sync, suspend or the student's return; a handler that must stop mid-call on purge or privacy takes core's cancellation scope, as `enrich.resource` does.
 
 ### 4.3 The Today rail and planning
 
@@ -406,3 +435,22 @@ flowchart LR
   L1 --> T50a["T50a typed API"]
   T50a --> PLAT["Course bank and platform: T50b, T55"]
 ```
+
+## 12. Command bar and intent router
+
+**What it does.** The command bar (Ctrl+K typed, or Ctrl+Shift+Space dictated into the same bar) takes any plain-language request and returns one typed `CommandResult.command`: `ran {action, args, result}`, `clarify {question, candidates}`, `answer {text, citations}` or `unavailable {reason}`, each with the path (`code`, `ai`, `cache` or `none`), the latency and the tokens. It is the `command` Command (`{text, context?: {courseId?, view?, noteId?}, mode?: run | prewarm}`), handled by `packages/core/src/intent` through core's seam. The live hint is the read-only `intent.preview` query (`core.query`, no snapshot recompute); `mode: "preview"` on the command stays for compatibility and is deprecated. Status: built and tested in isolation; wired in the worker; no renderer yet.
+
+**AI writes, code decides (spec §2).**
+- **The registry** (`intent/registry.ts`). An `ActionSpec` is `{name, description, slots, argsSchema (zod over resolved args), examples, patterns?, run(args, ctx)}`. Built in: `course.open`, `assignment.open`, `practice.quiz` (`practice.target` test), `practice.flashcards` (flashcards due), `practice.learn` (Learn round), `pack.generate` (cards or quiz for a scope), `agenda.due` (core's D40 `due` verb), `materials.search` (passage search) and `ask`. The lanes on main are wired through `intent/adapters/`, one file per source: `mail.search` (stored fields only, never a body) and `calendar.proposeEvent` (Outlook, #12: the router returns the fields; main issues the single-use proposal ID and writes only after the student clicks to confirm, so the router never creates an event), `guide.view` (#10), `analytics.course`, `analytics.assignment` and `analytics.agendaHints` (#11), and from the material pipeline (#13) its daily agenda (preferred over the D40 `due` verb), `assignment.references` and `course.overview`. The notes lane's `notesActions` (#16) register first through `adapters/notes.ts`, which maps the router's resolved slots onto their raw-string arguments and hands them the router's resolvers.
+- **The code path, 0 tokens** (`intent/resolve.ts`, `courses.ts`, `dates.ts`). Course references: a code ("CS 400", "COMP SCI 400", "compsci400"), a full name, a subject nickname ("my econ class"), or a distinctive name word next to a course cue; the current term wins over an older course with the same subject. Relative dates in the student's time zone (today, tomorrow, a weekday, "next tuesday", this or next week, "the next 3 days", "oct 3"). Topics by the course's concept labels (a unit names its topics); with no course named, the one current course whose map has the topic. Assignments by title words. A confident single match runs at once; an ambiguous reference is asked by code; anything else is a `miss` or a `partial` whose settled slots go to the model as hints. The resolver runs under a 20 ms CPU-time budget inside try/catch (CPU time, so a loaded machine that preempts it doesn't turn a code hit into a model call): an exception or an overrun is a miss, never an error to the student. The index it reads (courses, assignments, compiled matchers and the current courses' concept maps) is built at launch after the first bootstrap query and at prewarm, or else once, synchronously, before a command's budget starts (about 0.2–0.5 s on the operator's 2,253 resources); it is rechecked at most every 2 s, rebuilt when the sources' revision changes and re-read when a concept map changes. A match already resolved is kept even past the budget.
+- **The AI fallback** (`packages/packs/intent`, `intent-classify` v1, pass tier). Input: the utterance, the current course and code's hints. The prefix is the catalogue (name, description, argument names), an argument glossary and the course codes and names: byte-stable, so the provider caches it. No passages and no student data beyond course names and codes. Output (strict): `{action, args: {course, assignment, topics, date, query, kind, count, scope}, confidence: high|low, alternatives, question}`. Code then checks that the action exists and re-resolves every argument: an invented course, assignment or date is refused and becomes `clarify`, never a guess; low confidence becomes `clarify` with the alternatives. The runner escalates to the strong tier only when the output fails the schema. The cache key is the normalised utterance plus the prefix hash, so a repeat costs 0 tokens. Consent is `maySend` with the utterance as `course_text`, with a receipt per send. With no client connected, a code hit still runs and a miss says that only exact commands work.
+- **The grounded ask** (`intent/ask.ts`, `intent-ask` v1). Code retrieves with `searchPassages` (contentless FTS, BM25) over the current course, or all current courses when asked, within 3,000 tokens and 8 passages. The coverage gate answers "Not in your materials." with no model call. One checked call returns sentences, each citing 1–3 passages with verbatim quotes; `findQuote` checks every quote, a sentence with no checked quote is dropped (counted in `dropped`), and each citation carries the resource, its URL and the offsets in the current text. Planning records are a separate table and are never retrieved.
+- **The ledger.** Each command writes an `intent-route` row (the path in `tier`, the action, the latency); tokens stay on the per-call rows, so nothing is counted twice.
+
+**Latency (the operator's requirement: a code miss adds effectively nothing).**
+- *Speculation, gated.* When a command arrives, the AI branch starts preparing at once (the client lookup, the catalogue prompt, the cache lookup) in parallel with the resolver; the send is gated on the resolver's verdict. A code hit aborts the branch before anything is sent; a miss sends as soon as preparation is ready.
+- *Measured* (`tests/intent-latency.test.ts`, fake CLI at a fixed 800 ms through a warm pooled session, 24 interleaved pairs, in the full parallel suite): fallback p50/p95 811/819 ms against AI-only 809/820 ms (added p95 −0.9 ms; earlier runs −17 to +4 ms, which is scheduling jitter). A code hit: p50 1.1 ms, p95 3.2 ms, 0 billed calls.
+- *Why not "send at once, cancel on a hit".* In this single-threaded worker the resolver is synchronous and sub-millisecond, so the send's first await resumes only after the resolver has answered: the `race` mode measured the same (0 billed, miss p95 814 ms). A true send-first would need the resolver deferred, which would bill a call per code hit and, on the pool, kill the warm session on every abort. We keep `gate`.
+- *Pre-warm and preview.* `mode: "prewarm"` (call it when the bar opens or dictation starts) builds the course index and the catalogue prefix and finds the client; it reports `ready {ai}`. `mode: "preview"` (debounce about 300 ms while typing or dictating) runs only the code resolver and returns a hint; it never calls the model. Claude answers through a session pool (lane `interactive:intent`). `prewarm` calls `SessionPool.warm()`, which starts the CLI with the byte-stable catalogue prefix and sends nothing (0 tokens), so even the first AI command skips the CLI's start-up (tested: one spawn at prewarm, none for the next two commands).
+
+**Live evaluation (private data; aggregates only; the raw file stays in `research/`).** 40 realistic commands on a read-only copy of the operator's workspace. Code path: 25/40 (63%), all 25 correct. Clarifications: 3/40, all by code at 0 tokens (two expected; one had no concept map to find the course from a topic). The other 12 need the model; the AI path was not run because no isolated client profile is signed in. Resolver p95 0.7 ms; code-path commands excluding the agenda p50 0.6 ms, p95 8.5 ms. The agenda was slow because core's D40 `due` verb rebuilt `courseInclusion` once per assignment (O(n²): 25–41 s on 306 assignments). With that computed once, the `due` verb alone takes p50/p95 576/580 ms, and the agenda command (now the pipeline's agenda) takes 216/264 ms. Ask: the coverage gate retrieved passages for 9 of 10 real questions and answered "Not in your materials" for 1 with no call; citation pass rates need a signed-in client.

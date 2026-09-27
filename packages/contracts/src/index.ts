@@ -948,6 +948,19 @@ export const dayPlanEntrySchema = z
   })
   .strict();
 export type DayPlanEntry = z.infer<typeof dayPlanEntrySchema>;
+/**
+ * A UW GitLab project the student linked to a course by hand, for courses whose Canvas
+ * material never links the project. `projectPath` is the namespace/project path.
+ */
+export const gitlabLinkSchema = z
+  .object({
+    accountScope: id,
+    courseId: id,
+    projectPath: z.string().min(3).max(300).regex(/^[\w.-]+(?:\/[\w.-]+)+$/),
+    addedAt: instant,
+  })
+  .strict();
+export type GitlabLink = z.infer<typeof gitlabLinkSchema>;
 export const syncRunSchema = z
   .object({
     id,
@@ -1038,6 +1051,10 @@ export interface Store {
   dayPlan(): DayPlanEntry[];
   setDayPlanEntry(value: DayPlanEntry): void;
   removeDayPlanEntry(key: string, date: string): void;
+  gitlabLinks(): GitlabLink[];
+  /** Adds or refreshes one course's manual GitLab project link. */
+  setGitlabLink(value: GitlabLink): void;
+  removeGitlabLink(accountScope: string, courseId: string, projectPath: string): void;
   /**
    * Deletes a source the student disconnected and everything captured from it; returns the
    * number of items removed. Not for failed or empty reads, which must never erase coursework.
@@ -1118,6 +1135,7 @@ export interface Snapshot {
   mcpGrants?: McpGrant[];
   consents?: ConsentRecord[];
   dayPlan?: DayPlanEntry[];
+  gitlabLinks?: GitlabLink[];
 }
 // owner: T05b. The integration seams: the learning channel (spec §8.1 of the learning spec,
 // its practice addendum, and T47/T53's practice.target and practice.assessmentQuiz), the
@@ -1472,6 +1490,66 @@ export interface WorkspaceResult {
   }[];
   message?: string;
 }
+// owner: intent. The command bar's plain-language request (typed with Ctrl+K or dictated into the
+// same bar). `run` resolves and runs one registered action; `preview` runs only the code resolver
+// (0 tokens, never the model) for a live hint; `prewarm` readies the AI fallback when the bar opens.
+export const intentCommandSchema = z
+  .object({
+    text: z.string().max(500),
+    context: z
+      .object({ courseId: id.optional(), view: z.string().max(100).optional(), noteId: id.optional() })
+      .strict()
+      .optional(),
+    /** `preview` here is deprecated: use the `intent.preview` query, which skips the snapshot. */
+    mode: z.enum(["run", "preview", "prewarm"]).optional(),
+  })
+  .strict();
+export type IntentCommand = z.infer<typeof intentCommandSchema>;
+/** Surface arguments: what the student said, before code resolves them to IDs and dates. */
+export interface IntentSlots {
+  course?: string | null;
+  assignment?: string | null;
+  topics?: string[] | null;
+  date?: string | null;
+  /** A clock time or range as said ("3pm", "2-3:30pm"); code reads it. */
+  time?: string | null;
+  query?: string | null;
+  kind?: "cards" | "quiz" | null;
+  count?: number | null;
+  scope?: "course" | "all" | null;
+}
+export interface IntentCandidate {
+  action: string;
+  args: IntentSlots;
+  /** What the choice does, in the student's words. */
+  label: string;
+}
+export interface IntentCitation {
+  sourceId: string;
+  resourceId: string;
+  title: string;
+  url: string;
+  /** Exactly as it appears in the resource text; code checked it. */
+  quote: string;
+  start: number | null;
+  end: number | null;
+}
+/** How the request was understood: code (0 tokens), the model, the model's cached answer, or neither. */
+export type IntentPath = "code" | "ai" | "cache" | "none";
+export type CommandOutcome =
+  | { status: "ran"; action: string; args: Record<string, unknown>; result: unknown }
+  | { status: "clarify"; question: string; candidates: IntentCandidate[] }
+  | { status: "answer"; text: string; citations: IntentCitation[]; notFound: boolean; dropped: number }
+  | { status: "unavailable"; reason: string }
+  | { status: "preview"; hint: string | null; action: string | null; slots: IntentSlots }
+  /** prewarm: whether the AI fallback is connected and ready. */
+  | { status: "ready"; ai: boolean };
+export type IntentCommandResult = CommandOutcome & {
+  path: IntentPath;
+  latencyMs: number;
+  tokens: { in: number; cached: number; out: number };
+};
+// end owner: intent
 // owner: T15. Scoped queries (O1): a view asks for what it shows instead of the whole workspace.
 export const queryRequestSchema = z.discriminatedUnion("view", [
   z.object({ view: z.literal("summary") }).strict(),
@@ -1539,6 +1617,16 @@ export const queryRequestSchema = z.discriminatedUnion("view", [
     })
     .strict(),
   // end owner: agenda
+  // owner: intent. The command bar's live hint while typing or dictating: the code resolver only,
+  // 0 tokens, never the model, and no snapshot recompute (the query channel).
+  z
+    .object({
+      view: z.literal("intent.preview"),
+      text: z.string().max(500),
+      courseId: id.optional(),
+    })
+    .strict(),
+  // end owner: intent
 ]);
 export type QueryRequest = z.infer<typeof queryRequestSchema>;
 // owner: agenda. D49 result shapes; the ranking and every number in them are code's.
@@ -1731,7 +1819,8 @@ export type QueryResult =
       guide: unknown;
     }
   // end owner: guides
-  | AgendaQueryResult; // owner: agenda
+  | AgendaQueryResult // owner: agenda
+  | { view: "intent.preview"; preview: IntentCommandResult }; // owner: intent
 // end owner: T15
 export const commandSchema = z.discriminatedUnion("type", [
   z
@@ -1801,6 +1890,23 @@ export const commandSchema = z.discriminatedUnion("type", [
     })
     .strict(),
   z.object({ type: z.literal("fixture") }).strict(),
+  // A student-supplied UW GitLab project for a course the connector could not discover.
+  z
+    .object({
+      type: z.literal("gitlab-link"),
+      accountScope: id,
+      courseId: id,
+      url: z.string().min(1).max(2000),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("gitlab-unlink"),
+      accountScope: id,
+      courseId: id,
+      projectPath: z.string().min(1).max(300),
+    })
+    .strict(),
   // Removes only the Outlook calendar and its meetings from this device. Used by disconnect and sign-out.
   z.object({ type: z.literal("outlook-disconnect") }).strict(),
   // owner: T30. Removes the Graph mail and calendar records (tokens and delta links are main's).
@@ -1860,6 +1966,9 @@ export const commandSchema = z.discriminatedUnion("type", [
     .object({ type: z.literal("learning"), request: learningRequestSchema })
     .strict(),
   // end owner: T05b
+  // owner: intent
+  z.object({ type: z.literal("command"), value: intentCommandSchema }).strict(),
+  // end owner: intent
   // owner: notes
   z.object({ type: z.literal("notes"), request: notesRequestSchema }).strict(),
   // end owner: notes
@@ -1879,6 +1988,7 @@ export type CommandResult = {
   // end owner: T05b
   notes?: NotesResult; // owner: notes
   citations?: CitationResult[];
+  command?: IntentCommandResult; // owner: intent
 };
 export const localQuestionSchema = z
   .object({

@@ -332,5 +332,8 @@ export function runQuery(store: Store, request: QueryRequest, context: QueryCont
     case "workspace.bootstrap":
       return workspaceBootstrapView(store, request, context.now());
     // end owner: agenda
+    // owner: intent. Answered by core's intent seam before runQuery; reaching here means no seam.
+    case "intent.preview":
+      throw new Error("The command bar isn't built yet.");
   }
 }
