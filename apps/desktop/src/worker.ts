@@ -16,6 +16,7 @@ import { createLearningRouter, type StudyContext } from "../../../packages/learn
 import { createStudyContextResolver } from "./learning-context";
 import { createExamEvidence } from "../../../packages/learning/src/exam/evidence"; // owner: exam-prep
 import { dirname, join } from "node:path";
+import { homedir, platform as osPlatform } from "node:os";
 import {
   createLocalDocumentExtractor,
   createLocalOcrAdapter,
@@ -219,7 +220,7 @@ const intent = createIntentRouter({
 // end owner: intent
 // owner: notes. Session notes: batch scaffolds on the tick, "fill from slides" through the same
 // runner, and Google Docs sync through main (which alone holds the token). Microsoft waits for graph.ts.
-import { createNotesService, googleRemote, microsoftRemote, type NotesRemote } from "../../../packages/notes/src/index";
+import { createLocalNotesDrive, createNotesService, detectCloudFolders, googleRemote, microsoftRemote, type NotesRemote } from "../../../packages/notes/src/index";
 function notesHostCall(payload: unknown, timeoutMs: number): Promise<any> {
   const id = randomUUID();
   return new Promise((resolve, reject) => {
@@ -251,7 +252,14 @@ notesRemotes.microsoft = microsoftRemote(
   (request) => graphHost.transport(request),
   async () => graphScopes.includes("Files.ReadWrite.AppFolder"),
 );
-const notes = createNotesService({ store, runner: generationRunner, remotes: notesRemotes });
+// Notes saved straight to a folder the student's own OneDrive, Google Drive or iCloud client
+// already syncs: zero setup, no sign-in (see packages/notes/src/local-drive.ts). The chosen
+// folder and each note's last-written hash live in a small JSON file beside the workspace db.
+const localNotesDrive = createLocalNotesDrive({
+  statePath: join(dirname(process.env.MAGIC_DB_PATH!), "notes-local-drive.json"),
+  detect: () => detectCloudFolders({ platform: osPlatform(), env: process.env, home: homedir() }),
+});
+const notes = createNotesService({ store, runner: generationRunner, remotes: notesRemotes, localDrive: localNotesDrive });
 // end owner: notes
 // owner: agenda. The app's registry (owner: drain: only kinds that need a queue) plus agenda.estimate:
 // code estimates, then the student's own client on the background lane (one call per course

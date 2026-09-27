@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { ClientHealth, ClientMode, Command, CommandResult, OutlookStatus, SignInOutcome, Snapshot } from "@magic/contracts";
+import type { ClientHealth, ClientMode, Command, CommandResult, DetectedLocalFolder, OutlookStatus, SignInOutcome, Snapshot } from "@magic/contracts";
 import {
   CONSENT_DISCLOSURE_VERSION,
   hasCurrentConsent,
@@ -1189,7 +1189,21 @@ function ConnectionsStep({
 }) {
   const [microsoft, setMicrosoft] = useState<RowState>({ kind: "checking" });
   const [google, setGoogle] = useState<RowState>({ kind: "checking" });
+  const [localFolders, setLocalFolders] = useState<DetectedLocalFolder[]>([]);
+  const [localChosen, setLocalChosen] = useState<string | null>(null);
   const googleIdle: RowState = { kind: "connect", text: "Your lecture notes, synced to Google Docs you choose.", label: "Connect" };
+  const googleNotConfigured: RowState = { kind: "unavailable", text: "Needs setup: sign-in isn't configured in this build." };
+  const loadLocal = useCallback(() => {
+    run({ type: "notes", request: { op: "notes.localFolders.status" } })
+      .then((result) => {
+        const notes = result?.notes;
+        if (notes?.status === "ok" && "local" in notes) {
+          setLocalFolders(notes.local.folders);
+          setLocalChosen(notes.local.folder);
+        }
+      })
+      .catch(() => {});
+  }, [run]);
   useEffect(() => {
     const bridge = window.magic;
     if (bridge?.outlookStatus) bridge.outlookStatus().then((s) => setMicrosoft(outlookRow(s))).catch(() => setMicrosoft(outlookRow(null)));
@@ -1199,11 +1213,17 @@ function ConnectionsStep({
         const notes = result?.notes;
         if (!notes || notes.status !== "ok" || !("sync" in notes)) return setGoogle({ kind: "unavailable", text: "Not available here." });
         const g = notes.sync.providers.find((p) => p.provider === "google");
-        setGoogle(g?.connected && g.enabled ? { kind: "connected", text: "Connected." } : googleIdle);
+        if (g?.connected && g.enabled) return setGoogle({ kind: "connected", text: "Connected." });
+        setGoogle(g?.message && /isn't configured/.test(g.message) ? googleNotConfigured : googleIdle);
       })
       .catch(() => setGoogle({ kind: "unavailable", text: "Not available here." }));
-    // googleIdle is constant text.
-  }, [run]);
+    loadLocal();
+    // googleIdle/googleNotConfigured are constant text.
+  }, [run, loadLocal]);
+  const chooseLocalFolder = async (folder: string | null) => {
+    await run({ type: "notes", request: { op: "notes.localFolders.choose", folder } });
+    loadLocal();
+  };
   const connectMicrosoft = async () => {
     setMicrosoft({ kind: "working", text: "Finish signing in with Microsoft." });
     try {
@@ -1256,6 +1276,32 @@ function ConnectionsStep({
         {row("Microsoft 365", microsoft, () => void connectMicrosoft())}
         {row("Google Drive", google, () => void connectGoogle())}
       </ul>
+      {localChosen ? (
+        <p className="onb-note">
+          Notes are saved to {localChosen}. Its own sync client uploads them from there.{" "}
+          <button className="onb-link" onClick={() => void chooseLocalFolder(null)}>
+            Stop
+          </button>
+        </p>
+      ) : localFolders.length ? (
+        <>
+          <p className="onb-lede">Or save your notes straight to a folder already syncing on this device. No sign-in needed.</p>
+          <ul className="chn-rows" aria-label="Local note folders">
+            {localFolders.map((f) => (
+              <li key={f.id} className="chn-row">
+                <span className="chn-row-text">
+                  <span className="chn-row-name">{f.label}</span>
+                </span>
+                <span className="chn-row-end">
+                  <button className="chn-action" onClick={() => void chooseLocalFolder(f.path)}>
+                    Save notes to {f.label}
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
       <Actions onBack={onBack}>
         <button className="onb-primary" onClick={onNext}>
           {microsoft.kind === "connected" || google.kind === "connected" ? "Continue" : "Skip for now"}
