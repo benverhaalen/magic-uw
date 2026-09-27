@@ -307,7 +307,12 @@
 .chn-row:last-child {
   border-bottom: 1px solid var(--magic-line-quiet);
 }
+.chn-row-mark {
+  flex: none;
+  width: 20px;
+}
 .chn-row-text {
+  flex: 1;
   display: grid;
   gap: 2px;
   min-width: 0;
