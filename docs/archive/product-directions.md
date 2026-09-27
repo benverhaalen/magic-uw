@@ -1,8 +1,10 @@
+> **Archived September 27, 2026.** Superseded by [Home and visual direction](../home-design-direction.md) and [DESIGN.md](../../DESIGN.md). Kept as exploration history.
+
 # Six organizing concepts
 
-Earlier proposals, September 26, 2026. **Superseded for Home entry and navigation by [Home and visual direction](home-design-direction.md).** Retained as exploration history. Each changes the primary unit of organization and the normal entry point, not merely the sidebar or colors. They all retain source evidence, course policy, local ownership, correction, and the ability to use existing apps.
+Earlier proposals, September 26, 2026. **Superseded for Home entry and navigation by [Home and visual direction](../home-design-direction.md).** Retained as exploration history. Each changes the primary unit of organization and the normal entry point, not merely the sidebar or colors. They all retain source evidence, course policy, local ownership, correction, and the ability to use existing apps.
 
-Reference roles and inspection limits are in [reference-driven design](reference-driven-design.md). A named reference supplies a mechanism to investigate, not evidence that students prefer this proposal.
+Reference roles and inspection limits are in [reference-driven design](../reference-driven-design.md). A named reference supplies a mechanism to investigate, not evidence that students prefer this proposal.
 
 ## 1. The day — organize by time
 

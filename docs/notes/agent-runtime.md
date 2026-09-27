@@ -92,7 +92,7 @@ The app finds the installed CLI, **reuses its existing sign-in** by running the 
 ## Terms, as they stand
 - **Anthropic (sourced):**
   - The binary is unmodified.
-  - "Customers may not pay for, resell, or intermediate Claude usage on their end users' behalf." The app's one-time price covers Jev and the service, **never model usage.**
+  - "Customers may not pay for, resell, or intermediate Claude usage on their end users' behalf." The app's price ($5 a month) covers Jev and the service, **never model usage.**
   - Running Claude Code in a product requires the team to accept the Commercial Terms.
   - "Claude Code" can't be part of the product's name.
   - Whether OpenRouter counts as a "3P inference provider credential" isn't stated (inferred open).

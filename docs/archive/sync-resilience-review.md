@@ -1,3 +1,5 @@
+> **Archived September 27, 2026.** Superseded by [the architecture](../architecture.md#4-sync) and [implementation status](../implementation-status.md): this work is on main and later sync changes (current courses only, change-driven refresh, redirect-safe session reads) build on it. Kept for its investigation and handoff record.
+
 # Canvas sync resilience: investigation and reconciliation
 
 Research and implementation brief, September 26, 2026. **Implemented and integrated into main; verified as described below. No packaged release or live UW verification is claimed.**
@@ -109,7 +111,7 @@ Quiet SSO recovery, remembered passwords and automatic login windows remain outs
 
 ### Nuances that change the implementation
 
-Planning-skill follow-up: the objective is usable, correctly scoped course evidence with less student repair, not a larger inventory. These are proposed refinements to the architecture, grounded in the existing source/version, exact-link and consent rules in [course intelligence](course-intelligence.md), [pipeline details](pipeline-details.md) and [decisions](decisions.md#pricing-and-ai-access-resolution--september-26). They do not claim new implementation or live verification.
+Planning-skill follow-up: the objective is usable, correctly scoped course evidence with less student repair, not a larger inventory. These are proposed refinements to the architecture, grounded in the existing source/version, exact-link and consent rules in [course intelligence](../course-intelligence.md), [pipeline details](../pipeline-details.md) and [decisions](../decisions.md#pricing-and-ai-access-resolution--september-26). They do not claim new implementation or live verification.
 
 | Distinction | Required behavior and discriminating check |
 | --- | --- |
@@ -213,7 +215,7 @@ This reconstructs documented reasons, not either author's private thinking. Ben'
 | Recover a session | One conditional same-session SSO navigation could spare a sign-in without storing a password; otherwise a quick prompt is acceptable. | D39 records an explicit operator request to make returning easy with opt-in remembered credentials, and a rereading of UW's password-manager exception. D8 rejects keepalive; T05d gates authenticated work on presence. | Both reduce repair effort, but use different credentials and assumptions. Nate's policy interpretation is his documented rationale, not this review's independent compliance finding. His latest push leaves H2/H3 open. |
 | Show limitations | Hidden/restricted areas should not look like a broken account. | D41 records access by space so a course can show what still needs connection, without blocking study. | Complementary scope-level detail and course-level summary. Observed restriction and hidden navigation remain separate facts. |
 
-The planning skill's [implementation decisions](../.agents/skills/magic-feature-planning/references/implementation-decisions.md) require tracing the producing path and separating observed behavior, stated rationale, and inference. Applied here, the common acceptance journey is: a student refreshes a course with a denied Files list; a permitted module-linked PDF becomes extracted, stored, usable evidence; unrelated courses finish; later undated additions arrive; true expiry preserves everything and offers the agreed recovery route.
+The planning skill's [implementation decisions](../../.agents/skills/magic-feature-planning/references/implementation-decisions.md) require tracing the producing path and separating observed behavior, stated rationale, and inference. Applied here, the common acceptance journey is: a student refreshes a course with a denied Files list; a permitted module-linked PDF becomes extracted, stored, usable evidence; unrelated courses finish; later undated additions arrive; true expiry preserves everything and offers the agreed recovery route.
 
 Two corrections to an overly broad conflict reading matter. **“No stored password” qualifies Ben's proposed recovery attempt; it is not an explicit rejection of a separately opted-in feature. “No hidden window” is T05c's session-task constraint; D32 explicitly allows hidden windows for bounded content reads.** A hidden session-recovery attempt would require reconciling T05c, but Nate does not prohibit all hidden browser work. H3 is a distinct UX conflict with the existing no-background-login-popup rule.
 
@@ -225,7 +227,7 @@ An independent agent reviewed the original inputs without this report, then chec
 
 ### 1. Scope denial currently aborts the whole run
 
-`CanvasHttp.request` in [canvas-http.ts](../packages/connectors/src/canvas-http.ts) expires immediately on 401, redirects, off-path/off-origin responses, and HTML; a non-rate-limit 403 also expires. `expire()` aborts the controller shared by requests in that HTTP instance. Course loops in [canvas.ts](../packages/connectors/src/canvas.ts) stop when `needsSignIn` becomes true. [ingestion.ts](../apps/desktop/src/ingestion.ts) then marks all Canvas sources as needing sign-in and skips document ingestion; [refresh.ts](../packages/core/src/refresh.ts) delays authenticated retries for three intervals.
+`CanvasHttp.request` in [canvas-http.ts](../../packages/connectors/src/canvas-http.ts) expires immediately on 401, redirects, off-path/off-origin responses, and HTML; a non-rate-limit 403 also expires. `expire()` aborts the controller shared by requests in that HTTP instance. Course loops in [canvas.ts](../../packages/connectors/src/canvas.ts) stop when `needsSignIn` becomes true. [ingestion.ts](../../apps/desktop/src/ingestion.ts) then marks all Canvas sources as needing sign-in and skips document ingestion; [refresh.ts](../../packages/core/src/refresh.ts) delays authenticated retries for three intervals.
 
 Direct synthetic experiments against the unchanged implementation confirmed:
 
@@ -262,7 +264,7 @@ Request model: before = module-list pages + all per-module item-list pages; afte
 
 ### 4. File discovery must reach download admission
 
-[ingestion.ts](../apps/desktop/src/ingestion.ts) admits documents only when `r.file.id` exists and the source scope equals `files`. A module item's `contentId` is stored but does not satisfy that predicate. The page parser already preserves stable file identity when removing verifier URLs; simply finding that link does not enqueue the download.
+[ingestion.ts](../../apps/desktop/src/ingestion.ts) admits documents only when `r.file.id` exists and the source scope equals `files`. A module item's `contentId` is stored but does not satisfy that predicate. The page parser already preserves stable file identity when removing verifier URLs; simply finding that link does not enqueue the download.
 
 Implement one bounded discovery queue keyed by account, course, and file ID. Feed it listed files, File module items, and safe Canvas file links from all requested body sources. Preserve each discovery edge; deduplicate the download. Resolve metadata through the [single-file GET](https://canvas.instructure.com/doc/api/files.html), validate exact identity and available course context, then use the existing document manager. A foreign-course URL must not silently become a file belonging to this course. Global file links need explicit provenance and must not assert an ownership field the API did not supply.
 

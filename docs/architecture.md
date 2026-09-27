@@ -1,142 +1,229 @@
-# Technical direction
+# My Magic UW architecture
 
-## Sync resilience integration
+My Magic UW is an independent student project, not affiliated with the University of Wisconsin–Madison.
 
-The integrated sync resilience extension shares validated acquisition results across capture, inventory and freshness; resolves typed references through the existing document pipeline; and persists access observations independently of saved evidence. Learning keeps migration v8 and this extension uses v9. Product code is integrated into main; no packaged release is claimed. See the [canonical handoff](sync-resilience-review.md#implementation-handoff--september-26-2026) for the implemented interfaces and evidence.
+This is the canonical architecture: processes, packages, data flow, the AI boundary, retrieval, study, notes and Outlook, privacy and the open agent layer. Per-feature status and evidence are in [implementation status](implementation-status.md); measurements and their methods are in [benchmarks](benchmarks.md). Deeper backend reference (the schema history, the job-handler contract, the measured effect of each design choice, the command bar) is in [the backend reference](course-backend-architecture.md); the platform and developer view is in [the academic data platform](academic-data-platform.md).
 
-## The app's backend
+**Checked against:** `main` at `42217fb` (September 27, 2026), after wave 2 and the tab-speed work (#53), course analytics (#55), the study prepper (#57), the stall fix (#58), the break-card fixes (#59) and the Canvas file-CDN host fix (`749f389`).
 
-The course backend described in [course backend architecture](course-backend-architecture.md) is the app's backend: one local SQLite store (schema v7) with passages, the course map, course spaces and learning tables; passage retrieval; scoped queries; the job drain; the runner for the student's own AI client; prompt packs; and the learning engines. Status as of 2026-09-26 late (branch `feat/course-backend` at `33b1827`, 540/540 tests): storage, sync, consent, sign-in and onboarding are integrated; retrieval, the drain, the runner, packs and the learning engines are tested in isolation; the open platform contract (D42) is proposed. The canonical status per piece is [its §2](course-backend-architecture.md#2-where-we-are); the developer view and the scorecard are in [academic data platform](academic-data-platform.md). The sections below are the earlier direction and remain as written.
+**Status marks used on this page**
 
-Status: architecture direction with a working implementation foundation. Electron, a local SQLite worker, expanded Canvas/material connectors, background refresh, local MCP grants, privacy gates, and a narrow Jev gateway are implemented. See [implementation status](implementation-status.md) for capability and validation boundaries, and [development](development.md) to run them. The broader mechanisms below remain direction unless identified as implemented. Tool choices follow [engineering principles](engineering-principles.md).
+| Mark | Meaning |
+|---|---|
+| **main** | merged into `main` |
+| **branch** `name` | pushed on that branch, not merged (no part below is branch-only at this check) |
+| **planned** | specified in a plan or decision; no code |
 
-## System shape
+The finer ladder (researched, proposed, built, tested in isolation, integrated, demonstrated) is applied per feature in [implementation status](implementation-status.md).
+
+## 1. The principle: AI writes, code decides
+
+Code does everything with one right answer: dates, IDs, permissions, budgets, quotes and change detection. Jev makes small typed judgments code can't. The student's own AI is called once, with tools off, only where language must be read or written, and code checks every quote, number, date and ID it returns. Study itself runs at zero model tokens. The reasoning is in [spec §2](plans/2026-09-26-course-backend/spec.md).
+
+## 2. Processes
 
 ```mermaid
 flowchart LR
-  A[Student-authorized sources] --> B[Local connectors and capture]
-  B --> C[Versioned SQLite store]
-  C --> D[Code: exact facts and candidates]
-  D --> E[Jev: bounded judgments]
-  E --> C
-  C --> F[Cached UI and source evidence]
-  C --> G[Context compiler]
-  G --> H[Chosen language model]
-  H --> F
+  subgraph PC["Student's computer"]
+    R["Renderer (React)<br/>Home, Courses, Calendar, My UW, Study & Learn, Sources, chat launcher, voice"] -->|"preload bridge: magic:* channels"| M
+    M["Main process<br/>owns the persist:uw session, consent gate,<br/>sign-in and Microsoft windows, Graph proxy,<br/>session reads (redirect-safe), embedded Jev gateway on 127.0.0.1"]
+    M <-->|"utilityProcess messages:<br/>command, query, source-fetch, graph, evaluate"| W
+    W["Utility worker<br/>Store (the one writer), ingestion and refresh,<br/>one job drain, runner and warm pool,<br/>intent router, learning, notes"]
+    W --> DB[("workspace.sqlite<br/>node:sqlite, WAL, schema v14")]
+    W -->|"spawn: prompt on stdin, tools off,<br/>env allowlist, JSON schema"| C["Student's Claude Code or Codex"]
+    MCP["mcp-server.cjs<br/>read-only course bank"] -.->|"readOnly open; receipts to a side log"| DB
+  end
+  M -->|"signed-in reads for the worker"| UW["UW: Canvas, Course Search & Enroll, My UW, GitLab"]
+  M -->|"allowlisted Graph GETs; token held by main"| MS["Microsoft Graph"]
+  W -->|"public client, after consent"| PUB["Public course sites, calendar feeds"]
+  C --> AI["The student's AI provider"]
+  EXT["The student's own AI client"] -.->|"stdio MCP"| MCP
 ```
 
-Jev is hosted. Any selected context sent to Jev or a hosted language model leaves the device. No school session or cookie should follow it. A truly local processing mode needs local alternatives or disabled hosted features.
+- **Renderer → preload → main** (**main**). The renderer has no Node access; `apps/desktop/src/preload.ts` exposes typed `magic:*` channels, and commands go through `magic:execute` against `commandSchema` in `packages/contracts`.
+- **Voice** (**main**, `42217fb`): on-device streaming speech (Apple) with a local Whisper fallback, a rolling transcript and Stop; exact page commands navigate without a model call. A connected-agent planner exists but needs the provider, consent, Jev and macOS Accessibility before it can act ([desktop handoff](design-handoff.md)).
+- **Main owns every credential and session** (**main**). The worker never holds cookies or tokens: it asks main for each signed-in read (`source-fetch`), each Graph request (main checks the URL against an allowlist and attaches the token) and each Jev call (`evaluate`).
+- **Every session read goes through one redirect-safe helper** (**main**, #53). Electron 44's `session.fetch(url, { redirect: "manual" })` rejects every redirect, and every Canvas file download is a redirect, so a live run on September 27 lost 386 of 386 files. `sessionHopFetch` (`packages/connectors/src/session-fetch.ts`) drives `net.request` itself: only the Canvas hop carries cookies, refused downloads (403/404/410) become "not available to you", and timeouts, network errors, 429 and 5xx retry twice (1 s, 4 s). Every main-process session read (Canvas API, GitLab, Kaltura, course spaces, the sign-in check, UW planning reads) now sees a redirect as a 3xx, so a sign-out redirect becomes `needs_sign_in` instead of a transport failure. A later live refresh got all 98 files past Canvas's first redirect and then stopped at Instructure's file-service CDN (`cdn.inst-fs-…inscloudgate.net`); `canvasFileHost` now allows exactly that prefix (`749f389`), and non-Canvas hops stay cookie-less.
+- **The utilityProcess worker** (**main**, `apps/desktop/src/worker.ts`) owns the Store, ingestion, refresh, the job drain, the runner and the learning and notes routers. It answers one message at a time, which is why the snapshot poll matters ([§12](#12-performance-where-the-time-goes)).
+- **node:sqlite** (**main**): one file, one writer, WAL, `busy_timeout` 5000, `secure_delete` on; `SCHEMA_VERSION = 14` (`packages/storage/src/index.ts`). Schema history: [backend reference §5](course-backend-architecture.md#5-storage).
+- **`mcp-server.cjs`** (**main**): a separate, optional stdio process the student's own AI client launches; it opens the database read-only ([§11](#11-the-open-agent-layer)).
+- **Jev in the desktop build** (**main**, temporary): a build with `MAGIC_EMBED_TYPESAFE_KEY` compiles the key into `main.cjs` only, and main runs the gateway in-process on `127.0.0.1` (`apps/desktop/src/embedded-jev.ts`); a configured `MAGIC_GATEWAY_URL` wins, and a build without the variable embeds nothing and uses code rules. The key is never in Git, the worker, the renderer or logs. The accepted risk and its reasons are in [decisions](decisions.md#2026-09-27--embedded-jev-key-temporary). The hosted gateway (`apps/gateway`) is not deployed.
 
-## Access and fetching
+## 3. Packages
 
-Concrete current endpoints, paging, concurrency, throttling limitations, session tests, and proposed reconnect behavior are preserved in [pipeline details](pipeline-details.md). It also distinguishes announcements from activity coverage, Graph metadata paging, intended identity scrubbing, exact citation validation, and a testable link-threshold method. Read those boundaries before treating this architecture direction as implemented behavior.
+```mermaid
+flowchart LR
+  contracts --> domain --> core
+  retrieval --> core
+  storage --> core
+  connectors --> core
+  runner --> core
+  packs --> core
+  learning --> core
+  notes --> core
+  ai --> core
+  core --> desktop["apps/desktop"]
+  agentapi["agent-api"] --> desktop
+  ui --> desktop
+```
 
-Direction: use a legitimate student-authorized session where supported; otherwise a dedicated sign-in browser with NetID and student-completed Duo; an approved extension bridge is another candidate. Do not decrypt personal-browser cookies or evade idle expiry. One sign-in spanning all UW systems is an untested hypothesis.
+| Package | Responsibility |
+|---|---|
+| `contracts` | the typed commands, queries and results every process shares (zod schemas) |
+| `domain` | pure rules: deadlines and their extraction, changes, course labels and policy, enrollment matching, planning, the Today rail, work projection; GPA (`gpa.ts`) |
+| `storage` | the SQLite Store: migrations with a `VACUUM INTO` backup, passages and FTS, jobs, judgments, receipts, learning and notes tables, encryption at rest for sensitive fields |
+| `connectors` | Canvas, documents and OCR, course sites, GitLab, calendar feeds, Microsoft Graph, UW planning, session fetch |
+| `retrieval` | passage splitting (`split.v1`), Porter stemming, BM25 query terms with a coverage gate, exact quote checks (`findQuote`, `validateQuote`) |
+| `core` | the application core: egress and consent, access, evidence, refresh, queries and views, the course graph and agenda, site triage and recipes, course facts, the intent router and grounded ask, the one job drain, MCP |
+| `runner` | runs the student's Claude Code or Codex: client detection, instant mode, the warm pool, the env allowlist, the tool-use tripwire, the ledger |
+| `packs` | versioned prompt packs: cards, quiz items, guides, problems, estimates, intent, site mapping, strategy, narration |
+| `learning` | FSRS scheduling, knowledge states, Learn rounds, sectioned practice, exam prep, mastery, analytics, grades |
+| `notes` | lecture-note scaffolds and two-way sync with Word, Google Docs and local cloud folders |
+| `ai` | Ollama local tutoring and the Jev client |
+| `agent-api` | the versioned, grant-scoped read API for developers' tools |
+| `ui` | shared components, fonts, motion and deadline emphasis for the designed desktop |
 
-Do not assume unattended debugging access to a personal profile. Chrome DevTools MCP's explicit, student-approved auto-connect is a candidate; it requires compatible Chrome and disabling usage/performance reporting. Use a separate profile for experiments, and keep Ben's current computer/Canvas testing headless. Embedded Electron browser compatibility with each UW flow must be tested separately. A successful Canvas login does not prove Outlook, PeopleSoft, or DARS access.
+Apps: `apps/desktop` (Electron), `apps/gateway` (the Jev gateway server), `apps/web` (the four-page website). Accounts and payments use `api/lemon-webhook.ts` and `supabase/` ([accounts and payments](accounts-and-payments.md)).
 
-Connector ladder:
+## 4. Sync
 
-1. Official API or feed, with actually available authorization.
-2. JSON used by the site, only where access and semantics are understood.
-3. Rendered page and local document extraction/OCR.
-4. Browser agent for otherwise inaccessible workflows.
+```mermaid
+sequenceDiagram
+  autonumber
+  actor S as Student
+  participant M as Main
+  participant W as Worker
+  participant DB as SQLite
+  S->>M: one consent checkbox, then UW sign-in (NetID and Duo by the student)
+  M->>W: sign-in confirmed
+  W->>M: read enrollment (Course Search & Enroll) and the Canvas course lists
+  W-->>S: "Your courses": this term's checked, other sites unchecked, past and nameless hidden
+  S->>W: Start syncing
+  W->>M: source-fetch: inventory, then bounded reads (6 per host), files through the session
+  M-->>W: responses
+  W->>DB: resources, versions, passages with offsets (0 model calls)
+  Note over W,DB: later: hot tick, per-course probes, warm reads only of courses that moved
+```
 
-Agents can discover a recipe; deterministic code should run and validate it. Keep known-good samples and schema checks. Quarantine changes until key fields match. On failure preserve the previous capture and report its age; never overwrite it with an empty login page. No live browser agent on the demonstration's critical path.
+- **Enrollment first, current courses only** (**main**). After sign-in, onboarding reads the student's Course Search & Enroll enrollment and Canvas's course lists before any content. A course is read when Canvas lists an active enrollment in a published course whose term contains today (or ended at most 14 days ago), and an exact subject and catalog match with the enrollment corroborates it or rescues a term-less one. Completed and ended-term courses get no content reads, Canvas's nameless date-restricted rows are never stored, and nothing stored is deleted. The enrollment match is code only and never leaves the machine. Live-copy classification: 5 this term, 11 other, 11 past hidden, 7 nameless dropped ([status](status-2026-09-27.md)).
+- **Change-driven refresh** (**main**; the baselines since #53). A hot tick on Canvas's `todo` and `upcoming_events` every 5 minutes, a per-course content probe every 15 minutes and on focus, and warm reads only of the courses that moved. Since #53, refresh baselines survive a relaunch, a manual refresh probes first, and no URL is read twice in a run: relaunch 283 → 8 requests (70 → 2.9 s), first sync 126 → 30 s, manual refresh 283 → 56 requests, measured on a synthetic live-shaped account (`evals/perf/sync-account.ts`). One refresh catches all six change kinds tested (new course, file, page edit, syllabus, out-of-window due date, announcement).
+- **Presence**: signed-in reads run only while the student is present; no request keeps a UW session alive. Duo is never automated.
+- **File downloads** (**main**, #53): through the redirect-safe helper ([§2](#2-processes)); unchanged files are skipped from `updated_at` and size before any request. A 12 MB file downloads byte-exact in the test (synthetic local servers).
+- **Course websites** (**main**): code triages every outside host a course links (sync, read once, link only, ignore) before any fetch; 73 of 77 course-site pairs were decided with no fetch or model on a live copy (code only, no fetch).
+- **The material pipeline** (**main**): after a sync, the drain splits passages, resolves links and compiles each course by code (material roles, dates, terms, formulas, what each assignment references). On the operator's 6 live courses: 96.4% of 673 materials categorised with 0 model calls, and 100% of 175 body links recovered (aggregates only).
+- **One job drain** (**main**): idle-only, sliced, never during a sync; derivation runs in budgeted batches (drain 20.8 s → 0.5 s, longest stall 336 → 49 ms, synthetic). Contract: [backend reference §8](course-backend-architecture.md#8-one-job-drain).
 
-ICS plus a syllabus is a possible fallback with limited coverage, not an equivalent full integration. Outlook and degree audit should not become demo dependencies before access is demonstrated.
+Detailed Canvas reads, limits and recovery rules: [pipeline details](pipeline-details.md) and [course ingestion](ingestion-upgrade.md). My UW planning: [planning integration](planning-upgrade.md).
 
-## Record contract: current and intended
+## 5. Storage
 
-`packages/contracts/src/index.ts` is the implemented API shared by the app, core, store, and connectors. It includes scoped capture batches, typed course/material/submission evidence, versioned resources, field observations, source health, deadline claims, change events, refresh settings, privacy preferences, MCP grants, links, jobs, judgments, practice attempts, and data receipts. The table below is the fuller intended evidence model. Per-field observation times and document page/slide references are implemented; literal source spans for every fact, authored timestamps for every claim, and resolution-rule versions remain incomplete; consult [implementation status](implementation-status.md) before relying on them.
+One SQLite file on the student's computer: sources, versioned resources, passages with exact offsets and a contentless FTS5 index, material facts, the reference graph, the course profile and brief, jobs and judgments, receipts, learning state and notes. Every content table cascades from `sources`, and "Delete local data" enumerates `sqlite_schema`, so no derived table survives. Schema v14 encrypts mail fields, notes text, planning captures and life items (AES-256-GCM, key wrapped by the OS through `safeStorage`, destroyed on purge). Planning records are stored apart and never sent to AI, Jev, MCP or the agent API. Tables by version: [backend reference §5](course-backend-architecture.md#5-storage); tables grouped for developers: [platform §3](academic-data-platform.md#3-the-agent-first-academic-database).
 
-| Record         | Required meaning                                                                                                                                                |
-| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Capture        | Source and source ID, course/section/term scope, observed time, source update time if known, content hash, version, extraction status, local evidence reference |
-| Object         | Stable internal ID; assignment, material, class session, message, event, or course; fields tied to captures                                                     |
-| Field evidence | Value, source location/quote, last observed time, unknown/absent distinction                                                                                    |
-| Deadline claim | Due/lock/event kind, raw text, normalized value and zone, authored time if known, observed time, scope                                                          |
-| Resolution     | Selected interpretation, competing claims, rule/version, unresolved conflict, separate planning date                                                            |
-| Link           | Typed source/target, evidence and reason, method/model/question version, judgment distribution, user override/rejection                                         |
-| Judgment       | Object content hash, question version, pinned model version, result, generation/version guard                                                                   |
-| Source health  | Last attempt, last success, coverage, fresh/stale/blocked/partial/error status and recovery action                                                              |
-| Student state  | Personal completion, verified submission evidence, opened resources, preferences, attempts and assistance                                                       |
+## 6. The AI boundary
 
-Captures are versioned and normally append-only; deletions become markers. User-requested data deletion and retention controls must still be able to remove private data. A changed capture invalidates dependent judgments and summaries. Do not make an LLM brief the only place a factual field exists.
+```mermaid
+flowchart LR
+  Q["A request"] --> C1{"Code can decide?"}
+  C1 -->|yes, 0 tokens| OUT["Result"]
+  C1 -->|no| C2{"A small typed judgment?"}
+  C2 -->|yes| JEV["Jev: one judgment per item,<br/>cached by content hash"] --> OUT
+  C2 -->|"no: language must be read or written"| CALL["One checked call on the student's<br/>Claude Code or Codex"]
+  CALL --> CHECK["Code checks every quote, ID,<br/>number and date; failures dropped"] --> OUT
+```
 
-Assignment layers: raw source facts → code-derived facts → semantic judgments → student state. First useful fields: due-date evidence, points, submission state/location, kind, supporting links, and freshness. Effort can remain unknown until evidence supports a band.
+1. **Code first** (**main**): dates, IDs, submission types, permissions, quotes and most material roles. The intent router answers on a code path with 0 model calls when it resolves (a fallback adds a 4.2 ms paired median, synthetic). Since #53, "what changed since yesterday" and grade what-ifs also run in code.
+2. **Jev** (**main**): small typed judgments code can't make (assignment kind, message urgency), one per item, cached by title-and-text hash; code decides quiz and discussion items itself (100 → 50 Jev calls on a synthetic 100-assignment course). Jev can raise a notification's priority, never hide a message.
+3. **One checked call on the student's own AI** (**main**), through `packages/runner`:
+   - **Client detection**: finds Claude Code or Codex on any install layout (nvm, Volta, pnpm) by capability, not version.
+   - **Instant mode**: the student's already signed-in client runs with the app's configuration as flags only (`--safe-mode` for Claude Code; replaced base instructions and tools off for Codex), nothing written to their settings. Input tokens 3,021 → 1,298 (Claude Code) and 21,424 → 6,373 (Codex), measured (#29).
+   - **No tools**: prompt on stdin, a strict JSON schema, course text framed as untrusted data; Codex runs with 104 features disabled.
+   - **Env allowlist**: the child process gets only an allowlisted environment (`allowlistedEnv`, `packages/runner/src/process.ts`), so the student's other secrets never reach it.
+   - **Stream tripwire**: output is streamed and read line by line; a tool use kills the process tree (`packages/runner/src/tripwire.ts`). Checked live on Windows: both instant runs answer, and a forced Bash run is stopped.
+   - **Warm pool, byte-stable course prefix, content-hash cache**: a repeat costs 0 tokens. Since #53 the chat prefix is cacheable (past the 1,024-token minimum), each ask gets its own pooled session instead of the growing conversation, the requested card or question count is honoured, and quiz and cards may abbreviate long quotes, which code restores and re-checks. Known on main: the intent-latency test runs slow on Windows since the per-ask sessions.
+   - **Client health**: a typed state (not installed, not signed in, usage limited with the reset time, offline) before every run, so the student gets one notice instead of a failed call.
 
-## Deadline handling
+Mechanism table with each measured effect: [backend reference §6](course-backend-architecture.md#6-the-agent-runtime). Whether the subscription-CLI route fits each provider's terms is open (H5). A local Ollama model serves the optional local tutor ([AI and privacy](ai-and-privacy.md#local-model-selection)).
 
-Every source makes a claim. Structured fields are parsed by code; prose extraction must cite text that code can locate. Quote presence alone does not prove the date applies to this assignment, section, student, or term.
+## 7. Retrieval and grounding
 
-Proposed precedence: verified item-specific change → declared authoritative source → fresh structured fields → syllabus/schedule → supporting documents → item names. Check scope and freshness before applying precedence. Distinguish due time, lock time, class meeting, and personal extension.
+- **Passages** (**main**): materials split into ~1,000-character passages with exact character offsets, stored once; FTS5 in contentless-delete mode keyed by passage rowid. Search p50/p95 3.3/4.8 ms at 5,000 synthetic resources (MT1).
+- **"Not in your materials" is a real answer** (**main**): an OR + BM25 query with a term-coverage gate; below the gate the ask answers with no model call.
+- **Grounded ask** (**main**): code retrieves within 3,000 tokens and 8 passages; every cited quote is checked by `findQuote` against the exact passage version; generated items with an unverifiable quote are dropped. Since the break-card fix B1 (#59), every date, weekday, number and name in an answer sentence must appear in its checked quotes, or the quote is shown in the sentence's place ([break card](break-card.md)).
+- **Course facts and brief** (**main**): the syllabus brief becomes a stable prompt prefix for every pack and the ask.
+- **Scoped ask** (**main**, #57): `notebook.ask` limited to the sources the student ticks.
 
-Code performs timezone handling, year inference with explicit assumptions, and arithmetic. If conflict remains, show both claims. The earlier plausible date may be a conservative planning date; it is not established truth. Never merge records across courses because both are called P1.
+## 8. Study features
 
-Current resolver: accepts normalized claims, excludes lock/event claims and unconfirmed scopes, prioritizes supplied explicit-change claims, and otherwise preserves disagreements. The richer extraction and precedence rules above still need implementation. The Canvas connector supplies structured due/lock fields; it does not infer dates from prose.
+All study runs at zero model tokens: `readPackArtifact` takes no runner, and the learning engines have no runner dependency. Generation happens once, through a pack, and is cached.
 
-## Jev and language models
+| Feature | What it does | Status |
+|---|---|---|
+| Quizzes, flashcards, study guides | one checked call per request through versioned packs (cards and quiz v2, subject-aware); an item-quality harness (`pnpm eval:items`) | **main** |
+| FSRS cards, Learn rounds, sectioned quizzes, topic states | spaced review, Learn/Write rounds, quizzes sectioned by chapter and module, per-topic states and "study this next" (at most three) | **main** |
+| Exam prep | exam blueprint, practice exam builder, step-checked solving | **main** |
+| Course mastery | evidence-defined topic states and "Build my strategy"; never a grade prediction; 23 ms median on 5,000 synthetic resources | **main** |
+| Practice analytics | practice → assignment → course rollups | **main** |
+| Study & Learn and the Home study card | a Study & Learn page listing every assignment, quiz and exam across current courses (30 days back, 120 ahead) with type, readiness, cards due and prepared materials, grouped Today / This week / Later / Past; the Home card shows the next three exams and quizzes; paint gated under 100 ms for the list and 150 ms for an item space (report-only on CI) | **main** (#57) |
+| Study prep per assessment | `study.prep`: one composite read per assessment (coverage, filter chips, a code-built overview, materials, mastery), then guide, quiz and cards in one checked call, KaTeX maths; ~23 ms warm on a 5,000-resource store (synthetic) | **main** (#57); generation and Ask are held in the renderer until account, source and policy scoping is connected (`a719430`) |
+| Item space | one study space per work item, 11 code-derived types (exam, quiz, problem set, essay, lab, project, discussion post, presentation, reading, lecture, participation): code types the item with its reason (40/40 synthetic cases), the student can correct it, and a per-type table sets the sections and actions; practice problems and practice exams from past exams with recomputed answers | **main** (#57) |
+| Course Analytics tab | grade trend, homework completion, readiness per assessment (never a grade), topic mastery, three next actions; hand-rolled SVG charts; three batched learning calls whatever the course size; paints in ~8–10 ms median; a synthetic term in the sample course | **main** (#55), a tab on every course page |
+| GPA calculator | GPA by semester, what-if projections, grades needed (10/10 tests with worked examples) | **main** (#53); the panel is not yet mounted in My UW (PR #65 restores it) |
 
-Code constructs bounded candidates, Jev judges, code validates and applies policy, and a language model writes where needed. Cache by content hash, question version, and model version. Superseded responses cannot update current state.
+The views are capped on purpose: a dossier core of 8, an assignment view of 5, Study & Learn of 3 ([spec](plans/2026-09-26-course-backend/spec.md)).
 
-Auto-link/confirm/no-link cut points are not established. Follow the [link evaluation procedure](pipeline-details.md#link-thresholds-a-testable-starting-method), including scoped candidates, review burden, held-out course families, correction bias, and sample limits. Do not repurpose the assignment-kind display threshold for entity matching.
+## 9. Notes, Outlook and documents
 
-- Choice for mutually exclusive candidates; include no match. For consequential matches, separately test whether any valid match exists.
-- Multiple Nouls when several candidates can be true. Score for ordered judgments, not direct mastery probabilities.
-- Tune task-specific thresholds on held-out examples. Do not multiply correlated outputs or interpret concentration as accuracy.
-- Keep meaningful course/scope evidence alongside stable IDs. Named structured state is supported; prose is not universally superior.
-- Use order permutations on ambiguous choices only if evaluation shows benefit.
-- Dates, counts, schema mapping, and arithmetic stay in code. Model correctness judgments do not replace running tests.
-- Retrieved content is untrusted. A high-confidence classifier is not an authorization boundary.
-- Cache for first paint. Background judgment may improve suggestions. Missing cached routing needs a usable deterministic fallback.
+- **Lecture notes** (**main**): every scheduled lecture, discussion and lab gets a notes page built by code at 0 tokens; "fill from slides" is one checked call on request ([notes setup](notes-setup.md)). Word and Google Docs sync is built; not run live.
+- **Notes to a local cloud folder** (**main**, #53): notes sync to a locally synced OneDrive, Google Drive or iCloud folder with zero setup, never deleting or overwriting the student's edits (31/31 tests).
+- **Document window** (**main**): a synced note opens in Word or Docs inside the app's signed-in window, with a browser fallback.
+- **Outlook and Microsoft 365** (**main**, not run live): the app's own Microsoft sign-in (public client, PKCE, token held by main), read-only Graph scopes through main's allowlisted proxy, delta queries per folder. Mail keeps metadata and a short preview; bodies are read on demand and never stored. It needs a registered client ID before its first live run ([Outlook setup](outlook-setup.md)). A pasted published Outlook calendar link is also built (not yet tried against a live UW calendar).
+- **Documents** (**main**): PDF text with page anchors, Office and HTML extraction, local OCR when configured.
 
-Context compiler: select evidence for the task within an explicit budget, include policy and source health, preserve conflicting claims, and expose source references. Metadata relevance filtering should not discard a potentially important page solely because its title is vague.
+## 10. Privacy and consent
 
-The accepted launch direction is a $5 one-time app license plus the student’s paid AI plan/key, with intended Claude Code, Codex, paid-key Gemini CLI, and OpenRouter routes. Detect supported installed clients and invoke their authorized authentication/runtime paths; do not copy credentials or infer subscription access from a preference setting. Provider isolation, inference adapters, payment/license activation, and route-specific compatibility remain unimplemented or unverified. The existing local adapter remains in the foundation, while automatic local installation is no longer a launch requirement. A local stdio MCP server exposes permission-checked evidence; this alone does not establish a provider integration. See [the decision](decisions.md#pricing-and-ai-access-resolution--september-26) and [AI and privacy requirements](ai-and-privacy.md).
+```mermaid
+flowchart TB
+  A["1. Consent: one checkbox writes a record per recipient (UW, Jev, the chosen AI)"] --> B
+  B["2. Egress gate: no network channel without consent"] --> C
+  C["3. Grants: course, category and recipient checked on every request"] --> D
+  D["4. Preview: a newly shared sensitive category holds the send until acknowledged"] --> E
+  E["5. Protection: known identities replaced before any hosted payload; teaching content kept"] --> F
+  F["6. Receipts: one per send or read, allowed or blocked"]
+  P["Planning records: never sent to AI, Jev, MCP or the agent API"] -.- C
+```
 
-## Stack and remaining candidates
+- **Layers 1–6 are on main**, with protection on every egress path and encryption at rest (v14): teaching characters changed 0 of 696,516 and personal canaries leaked 0 of 14 in the privacy PR's test run (#25).
+- **No school actions exist**: no submit, enroll, post or completion capability. Reading can register a page view, and the app discloses it.
+- **Remember my sign-in** (**main**, opt-in): fills the NetID form once per expired session, only on UW's login page, with the student present; never touches Duo. Not run live; whether it fits the Duo rule is open (H2).
+- **Checks that confirmed evidence but not the claim** (fixed, #59, [break card](break-card.md)): B1 answer sentences not bound to their quotes; B2 outside mail naming a course code labelled course staff; B3 an unbounded Jev raise (now at most one level, and at most important for non-staff senders); B4 a student-posted discussion link synced as a course site (now link only). On 60 synthetic cases per weakness with a fake model: before 60/60, after 0/60 (Wilson 95% [0, 6.0]); no live model run.
 
-Implemented foundation: TypeScript monorepo; Electron + React desktop; Node 24 SQLite with full-text search. Shared packages separate contracts, domain rules, storage, connectors, application core, and AI adapters. The desktop main process brokers browser and OS capabilities; an isolated utility process owns the local store and background work. Desktop is first. The current website is informational with a GitHub link; downloads appear only when working release artifacts exist. iOS is later if time permits.
+The full position, per egress path: [AI and privacy](ai-and-privacy.md).
 
-Expo, Next.js/Vercel, and a relay/sync service are candidates, not commitments. Phone relay must describe offline/asleep behavior and encryption boundaries. Magic Canvas uses one team-owned, server-side Jev key for the Claude/Codex/Gemini routes, with authenticated access, request limits, and minimal logging. The accepted OpenRouter exception bills the student through their own OpenRouter key; that route is unimplemented. Keep student keys in protected local storage and out of context and logs.
+## 11. The open agent layer
 
-Evaluate Playwright, browser-use/Stagehand, Crawlee, document parsers, and native OCR by actual need. License review includes exact versions, transitive dependencies, model weights, and bundled binaries. A limited JavaScript dependency check is recorded in [tool evaluation](tool-evaluation.md); a complete distribution/license audit remains unfinished. Working-Memory-Jev is ideas-only per project direction.
+- **MCP course bank** (**main**): six read-only stdio tools (`search`, `due_soon`, `recent_changes`, `course_overview`, `get_item`, `answer_course_question`, which is extractive with no model call). The student creates a grant per client in Data & AI; the reader opens the database read-only, rechecks the grant and privacy on every call, and appends receipts to a side log the app imports. MCP search p50 6.3 s → ≈0.28 s at 5,000 synthetic resources.
+- **Agent API v1** (**main**, tested in isolation): `@magic/agent-api`, contract `magic.agent-api` 1.0.0: `courses`, `courseGraph`, `resources`, `resource`, `searchPassages`, `assignments`; each call is grant-scoped, scrubbed, token-budgeted and receipted.
+- **Versioned SQL views, `@magic/sdk` and a narrow write path for student-owned artifacts** (**planned**, D42).
+- The model never gets tools inside the app; MCP is a secondary, optional course bank for the student's own client.
 
-The local AI adapter uses llmfit recommendations and a compatible installed Ollama model with cloud disabled. Managed installation/downloads and model-quality evaluation remain open. The gateway implements only assignment-kind classification; the wider Jev applications described above are not hidden behind that endpoint. ChatGPT, Claude, and Gemini settings control previews and MCP sharing eligibility, not an embedded authenticated model connection.
+Verbs, budgets and a developer quickstart: [the academic data platform §4–§5](academic-data-platform.md#4-access-for-tools-and-agents).
 
-Private scraping is local. For a clean-room context.dev-like component, use public behavioral documentation, not implementation code. Required behavior includes partial results, login detection, safe redirect handling, output-specific status, and change baselines.
+## 12. Performance: where the time goes
 
-## Unverified technical capabilities
+- **The repeat-work sweep** (**main**): the course summary 83,499 → 16 statements (2.7 s → 68 ms), the snapshot 7,245 → 31, learning views ~226k → ~810 statements, measured on a read-only live-shaped copy with byte-identical outputs; CI gates the statement caps (`pnpm test:budgets`).
+- **Change-driven snapshot refresh** (**main**, #58): the renderer used to poll the full workspace snapshot every 2 s (6.4–6.8 MB per read at 1,000 synthetic resources; 12.7 MB and about 125 ms per build on a live-shaped copy), and the worker answers one message at a time, so any view could wait behind it. Now the worker checks SQLite's `total_changes()` once a second, main forwards `magic:changed`, and the renderer reads the snapshot only on a change, at most every 2 s, through the frontend's snapshot gate; the idle-time poll stays as a fallback. Idle for 10 s: 4 snapshot reads, 189 statements and 6.8 MB per read → 0 reads and 10 statements (the change checks), synthetic (`evals/perf/stalls.ts`, guarded by `tests/stall-guards.test.ts`).
+- **Tab speed** (**main**, #53): learning views resolve every anchor in one pass (knowledge state, practice path, analytics and mastery about 4.7 s → about 265 ms on a live-shaped copy of 2,577 resources); learning, notes and item-open commands reply with the result only, without the snapshot; views paint their last answer while the fresh read runs.
 
-Architecture choices also follow [reference-driven design](reference-driven-design.md): inspect VS Code, Notion, Drive, Arc, Codex, and Claude for specific boundaries or interactions, then test the smallest useful adaptation. Their success does not justify importing a plugin platform or general page builder without a student need. Conditional long-term scenarios test replaceability of sources/models without expanding the current build automatically.
+All figures, methods and the rows we lose: [benchmarks](benchmarks.md).
 
-The following need evidence before we describe them as supported: sign-in across UW systems, session expiry/recovery, provider subscription access, phone relay behavior, target-platform packaging, and reliable extraction across different course structures. These unknowns do not reopen the product thesis; they identify where the technical description remains provisional.
+## 13. Where to go deeper
 
-## Tool-selection policy
-
-Compare new candidates against the actual task before adopting defaults. Check current versions, maintenance, licenses (including models and dependencies), telemetry, and benchmark provenance. Keep acquisition, extraction, structured interpretation, OCR, and change detection separate so they can be evaluated and replaced independently. See [engineering principles](engineering-principles.md) for acceptance and reversal criteria. User-suggested tools are candidates to test, not automatic dependencies.
-
-## Implemented ingestion boundary
-
-The [course-ingestion handoff](ingestion-upgrade.md) describes the current coordinator, expanded Canvas scopes, independent calendar feeds, public crawling, local document extraction, GitLab evidence, field observations/change events, and local MCP grants. These run in the existing worker/store architecture, with app-owned authentication confined to the native broker. Comments default to local collection with separate hosted sharing. Canvas viewing/must-view effects from reads are accepted and disclosed; explicit completion and other school-changing actions remain absent. Wider features above retain their stated proposal status.
-
-## Planning implementation boundary
-
-The [planning handoff](planning-upgrade.md) is the canonical map. SQLite schema 4 adds separate typed planning source/record/version tables. The native broker reads student identity locally, derives a keyed opaque account scope, checks it again before releasing normalized results, and binds Canvas only after matching institutional identities. No raw identity crosses into the stored account link. Fixed UW operations cover student summary, subjects/terms, enrollment, primary degree-plan history, saved DARS, public search, and selected-course packages; unsupported shapes stay partial or blocked.
-
-The utility worker persists normalized captures and computes comparisons. Shared contracts carry course identity, source scope, provenance, completeness, freshness, and credit basis. The desktop `syncPlanning` bridge and core `planning-search` / `planning-sections` commands connect normal UI actions to bounded transport; normalized import remains available. Failed/partial captures preserve evidence. Purge/session clear cancels work, and generation guards discard late results.
-
-`planning.reconciliation` compares exact course/term claims after fresh account binding. Canvas current/final grades and percentages remain independent from degree-plan history and program-specific DARS applications. Applied credits are not additional attempts. Planning cannot enter coursework context, Jev, tutoring context, or MCP. My UW is the primary surface; Home shows administrative alerts. Combined schedules, transcript ingestion, broader audit parsing, and language planning remain unfinished. App-owned sign-in is wired, but private headless developer reads do not establish production SSO or expiry behavior.
-
-## Course intelligence compiler
-
-Local captures now materialize versioned account/course profiles in SQLite schema 5, including structured grading/assessment facts and source-bound policy/topic passages. The ordinary `store.ingest` path performs deterministic compilation; desktop background work can optionally select additional semantic passages with the installed local model. It does not wait on or send data to hosted AI. The compiler preserves immutable evidence versions and dynamic source health separately, and the local tutor consumes the resulting effective policy. See [compiler contracts, reference transfers and limits](course-intelligence.md). This is not a grade predictor, exam blueprint, or complete syllabus interpreter.
-
-## Learning session surface
-
-The [canonical learning-session integration](learning-sessions.md) uses the existing learning `execute` channel, N25 router, Nate's deterministic grading/progression/session engines and N24 SQL adapter on the workspace connection. Typed projections expose saved rounds, drafts, actual checks and versioned evidence without answer keys. Revision-checked transactions write the session and any scored attempt together; undecided answers remain unscored history. The earlier parallel IPC, session service and direct Ollama activity pack are retired.
-
-Storage-owned schema 8 aligns existing learning records with the engines: numeric units, selected option IDs, coverage decision authorship and scoped/pinned cards, including concept tracks without fake items. It preserves the canonical v6/v7 schemas and introduces no second course database. The worker constructs account/course context and rechecks eligibility, exact source versions, freshness and policy before prepared practice.
-
-Practice consumes an existing checked pool and makes no student-model calls. Empty pools are unavailable. Explicit model-generated explanations belong to T42/shared packs and remain unconnected; this is not a demonstrated production tutor. See the session document for current operations, reference transfers, tests and remaining integration checks.
+| Topic | Document |
+|---|---|
+| Status and evidence per feature | [implementation status](implementation-status.md) |
+| Backend reference: schema, runtime mechanisms, drain contract, freshness, measured effects, command bar, open human calls | [backend reference](course-backend-architecture.md) |
+| Developer view, agent API, business model, scorecard | [academic data platform](academic-data-platform.md) |
+| Canvas reads, limits and recovery | [pipeline details](pipeline-details.md), [course ingestion](ingestion-upgrade.md) |
+| Course profile and policy | [course intelligence](course-intelligence.md) |
+| Privacy per egress path | [AI and privacy](ai-and-privacy.md) |
+| The desktop frontend and its runtime records | [desktop handoff](design-handoff.md), [DESIGN.md](../DESIGN.md) |

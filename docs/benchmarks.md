@@ -36,7 +36,7 @@ No harness touches the network or a real account. The replay transport serves re
 - **Warm-up:** each timed perf series discards one warm-up run, so module JIT and schema compilation aren't billed to run 1 (`evals/perf/baseline.ts`).
 - **Runs:** sync 5 runs, query 5 runs over 24 queries (120 samples), snapshot 5, database open 5, ingest 3 repeats; T17's first sync 3 paced runs (`baseline.ts` constants `SYNC_RUNS`, `QUERY_RUNS`, `SNAPSHOT_RUNS`, `OPEN_RUNS`, `INGEST_REPEATS`, `FIRST_SYNC_RUNS`).
 - **Percentiles:** nearest-rank over the raw samples (`evals/perf/stats.ts`). **With fewer than 20 samples, a "p95" is the maximum of the runs**, not an estimate of the 95th percentile; the tables below say so wherever it applies.
-- **Noise:** across repeated MT1 runs, throughput varied about ±20% and p95 up to 2.6×. So MT1's adopt thresholds ask for an effect of 3× or more, or for a structural change (`docs/course-backend-architecture.md` at `699e386` §8.1; the thresholds as applied are in `docs/course-backend-build-record.md` §5.1).
+- **Noise:** across repeated MT1 runs, throughput varied about ±20% and p95 up to 2.6×. So MT1's adopt thresholds ask for an effect of 3× or more, or for a structural change (`docs/course-backend-architecture.md` at `699e386` §8.1; the thresholds as applied are in `docs/archive/course-backend-build-record.md` §5.1).
 - **Rates** are reported as k/n with a Wilson 95% interval, which keeps its coverage near 0 and 1 where the normal approximation fails. Intervals marked *computed here* were computed for this document from the published k and n; the item-eval intervals come from its own reports.
 - **Deterministic fixtures:** a synthetic fixture gives the same count on every run, so a count such as 285/300 is a property of the fixture, not a sample; no interval is attached to it.
 
@@ -55,7 +55,7 @@ Thresholds are fixed before the run they judge, and changing one after a run is 
 
 | Suite | Where the thresholds are fixed | When |
 |---|---|---|
-| MT1 storage and IPC | the "Threshold" column of `docs/course-backend-build-record.md` §5.1 (the "Adopt at" column of `docs/course-backend-architecture.md` at `699e386` §8.1) | with the baseline at `91e39fa`, before the storage lane's changes |
+| MT1 storage and IPC | the "Threshold" column of `docs/archive/course-backend-build-record.md` §5.1 (the "Adopt at" column of `docs/course-backend-architecture.md` at `699e386` §8.1) | with the baseline at `91e39fa`, before the storage lane's changes |
 | Public comparisons | the comparative rows of spec B6 (`docs/plans/2026-09-26-course-backend/spec.md`) | 2026-09-26, before any competitor run |
 | Item quality | `evals/items/thresholds.json` on `feat/item-eval` (sha256 prefix `4185ebf297afda52`) | 2026-09-27, "before the first scored run"; a met threshold whose interval crosses it is reported as "met, not established at 95%" |
 | Case files | `evals/freeze.ts` hashes every case file (SHA-256, LF-normalised); `--verify` fails on any changed, missing or extra file | the smoke cases on main (`evals/cases/smoke/FROZEN.sha256`); the item cases on `feat/item-eval` (`evals/items/cases/FROZEN.sha256`) |
@@ -98,7 +98,7 @@ The rules behind it are in [benchmarking](notes/benchmarking.md): freeze the gol
 
 ### 2.1 MT1: storage, search and IPC at 5,000 synthetic resources
 
-Before `91e39fa`, after `f365af7` (T14); both synthetic, this laptop. Sources: `docs/course-backend-build-record.md` §5.1 and `docs/course-backend-architecture.md` at `699e386` §8.1. **Status: on main.**
+Before `91e39fa`, after `f365af7` (T14); both synthetic, this laptop. Sources: `docs/archive/course-backend-build-record.md` §5.1 and `docs/course-backend-architecture.md` at `699e386` §8.1. **Status: on main.**
 
 | Metric | Before | After | Threshold | Result |
 |---|---|---|---|---|
@@ -129,7 +129,7 @@ Before `91e39fa`, after `f365af7` (T14); both synthetic, this laptop. Sources: `
 
 What changed: one bounded scheduler per sync (6 requests in flight per host, honouring Canvas's `X-Rate-Limit-Remaining` and cost headers, backing off on 403/429); module items read inline with `include[]=items`; identical GETs read once per sync; a manual sync within 60 s of a sign-in read reuses it.
 
-**After T17 was integrated with the sync-resilience work** (`docs/sync-resilience-review.md`, synthetic, request counts only):
+**After T17 was integrated with the sync-resilience work** (`docs/archive/sync-resilience-review.md`, synthetic, request counts only):
 
 | Fixture | Full read | Unchanged hot tick | Content tick with direct revalidation |
 |---|---|---|---|
@@ -309,8 +309,8 @@ What exists today is test coverage, not a benchmark: adversarial course-intellig
 
 | Figure | Source |
 |---|---|
-| MT1 before and after, IPC payloads, freshness, live trial, warm sessions | `docs/course-backend-build-record.md` §5, §6; `docs/course-backend-architecture.md` at `699e386` §8 |
-| T17 | PR #8 (`274f738`); `evals/perf/baseline.ts`; `docs/sync-resilience-review.md` |
+| MT1 before and after, IPC payloads, freshness, live trial, warm sessions | `docs/archive/course-backend-build-record.md` §5, §6; `docs/course-backend-architecture.md` at `699e386` §8 |
+| T17 | PR #8 (`274f738`); `evals/perf/baseline.ts`; `docs/archive/sync-resilience-review.md` |
 | File acquisition | PR #22 (`355602c`); `evals/perf/documents.ts` |
 | One drain; live drain throughput | PR #23 (`1f9e5b1`); PR #13 |
 | Intent router; agenda | PR #24 (`ae66b91`); `docs/course-backend-architecture.md` §11.1; `docs/course-backend-architecture.md` at `699e386` §12; `tests/intent-latency.test.ts` |

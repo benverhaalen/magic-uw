@@ -4,7 +4,7 @@ Checked September 26, 2026 against current code and the official sources linked 
 
 ## Sync resilience integration
 
-The integrated sync resilience implementation adds shared module reads, bounded direct page/file revalidation and durable item-access observations. These changes are in main; the [implementation handoff](sync-resilience-review.md#implementation-handoff--september-26-2026) is the canonical interface, budget and verification record.
+The integrated sync resilience implementation adds shared module reads, bounded direct page/file revalidation and durable item-access observations. These changes are in main; the [implementation handoff](archive/sync-resilience-review.md#implementation-handoff--september-26-2026) is the canonical interface, budget and verification record.
 
 ## Course-file acquisition (September 27)
 
