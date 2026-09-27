@@ -89,8 +89,8 @@ export function linkExactEvidence(store: Store) {
       }
   }
 }
-export function evidenceFor(store: Store, permitted: (resource: Resource) => boolean = () => true) {
-  const resources = store.resources().filter((r) => !r.deleted && permitted(r)),
+export function evidenceFor(store: Store, permitted: (resource: Resource) => boolean = () => true, allResources: Resource[] = store.resources()) {
+  const resources = allResources.filter((r) => !r.deleted && permitted(r)),
     byId = new Map(resources.map((r) => [r.id, r]));
   const links = store
     .links()

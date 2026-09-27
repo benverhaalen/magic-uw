@@ -9,7 +9,7 @@
   display: grid;
   grid-template-rows: 44px minmax(0, 1fr);
   padding: 0 10px 10px;
-  background: var(--magic-fill-shell);
+  background: var(--magic-accent-frame); /* styles.css maps data-accent to this frame */
   color: var(--magic-ink);
   font-family: var(--magic-font-interface); font-weight: var(--magic-font-interface-weight); letter-spacing: var(--magic-tracking);
   font-size: 14px;
@@ -25,7 +25,7 @@
   font-family: var(--magic-font-editorial);
   font-size: var(--magic-type-identity);
   font-weight: 500;
-  color: var(--magic-ink-on-shell);
+  color: var(--magic-accent-frame-ink);
 }
 .onb-bar-end {
   display: flex;
@@ -35,8 +35,8 @@
   font-size: 12px;
   padding: 4px 10px;
   border-radius: var(--magic-radius-control);
-  background: var(--magic-fill-shell-selected);
-  color: var(--magic-ink-on-shell);
+  background: var(--magic-accent-frame-chip);
+  color: var(--magic-accent-frame-ink);
 }
 .onb-surface {
   overflow: auto;
@@ -231,6 +231,10 @@
   border: 2px solid var(--magic-line-quiet);
   border-top-color: var(--magic-ink-muted);
   animation: onb-spin 900ms linear infinite;
+}
+.onb-spinner.idle {
+  animation: none;
+  border-color: var(--magic-line-quiet);
 }
 @keyframes onb-spin {
   to {

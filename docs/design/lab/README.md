@@ -6,7 +6,7 @@ Serve this repository using a normal static server and open `docs/design/lab/ind
 
 ## Fonts
 
-`local-fonts.js` loads Lora Medium (500) by default from the repository's `packages/ui/assets/fonts` (SIL OFL), so serve the repository root. Geist stays private: on localhost, pass `?fontBase=/work/fonts/` when that served directory contains `Geist-Variable.woff2`, or set `window.MAGIC_LOCAL_FONT_BASE` before loading `local-fonts.js`. The Geist path rejects cross-origin and non-localhost hosts. The status label names which faces loaded, and `document.documentElement.dataset.fonts` reports `exact` only after both Lora and Geist load.
+`local-fonts.js` loads Karma Medium (500) by default from the repository's `packages/ui/assets/fonts` (SIL OFL), so serve the repository root. For Geist in this lab, on localhost pass `?fontBase=/work/fonts/` when that served directory contains `Geist-Variable.woff2`, or set `window.MAGIC_LOCAL_FONT_BASE` before loading `local-fonts.js`. The Geist path rejects cross-origin and non-localhost hosts. The status label names which faces loaded, and `document.documentElement.dataset.fonts` reports `exact` only after both Karma and Geist load.
 
 ## Reusable roles and structure
 

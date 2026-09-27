@@ -1,4 +1,4 @@
-/* Home leaf geometry. Shared roles (fills, inks, fonts, radii) come from tokens; editorial text uses weight 500 (Lora Medium). */
+/* Home leaf geometry. Shared roles (fills, inks, fonts, radii) come from tokens; editorial text uses weight 500 (Karma Medium). */
 .home-work-identity { min-width:0; flex:1; }
 .home-work-meta { display:block; font-size:var(--magic-type-meta); line-height:1.4; margin-bottom:3px; font-weight: inherit; }
 .home-work-due { text-align:right; display:grid; gap:3px; flex-shrink:0; font-size:var(--magic-type-meta); line-height:1.3; }

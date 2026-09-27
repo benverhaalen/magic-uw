@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { copyFile, readFile, readdir } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 const fonts = "packages/ui/assets/fonts";
-const lora = await readFile(join(fonts, "Lora-Medium.ttf"));
+const karma = await readFile(join(fonts, "Karma-Medium.ttf"));
 // owner: embedded-jev. Only a builder who sets MAGIC_EMBED_TYPESAFE_KEY embeds the owner's key
 // (September 27 decision in docs/decisions.md). The key is extractable from that build, so it
 // only reaches apps/desktop/src/embedded-jev.ts in main.cjs; dist/ is gitignored. Never printed.
@@ -49,16 +49,16 @@ await viteBuild({
   build: { outDir: "dist/renderer", emptyOutDir: true },
   logLevel: "warn",
 });
-// Vite emits the CSS-referenced Lora file; ship its OFL beside it.
+// Vite emits the CSS-referenced Karma file; ship its OFL beside it.
 const rendererAssets = "apps/desktop/dist/renderer/assets";
 const emitted = (await readdir(rendererAssets)).filter((name) =>
-  /^Lora-Medium.*\.ttf$/.test(name),
+  /^Karma-Medium.*\.ttf$/.test(name),
 );
 if (emitted.length !== 1)
-  throw new Error(`Expected one emitted Lora font, found ${emitted.length}.`);
-if (!lora.equals(await readFile(join(rendererAssets, emitted[0]))))
-  throw new Error("Emitted desktop Lora font differs from the supplied file.");
-await copyFile(join(fonts, "Lora-OFL.txt"), join(rendererAssets, "Lora-OFL.txt"));
+  throw new Error(`Expected one emitted Karma font, found ${emitted.length}.`);
+if (!karma.equals(await readFile(join(rendererAssets, emitted[0]))))
+  throw new Error("Emitted desktop Karma font differs from the supplied file.");
+await copyFile(join(fonts, "Karma-OFL.txt"), join(rendererAssets, "Karma-OFL.txt"));
 const geistFiles = (await readdir(rendererAssets)).filter(name => /^Geist-Variable.*\.woff2$/.test(name));
 if (geistFiles.length !== 1 || !(await readFile(join(fonts, "Geist-Variable.woff2"))).equals(await readFile(join(rendererAssets, geistFiles[0]))))
   throw new Error("Emitted desktop Geist font differs from the supplied file.");

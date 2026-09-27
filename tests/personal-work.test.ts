@@ -215,3 +215,29 @@ test("snapshot admission uses four SQL reads for 100 and 1900 tasks with no per-
    console.info("personal-work snapshot scaling",JSON.stringify(results));
  }finally{enabled=false;store?.close();DatabaseSync.prototype.prepare=originalPrepare;}
 });
+
+
+test("snapshot shares one resource read and rechecks changed course access on the next snapshot", () => {
+  const store = setup();
+  const core = createCore(store, {now: clock.now, fixture: batch});
+  const read = store.resources.bind(store);
+  let reads = 0;
+  store.resources = (...args) => { reads++; return read(...args); };
+  try {
+    const first = core.snapshot();
+    assert.equal(reads, 1);
+    assert.ok(first.courseWorkAdmission?.resourceIds.length);
+    assert.ok(first.resources.some(r => r.personalWork));
+    store.setCourseOverride({accountScope: "synthetic", courseId: "sample-101", included: false});
+    reads = 0;
+    const excluded = core.snapshot();
+    assert.equal(reads, 1);
+    assert.equal(excluded.courseWorkAdmission?.resourceIds.length, 0);
+    assert.equal(excluded.resources.some(r => r.personalWork), false);
+    store.setCourseOverride({accountScope: "synthetic", courseId: "sample-101", included: true});
+    reads = 0;
+    const restored = core.snapshot();
+    assert.equal(reads, 1);
+    assert.deepEqual(restored.courseWorkAdmission, first.courseWorkAdmission);
+  } finally { store.close(); }
+});

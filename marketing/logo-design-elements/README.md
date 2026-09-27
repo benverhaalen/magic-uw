@@ -51,7 +51,7 @@ variants stay single-ink and are not themed.
 
 The website (`apps/web`) uses the same palette for its brand colour roles. UW's cardinal is an institutional brand colour; the product carries a non-affiliation line, and the team should keep that line visible wherever this palette appears with the "UW" name.
 
-Wordmark: Lora Medium (500; bundled in `packages/ui/assets/fonts`) in this pack. The newly integrated website currently uses Fraunces; the shared editorial-font rollout is tracked separately. Clear space: one eye-width on every side. Minimum: full mark 48px tall; below that use the head/favicon.
+Wordmark: Karma Medium (500; bundled in `packages/ui/assets/fonts`) in this pack. The integrated website uses the same Karma Medium editorial face. Clear space: one eye-width on every side. Minimum: full mark 48px tall; below that use the head/favicon.
 
 ## Animation
 

@@ -514,3 +514,27 @@ test("a removed origin cannot send a command or read an item; an explicit includ
   const result = chat.exchanges[1]!.result;
   assert.deepEqual(result?.kind === "due" && result.rows.map(r => r.id), ["bio1"]);
 });
+
+
+test("router infrastructure failures end the exchange without a second fallback query", async () => {
+  for (const message of [
+    "Error invoking remote method magic:query: Local workspace request timed out.",
+    "intent.preview request cancelled",
+    "intent.preview authorization expired; sign in again",
+  ]) {
+    resetChats(); resetIntentSupport();
+    const queries: string[] = [];
+    let executions = 0;
+    const bridge = {
+      query: async (q: {view: string}) => { queries.push(q.view); throw new Error(message); },
+      execute: async () => { executions++; return {}; },
+    } as unknown as ChatBridge;
+    const {chat} = startChat({prompt: "What is a seam?", origin: origin(), idempotencyKey: message})!;
+    drive(chat, runtime(bridge)); await settle(); await settle();
+    assert.deepEqual(queries, ["intent.preview"]);
+    assert.equal(executions, 0);
+    assert.equal(chat.exchanges[0]!.state, "failed");
+    assert.equal(chat.exchanges[0]!.error?.detail ?? chat.exchanges[0]!.error?.text, message);
+    assert.equal(intentSupport(), "unknown");
+  }
+});

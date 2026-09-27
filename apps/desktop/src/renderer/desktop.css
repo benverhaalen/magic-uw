@@ -176,3 +176,6 @@
 /* User-requested hierarchy guide: only the expanded course tree, ending before My UW. */
 .desktop-shell:not(.is-collapsed) .desktop-course-list-content { position:relative; }
 .desktop-shell:not(.is-collapsed) .desktop-course-list-content::before { content:""; position:absolute; left:18px; top:6px; bottom:12px; width:1px; background:color-mix(in srgb, var(--magic-ink-on-shell-secondary) 24%, transparent); pointer-events:none; }
+
+/* Existing marketing wizard head is the default account image, never a title logo. */
+.desktop-avatar img { width: 28px; height: 30px; object-fit: contain; display: block; }

@@ -6,7 +6,7 @@ Ben wants a reusable design system that can produce coherent new interfaces from
 
 Use the image together with corrections, product goals and relevant references. Distinguish:
 
-- **Explicit decisions:** one sidebar, briefing prominence, flat Upcoming, separate Today context, Lora Medium/Geist, Lucide, specific learning actions and truthful evidence/completion.
+- **Explicit decisions:** one sidebar, briefing prominence, flat Upcoming, separate Today context, Karma Medium/Geist, Lucide, specific learning actions and truthful evidence/completion.
 - **Useful visual evidence:** density, color relationships, gradient character, typographic contrast, restraint and rhythm. Extract their jobs and relationships, not an immutable coordinate map.
 - **Open or criticized details:** action/tag outlines, link backing, icon scale, review/handled proportions, course-dropdown consistency and untested responsive/interactive states. Do not reproduce these to earn a similarity score.
 - **Incidental content/geometry:** synthetic names, number of passages/rows and exact widths are observations, not domain rules.
@@ -23,7 +23,7 @@ Read the relevant original decisions and actual Home image. Record accepted prop
 
 **Current unit of design is foundations and component families, not a complete Calendar or another page (D26).** Start with Home-derived palette roles and gradient samples, exact typography, icon sizing, curves, surface/border treatments, then related controls and states. Use readable, focused image studies for unresolved component appearance; translate selected treatments into exact coded specimens. Avoid a tiny all-in-one board. Full pages are later composition/transfer tests, not the first image-generation deliverable.
 
-Before showing a new family, compare concrete identity against the original Home: actual bundled Lora Medium and supplied Geist files, Lucide glyphs and scale, curves, spacing, material and color relationships. The Home image shows the former Cooper face, so judge its composition and color, not letterforms. A desktop context fixture must preserve the established shell treatment; it need not rebuild Home's content. A standalone specimen can omit the shell if clearly presented as a component study, but cannot claim to prove shell fidelity. Reject guessed typography and a merely similar palette. Current rejected raster studies are not appearance targets.
+Before showing a new family, compare concrete identity against the original Home: actual bundled Karma Medium and supplied Geist files, Lucide glyphs and scale, curves, spacing, material and color relationships. The Home image shows the former Cooper face, so judge its composition and color, not letterforms. A desktop context fixture must preserve the established shell treatment; it need not rebuild Home's content. A standalone specimen can omit the shell if clearly presented as a component study, but cannot claim to prove shell fidelity. Reject guessed typography and a merely similar palette. Current rejected raster studies are not appearance targets.
 
 Create focused refined images when they resolve appearance, composition or asset uncertainty. Give generation the actual relevant reference inputs and the user's corrections. Use precise coded specimens for fonts, gradients, borders, controls and states that raster generation cannot specify faithfully. These are complementary parts of image-to-code, not competing pipelines.
 
