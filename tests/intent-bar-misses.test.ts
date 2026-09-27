@@ -54,15 +54,21 @@ const batch = (id: string, courseId: string, scope: string, observedAt: string, 
   status: "ok",
   resources,
 });
+// As the Canvas connector writes them: each assignment group is its own record with its weight,
+// and each assignment names its group (canvas-models.ts assignmentGroupId).
+const group = (id: string, title: string, weight: number, position: number) => res("c400", CS, id, "material", { title, assignmentGroup: { weight, position } });
 const graded = (title: string, score: number) =>
-  res("c400", CS, title, "assignment", { dueAt: "2026-09-16T04:59:00.000Z", deadlines: due("2026-09-16T04:59:00.000Z"), points: 50, submitted: true, assignmentGroup: { weight: 30 }, submission: { workflowState: "graded", score } });
+  res("c400", CS, title, "assignment", { dueAt: "2026-09-16T04:59:00.000Z", deadlines: due("2026-09-16T04:59:00.000Z"), points: 50, submitted: true, assignmentGroupId: "g-hw", submission: { workflowState: "graded", score } });
 const assignments = (hw4: string): ResourceInput[] => [
   res("c400", CS, "Programming III", "course"),
+  group("g-hw", "Homework", 30, 1),
+  group("g-mid", "Midterm", 30, 2),
+  group("g-final", "Final", 40, 3),
   graded("Homework 1", 47),
   graded("Homework 2", 46),
-  res("c400", CS, "Homework 4", "assignment", { dueAt: hw4, deadlines: due(hw4), points: 50, assignmentGroup: { weight: 30 } }),
-  res("c400", CS, "Midterm exam", "assignment", { dueAt: "2026-10-16T02:15:00.000Z", deadlines: due("2026-10-16T02:15:00.000Z"), points: 100, assignmentGroup: { weight: 30 } }),
-  res("c400", CS, "Final exam", "assignment", { dueAt: "2026-12-15T21:00:00.000Z", deadlines: due("2026-12-15T21:00:00.000Z"), points: 100, assignmentGroup: { weight: 40 } }),
+  res("c400", CS, "Homework 4", "assignment", { dueAt: hw4, deadlines: due(hw4), points: 50, assignmentGroupId: "g-hw" }),
+  res("c400", CS, "Midterm exam", "assignment", { dueAt: "2026-10-16T02:15:00.000Z", deadlines: due("2026-10-16T02:15:00.000Z"), points: 100, assignmentGroupId: "g-mid" }),
+  res("c400", CS, "Final exam", "assignment", { dueAt: "2026-12-15T21:00:00.000Z", deadlines: due("2026-12-15T21:00:00.000Z"), points: 100, assignmentGroupId: "g-final" }),
 ];
 
 export function semester() {
@@ -175,6 +181,35 @@ test("an exam question naming its course searches that course's passages and exa
     const miss = await h.run("who won the world series in cs 400");
     assert.ok(miss.status === "answer" && miss.notFound, JSON.stringify(miss));
     assert.equal((await h.calls()).length, 1, "the coverage gate still sends nothing");
+  } finally {
+    await h.close();
+  }
+});
+
+test("the grade what-if runs in code with no course open: the grade bank's scores and weights, the syllabus scale, no sharing gate", { timeout: 60_000 }, async () => {
+  const h = await bar();
+  try {
+    for (const [text, courseId] of [
+      ["what do I need on the final for a B if I get 80 on the midterm", undefined],
+      ["What do I need on the final for a B if I get 80 on the midterm?", "c400"],
+      ["what score do i need on the final exam in cs 400 to get a b if i got 80 on the midterm", undefined],
+    ] as const) {
+      const r = await h.run(text, courseId);
+      assert.equal(r.status, "answer", `${text}: ${JSON.stringify(r)}`);
+      assert.equal(r.path, "code", text);
+      assert.deepEqual(r.tokens, { in: 0, cached: 0, out: 0 });
+      // Homework 93% × 30 + midterm 80% × 30 + final x × 40 = 83 → x = 77.75, rounded up.
+      assert.ok(r.status === "answer" && r.text.startsWith("You need at least 77.8% on Final exam for B (83%) in COMPSCI 400."), r.status === "answer" ? r.text : "");
+      assert.ok(r.status === "answer" && r.citations.length === 1 && r.citations[0]!.title === "Syllabus" && /B 83/.test(r.citations[0]!.quote), JSON.stringify(r));
+    }
+    // A percentage goal needs no scale; a missing score is named, not assumed.
+    const pct = await h.run("what do I need on the final to get 90 if I get 95 on the midterm");
+    assert.ok(pct.status === "answer" && pct.text.startsWith("You need at least 84% on Final exam for 90%"), JSON.stringify(pct));
+    const missing = await h.run("what do I need on the final for a B");
+    assert.ok(missing.status === "answer" && /Midterm \(30% of the grade\) has no score yet/.test(missing.text), JSON.stringify(missing));
+    const gpa = await h.run("what gpa do i need to graduate with honors");
+    assert.equal(gpa.status === "ran" && gpa.action, "grades.gpa", JSON.stringify(gpa));
+    assert.equal((await h.calls()).length, 0, "no model call, so no sharing gate");
   } finally {
     await h.close();
   }

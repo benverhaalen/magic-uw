@@ -106,9 +106,12 @@ export function assessmentFacts(store: IntentStore, course: ResolvedCourse, ques
   }
   const scopeOf = new Map(store.sources().map((x) => [x.id, x.accountScope]));
   const live = store.resources().filter((r) => !r.deleted && r.courseId === course.courseId && scopeOf.get(r.sourceId) === course.accountScope);
+  // Canvas assignment groups are their own records; an assignment names its group by ID.
+  const groupWeight = new Map(live.flatMap((g) => (g.assignmentGroup?.weight != null ? [[g.externalId, g.assignmentGroup.weight] as const] : [])));
   for (const r of live) {
     if (facts.length >= ASSESSMENT_FACTS || covered.has(r.id) || r.kind !== "assignment" || !matches(r.title)) continue;
-    const bits = [r.dueAt ? `due ${when(r.dueAt)}` : null, r.points ? `${r.points} points` : null, r.assignmentGroup?.weight != null ? `its assignment group is ${r.assignmentGroup.weight}% of the grade` : null].filter(Boolean);
+    const weight = r.assignmentGroup?.weight ?? (r.assignmentGroupId ? groupWeight.get(r.assignmentGroupId) : undefined);
+    const bits = [r.dueAt ? `due ${when(r.dueAt)}` : null, r.points ? `${r.points} points` : null, weight != null ? `its assignment group is ${weight}% of the grade` : null].filter(Boolean);
     if (!bits.length) continue;
     facts.push({ sourceId: `f${facts.length + 1}`, text: `${r.title} (Canvas assignment): ${bits.join("; ")}.`, resourceId: r.id, title: r.title, url: r.url });
   }
