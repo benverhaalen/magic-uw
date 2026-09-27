@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
@@ -278,11 +279,37 @@ export async function resetClientSetup(userData: string): Promise<void> {
     rm(join(userData, "clients"), { recursive: true, force: true }),
   ]);
 }
+/** Windows refuses a rename while another handle (Defender, the indexer) briefly holds the file. */
+const TRANSIENT_RENAME = new Set(["EPERM", "EACCES", "EBUSY"]);
+/**
+ * Writes a small settings file atomically: a temp file unique to this write (two quick clicks
+ * used to share `<pid>.tmp`), a rename retried for about a second on the transient Windows
+ * errors, and the temp file removed whatever happens. `move` is the rename, injectable for tests.
+ */
+export async function writeFileAtomic(
+  path: string,
+  data: string,
+  move: (from: string, to: string) => Promise<void> = rename,
+): Promise<void> {
+  const temp = `${path}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temp, data, { encoding: "utf8", mode: 0o600, flag: "wx" });
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await move(temp, path);
+        return;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code ?? "";
+        if (attempt >= 6 || !TRANSIENT_RENAME.has(code)) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 20 * 2 ** attempt));
+      }
+    }
+  } finally {
+    await rm(temp, { force: true });
+  }
+}
 /** Persists the pick next to session-settings.json. The runner reads it in a follow-up. */
 export async function chooseClient(id: ClientId, userData: string): Promise<void> {
   const settings = { ...(await readClientSettings(userData)), chosen: clientIdSchema.parse(id) };
-  const path = settingsPath(userData);
-  const temp = `${path}.${process.pid}.tmp`;
-  await writeFile(temp, `${JSON.stringify(settings, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-  await rename(temp, path);
+  await writeFileAtomic(settingsPath(userData), `${JSON.stringify(settings, null, 2)}\n`);
 }

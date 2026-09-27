@@ -301,3 +301,26 @@ test("open re-checks consent and the requesting window right before the spawn", 
   assert.equal(spawned.length, 0);
   assert.equal(closedMidway.terminal.sessions().length, 0);
 });
+
+// "Could not select Claude Code" (2026-09-27, Windows): the settings rename failed once and left
+// `client-settings.json.<pid>.tmp` behind. A transient EPERM/EACCES/EBUSY is retried, other errors
+// still surface, no temp file is left, and two quick picks no longer share one temp name.
+test("choosing a client survives a briefly locked settings file and leaves no temp file", async () => {
+  const { chooseClient, writeFileAtomic } = await import("../apps/desktop/src/clients/profiles.ts");
+  const { rename } = await import("node:fs/promises");
+  const dir = await mkdtemp(join(tmpdir(), "magic-choose-"));
+  const path = join(dir, "client-settings.json");
+  let fails = 2;
+  await writeFileAtomic(path, "{\"chosen\":\"claude\"}\n", async (from, to) => {
+    if (fails-- > 0) throw Object.assign(new Error("locked"), { code: "EPERM" });
+    await rename(from, to);
+  });
+  assert.equal(await readFile(path, "utf8"), "{\"chosen\":\"claude\"}\n");
+  await assert.rejects(
+    writeFileAtomic(path, "{}", async () => { throw Object.assign(new Error("gone"), { code: "ENOENT" }); }),
+    /gone/,
+  );
+  await Promise.all([chooseClient("claude", dir), chooseClient("codex", dir)]);
+  assert.ok(["claude", "codex"].includes((await readClientSettings(dir)).chosen ?? ""));
+  assert.deepEqual((await readdir(dir)).filter((f) => f.endsWith(".tmp")), []);
+});
