@@ -6,12 +6,18 @@ function Chevron() {
   return <svg className="magic-ui-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>;
 }
 
-/** Command, never navigation. Pending prevents repeated activation without dropping focus. */
-export function Action({ tone = 'primary', pending = false, children, onClick, ...props }:
+/** Command, never navigation. Pending prevents repeated activation without dropping focus.
+ * Native `disabled` blurs a focused button, so the control stays focusable (aria-disabled, click
+ * guarded) while pending or while it holds focus; otherwise `disabled` stays native.
+ */
+export function Action({ tone = 'primary', pending = false, disabled = false, children, onClick, ...props }:
   Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'className'> & { tone?: 'primary' | 'quiet'; pending?: boolean }) {
-  return <button {...props} type={props.type ?? 'button'} className={`magic-ui-action magic-ui-action--${tone}`}
-    aria-busy={pending || undefined} aria-disabled={pending || props.disabled || undefined}
-    onClick={event => { if (pending || props.disabled) { event.preventDefault(); return; } onClick?.(event); }}>
+  const button = useRef<HTMLButtonElement>(null);
+  const holdsFocus = !!button.current && button.current === button.current.ownerDocument.activeElement;
+  const blocked = pending || disabled;
+  return <button {...props} ref={button} type={props.type ?? 'button'} className={`magic-ui-action magic-ui-action--${tone}`}
+    disabled={disabled && !pending && !holdsFocus} aria-busy={pending || undefined} aria-disabled={blocked || undefined}
+    onClick={event => { if (blocked) { event.preventDefault(); return; } onClick?.(event); }}>
     {children}{pending && <span aria-hidden="true"> …</span>}
   </button>;
 }
@@ -53,12 +59,19 @@ export function Confirmation({ issueId, sourceVersion, record, onChange, pending
   </div>;
 }
 
-/** Native disclosure semantics with the same icon at rest/open. */
-export function Disclosure({ label, children }: { label: string; children: ReactNode }) {
-  return <details className="magic-ui-disclosure"><summary><Chevron />{label}</summary>{children}</details>;
+/** Native disclosure semantics with the same icon at rest/open.
+ * `placeKey` lets desktop Back/Forward restore open state (details[data-place-disclosure]).
+ */
+export function Disclosure({ label, placeKey, defaultOpen, children }:
+  { label: string; placeKey?: string; defaultOpen?: boolean; children: ReactNode }) {
+  return <details className="magic-ui-disclosure" data-place-disclosure={placeKey} open={defaultOpen}>
+    <summary><Chevron />{label}</summary>{children}</details>;
 }
 
 /** Nonmodal navigation: ordinary links, Tab order, Escape and focus departure.
+ * The trigger is the declared invoker (popovertarget), so pressing it while open is exempt from
+ * light dismiss and closes the panel instead of reopening it. Its click cancels the native toggle
+ * to place and focus synchronously.
  * Keep labels short; caller owns destination routing and destination focus/scroll restoration.
  */
 export function NavigationPopover({ label, links }:
@@ -85,7 +98,8 @@ export function NavigationPopover({ label, links }:
   }, [open]);
   return <>
     <button ref={trigger} type="button" className="magic-ui-action" aria-expanded={open} aria-controls={id}
-      onClick={() => {
+      popoverTarget={id} onClick={event => {
+        event.preventDefault();
         const element = panel.current!;
         if (element.matches(':popover-open')) element.hidePopover();
         else { element.showPopover(); place(); element.querySelector<HTMLAnchorElement>('a')?.focus(); }
