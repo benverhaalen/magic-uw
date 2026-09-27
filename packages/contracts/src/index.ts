@@ -2006,6 +2006,26 @@ export interface AppBridge {
   keepSignedIn?(value?: boolean): Promise<boolean>;
   /** T80: the student's AI command-line clients, each in an app-owned profile. */
   clients?: ClientsBridge;
+  /** owner: voice. The local speech-to-text model's files. */
+  voice?: VoiceBridge;
+}
+/**
+ * owner: voice. Voice input transcribes on this device. main downloads the pinned model
+ * only when the student asks in the app (a one-time download), keeps files that match their hashes, and
+ * hands the renderer back only those files and the bundled WebAssembly runtime. Audio never crosses.
+ */
+export interface VoiceModelStatus {
+  downloaded: boolean;
+  bytes: number;
+  model: string;
+  license: string;
+}
+export interface VoiceBridge {
+  status(): Promise<VoiceModelStatus>;
+  /** Only for the student's explicit "Download" in the app. */
+  download(): Promise<VoiceModelStatus>;
+  file(name: string): Promise<Uint8Array>;
+  remove(): Promise<VoiceModelStatus>;
 }
 /** T80. The AI command-line clients Magic Canvas can host in an app-owned profile. */
 export type ClientId = "claude" | "codex" | "gemini";

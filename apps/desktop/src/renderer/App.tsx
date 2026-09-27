@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type {
   Command,
   CommandResult,
@@ -34,7 +34,10 @@ import { Action, Disclosure } from "../../../../packages/ui/src";
 import { useDesktopNavigation, type DesktopView } from "./navigation";
 import { CourseSpaceDetails } from "./CourseSpaceDetails";
 import { NotificationsMenu } from "./NotificationsMenu";
-import { FloatingChat, FloatingChatSetting, chatWarmPolicy, openFloatingChat } from "./floating-chat";
+import { FloatingChat, FloatingChatSetting, chatWarmPolicy, dictateIntoFloatingChat, openFloatingChat, setWizardState } from "./floating-chat";
+import { useLocalDictation } from "./voice/useLocalDictation";
+import { VoiceSetting } from "./voice/VoiceSetting";
+import { chatShortcut, shortcutLabel } from "./voice/rules";
 
 type View = DesktopView;
 // owner: T05b. Route slots, each rendering nothing until its task fills it: the notebook (T43),
@@ -170,6 +173,10 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [signInStage, setSignInStage] = useState<"idle" | "signin" | "checking">("idle");
   const [query, setQuery] = useState("");
+
+  // owner: voice. Local dictation for the chat; the model downloads only from Data & AI.
+  const dictation = useLocalDictation(window.magic?.voice);
+  const mac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform || navigator.userAgent);
 
   const snapshotGate = useRef(new SnapshotGate());
   const busyRef = useRef(false);
@@ -376,6 +383,44 @@ export function App() {
   const needsSignIn = unavailableSources.some(
     (source) => source.status === "needs_sign_in",
   );
+  // owner: floating-chat. The top-bar chat button (and Ctrl+K) opens the chat about this page.
+  function openChat(): boolean {
+    const opened = openFloatingChat();
+    if (opened === "opened") return true;
+    if (opened === "hidden") { setNotice("Chat is available once setup is finished and your courses are connected."); return false; }
+    if (selected) document.querySelector<HTMLElement>(".local-ai-panel")?.scrollIntoView({ behavior: "smooth" });
+    setNotice(selected ? "Floating chat is off. Ask about this item in its Local AI section, or turn Floating chat on in Data & AI." : "Floating chat is off. Turn it on in Data & AI to chat about this page.");
+    return false;
+  }
+  // owner: voice. Ctrl+K (Cmd+K) opens the chat; Ctrl+Shift+Space (Cmd+Shift+Space) opens it and
+  // dictates into its composer, and pressed again while listening, stops. The student sends the text.
+  const shortcut = useRef<(event: KeyboardEvent) => void>(() => undefined);
+  shortcut.current = (event) => {
+    const which = chatShortcut(event, mac);
+    if (!which || event.defaultPrevented || !snapshot || needsFirstRunSetup(snapshot) || (event.target as Element | null)?.closest?.(".xterm")) return;
+    event.preventDefault();
+    if (which === "voice" && (dictation.state === "listening" || dictation.state === "starting")) return dictation.stop();
+    if (!openChat() || which !== "voice") return;
+    if (dictation.state === "unavailable" || dictation.state === "needs_model") { setNotice(dictation.reason ?? "Voice input needs a one-time download. Download it in Data & AI, under Voice input."); return; }
+    if (dictation.state !== "ready") return;
+    setNotice(`Listening. Pause when you're done, or press ${shortcutLabel(mac, "voice")} again.`);
+    void dictation.start().then((text) => {
+      if (text) setNotice(dictateIntoFloatingChat(text) ? "" : "The chat closed before your words were added.");
+    });
+  };
+  useEffect(() => {
+    const handle = (event: KeyboardEvent) => shortcut.current(event);
+    document.addEventListener("keydown", handle, true);
+    return () => document.removeEventListener("keydown", handle, true);
+  }, []);
+  // The floating chat's wizard shows listening with the real input level.
+  useEffect(() => {
+    if (dictation.state === "listening") setWizardState("listening", dictation.levels.at(-1) ?? null);
+    else if (dictation.state === "processing") setWizardState("thinking");
+  }, [dictation.state, dictation.levels]);
+  useEffect(() => { if (dictation.state === "ready") setWizardState("idle", null); }, [dictation.state]);
+  useEffect(() => { if (dictation.state === "ready") setNotice(dictation.reason ?? ""); }, [dictation.reason, dictation.state]);
+
   // owner: T81. First run, or setup still incomplete: the onboarding flow replaces the shell
   // (and T06's in-Home consent entry) until the student opens the workspace.
   if (snapshot && needsFirstRunSetup(snapshot))
@@ -422,14 +467,7 @@ export function App() {
           onOpenPrivacy={() => setView("privacy")}
         />
       </>}
-      onCompose={() => {
-        // owner: floating-chat. The chat button opens the floating chat about this page.
-        const opened = openFloatingChat();
-        if (opened === "opened") return;
-        if (opened === "hidden") { setNotice("Chat is available once setup is finished and your courses are connected."); return; }
-        if (selected) document.querySelector<HTMLElement>(".local-ai-panel")?.scrollIntoView({ behavior: "smooth" });
-        setNotice(selected ? "Floating chat is off. Ask about this item in its Local AI section, or turn Floating chat on in Data & AI." : "Floating chat is off. Turn it on in Data & AI to chat about this page.");
-      }}>
+      onCompose={openChat}>
         <WorkspaceCommandBarSlot snapshot={snapshot} /* owner: T05b */ />
         {/* owner: floating-chat. One mount; portalled to <body>, off when the setting is off. */}
         {snapshot && <FloatingChat hidden={view === "consent" || (resources.length === 0 && !uwConsented)} warm={chatWarmPolicy(snapshot.privacy, snapshot.consents ?? [])} view={view}
@@ -544,6 +582,7 @@ export function App() {
             run={run}
             open={open}
             onConsent={openConsent /* owner: T06 */}
+            voice={<VoiceSetting dictation={dictation} mac={mac} /* owner: voice */ />}
           />
         )}
     </DesktopShell>
@@ -1271,12 +1310,14 @@ function Privacy({
   run,
   open,
   onConsent,
+  voice,
 }: {
   snapshot: Snapshot;
   busy: boolean;
   run: Run;
   open: (url: string) => void;
   onConsent: (pending?: PrivacyPreferences | null) => void;
+  voice?: ReactNode;
 }) {
   const [deleteText, setDeleteText] = useState("");
   const [showDelete, setShowDelete] = useState(false);
@@ -1499,6 +1540,7 @@ function Privacy({
         )}
       </section>
       <FloatingChatSetting /* owner: floating-chat */ />
+      {voice}
       <section className="settings-section danger-section">
         <h2>Delete local data</h2>
         <p>

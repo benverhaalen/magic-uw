@@ -39,8 +39,21 @@ await viteBuild({
   root: "apps/desktop",
   base: "./",
   build: { outDir: "dist/renderer", emptyOutDir: true },
+  // owner: voice. The dictation worker imports transformers.js as a module.
+  worker: { format: "es" },
   logLevel: "warn",
 });
+// owner: voice. The WebAssembly runtime ships with the app; main hands it to the dictation worker.
+{
+  const { VOICE_RUNTIME_FILE } = await import("../apps/desktop/src/voice/manifest");
+  const { createRequire } = await import("node:module");
+  const { mkdir } = await import("node:fs/promises");
+  const { dirname } = await import("node:path");
+  const fromTransformers = createRequire(createRequire(import.meta.url).resolve("@huggingface/transformers"));
+  const ortDist = join(dirname(fromTransformers.resolve("onnxruntime-web")), VOICE_RUNTIME_FILE);
+  await mkdir("apps/desktop/dist/renderer/voice", { recursive: true });
+  await copyFile(ortDist, join("apps/desktop/dist/renderer/voice", VOICE_RUNTIME_FILE));
+}
 // Vite emits the CSS-referenced Lora file; ship its OFL beside it.
 const rendererAssets = "apps/desktop/dist/renderer/assets";
 const emitted = (await readdir(rendererAssets)).filter((name) =>

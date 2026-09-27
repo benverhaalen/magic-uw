@@ -93,6 +93,13 @@ const bridge: AppBridge = {
   exportMcp: (id) => ipcRenderer.invoke("magic:mcp-export", id),
   keepSignedIn: (value) => ipcRenderer.invoke("magic:keep-signed-in", value),
   clients,
+  // owner: voice. Model files only; audio stays in the renderer.
+  voice: {
+    status: () => ipcRenderer.invoke("magic:voice", "status"),
+    download: () => ipcRenderer.invoke("magic:voice", "download"),
+    file: (name) => ipcRenderer.invoke("magic:voice", "file", name),
+    remove: () => ipcRenderer.invoke("magic:voice", "remove"),
+  },
   setOutlookCalendar: (url) => ipcRenderer.invoke("magic:outlook-calendar", url),
   outlookCalendarStatus: () => ipcRenderer.invoke("magic:outlook-calendar-status"),
   // owner: T30. Outlook through the app's own Microsoft sign-in; no token crosses this bridge.

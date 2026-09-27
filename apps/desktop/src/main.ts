@@ -36,6 +36,8 @@ import { MaterialReadError } from "../../../packages/connectors/src/network";
 // end owner: acquisition
 import { clearSignOutSecrets, createSecretVault } from "./secrets";
 import { purgeHostData } from "./purge-host"; // owner: platform-fix
+import { createVoiceStore } from "./voice/store"; // owner: voice
+import { allowsVoiceMic } from "./voice/permission"; // owner: voice
 import { createGoogleNotesAuth } from "./notes-google"; // owner: notes
 // owner: T30. Outlook through the app's own Microsoft sign-in (Graph); the token stays in main.
 import { createOutlook, readOutlookConfig } from "./outlook";
@@ -1143,6 +1145,16 @@ app
         worker.postMessage({ kind: "local", id, operation, request });
       });
     }
+    // owner: voice. The download runs only on the student's explicit request in the app.
+    const voice = createVoiceStore(join(data, "voice", "whisper-tiny.en"), join(root, "renderer", "voice"));
+    ipcMain.handle("magic:voice", (event, action: unknown, name?: unknown) => {
+      validateSender(event);
+      if (action === "status") return voice.status();
+      if (action === "download") return voice.download();
+      if (action === "file") return voice.file(name);
+      if (action === "remove") return voice.remove();
+      throw new Error("Unknown voice action.");
+    });
     ipcMain.handle("magic:local-status", (event) => {
       validateSender(event);
       return localOperation("status");
@@ -1693,8 +1705,13 @@ app
     });
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", (event) => event.preventDefault());
+    // owner: voice. Only the microphone, audio only, for the app's own page; all else refused.
     window.webContents.session.setPermissionRequestHandler(
-      (_wc, _permission, callback) => callback(false),
+      (wc, permission, callback, details) => {
+        const media = details as { mediaTypes?: string[]; requestingUrl?: string; isMainFrame?: boolean };
+        callback(allowsVoiceMic({ fromAppWindow: !!window && wc === window.webContents, permission,
+          mediaTypes: media.mediaTypes, requestingUrl: media.requestingUrl, isMainFrame: media.isMainFrame }, rendererURL));
+      },
     );
     window.on("closed", () => {
       window = null;

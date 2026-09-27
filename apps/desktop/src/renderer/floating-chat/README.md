@@ -9,7 +9,7 @@ The app's third way into chat, after the full-pane chat and the command bar: a w
 | `model.ts` | Pure rules: the 5 px press threshold, corner choice and avoidance, panel placement and resizing, keys, persistence. |
 | `element.ts`, `element.css` | `<magic-floating-chat>`: the launcher, the "Click to chat" pill and the panel frame, all in a shadow root. |
 | `FloatingChat.tsx`, `floating-chat.css` | The app mount. It hosts the chat lane's `ChatPane` and store unchanged. |
-| `setting.tsx` | "Floating chat: on/off" (default on), shown on the Data & AI page. |
+| `setting.tsx` | "Floating chat: on/off" (default off since September 27: the shell's chat launcher is the chat surface), shown on the Data & AI page. |
 
 ## How it fits the app
 
@@ -17,6 +17,7 @@ The app's third way into chat, after the full-pane chat and the command bar: a w
 - **Same command path.** Messages call `startChat` or `continueChat`. The chat store runs them the way the command bar does: the `intent.preview` query, then the router's `command` run and the grounded ask. Deadline and saved-item answers fall back to the store's local paths when the router is unavailable. The composer reuses the conversation launcher's draft model (idempotency keys, text kept on failure).
 - **Scope chip.** It shows the chat's current scope once a chat exists. Before that it shows the page the student is on (course, item or included courses). A new chat always takes the page shown in the chip.
 - **Opening.** The launcher, or the chat button in the top bar (`openFloatingChat()`), opens the panel about the current page. With the setting off, the top-bar button says so and points to Data & AI.
+- **Dictation.** Ctrl+Shift+Space (Cmd+Shift+Space on a Mac) opens the panel and dictates into its composer through `renderer/voice/useLocalDictation.ts`; `dictateIntoFloatingChat(text)` puts the words in the composer and the student sends them. Ctrl+K (Cmd+K) opens the panel on the composer.
 - **Warm-up.** The router's `prewarm` command runs once per session so the first answer does not wait on the AI client's start-up. Warming starts an AI session, so `chatWarmPolicy` (`warm.ts`) decides the trigger: on the first hover, keyboard focus or open only when the student's settings already let chat run on their hosted AI without a preview (hosted mode, their AI selected and agreed to, course text shared, always-preview off); on the first open only when a preview or setting stands in the way; never in local-only mode or with no hosted AI agreed to. Hovering never starts a session the student did not ask for.
 - **Placement.** The launcher keeps clear of `.desktop-chrome` (below it for top corners) and `.desktop-sidebar` (a side column narrows the frame, so left corners sit beside it, never over the navigation). It also keeps clear of a bottom composer bar if one is mounted. The panel opens beside the launcher on the same side, grows out of it, and fits between those regions.
 - **Keyboard.** Enter or Space opens and closes. Escape closes from anywhere in the panel and returns focus to the launcher. Arrow keys on the launcher move it between corners, and the move is announced. Arrow keys on the resize grip resize the panel. Minimise keeps the chat; Close ends it, so the next open starts a new chat about the current page.

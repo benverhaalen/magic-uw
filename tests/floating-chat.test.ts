@@ -92,10 +92,13 @@ test("the chosen corner, size and first-launch hint persist, and broken storage 
   assert.equal(readIntroSeen(s), false);
   writeIntroSeen(s);
   assert.equal(readIntroSeen(s), true);
-  assert.equal(readEnabled(memory()), true, "floating chat defaults on");
+  // Default off (operator, September 27): the shell's chat launcher is the chat surface.
+  assert.equal(readEnabled(memory()), false, "floating chat defaults off");
+  writeEnabled(s, true);
+  assert.equal(readEnabled(s), true);
   writeEnabled(s, false);
   assert.equal(readEnabled(s), false);
-  assert.equal(readEnabled(broken), true);
+  assert.equal(readEnabled(broken), false);
 });
 
 test("the panel opens from the launcher's corner, grows out of the launcher, and fits between shell regions", () => {

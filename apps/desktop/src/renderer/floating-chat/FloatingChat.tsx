@@ -34,6 +34,13 @@ export const FLOATING_CHAT_AVOID = ".desktop-chrome, .desktop-sidebar, .conversa
 /** The shell's chat button asks the mounted panel to open; `detail.result` says what happened. */
 const OPEN_EVENT = "magic-floating-chat-open";
 export type OpenFloatingChatResult = "opened" | "hidden" | "off";
+const DICTATE_EVENT = "magic-floating-chat-dictate";
+/** Puts dictated text in the open chat's composer (the student sends it). False when no chat took it. */
+export function dictateIntoFloatingChat(text: string): boolean {
+  const detail = { text, accepted: false };
+  document.dispatchEvent(new CustomEvent(DICTATE_EVENT, { detail }));
+  return detail.accepted;
+}
 /** Opens the floating chat about the current page. "off": the setting unmounted it; "hidden": setup is showing. */
 export function openFloatingChat(): OpenFloatingChatResult {
   const detail: { result: OpenFloatingChatResult } = { result: "off" };
@@ -157,6 +164,20 @@ function FloatingChatHost({ hidden, warm: warmPolicy, view, resource, course, co
     document.addEventListener(OPEN_EVENT, open);
     return () => document.removeEventListener(OPEN_EVENT, open);
   }, [hidden]);
+
+  // Dictation (renderer/voice) fills the composer; the student reads it and sends it.
+  useEffect(() => {
+    const dictated = (event: Event) => {
+      const detail = (event as CustomEvent<{ text: string; accepted: boolean }>).detail;
+      if (hidden || !detail.text) return;
+      const current = live.current.draft?.text ?? "";
+      onEdit(current.trim() ? `${current.trimEnd()} ${detail.text}` : detail.text);
+      detail.accepted = true;
+      requestAnimationFrame(() => field.current?.focus({ preventScroll: true }));
+    };
+    document.addEventListener(DICTATE_EVENT, dictated);
+    return () => document.removeEventListener(DICTATE_EVENT, dictated);
+  });
 
   // Hidden during onboarding and setup; an open panel closes without taking focus.
   useLayoutEffect(() => { if (hidden && host.current?.isOpen) host.current.close("minimise", false); }, [hidden]);
