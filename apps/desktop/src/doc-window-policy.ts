@@ -7,7 +7,7 @@
  * The window never fills a field, never automates Duo and holds no credential: it is an ordinary
  * page on the app-owned `persist:uw` session, so UW single sign-on can carry through by itself.
  */
-import { relative, isAbsolute } from "node:path";
+import { posix, win32 } from "node:path";
 
 const MAX_URL = 4000;
 
@@ -118,12 +118,16 @@ function isOrdinaryLink(target: string): boolean {
   }
 }
 
-/** A path the student chose is inside the Downloads folder (case-insensitive on Windows). */
+/**
+ * A path the student chose is strictly inside the Downloads folder. Both are resolved first, so
+ * `..` segments can't climb out; case-insensitive only on Windows and macOS.
+ */
 export function insideFolder(path: string, folder: string, platform: NodeJS.Platform = process.platform): boolean {
   if (!path || !folder) return false;
+  const paths = platform === "win32" ? win32 : posix;
   const fold = (value: string) => (platform === "win32" || platform === "darwin" ? value.toLowerCase() : value);
-  const rel = relative(fold(folder), fold(path));
-  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+  const rel = paths.relative(fold(paths.resolve(folder)), fold(paths.resolve(path)));
+  return rel !== "" && rel !== ".." && !rel.startsWith(`..${paths.sep}`) && !paths.isAbsolute(rel);
 }
 
 export const HEADLESS_DOCUMENT = "External windows are disabled in headless mode.";

@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { join, sep } from "node:path";
+import { tmpdir } from "node:os";
 import {
   HEADLESS_DOCUMENT,
   handleOpenDocument,
@@ -121,14 +123,26 @@ test("magic:open-document: headless opens nothing", async () => {
   assert.equal(calls, 0);
 });
 
-test("downloads: only inside the Downloads folder", () => {
-  assert.equal(insideFolder("C:\\Users\\s\\Downloads\\notes.docx", "C:\\Users\\s\\Downloads", "win32"), true);
-  assert.equal(insideFolder("c:\\users\\s\\downloads\\sub\\a.pdf", "C:\\Users\\s\\Downloads", "win32"), true);
-  assert.equal(insideFolder("C:\\Users\\s\\Desktop\\notes.docx", "C:\\Users\\s\\Downloads", "win32"), false);
-  assert.equal(insideFolder("C:\\Users\\s\\Downloads", "C:\\Users\\s\\Downloads", "win32"), false);
-  assert.equal(insideFolder("C:\\Users\\s\\Downloads\\..\\x.exe", "C:\\Users\\s\\Downloads", "win32"), false);
+test("downloads: only inside the Downloads folder (this platform's paths)", () => {
+  const home = join(tmpdir(), "magic-doc-window-home");
+  const downloads = join(home, "Downloads");
+  assert.equal(insideFolder(join(downloads, "notes.docx"), downloads), true);
+  assert.equal(insideFolder(join(downloads, "sub", "a.pdf"), downloads), true);
+  assert.equal(insideFolder(join(downloads, "..notes.docx"), downloads), true);
+  assert.equal(insideFolder(join(home, "Desktop", "notes.docx"), downloads), false);
+  assert.equal(insideFolder(downloads, downloads), false);
+  assert.equal(insideFolder(`${downloads}${sep}..${sep}x.exe`, downloads), false);
+  assert.equal(insideFolder(`${downloads}-evil${sep}x.exe`, downloads), false);
+  assert.equal(insideFolder("", downloads), false);
+});
+
+test("downloads: case-insensitive on Windows and macOS only", () => {
+  // Explicit platforms use that platform's path rules, so these hold on any CI host.
+  assert.equal(insideFolder("c:\\users\\s\\downloads\\a.pdf", "C:\\Users\\s\\Downloads", "win32"), true);
   assert.equal(insideFolder("D:\\x.docx", "C:\\Users\\s\\Downloads", "win32"), false);
-  assert.equal(insideFolder("", "C:\\Users\\s\\Downloads", "win32"), false);
+  assert.equal(insideFolder("/users/s/downloads/a.pdf", "/Users/s/Downloads", "darwin"), true);
+  assert.equal(insideFolder("/home/s/downloads/a.pdf", "/home/s/Downloads", "linux"), false);
+  assert.equal(insideFolder("/home/s/Downloads/a.pdf", "/home/s/Downloads", "linux"), true);
 });
 
 test("SSO carry-through: a quick login bounce then the document reports true", async () => {
