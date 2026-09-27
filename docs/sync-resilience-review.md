@@ -1,6 +1,6 @@
 # Canvas sync resilience: investigation and reconciliation
 
-Research and implementation brief, September 26, 2026. **Implementation authorized and in progress; changes below are not yet released.**
+Research and implementation brief, September 26, 2026. **Implemented locally and verified as described below; product code is not yet published or released.**
 
 Input: Ben's `MAGIC-UW-SYNC-RESILIENCE.md`, followed by “nate's are docs, but they are still useful treat them as true and good” and the request to identify differences. Method: the repository's Magic feature-planning skill.
 
@@ -8,12 +8,13 @@ The student outcome is that Refresh captures accessible instructions and linked 
 
 ## Implementation handoff — September 26, 2026
 
-Human owner: Ben. Driver: Codex. Implementation is local on `codex/sync-resilience-integrated`, based on main `abe8b3a`; product code is **not pushed or released**. The preceding worktrees are preserved. Nate's T17 scheduler, latest study generation/practice integration, and product rename are included in the new base. T17 conflict reconciliation is in progress: preserve request pacing and reuse while bypassing cached responses for identity, file authorization and explicit page freshness. Reconnect must abort/drain the previous run before a new-session refresh. Learning retains **v8**, and access observations use **v9**.
+Human owner: Ben. Driver: Codex. Implementation is local on `codex/sync-resilience-integrated`, based on main `abe8b3a`; product code is **not pushed or released**. The preceding worktrees are preserved. Nate's T17 scheduler, latest study generation/practice integration, and product rename are included in the new base. T17 conflict reconciliation is implemented: shared request pacing and reuse remain, while identity, file authorization and explicit page freshness bypass completed-response caching. Reconnect aborts/drains the previous run before starting a new-session refresh. A deliberately late old-session response cannot persist or satisfy the new refresh. Learning retains **v8**, and access observations use **v9**.
 
 **Student journey:** Refresh an included course → capture accessible module/page/file evidence despite restricted listings → search/read captured material → inspect Sources for access separately from a saved copy → restart or retry without losing earlier evidence or falsely requiring sign-in.
 
 ### Implemented locally
 
+- Nate’s T17 scheduler and concurrent course pipelines are retained. One observed page body per run avoids redundant post-full checks; later runs still revalidate directly. Module fallback request attribution counts actual transport attempts, and shared acquisitions do not double-count. Concurrent page-list cancellation is handled immediately to prevent unhandled rejections.
 - One validated module reader shared by normalization, inventory and content fingerprints. Inline items use checked pagination fallback when absent or untrustworthy; partial neighbors survive. Reuse is account/run scoped and cancellation invalidates it.
 - Typed Canvas file references, including module-only and body-linked files and global/course-scoped download/preview aliases. Fresh authenticated metadata authorizes the existing document pipeline; capability URLs never become source identity. Current extraction failures replace current extracted text honestly, while history remains retained.
 - Bounded nested page discovery and direct page/file revalidation cover changes that leave module membership unchanged. Successful probe components remain comparable when other components fail. A missing body cannot replace saved content with an empty success.
@@ -31,22 +32,22 @@ The course-page/notebook lane should reuse these observations rather than infer 
 
 ### Verification and measured tradeoff
 
-On the preceding `18a8486` base, the full suite completed with **665 tests: 664 passed, one skipped**. Type checking and the hidden Electron renderer → preload → worker → SQLite smoke check passed, including synthetic import and local purge. The final shared-file-budget regression also passed separately. These checks do not establish the new T17 integration; its checks and request measurements are pending.
+On the integrated `abe8b3a` base, the full suite completed with **705 tests: 704 passed, one skipped, zero failures**. Type checking and production build passed. The strengthened metadata-budget regression also passed separately after preserving Nate’s absolute request ceiling. Focused checks cover shared expiry propagation, fresh identity/file/page reads, old-session cancellation and late-response rejection, bounded file continuation, and restricted-index document capture across restart. The unmodified hidden Electron smoke check passed through renderer → preload → worker → SQLite, synthetic planning import, MCP export and local purge. Earlier smoke attempts exceeded the 45-second harness limit; temporary stage logging localized the wait to purge, and the subsequent uninstrumented run passed. No smoke assertions or timeouts were relaxed. The preceding implementation’s headless browser evidence is described below.
 
 A headless browser drove normal sample onboarding → Sources → material access → opening a saved reading. An unavailable item retained its saved-copy timestamp; an unchecked item had no check timestamp. A deliberately injected query failure showed recovery instructions, and closing/reopening recovered. This uses the actual scoped core query and temporary SQLite through the preview bridge. Reproduce with `MAGIC_PREVIEW_SYNC_FIXTURE=1 pnpm preview` after `pnpm build`, then load the sample course. It is explicitly synthetic, with no live UW or hosted AI connections.
 
-Synthetic five-course request measurements **before T17 integration**:
+Synthetic five-course request measurements **after T17 integration**:
 
 | Fixture | Full read | Unchanged hot tick | Content tick including direct revalidation |
 | --- | ---: | ---: | ---: |
-| Base university | 123 | 2 | 38 |
-| Eight modules / twelve pages per course | 188 | 2 | 48 |
+| Base university | 99 | 2 | 38 |
+| Eight modules / twelve pages per course | 154 | 2 | 48 |
 
-Direct content checks intentionally increase the content tick above the old metadata-only budget: about 26–31% of a full read in these fixtures. The hot tick remains two requests. The two-hot-plus-one-content average is about 9–11% of repeated full reads. This is request-count evidence, not live latency or UW coverage. Tests also cover 602 cached crawl ancestors, the 1,000-page maximum, bounded failures, actual v8→v9 migration preserving learning rows, restart/account separation and endpoint-version invalidation. Existing real local PDF extraction tests run in the full suite; the new restricted-index integration test uses a synthetic text extractor.
+Full reads fell from the pre-integration 123/188 requests to 99/154. Direct content checks intentionally exceed the metadata-only budget: about 31–38% of a full read in these fixtures. The hot tick remains two requests, and the metadata portion retains T17’s absolute ceiling (four requests per course and 10% of its recorded 208-request pre-T17 baseline). The two-hot-plus-one-content average is about 11–14% of repeated full reads. This is request-count evidence, not live latency or UW coverage. Tests also cover 602 cached crawl ancestors, the 1,000-page maximum, bounded failures, actual v8→v9 migration preserving learning rows, restart/account separation and endpoint-version invalidation. Existing real local PDF extraction tests run in the full suite; the restricted-index integration test uses a synthetic text extractor.
 
 **Remaining delivery boundary:** code is local, not on a remote branch or main. No live UW compatibility, production latency, representative OCR quality or account-switch usability claim is made. Documentation is published for coordination. Historical research below preserves the reasoning and dated branch observations; use this handoff for current implementation status.
 
-**Current integration checkpoint:** T17 reconciliation and session-boundary regression checks are underway. Request measurements below describe the preceding implementation and must be rerun against the integrated scheduler. No live UW verification is claimed.
+**Current integration checkpoint:** T17 reconciliation, request attribution, same-run page reuse and session-boundary regressions pass focused checks. The integrated full suite, type check, build, strengthened metadata-budget check and unmodified desktop smoke pass. No live UW verification is claimed.
 
 ## Implementation architecture after independent review
 

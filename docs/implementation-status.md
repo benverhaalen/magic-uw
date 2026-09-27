@@ -6,7 +6,7 @@ Historical provider snapshot, predating the main `780aaed` backend integration; 
 
 ## Sync resilience implementation branch
 
-The local `codex/sync-resilience-current` branch extends the integrated backend with shared module acquisition, typed linked-file capture, partial component freshness, durable access observations and Sources detail. It uses schema **v9** after the canonical learning v8 migration. Code is not yet pushed or released. See the [canonical handoff](sync-resilience-review.md#implementation-handoff--september-26-2026) for interfaces, tests, measured request costs and limits.
+The local `codex/sync-resilience-integrated` branch extends the integrated backend with shared module acquisition, typed linked-file capture, partial component freshness, durable access observations and Sources detail. It uses schema **v9** after the canonical learning v8 migration. Code is not yet pushed or released. See the [canonical handoff](sync-resilience-review.md#implementation-handoff--september-26-2026) for interfaces, tests, measured request costs and limits.
 
 ## Canonical learning-session integration
 
