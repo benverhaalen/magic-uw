@@ -1,7 +1,7 @@
 import { build } from "esbuild";
 import { build as viteBuild } from "vite";
 import { resolve } from "node:path";
-import { mkdir, copyFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 await build({
   entryPoints: [
     "apps/desktop/src/main.ts",
@@ -38,8 +38,7 @@ await viteBuild({
   build: { outDir: "dist/renderer", emptyOutDir: true },
   logLevel: "warn",
 });
-await mkdir("apps/web/dist", { recursive: true });
-await copyFile("apps/web/index.html", "apps/web/dist/index.html");
+execFileSync(process.execPath, ["scripts/build-web.mjs"], { stdio: "inherit" });
 console.log(
   "Built desktop main, isolated preload, local worker, renderer, and informational website.",
 );

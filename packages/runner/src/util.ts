@@ -70,16 +70,44 @@ export function extractJson(text: string): unknown {
   }
 }
 
-/** Maps a provider's error text to a kind without ever copying the text into our messages. */
+/**
+ * Maps a provider's error text to a kind without ever copying the text into our messages.
+ * owner: client-health (D50). Ordered: the first match wins, so a busy server is never a usage
+ * limit, and a model or plan refusal is never a generic failure. The strings each rule was
+ * written against, observed or found in the installed binaries, are listed in
+ * apps/desktop/src/clients/health.ts (`HEALTH_EVIDENCE`).
+ */
 export function classifyFailure(text: string): RunnerErrorKind {
-  if (/usage limit|rate[ _-]?limit|limit reached|quota|too many requests|\b429\b|overloaded/i.test(text))
-    return "usage_limit";
-  if (/not logged in|log ?in required|please (?:run )?\/?login|invalid api key|authentication|unauthori[sz]ed|\b401\b|sign in/i.test(text))
+  if (/not your usage limit|overloaded|temporarily limiting requests|experiencing high demand/i.test(text))
+    return "unavailable";
+  if (/workspace routing discovery failed|error sending request|stream disconnected|connection error|ENOTFOUND|ECONNREFUSED|ECONNRESET|EAI_AGAIN|getaddrinfo|network is unreachable|fetch failed/i.test(text))
+    return "offline";
+  if (/not logged in|log ?in required|please (?:run )?\/?login|invalid api key|authentication|unauthori[sz]ed|\b401\b|sign in|missing bearer|(?:oauth )?token (?:has )?expired|login expired/i.test(text))
     return "not_signed_in";
+  if (/issue with the selected model|may not exist or you may not have access|model is not supported|model_not_found|unrecognized_model|is not available with the claude \w+ plan/i.test(text))
+    return "model_unavailable";
+  if (/upgrade to plus|credit balance is too low|seat type doesn't include|claude code (?:may not be|is not) enabled for your organi[sz]ation|not available on (?:the|your) free plan|requires a (?:pro|max|paid) (?:plan|subscription)/i.test(text))
+    return "plan_insufficient";
+  if (/usage limit|rate[ _-]?limit|limit reached|hit your (?:[\w-]+ )?limit|out of (?:extra )?usage|out of credits|spend cap|quota|usage_limit_reached|too many requests|\b429\b/i.test(text))
+    return "usage_limit";
   return "process_failed";
 }
-export const failure = (text: string, detail: string) =>
-  new RunnerError(classifyFailure(text), detail);
+
+/**
+ * owner: client-health. The reset time a usage-limit message states, kept as the client wrote
+ * it (at most 48 printable characters), or an ISO time for the legacy `…|<epoch seconds>` form.
+ */
+export function statedReset(text: string): string | undefined {
+  const epoch = /usage limit reached\|(\d{9,11})\b/i.exec(text);
+  if (epoch) return new Date(Number(epoch[1]) * 1000).toISOString();
+  const stated = /\bresets?\s+(?:at\s+|in\s+|on\s+)?([0-9][^·|"\n\r]{0,47})/i.exec(text) ?? /\btry again (?:at|in)\s+([^."\n\r]{1,48})/i.exec(text);
+  const value = stated?.[1].replace(/[^\x20-\x7e]/g, "").replace(/[\s.,;:]+$/, "").trim();
+  return value ? value.slice(0, 48) : undefined;
+}
+export const failure = (text: string, detail: string) => {
+  const kind = classifyFailure(text);
+  return new RunnerError(kind, detail, [], kind === "usage_limit" ? { resetsAt: statedReset(text) } : {});
+};
 
 function headerValue(value: string): string {
   const oneLine = value.replace(/[\r\n\t\]\[]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
