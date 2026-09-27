@@ -44,3 +44,28 @@ test("B1: the claim check reads dates, numbers and names the way a student would
   assert.ok(!claimsMatch("Sections meet on Fridays.", "Discussion sections meet every Thursday at 2:30 pm."));
   assert.ok(claimsMatch("The exam covers chapters one to four.", "The exam covers chapters one to four."));
 });
+
+// Live stress test, 2026-09-27 (evals/break-live): every sentence the claim check flagged was correct.
+// These are those shapes; the failure itself must still be caught.
+test("B1 live: codes, labels, heading dates and shown arithmetic pass; contradictions still don't", () => {
+  const moved = "the midterm has moved to Thursday, October 16, in B10 Ingraham Hall";
+  assert.ok(claimsMatch("The midterm is now on Thursday, October 16, in B10 Ingraham Hall.", moved), "a room code is not the name B");
+  assert.ok(!claimsMatch("The midterm is in B12 Ingraham Hall.", moved), "a different room code");
+  const hw = "Announcement: I've extended Homework 4 by two days because Canvas was down; it is now due Sunday, October 5 at 11:59 PM.";
+  assert.ok(claimsMatch("So Homework 4 is now due Sunday, October 5 at 11:59 PM.", "it is now due Sunday, October 5 at 11:59 PM", { passages: hw }), "a label just outside the quote");
+  assert.ok(!claimsMatch("So Homework 5 is now due Sunday, October 5 at 11:59 PM.", "it is now due Sunday, October 5 at 11:59 PM", { passages: hw }));
+  const vote = "Announcement (Sep 20): After the class vote, the final project is now worth 40% and participation is worth 5%.";
+  assert.ok(claimsMatch("A class vote announced on Sep 20 changed the final project weight to 40%.", "the final project is now worth 40%", { passages: vote }), "a heading date when the quote states none");
+  assert.ok(!claimsMatch("The midterm is on October 21.", "The midterm exam is on October 14.", { passages: "The midterm exam is on October 14. Review is October 21." }), "a quoted date still wins over the passage");
+  const hwq = "There are 8 homework assignments, each worth 25 points. The lowest homework score is dropped.";
+  assert.ok(claimsMatch("The lowest is dropped, so 8 − 1 = 7 count, and 7 × 25 = 175 points.", hwq), "arithmetic written out and re-done");
+  assert.ok(!claimsMatch("So 7 × 25 = 185 points.", hwq), "wrong arithmetic");
+  assert.ok(!claimsMatch("The category is worth 175 points.", hwq), "an unexplained number");
+  assert.ok(claimsMatch("That makes 72 hours.", "Each late day extends a deadline by 24 hours.", { known: ["3"], passages: "You have 3 late days." }) === false, "72 with no calculation shown");
+  assert.ok(claimsMatch("Using all 3 gives 3 × 24 = 72 hours.", "You have 3 late days in total. Each late day extends a deadline by 24 hours."));
+  const dates = "The proposal is due October 6. The final report is due December 8.";
+  assert.ok(claimsMatch("From October 6 to December 8 is 63 days.", dates), "days between two named dates");
+  assert.ok(!claimsMatch("From October 6 to December 8 is 70 days.", dates));
+  const sections = "302 meets Thursday 9:55 AM in 1261 Sterling Hall with Omar Haddad. 303 meets Thursday 1:20 PM in 2241 Chamberlin with Priya Nair.";
+  assert.ok(!claimsMatch("Priya Nair runs the section in 1261 Sterling Hall.", "302 meets Thursday 9:55 AM in 1261 Sterling Hall with Omar Haddad.", { passages: sections }), "a neighbour's name");
+});
