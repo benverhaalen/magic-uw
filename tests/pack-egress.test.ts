@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createStore } from '@magic/storage';
 import { defaultPrivacy } from '@magic/contracts';
+import { CONSENT_DISCLOSURE_VERSION } from '@magic/domain';
 import { createModelRunner, type BackendCall } from '../packages/runner/src/index';
 import { createPackHandler } from '../packages/core/src/pack-handler';
 import { egressFor, payloadHash } from '../packages/core/src/egress';
@@ -10,7 +11,7 @@ import { memoryArtifactStore } from '../packages/packs/core/src/index';
 function setup(local = false) {
   const store = createStore(':memory:');
   store.setPrivacy({...defaultPrivacy, mode: local ? 'local_only' : 'selective_cloud', hostedProvider:'claude', shareCourseText:true});
-  store.setConsent!({ action:'grant',recipient:'claude',disclosureVersion:'setup-2026-09-26'},'2026-09-26T12:00:00Z');
+  store.setConsent!({ action:'grant',recipient:'claude',disclosureVersion: CONSENT_DISCLOSURE_VERSION},'2026-09-26T12:00:00Z');
   store.recordAutoIdentity({accountScope:'account-private',courseId:'c',authors:['Jo Park']});
   store.ingest({source:{id:'s',kind:'fixture',label:'s',scope:'all',accountScope:'account-private',courseId:'c'},observedAt:'2026-09-26T12:00:00Z',status:'ok',complete:true,resources:[{
     externalId:'reading',kind:'material',courseId:'c',courseName:'Jo Park course',title:'Reading',text:'Jo Park studies a stack, a last-in first-out collection. Professor Ada teaches stacks.',url:'https://example.org/r',deadlines:[],policy:{mode:'coaching',evidence:'Jo Park may practice with AI.'},
