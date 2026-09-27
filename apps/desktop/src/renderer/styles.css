@@ -1194,3 +1194,211 @@ select {
 }
 
 .uw-nav-mark { width: 18px; height: 24px; object-fit: contain; flex: 0 0 18px; }
+
+/* Today rail: time context for the Today view. Hidden on narrow windows so the list and detail keep their width. */
+.today-rail {
+  display: none;
+}
+@media (min-width: 1180px) {
+  .today-layout {
+    grid-template-columns: minmax(300px, 1fr) minmax(280px, 0.85fr) 268px;
+  }
+  .today-rail {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    border-left: 1px solid var(--border);
+    background: #fbfbf9;
+    padding: 20px 16px 14px;
+    position: sticky;
+    top: 0;
+    align-self: start;
+    height: calc(100vh - 188px);
+  }
+}
+@media (min-width: 1450px) {
+  .today-layout {
+    grid-template-columns: minmax(380px, 1fr) minmax(360px, 440px) 288px;
+  }
+}
+.rail-heading {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.75px;
+  color: #999990;
+  margin: 0 0 8px;
+}
+.rail-due,
+.rail-plan {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+}
+.rail-link {
+  display: grid;
+  grid-template-columns: 62px 1fr;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 0;
+  border: 0;
+  border-bottom: 1px solid #efefea;
+  background: none;
+  text-align: left;
+  font-size: 12px;
+  color: var(--text, #292926);
+  cursor: pointer;
+}
+.rail-link:hover {
+  background: #f3f3ef;
+}
+.rail-link:focus-visible,
+.rail-block.suggestion:focus-visible {
+  outline: 2px solid #4a6fd6;
+  outline-offset: 1px;
+}
+.rail-time {
+  font-weight: 600;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.rail-course,
+.rail-reason {
+  display: block;
+  font-size: 10.5px;
+  color: var(--muted);
+  line-height: 1.35;
+  margin-top: 1px;
+}
+.rail-warn {
+  display: block;
+  font-size: 10.5px;
+  color: #a4521c;
+}
+.rail-plan-item .rail-time {
+  color: #6b5a2e;
+}
+.rail-empty-line {
+  font-size: 11.5px;
+  color: var(--muted);
+  padding: 4px 0 8px;
+}
+.rail-allday {
+  font-size: 11px;
+  background: #eef1f7;
+  color: #3d4a66;
+  border-radius: 4px;
+  padding: 5px 8px;
+  margin-bottom: 6px;
+}
+.rail-grid {
+  position: relative;
+  flex: 1;
+  min-height: 120px;
+  overflow-y: auto;
+  margin-top: 4px;
+}
+.rail-grid-inner {
+  position: relative;
+  margin-top: 8px;
+}
+.rail-hour {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px solid #ecece7;
+}
+.rail-hour span {
+  position: absolute;
+  top: -7px;
+  left: 0;
+  font-size: 10px;
+  color: #9a9a92;
+  background: #fbfbf9;
+  padding-right: 4px;
+}
+.rail-block {
+  position: absolute;
+  left: 34px;
+  right: 2px;
+  border-radius: 5px;
+  padding: 2px 7px;
+  font-size: 11px;
+  line-height: 1.3;
+  overflow: hidden;
+  border: 0;
+  border-left: 3px solid;
+  text-align: left;
+}
+.rail-block b {
+  display: block;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rail-block span {
+  font-size: 10px;
+  color: #5b5b55;
+}
+.rail-block.event {
+  background: #e8eefb;
+  border-color: #4a6fd6;
+}
+.rail-block.event.start-only {
+  background: #f1f1ed;
+  border-color: #a0a098;
+}
+.rail-block.suggestion {
+  background: #fff;
+  border: 1px dashed #c9b88e;
+  border-left: 3px solid #c9a24a;
+  cursor: pointer;
+}
+.rail-block.suggestion.exam {
+  border-color: #d9a9a0;
+  border-left-color: #c2553f;
+}
+.rail-block.suggestion.prep {
+  border-color: #b9c7e8;
+  border-left-color: #6b86cf;
+}
+.rail-now {
+  position: absolute;
+  left: 28px;
+  right: 0;
+  border-top: 1.5px solid #d4412c;
+  pointer-events: none;
+}
+.rail-now::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: -4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #d4412c;
+}
+.rail-grid-empty {
+  position: absolute;
+  left: 34px;
+  right: 0;
+  top: 120px;
+  margin: 0;
+  padding: 6px 4px;
+  background: #fbfbf9;
+  text-align: center;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.rail-foot {
+  font-size: 10px;
+  color: #9a9a92;
+  padding-top: 8px;
+  border-top: 1px solid #efefea;
+  margin: 8px 0 0;
+  line-height: 1.4;
+}

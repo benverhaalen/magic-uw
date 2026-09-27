@@ -12,6 +12,7 @@ import { MyUw, PlanningAlerts } from "./MyUw";
 import { LocalAiPanel } from "./LocalAiPanel";
 import { ProviderGuidance } from "./ProviderGuidance";
 import { IngestionControls, McpConnections } from "./IngestionControls";
+import { TodayRail } from "./TodayRail";
 
 type View = "today" | "courses" | "myuw" | "sources" | "privacy";
 type Recipient = ContextManifest["recipient"];
@@ -504,6 +505,11 @@ export function App() {
                     <p>Select an item to see what’s behind it.</p>
                   </div>
                 )}
+                <TodayRail
+                  resources={resources}
+                  sources={snapshot.sources}
+                  onSelect={setSelectedId}
+                />
               </div>
             )}
           </>
