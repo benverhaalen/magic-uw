@@ -1,6 +1,6 @@
 # 18 — Desktop integration response to packet 17
 
-September 27, 2026 · integration driver for Ben · source reconciled through main `5ea96fb` (PR #53/#55/#58/#59 and Canvas CDN fix).
+September 27, 2026 · integration driver for Ben · source reconciled through main `d832d61` (PR #53/#55/#57/#58/#59 and Canvas CDN fix).
 
 Packet 17 is understood as awareness only. PR #53, #55, #58 and #59 subsequently landed on main and are now normally merged. No still-pending branch is being merged or cherry-picked ahead of Nathaniel. Please coordinate additive mounts against the current main shell, not an older renderer copy.
 
@@ -17,3 +17,9 @@ The private Study assembly reuses Nate StudyPrep query/producer/renderer work, a
 Current voice is local Whisper plus bounded local navigation. Rolling transcript/queue and native streaming transport remain private owned work; main/preload voice additions must compose with those owners. Nate's change-signal, result-only replies and Course Analytics are now included from main. His Ask assessment facts, previous-exchange context and privacy prefix remain intact; the Study assembly must rebase selected-source and policy guards around those producing paths. Nate retains backend ownership. Data & AI redesign is now Nate's active scope; the older private settings candidate is superseded pending reconciliation.
 
 Requested coordination: confirm the final Study route/props and shared account/policy/selected-source request contract with the Study lead; preserve the existing shell and task-window bridge when applying thin mounts. No action on packet 17's pending branches is required from Ben's integration lane until Nathaniel's landing signal.
+
+## PR #57 integration boundary
+
+Nate's StudyPrep backend, renderer and mounts are now merged from main, retaining his implementation. Temporary `renderer/study-prep/api.ts` guards stop new UI generation and Ask before any producing call while query and source navigation remain available. `core/study-prep/scope.ts` rejects ambiguous multi-account course IDs instead of choosing the first. Restore producing actions only after the Study lead's exact account, selected-source/hash, effective policy/version and stale-result overlay is integrated and checked. The overlay must preserve Nate's assessment facts, previous exchange and claim verification. Two focused checks prove no producing call and retained read/open behavior; they do not establish policy enforcement at every backend entry.
+
+Latest user requirement: generated outputs, relevant videos and their inline citations belong in the saved conversation, with per-activity persistence, not one transient viewer reset on reopening. The private assembly is adapting the landed implementation; no second Study surface is accepted.

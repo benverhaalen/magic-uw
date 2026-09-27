@@ -113,9 +113,10 @@ export function courseRows(store: PrepStore, course: { accountScope: string; cou
   return rows;
 }
 
-/** The course's account scope, as the pack handler decides it (the first scope with this course). */
+/** Without an explicit account target, a shared course ID must resolve uniquely. */
 export function courseScope(store: Store, courseId: string): string | null {
-  return store.sources().filter((s) => s.courseId === courseId).map((s) => s.accountScope).sort()[0] ?? null;
+  const accounts = new Set(store.sources().filter((s) => s.courseId === courseId && s.accountScope).map((s) => s.accountScope));
+  return accounts.size === 1 ? [...accounts][0]! : null;
 }
 
 const ROLE_WORDS: [RegExp, StudyPrepSourceRole][] = [
