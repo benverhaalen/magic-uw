@@ -1,9 +1,9 @@
 ---
 name: magic-design
-description: Design, extend, implement, or audit Magic Canvas interfaces and its website using the project's visual constitution, original user decisions, and complete interaction journeys. Use for UI work and design handoffs in this repository; load supporting references only for the current task. Use the near-approved Home and user corrections to calibrate a transferable system, then adapt its language across platforms.
+description: Design, extend, implement, or audit My Magic UW interfaces and its website using the project's visual constitution, original user decisions, and complete interaction journeys. Use for UI work and design handoffs in this repository; load supporting references only for the current task. Use the near-approved Home and user corrections to calibrate a transferable system, then adapt its language across platforms.
 ---
 
-# Magic Canvas design
+# My Magic UW design
 
 ## Start with intent and the current artifact
 
@@ -13,7 +13,7 @@ State the student's complete journey, normal entry/default state and observable 
 
 Use the current user instruction, controlling quotes and accepted decisions together. The near-approved Home is a calibration reference for taste and Home hierarchy. Preserve explicit layout decisions while correcting its documented flaws; its exact coordinates and incidental details do not govern the system. Ben's 95% judgment is subjective satisfaction, not a numerical image threshold. Resolve consequential conflicts with the affected humans; label proposals. Silence does not approve a new direction.
 
-The cohesive Magic Canvas Home establishes this project’s design language. Earlier image collections were inputs to settling that language; do not reopen aesthetic discovery by blending them again. Use UX/UI research and external references to solve a named usability, interaction, accessibility or consistency gap within this language. Generalize Ben’s corrections with their purpose and scope; bring consequential identity changes back as explicit proposals. See D24.
+The cohesive My Magic UW Home establishes this project’s design language. Earlier image collections were inputs to settling that language; do not reopen aesthetic discovery by blending them again. Use UX/UI research and external references to solve a named usability, interaction, accessibility or consistency gap within this language. Generalize Ben’s corrections with their purpose and scope; bring consequential identity changes back as explicit proposals. See D24.
 
 ## Load only what the task needs
 
@@ -35,9 +35,9 @@ Use existing components when they fit their semantics. A matching color alone do
 
 ## Produce a coherent result
 
-For the current system-building stage, produce foundations and component families: palette/gradient roles, exact typography and icons, surfaces/curves, controls and their states. Use image-to-code to refine those units within Home's established language. Complete pages come later as composition and transfer checks. Before presenting a specimen, verify the concrete identity against Home; similar colors with guessed fonts, icons or shell geometry fail. See D26 and the image-to-code reference.
+The current desktop work includes integrated production journeys. Improve shared foundations and component families through their actual page consumers: palette/gradient roles, exact typography and icons, surfaces/curves, controls and their states. Use image-to-code where it resolves a visual composition gap within Home's established language. Foundation-only requests still stop at their requested scope. Before presenting a specimen, verify the concrete identity against Home; similar colors with guessed fonts, icons or shell geometry fail. See D26 and the image-to-code reference.
 
-Reuse the shared identity, font roles, semantic tokens and component recipes. Match an existing sibling before inventing a new treatment. Lora Medium (500) and Geist, Lucide, warm gradient shell, flat colorful actions and restrained borders are intentional. The [decision record](../../../docs/design/decision-record.md) preserves reasons and still-open details. Lora Medium and its OFL are bundled in `packages/ui/assets/fonts` and declared once in `packages/ui/src/fonts.css`; Geist remains privately supplied. A fallback is not a successful font match.
+Reuse the shared identity, font roles, semantic tokens and component recipes. Match an existing sibling before inventing a new treatment. Lora Medium (500) and Geist, Lucide, warm gradient shell, flat colorful actions and restrained borders are intentional. The [decision record](../../../docs/design/decision-record.md) preserves reasons and still-open details. Lora Medium (`Lora-Medium.ttf`) and Geist (`Geist-Variable.woff2`), with their OFL licenses, are bundled in `packages/ui/assets/fonts` and declared once in `packages/ui/src/fonts.css`. The desktop build verifies the emitted font bytes. A fallback is not a successful font match.
 
 For a new surface, extend the language around its user journey rather than copy Home's layout. Desktop navigation is Home / Courses / My UW / Calendar; a website has a different entry journey. Keep visible facts grounded and capabilities honest. No inferred reading completion, invented readiness, or fake multi-app launch.
 
@@ -51,4 +51,4 @@ Use the milestone check-ins and bounded refinement loop in the review reference.
 
 ## First usable completion
 
-Aim for a demonstrated system that lets parallel UI work begin, not exhaustive generalization. Show a small but meaningfully diverse set of complete examples: source/action composition, form/overlay recovery, and a different page or platform journey from a fresh description. Trace important rules into actual component consumers and rendered behavior. Resolve material drift; disclose unsupported patterns and where further design work is needed. A passing doc validator, generated board, model agreement, or nominal component count is not a completion criterion. Keep human taste decisions pending until answered, while continuing unaffected work.
+For system-only work, demonstrate transferable foundations. For authorized product work, deliver the integrated journey in the runtime of record. Show a small but meaningfully diverse set of complete examples: source/action composition, form/overlay recovery, and a different page or platform journey from a fresh description. Trace important rules into actual component consumers and rendered behavior. Resolve material drift; disclose unsupported patterns and where further design work is needed. A passing doc validator, generated board, model agreement, or nominal component count is not a completion criterion. Keep human taste decisions pending until answered, while continuing unaffected work.
