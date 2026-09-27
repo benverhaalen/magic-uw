@@ -58,6 +58,8 @@ const publicClients = createWorkerClients(store);
 import { createClaudeBackend, createCodexBackend, type ModelRunner } from "../../../packages/runner/src/index";
 import { createPackRuntime, DEFAULT_PACK_CONFIG } from "../../../packages/packs/core/src/index";
 import { createPackHandler } from "../../../packages/core/src/pack-handler";
+import { APPROACH_PACK, createApproachHandler } from "../../../packages/core/src/views/index"; // owner: page-views
+import type { PackScope } from "@magic/contracts"; // owner: page-views
 import { isIsolated, isProfileReady, profileEnv, readClientSettings, resolveClient, workDir } from "./clients/profiles";
 const generationUserData = dirname(process.env.MAGIC_DB_PATH!);
 // owner: client-health (D50). Every generation path (packs and guides, notes, the intent router)
@@ -109,6 +111,17 @@ async function generationRunner(): Promise<ModelRunner | null> {
 // end owner: client-health
 const generation = createPackHandler({ store, runner: generationRunner });
 // end owner: generation
+// owner: page-views. The "page-approach" pack (the pages' optional "how to approach it"
+// paragraph) answers through the same pack seam; every other pack name goes on unchanged.
+{
+  const approach = createApproachHandler({ store, runner: generationRunner });
+  const packs = generation.pack;
+  Object.assign(generation, {
+    pack: (name: string, scope: PackScope, signal: AbortSignal): Promise<unknown> =>
+      name === APPROACH_PACK ? approach.run(scope, signal) : packs(name, scope, signal),
+  });
+}
+// end owner: page-views
 /** Jev judgments run in main (network + consent gate); the reply arrives as "evaluation". */
 function relayJudgment(
   message:
