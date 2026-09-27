@@ -69,7 +69,8 @@ const progress = (parts: Partial<OnboardingProgress>) => ({ ...emptyProgress, ..
 test("first run starts at the agreement; an existing populated, agreed workspace skips onboarding", () => {
   assert.equal(needsOnboarding(snapshot(), emptyProgress, hasCurrentConsent), true);
   assert.equal(firstIncompleteStep(snapshot(), emptyProgress, hasCurrentConsent), "consent");
-  assert.deepEqual(steps.map((s) => s.id), ["consent", "uw", "client", "appearance", "connections", "done"]);
+  // fix/current-courses-only: "Your courses" follows UW sign-in, so the student chooses before the first full read.
+  assert.deepEqual(steps.map((s) => s.id), ["consent", "uw", "courses", "client", "appearance", "connections", "done"]);
   const existing = snapshot({ consents: uwAgreed, resources: [resource("assignment")] });
   assert.equal(needsOnboarding(existing, emptyProgress, hasCurrentConsent), false);
   assert.equal(needsOnboarding(existing, progress({ started: true }), hasCurrentConsent), true);

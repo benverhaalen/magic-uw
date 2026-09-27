@@ -12,6 +12,7 @@ import { Icon, Spinner } from "./icons";
 import {
   clientInfo,
   clientOrder,
+  courseChoices,
   createPreviewClients,
   firstIncompleteStep,
   healthFromStatus,
@@ -24,6 +25,7 @@ import {
   writeProgress,
   type ClientId,
   type ClientsBridge,
+  type CourseChoice,
   type OnboardingProgress,
   type StepId,
   type UwProgress,
@@ -139,6 +141,20 @@ export function Onboarding(props: OnboardingProps) {
         onOutcome={(uw) => update({ uw })}
         onNext={() => {
           setAutoSignIn(false);
+          next();
+        }}
+      />
+    );
+  else if (step === "courses")
+    body = (
+      <CoursesStep
+        heading={heading}
+        snapshot={snapshot}
+        busy={busy}
+        run={props.run}
+        onBack={back}
+        onNext={() => {
+          update({ coursesDone: true });
           next();
         }}
       />
@@ -360,7 +376,8 @@ function UwStep({
     setOutcome(null);
     try {
       // FDB-002: Canvas is read only after a confirmed sign-in; a closed window starts nothing.
-      const result = await signInAndSync(window.magic ?? {});
+      // fix/current-courses-only: only the course lists now; the student chooses before the sync.
+      const result = await signInAndSync(window.magic ?? {}, undefined, { discover: true });
       setOutcome(result.outcome);
       onOutcome(result.outcome.status);
       if (result.synced) void run({ type: "snapshot" });
@@ -436,6 +453,80 @@ function UwStep({
             {outcome ? "Sign in again" : "Sign in to UW"}
           </button>
         ) : null}
+      </Actions>
+    </>
+  );
+}
+
+// --- 2b. Your courses (fix/current-courses-only) -------------------------------------------------
+function CourseRow({ course, busy, onToggle }: { course: CourseChoice; busy: boolean; onToggle: (on: boolean) => void }) {
+  return (
+    <li className="chn-row">
+      <label className="onb-course">
+        <input type="checkbox" checked={course.checked} disabled={busy} onChange={(e) => onToggle(e.target.checked)} />
+        <span className="chn-row-text">
+          <span className="chn-row-name">{course.name}</span>
+          <span className="chn-row-detail">{course.term ?? "No term"}</span>
+        </span>
+      </label>
+    </li>
+  );
+}
+function CoursesStep({
+  heading,
+  snapshot,
+  busy,
+  run,
+  onBack,
+  onNext,
+}: {
+  heading: Heading;
+  snapshot: Snapshot;
+  busy: boolean;
+  run: (command: Command) => Promise<CommandResult | undefined>;
+  onBack: (() => void) | null;
+  onNext: () => void;
+}) {
+  const choices = courseChoices(snapshot);
+  const thisTerm = choices.filter((c) => c.group === "this-term");
+  const other = choices.filter((c) => c.group === "other");
+  const toggle = (course: CourseChoice, included: boolean) =>
+    void run({ type: "course-override", value: { accountScope: course.accountScope, courseId: course.courseId, included } });
+  const start = () => {
+    // The first full read, of the checked courses only; it continues while setup goes on.
+    if (window.magic?.syncCanvas) void window.magic.syncCanvas().then(() => run({ type: "snapshot" }));
+    onNext();
+  };
+  return (
+    <>
+      {heading("Your courses")}
+      <p className="onb-lede">
+        These are the courses Canvas lists for you this term. Only the checked ones are read. You can change this later in
+        Settings.
+      </p>
+      {thisTerm.length ? (
+        <ul className="chn-rows" aria-label="This term">
+          {thisTerm.map((course) => (
+            <CourseRow key={course.id} course={course} busy={busy} onToggle={(on) => toggle(course, on)} />
+          ))}
+        </ul>
+      ) : (
+        <p className="onb-note">Canvas didn't list a course for this term.</p>
+      )}
+      {other.length ? (
+        <details className="onb-other-courses">
+          <summary>Other Canvas sites ({other.length})</summary>
+          <ul className="chn-rows" aria-label="Other Canvas sites">
+            {other.map((course) => (
+              <CourseRow key={course.id} course={course} busy={busy} onToggle={(on) => toggle(course, on)} />
+            ))}
+          </ul>
+        </details>
+      ) : null}
+      <Actions onBack={onBack}>
+        <button className="onb-primary" disabled={busy} onClick={start}>
+          Start syncing
+        </button>
       </Actions>
     </>
   );

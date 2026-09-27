@@ -549,3 +549,27 @@
     border-right-color: var(--magic-ink-muted);
   }
 }
+
+/* fix/current-courses-only: the course chooser (reuses the connection rows) */
+.onb-course {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  cursor: pointer;
+}
+.onb-course input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--magic-ink);
+  flex: none;
+}
+.onb-other-courses {
+  margin-top: 20px;
+}
+.onb-other-courses > summary {
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--magic-ink-muted);
+  padding: 6px 0 10px;
+}

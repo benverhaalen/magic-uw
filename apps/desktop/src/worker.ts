@@ -647,7 +647,9 @@ port.on("message", async ({ data }: { data: any }) => {
   }
   if (data.kind === "refresh") {
     try {
-      await ingestion.tick("manual");
+      // fix/current-courses-only: discovery reads the course lists only; the student then chooses.
+      if (data.discover === true) await ingestion.discover();
+      else await ingestion.tick("manual");
       port.postMessage({
         kind: "response",
         id: data.id,
