@@ -384,6 +384,19 @@ app
         }
         return;
       }
+      // owner: client-health (D36, D50). Gemini's key for the worker's runner, only when the
+      // worker builds a Gemini backend. Read from the safeStorage vault; never logged.
+      if (message.kind === "ai-key") {
+        try {
+          if (message.payload?.provider !== "gemini") throw new Error();
+          const key = await vault.get("ai-key:gemini");
+          worker.postMessage({ kind: "source-response", id: message.id, result: { key: key || null } });
+        } catch {
+          worker.postMessage({ kind: "source-response", id: message.id, error: true });
+        }
+        return;
+      }
+      // end owner: client-health
       // owner: T30. The worker's Graph delta links and watermarks, in the encrypted vault.
       if (message.kind === "graph-state") {
         try {

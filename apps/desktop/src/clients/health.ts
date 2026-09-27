@@ -238,42 +238,61 @@ export function healthGatedBackend(
   };
 }
 
+/** A CLI client's run options: what the one-shot, Codex and pool backends take. */
+export interface CliRunOptions {
+  command: CliCommand;
+  workDir: string;
+  env: Record<string, string>;
+  extraArgs?: readonly string[];
+}
 /** The factories the caller supplies (the worker pools Claude through core's warm pool). */
 export interface BackendFactories {
-  claude(options: { command: CliCommand; workDir: string; env: Record<string, string>; extraArgs?: readonly string[] }): ModelBackend;
-  codex(options: { command: CliCommand; workDir: string; env: Record<string, string>; extraArgs?: readonly string[] }): ModelBackend;
+  claude(options: CliRunOptions): ModelBackend;
+  codex(options: CliRunOptions): ModelBackend;
 }
 
 /**
- * The chosen client's backend in its mode, health-gated. Isolated mode takes the existing
- * profile options from the caller (`isolated`) so the D45 wiring stays where it is.
+ * The chosen CLI client's run options in its saved mode, and the health check its gate uses.
+ * Instant (the default) runs the student's own client with flags only; isolated takes the
+ * existing D45 profile options from the caller. Null when the client can't run here at all
+ * (not installed, or this version can't run instant mode safely).
  */
-export async function clientBackend(
-  id: ClientId,
-  deps: HealthDeps & { geminiKey?: () => Promise<string | undefined> },
-  factories: BackendFactories,
-  isolated: () => Promise<{ command: CliCommand; workDir: string; env: Record<string, string> } | null>,
-): Promise<{ backend: ModelBackend & { lastHealth(): ClientHealth | null }; mode: ClientMode } | null> {
+export async function clientRunOptions(
+  id: "claude" | "codex",
+  deps: HealthDeps,
+  isolated: () => Promise<CliRunOptions | null>,
+): Promise<{ mode: ClientMode; options: CliRunOptions; check: () => Promise<ClientHealth> } | null> {
   const health = await checkHealth(id, undefined, deps);
   const check = () => checkHealth(id, health.mode, deps);
-  if (id === "gemini") {
-    const key = await deps.geminiKey?.();
-    // Refused before any backend exists: without the student's own key nothing is sent (D36).
-    if (!key) throw new RunnerError("not_signed_in", "no Gemini key");
-    return { backend: healthGatedBackend(createApiBackend({ provider: "gemini", key }), check), mode: "api_key" };
-  }
   if (health.state === "not_installed") return null;
   if (health.mode === "instant") {
     if (!health.instant.available) return null;
     const command = resolveClient(id, deps);
     if (!command) return null;
     const plan = await instantSupport(id, health.version, deps);
-    const options = await instantRunOptions(id, command, plan, deps);
-    return { backend: healthGatedBackend(factories[id](options), check), mode: "instant" };
+    return { mode: "instant", options: await instantRunOptions(id, command, plan, deps), check };
   }
   const options = await isolated();
-  if (!options) return null;
-  return { backend: healthGatedBackend(factories[id](options), check), mode: "isolated" };
+  return options ? { mode: "isolated", options, check } : null;
+}
+
+/** The chosen client's backend in its mode, health-gated before every run. */
+export async function clientBackend(
+  id: ClientId,
+  deps: HealthDeps & { geminiKey?: () => Promise<string | undefined> },
+  factories: BackendFactories,
+  isolated: () => Promise<CliRunOptions | null>,
+): Promise<{ backend: ModelBackend & { lastHealth(): ClientHealth | null }; mode: ClientMode } | null> {
+  if (id === "gemini") {
+    const key = await deps.geminiKey?.();
+    // Refused before any backend exists: without the student's own key nothing is sent (D36).
+    if (!key) throw new RunnerError("not_signed_in", "no Gemini key");
+    const check = () => checkHealth("gemini", undefined, { ...deps, keyStatus: async () => ({ stored: true, inEnvironment: false }) });
+    return { backend: healthGatedBackend(createApiBackend({ provider: "gemini", key }), check), mode: "api_key" };
+  }
+  const run = await clientRunOptions(id, deps, isolated);
+  if (!run) return null;
+  return { backend: healthGatedBackend(factories[id](run.options), run.check), mode: run.mode };
 }
 
 /** Gemini's key in the app's encrypted vault (safeStorage). Only presence ever leaves this module. */
