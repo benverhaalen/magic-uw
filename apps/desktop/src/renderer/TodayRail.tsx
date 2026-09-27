@@ -77,8 +77,9 @@ export function TodayRail({
   }, []);
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const rail = useMemo(
-    () => buildTodayRail(resources, now, timeZone, plan),
-    [resources, now, timeZone, plan],
+    // Sources let copies of one Canvas assignment (assignments, to-do, upcoming, activity) collapse to one row.
+    () => buildTodayRail(resources, now, timeZone, plan, sources),
+    [resources, now, timeZone, plan, sources],
   );
   const notes = useMemo(() => changeNotes(changes, now, timeZone), [changes, now, timeZone]);
   // Normal content is commitments and accepted blocks; suggestions appear on request.
