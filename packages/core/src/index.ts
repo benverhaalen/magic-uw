@@ -26,8 +26,12 @@ import { contentCategories, courseIncluded, courseInclusion } from "./access";
 import { evidenceFor } from "./evidence";
 import { rebaseFixture } from "./fixture-dates";
 export { rebaseFixture } from "./fixture-dates";
-import { clearOutgoingProjections, outgoingProjection, payloadScrubber, validateCitations } from "./identity";
-export { scrubText, rosterFor, toOriginalSpan, validateCitations } from "./identity";
+import { clearOutgoingProjections } from "./identity";
+// owner: privacy: the protection pass on the context manifest, its projection and citations.
+import { classOf, type ContentClass, clearProtectedProjections, protectedPayloadScrubber, protectedProjection, protectionCounts, validateProtectedCitations } from "./privacy/protect";
+export { scrubText, rosterFor, toOriginalSpan } from "./identity";
+// owner: privacy: resolves protected projections and delegates every other claim to identity.ts.
+export { validateProtectedCitations as validateCitations } from "./privacy/protect";
 import { pullGuideForSubject } from "../../connectors/src/planning-public";
 import { gitlabProjectFromUrl } from "../../connectors/src/gitlab";
 import {
@@ -218,6 +222,7 @@ export function createCore(store: Store, options: CoreOptions) {
         records: store.planningRecords(),
         sources: store.planningSources(),
         reconciliation: reconcileAcademicRecords(store, now()),
+        unreadable: store.planningUnreadable?.() ?? 0, // owner: privacy
       },
       resources,
       sources,
@@ -285,14 +290,17 @@ export function createCore(store: Store, options: CoreOptions) {
     // Hosted recipients get identity-scrubbed free text; this payload is both
     // the preview and the exact outgoing body. Each field is scrubbed on its own
     // so citations can be re-validated per source field.
-    const scrub = payloadScrubber(store, recipient !== "local", store.sources().find((s) => s.id === r.sourceId)?.accountScope);
-    const rootText = scrub.field(r.text, r.courseId);
+    const scrub = protectedPayloadScrubber(store, recipient !== "local", store.sources().find((s) => s.id === r.sourceId)?.accountScope, `context:${recipient}:${r.courseId}`); // owner: privacy
+    // owner: privacy: teaching material keeps its content; messages, mail and notes get every detector.
+    const cls = classOf(r);
+    scrub.prime([[r.courseName, "teaching"], [r.title, cls], [r.text, cls], ...supporting.flatMap((s): [string, ContentClass][] => [[s.title, classOf(s)], [s.text, classOf(s)]])], r.courseId);
+    const rootText = scrub.field(r.text, r.courseId, cls);
     const payload = {
-      course: scrub.field(r.courseName, r.courseId).slice(0, 200),
-      title: scrub.field(r.title, r.courseId).slice(0, 500),
+      course: scrub.field(r.courseName, r.courseId, "teaching").slice(0, 200),
+      title: scrub.field(r.title, r.courseId, cls).slice(0, 500),
       text: [
         rootText,
-        ...supporting.map((s) => `${scrub.field(s.title, s.courseId)}\n${scrub.field(s.text, s.courseId)}`),
+        ...supporting.map((s) => `${scrub.field(s.title, s.courseId, classOf(s))}\n${scrub.field(s.text, s.courseId, classOf(s))}`),
       ]
         .join("\n\n")
         .slice(0, recipient === "jev" ? JEV_TEXT_CHARS : 12000),
@@ -300,7 +308,7 @@ export function createCore(store: Store, options: CoreOptions) {
       policy: recipient === "jev" && r.policy.mode === "unknown" ? "" : scrub.field((policyAllowed
         ? effectivePolicy.evidence
         : "Policy evidence is withheld by data-sharing settings; use coaching only."
-      ), r.courseId).slice(0, recipient === "jev" ? JEV_POLICY_CHARS : 4000),
+      ), r.courseId, "teaching").slice(0, recipient === "jev" ? JEV_POLICY_CHARS : 4000),
     };
     const redaction = scrub.summary(r.courseId);
     const categories = [
@@ -343,8 +351,9 @@ export function createCore(store: Store, options: CoreOptions) {
       characters: JSON.stringify(payload).length,
       ...permission,
       payload,
-      ...(recipient !== "local" ? { citationProjections: [{ resourceId: r.id, contentHash: r.contentHash, field: "text" as const, projectionId: outgoingProjection(store, r, "text", { start: 0, end: Math.min(payload.text.length, rootText.length) }, scrub.roster(r.courseId)).id }] } : {}),
+      ...(recipient !== "local" ? { citationProjections: [{ resourceId: r.id, contentHash: r.contentHash, field: "text" as const, projectionId: protectedProjection(store, r, "text", { start: 0, end: Math.min(payload.text.length, rootText.length) }, scrub).id }] } : {}),
       ...(redaction ? { redaction } : {}),
+      ...(recipient !== "local" ? { protection: protectionCounts(payload) } : {}), // owner: privacy
     };
   }
   function receipt(
@@ -360,6 +369,7 @@ export function createCore(store: Store, options: CoreOptions) {
       characters: manifest.characters,
       status,
       createdAt: now(),
+      ...(manifest.protection ? { protection: manifest.protection } : {}), // owner: privacy
     });
   }
   async function extractCourses() {
@@ -851,7 +861,7 @@ export function createCore(store: Store, options: CoreOptions) {
         message = "Names to remove saved on this device. Future hosted requests use them; earlier requests are unchanged.";
         break;
       case "validate-citations":
-        return { snapshot: snapshot(), citations: validateCitations(store, command.claims) };
+        return { snapshot: snapshot(), citations: validateProtectedCitations(store, command.claims) }; // owner: privacy
       case "link":
         store.decideLink(command.id, command.status);
         break;
@@ -915,6 +925,7 @@ export function createCore(store: Store, options: CoreOptions) {
       }
       case "purge":
         clearOutgoingProjections(store);
+        clearProtectedProjections(store); // owner: privacy
         interrupt();
         store.purge();
         semanticAttempts.clear();

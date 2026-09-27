@@ -156,8 +156,9 @@ export function extractSlots(index: IntentIndex, n: string, deadline: () => void
 }
 
 export function resolveCode(text: string, contextCourseId: string | undefined, deps: ResolverDeps): CodeOutcome {
-  // The budget bounds the resolver's own work, so it counts this process's CPU time: a machine
-  // under load that preempts the (synchronous) resolver doesn't turn a code hit into a model call.
+  // The budget bounds the resolver's own work, so it counts this thread's CPU time: a machine
+  // under load that preempts the (synchronous) resolver doesn't turn a code hit into a model call,
+  // and neither does work on other threads (GC helpers, the thread pool) running meanwhile.
   const clock = deps.clock ?? cpuMs;
   const budget = deps.budgetMs ?? 20;
   let slots: IntentSlots = {};
@@ -213,8 +214,11 @@ export function resolveCode(text: string, contextCourseId: string | undefined, d
   }
 }
 
+// Thread CPU time (Node >= 23.9); the process's CPU time counted GC helper threads too, which on
+// a loaded CI runner tripped the budget on a code hit. Falls back where the call is missing.
+const threadCpu = (process as { threadCpuUsage?: () => NodeJS.CpuUsage }).threadCpuUsage?.bind(process);
 const cpuMs = () => {
-  const u = process.cpuUsage();
+  const u = threadCpu ? threadCpu() : process.cpuUsage();
   return (u.user + u.system) / 1000;
 };
 class BudgetError extends Error {

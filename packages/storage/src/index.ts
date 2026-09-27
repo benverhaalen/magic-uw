@@ -23,6 +23,10 @@ import { createSqlLearningStore, type SqlLearningStore } from "../../learning/sr
 import { NOTES_V11 } from "./notes-v11"; // owner: notes
 import { createSqlNotesStore, type SqlNotesStore } from "../../notes/src/sql-store"; // owner: notes
 import { decodePayload, encodePayload } from "./payload";
+// owner: privacy. At-rest sealing of mail, notes and planning payloads (migration v14).
+import { createAtRestCodec, keyCheck, type AtRestCodec } from "../../core/src/privacy/at-rest";
+import { PRIVACY_SCHEMA_VERSION, privacyMigration, sealExistingRows, verifyAndDropBackup, type BackupCheck } from "./privacy-v14";
+export type { BackupCheck } from "./privacy-v14";
 import {
   LIFE_COURSE_ID,
   subjectJobSchema,
@@ -86,7 +90,7 @@ import {
   type Store,
 } from "@magic/contracts";
 
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = PRIVACY_SCHEMA_VERSION; // owner: privacy (v14, after main's v13)
 const MAX_ATTEMPTS = 3;
 /** The latest pre-migration backup, beside the database (one kept; purge deletes it). */
 export function migrationBackupPath(path: string): string {
@@ -193,6 +197,13 @@ function payloadTextHash(payload: unknown): string {
   return textHash(String(item.title ?? ""), String(item.text ?? ""));
 }
 
+/** owner: privacy. At-rest key control (the worker's side of main's safeStorage key). */
+export interface AtRestControl {
+  setAtRestKey(key: Uint8Array | null): { sealed: number; ms: number; keyMatches: boolean };
+  /** The v14 backup check of this open: deleted after it verified, or kept with the reason. */
+  backupCheck(): BackupCheck | null;
+  atRestStats(): { sealed: number; opened: number; failed: number; keyed: boolean; keyMatches: boolean };
+}
 // owner: platform-fix
 export interface ReceiptCount {
   day: string;
@@ -205,7 +216,8 @@ export interface ReceiptCount {
 export type LocalStore = Store &
   CourseCoreStore &
   GraphStore &
-  PlanningRepository & {
+  PlanningRepository &
+  AtRestControl & { // owner: privacy
     learning: SqlLearningStore;
     notes: SqlNotesStore;
     /** Imports the reader's receipt log into receipts (the writer only); returns how many were read. */
@@ -237,6 +249,28 @@ export function createStore(
   );
   // end owner: platform-fix
   db.function("magic_text_hash", { deterministic: true }, payloadTextHash);
+  // owner: privacy. Sensitive payloads are sealed on write once main has sent the key.
+  const atRest: AtRestCodec = createAtRestCodec();
+  const encodeItem = (item: Parameters<typeof encodePayload>[0]) => encodePayload(atRest.sealItem(item));
+  const decodeItem = (value: unknown) => atRest.openItem(decodePayload(value));
+  // A resource version never changes, so an opened sealed version is kept for the session: a
+  // mail or notes list read after the first skips the larger sealed payload's inflate, parse and
+  // decryption (the read budget). Cleared with the key and on purge.
+  const openedVersions = new Map<string, ReturnType<typeof decodePayload>>();
+  let atRestKeyMatches = true; // owner: privacy. False when the key differs from the stored key check.
+  const readItem = (row: Row): ReturnType<typeof decodePayload> => {
+    const id = `${String(row.id)}\u0000${Number(row.version)}`;
+    const hit = openedVersions.get(id);
+    if (hit) return { ...hit, ...(hit.mail ? { mail: { ...hit.mail } } : {}) };
+    const raw = decodePayload(row.payload) as ReturnType<typeof decodePayload> & { __sealed?: unknown };
+    const item = atRest.openItem(raw);
+    if (raw.__sealed && atRest.hasKey()) {
+      if (openedVersions.size >= 20_000) openedVersions.delete(openedVersions.keys().next().value!);
+      openedVersions.set(id, item);
+      return { ...item, ...(item.mail ? { mail: { ...item.mail } } : {}) };
+    }
+    return item;
+  };
   const readVersion = () =>
     Number(db.prepare("PRAGMA user_version").get()!.user_version);
   const schemaVersion = readVersion();
@@ -427,6 +461,7 @@ export function createStore(
     () => db.exec("CREATE INDEX IF NOT EXISTS receipts_created ON receipts(created_at); PRAGMA user_version = 13;"),
   ]);
   // end owner: platform-fix
+  steps.push([PRIVACY_SCHEMA_VERSION, () => privacyMigration(db)]); // owner: privacy
   const migrationBackup = file ? migrationBackupPath(path) : null;
   const passageIndex = createPassageIndex(db, prepare);
   const courseScope = (accountScope: string, courseId: string) =>
@@ -443,7 +478,7 @@ export function createStore(
         String(row.id),
         Number(row.version),
         String(row.text_hash),
-        decodePayload(row.payload),
+        atRest.searchable(decodeItem(row.payload)),
         courseScope(String(row.account_scope), String(row.course_id)),
       );
   }
@@ -463,6 +498,7 @@ export function createStore(
     chmodSync(target, 0o600);
     db.prepare("VACUUM INTO ?").run(target);
   }
+  let backupCheck: BackupCheck | null = null; // owner: privacy
   function migrate() {
     if (schemaVersion >= SCHEMA_VERSION) return;
     if (schemaVersion > 0 && migrationBackup) takeBackup(migrationBackup);
@@ -476,6 +512,8 @@ export function createStore(
       if (db.prepare("PRAGMA foreign_key_check").all().length)
         throw new Error("The migration left foreign-key violations.");
       db.exec("COMMIT");
+      // owner: privacy. A backup taken before v14 is a plaintext copy: verified, then deleted.
+      if (migrationBackup && from < PRIVACY_SCHEMA_VERSION) backupCheck = verifyAndDropBackup(db, migrationBackup, from);
     } catch (error) {
       if (db.isTransaction) db.exec("ROLLBACK");
       db.close();
@@ -488,7 +526,7 @@ export function createStore(
     }
   }
   if (!readOnly) migrate();
-  const planning = planningRepository(db, prepare); // owner: planning-perf: cached statements
+  const planning = planningRepository(db, prepare, atRest); // owner: planning-perf: cached statements; owner: privacy: sealing
   // owner: T06. Consent storage helpers.
   function readConsents(): ConsentRecord[] {
     const row = db
@@ -529,7 +567,7 @@ export function createStore(
 
   function readResource(row: Row): Resource {
     return {
-      ...decodePayload(row.payload),
+      ...readItem(row), // owner: privacy
       id: String(row.id),
       sourceId: String(row.source_id),
       contentHash: String(row.content_hash),
@@ -763,7 +801,7 @@ export function createStore(
           version: Number(row.version),
           currentVersion: Number(row.current),
           textHash: String(row.text_hash),
-          item: decodePayload(row.payload),
+          item: decodeItem(row.payload),
         }
       : undefined;
   }
@@ -771,6 +809,8 @@ export function createStore(
     transaction,
     timestamp,
     versionText,
+    sealText: (v, aad) => atRest.sealText(v, aad), // owner: privacy
+    openText: (v, aad) => atRest.openText(v, aad), // owner: privacy
   });
   const learning = createSqlLearningStore(prepare, transaction, () => clock().toISOString());
   const graph = graphRepository(prepare, { transaction, timestamp });
@@ -854,8 +894,9 @@ export function createStore(
     // This also rejects receipts from operations that were in flight when the user purged the store.
     if (value.resourceIds.some((id) => !liveResource(id))) return;
     prepare(
-      `INSERT INTO receipts VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO NOTHING`,
+      // owner: privacy: named columns; v14 added `protection` (counts per kind, never values).
+      `INSERT INTO receipts (id, recipient, purpose, categories, resource_ids, characters, status, created_at, protection)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`,
     ).run(
       value.id,
       value.recipient,
@@ -865,6 +906,7 @@ export function createStore(
       value.characters,
       value.status,
       timestamp(value.createdAt),
+      value.protection ? JSON.stringify(value.protection) : null, // owner: privacy
     );
   }
   const atomically = <T>(work: () => T): T => (db.isTransaction ? work() : transaction(work));
@@ -946,6 +988,56 @@ export function createStore(
   const api: LocalStore = {
     learning,
     notes, // owner: notes
+    // owner: privacy. The worker calls this with main's key; the first call after v14 (or after
+    // any sensitive write made without a key) seals the plaintext rows. Purge drops the key.
+    backupCheck: () => backupCheck,
+    setAtRestKey(key) {
+      atRest.setKey(key);
+      openedVersions.clear();
+      atRestKeyMatches = true;
+      if (!key || readOnly) return { sealed: 0, ms: 0, keyMatches: true };
+      // Warm the session cache now (the key arrives at worker start), so the first list read the
+      // student sees is not the one that pays for decryption.
+      const warm = () => {
+        for (const row of prepare(
+          // Only mail and notes sources hold sealed payloads; other rows would be decoded for nothing.
+          "SELECT r.id, r.version, v.payload FROM resources r JOIN sources s ON s.id = r.source_id JOIN resource_versions v ON v.resource_id = r.id AND v.version = r.version WHERE r.deleted = 0 AND s.kind IN ('mail', 'notes')",
+        ).iterate() as Iterable<Row>)
+          readItem(row);
+      };
+      const check = keyCheck(key);
+      const stored = prepare("SELECT value FROM preferences WHERE key = 'privacy.keyCheck'").get();
+      const keyMatches = !stored || String(stored.value) === check;
+      // A different key must not seal the pending plaintext rows: they would then open with
+      // neither key once the original key file returns.
+      atRestKeyMatches = keyMatches;
+      if (!keyMatches) {
+        warm();
+        return { sealed: 0, ms: 0, keyMatches };
+      }
+      const state = prepare("SELECT value FROM preferences WHERE key = 'privacy.seal'").get();
+      if (stored && state && String(state.value) === "done" && !atRest.unsealedWrites()) {
+        warm();
+        return { sealed: 0, ms: 0, keyMatches };
+      }
+      const started = performance.now();
+      const sealed = transaction(() => {
+        const n = sealExistingRows(db, atRest, (id, version, textHash, item, accountScope, courseId) =>
+          passageIndex.index(id, version, textHash, atRest.searchable(item), courseScope(accountScope, courseId)),
+        );
+        const put = prepare("INSERT INTO preferences VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+        if (!stored) put.run("privacy.keyCheck", check);
+        put.run("privacy.seal", "done");
+        return n;
+      });
+      atRest.clearUnsealedWrites();
+      // Plaintext pages leave the WAL; secure_delete already zeroes the freed pages.
+      if (sealed) db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+      warm();
+      return { sealed, ms: performance.now() - started, keyMatches };
+    },
+    atRestStats: () => ({ ...atRest.stats(), keyed: atRest.hasKey(), keyMatches: atRestKeyMatches }),
+    // end owner: privacy
     courseIntelligence() {
       return prepare(
           "SELECT payload FROM course_intelligence p WHERE version=(SELECT MAX(version) FROM course_intelligence WHERE id=p.id) ORDER BY id",
@@ -1090,7 +1182,7 @@ export function createStore(
               )
               .get(source.id, value.externalId);
             const oldText = old
-              ? decodePayload(old.payload).text.trim()
+              ? decodeItem(old.payload).text.trim()
               : "";
             if (
               oldText.length >= 100 &&
@@ -1185,7 +1277,7 @@ export function createStore(
             )
             .get(source.id, entry.value.externalId) as Row | undefined;
           const previous = existing
-            ? decodePayload(resourceRow(String(existing.id))!.payload)
+            ? decodeItem(resourceRow(String(existing.id))!.payload)
             : undefined;
           if (restrictedCatalog && previous && previous.kind !== "course")
             continue;
@@ -1252,7 +1344,7 @@ export function createStore(
           if (modified)
             prepare(
               "INSERT INTO resource_versions (resource_id,version,content_hash,payload,captured_at,text_hash) VALUES (?,?,?,?,?,?)",
-            ).run(id, version, hash, encodePayload(item), capturedAt, itemTextHash);
+            ).run(id, version, hash, encodeItem(item), capturedAt, itemTextHash); // owner: privacy: sealed
           // Latest observation per field only (D4); history was never read.
           for (const field of observedFields(observation))
             prepare(
@@ -1361,7 +1453,7 @@ export function createStore(
               id,
               version,
               itemTextHash,
-              item,
+              atRest.searchable(item),
               courseScope(source.accountScope, source.courseId),
             );
             // Jobs keyed to the text hash survive a submission or grade change (O5).
@@ -2120,6 +2212,7 @@ export function createStore(
         characters: Number(row.characters),
         status: row.status as EgressReceipt["status"],
         createdAt: String(row.created_at),
+        ...(row.protection ? { protection: JSON.parse(String(row.protection)) } : {}), // owner: privacy
       }));
     },
     purge() {
@@ -2147,6 +2240,8 @@ export function createStore(
       }
       // end owner: platform-fix
       passageIndex.invalidate();
+      atRest.setKey(null); // owner: privacy: purge destroys the key; main rotates and sends a new one
+      openedVersions.clear();
       // Compact the SQLite files. A reader holding a snapshot keeps its pages until it ends.
       db.exec(
         "PRAGMA wal_checkpoint(TRUNCATE); VACUUM; PRAGMA wal_checkpoint(TRUNCATE);",
@@ -2169,7 +2264,7 @@ export function createStore(
           resourceId,
           Number(row.version),
           String(row.text_hash),
-          decodePayload(row.payload),
+          atRest.searchable(decodeItem(row.payload)),
           courseScope(String(row.account_scope), String(row.course_id)),
         );
       });

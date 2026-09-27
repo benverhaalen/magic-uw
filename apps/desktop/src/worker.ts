@@ -1,6 +1,9 @@
 import { judgmentFailureError } from "./judgment-errors";
 import { createLocalCourseExtractor } from "@magic/ai";
 import { createStore } from "@magic/storage";
+import { deriveInstallKeys } from "../../../packages/core/src/privacy/at-rest"; // owner: privacy
+import { configurePseudonymKey } from "../../../packages/core/src/privacy/pseudonyms"; // owner: privacy
+import { logLine } from "../../../packages/core/src/privacy/log"; // owner: privacy
 import { createCore } from "@magic/core";
 import { captureBatchSchema, planningCaptureSchema, type PlanningCapture } from "@magic/contracts";
 import { queryRequestSchema } from "@magic/contracts"; // owner: T15
@@ -40,6 +43,9 @@ const pending = new Map<
   { resolve: (value: any) => void; reject: (error: Error) => void }
 >();
 const store = createStore(process.env.MAGIC_DB_PATH!);
+// owner: privacy: a v14 backup that failed its check is kept; say why (redacted), never silently.
+const backupCheck = store.backupCheck();
+if (backupCheck?.status === "kept") process.stderr.write(logLine({ event: "privacy.backup-kept", reason: backupCheck.reason }));
 // owner: T06: every direct public client refuses until the setup consent record exists.
 const publicClients = createWorkerClients(store);
 // end owner: T06
@@ -492,6 +498,26 @@ const notesTimer = setInterval(notesTick, 30_000);
 notesTimer.unref();
 // end owner: notes
 port.on("message", async ({ data }: { data: any }) => {
+  // owner: privacy. Main's install secret: at-rest key for the store, pseudonym key for sends.
+  if (data.kind === "privacy-key") {
+    const secret = typeof data.secret === "string" ? Buffer.from(data.secret, "base64") : null;
+    const keys = secret ? deriveInstallKeys(secret) : null;
+    secret?.fill(0);
+    configurePseudonymKey(keys?.pseudonym ?? null);
+    try {
+      // A missing or different key leaves sealed records unopenable: say so (the planning snapshot
+      // counts them as unreadable, and the view shows it) instead of reading as clear.
+      const { keyMatches } = store.setAtRestKey(keys?.atRest ?? null);
+      if (!keys) process.stderr.write(logLine({ event: "privacy.key-unavailable" }));
+      else if (!keyMatches) process.stderr.write(logLine({ event: "privacy.key-mismatch" }));
+    } catch (error) {
+      process.stderr.write(logLine({ event: "privacy.seal-failed", error }));
+    }
+    keys?.atRest.fill(0);
+    keys?.pseudonym.fill(0);
+    return;
+  }
+  // end owner: privacy
   if (data.kind === "source-response") {
     const request = hostRequests.get(data.id);
     hostRequests.delete(data.id);
