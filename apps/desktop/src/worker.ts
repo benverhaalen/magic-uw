@@ -131,8 +131,8 @@ const generation = createPackHandler({ store, runner: generationRunner, brief: c
   const approach = createApproachHandler({ store, runner: generationRunner });
   const packs = generation.pack;
   Object.assign(generation, {
-    pack: (name: string, scope: PackScope, signal: AbortSignal): Promise<unknown> =>
-      name === APPROACH_PACK ? approach.run(scope, signal) : packs(name, scope, signal),
+    pack: (name: string, scope: PackScope, signal: AbortSignal, options?: { count?: number }): Promise<unknown> =>
+      name === APPROACH_PACK ? approach.run(scope, signal) : packs(name, scope, signal, options),
   });
 }
 // end owner: page-views

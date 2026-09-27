@@ -73,7 +73,8 @@ export interface IntentHost {
   /** Core's scoped read queries (mail search, guide views); reads only. */
   query?(request: QueryRequest): QueryResult;
   learning?: { handle(request: LearningRequest, signal: AbortSignal): Promise<LearningResult> };
-  pack?(pack: string, scope: PackScope, signal: AbortSignal): Promise<unknown>;
+  /** `options.count`: how many items or cards the student asked for (code-parsed, 1–30). */
+  pack?(pack: string, scope: PackScope, signal: AbortSignal, options?: { count?: number }): Promise<unknown>;
 }
 
 export interface ActionContext {

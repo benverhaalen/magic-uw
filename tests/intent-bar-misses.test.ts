@@ -214,3 +214,46 @@ test("the grade what-if runs in code with no course open: the grade bank's score
     await h.close();
   }
 });
+
+test("a stated count reaches the quiz and the pack, parsed and clamped (1-30) by code", async () => {
+  const h = await bar();
+  try {
+    type Ran = Extract<IntentCommandResult, { status: "ran" }>;
+    const learned = (r: IntentCommandResult) => ((r as Ran).result as { data: { request: { count: number } } }).data.request.count;
+    const quiz: [string, number][] = [
+      ["quiz me on recursion in cs 400 with 5 questions", 5],
+      ["quiz me on recursion in cs 400, 7 questions", 7],
+      ["give me a 12 question quiz on recursion in cs 400", 12],
+      ["quiz me on recursion in cs 400", 10],
+    ];
+    for (const [text, count] of quiz) {
+      const r = await h.run(text);
+      assert.equal(r.status === "ran" && r.action, "practice.quiz", `${text}: ${JSON.stringify(r)}`);
+      assert.equal(learned(r), count, text);
+    }
+    const cards = await h.run("12 flashcards due in cs 400");
+    assert.equal(cards.status === "ran" && cards.action, "practice.flashcards", JSON.stringify(cards));
+    assert.equal(learned(cards), 12);
+    const generated: [string, number | undefined][] = [
+      ["make 12 cards on recursion in cs 400", 12],
+      ["make twelve flashcards on recursion in cs 400", 12],
+      ["make 50 flashcards on recursion in cs 400", 30],
+      ["make 0 questions on recursion in cs 400", 1],
+      ["generate a quiz on recursion in cs 400 with 5 questions", 5],
+      ["make flashcards on recursion in cs 400", undefined],
+    ];
+    for (const [text, count] of generated) {
+      const before = h.packs.length;
+      const r = await h.run(text);
+      assert.equal(r.status === "ran" && r.action, "pack.generate", `${text}: ${JSON.stringify(r)}`);
+      assert.equal(h.packs.length, before + 1);
+      assert.deepEqual(h.packs.at(-1)!.options, count === undefined ? undefined : { count }, text);
+    }
+    // An action that takes no count keeps its words.
+    const open = await h.run("open homework 4 in cs 400");
+    assert.equal(open.status === "ran" && open.action, "assignment.open", JSON.stringify(open));
+    assert.equal((await h.calls()).length, 0, "all by code");
+  } finally {
+    await h.close();
+  }
+});

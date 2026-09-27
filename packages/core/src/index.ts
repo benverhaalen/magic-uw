@@ -86,8 +86,8 @@ export interface CoreSeams {
   map?(courseId: string, accountScope: string | undefined): unknown;
   /** D33 corrections; the data builder stores them, and a correction wins. */
   correct?(value: Correction, at: string): string;
-  /** The runtime builder's pack runner (packages/runner, packages/packs). */
-  pack?(pack: string, scope: PackScope, signal: AbortSignal): Promise<unknown>;
+  /** The runtime builder's pack runner (packages/runner, packages/packs). `options.count`: how many the student asked for. */
+  pack?(pack: string, scope: PackScope, signal: AbortSignal, options?: { count?: number }): Promise<unknown>;
   /** ui_events (schema v5). */
   uiEvent?(value: UiEvent, at: string): void;
   // owner: intent. The command bar's intent router (packages/core/src/intent). Core hands it

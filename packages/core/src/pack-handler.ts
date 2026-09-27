@@ -571,8 +571,8 @@ export function createPackHandler(deps: PackHandlerDeps) {
     guides, // owner: guides
     coursePrefix, // owner: course-facts: the same prefix for ask
     /** The CoreSeams.pack signature. */
-    pack: (packName: string, scope: PackScope, signal: AbortSignal) =>
-      (packName === "strategy" ? strategy(scope, signal) /* owner: mastery */ : null) ?? guides(packName, scope, signal) /* owner: guides */ ?? run(packName, scope, signal),
+    pack: (packName: string, scope: PackScope, signal: AbortSignal, options?: { count?: number }) =>
+      (packName === "strategy" ? strategy(scope, signal) /* owner: mastery */ : null) ?? guides(packName, scope, signal) /* owner: guides */ ?? run(packName, scope, signal, options?.count ? { count: options.count } : {}),
   };
 }
 
