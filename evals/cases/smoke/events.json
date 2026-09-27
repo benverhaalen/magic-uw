@@ -1,0 +1,17 @@
+{
+  "synthetic": true,
+  "note": "Scripted, unassisted, first-exposure answer streams, one per row of the spec §5.5 worked-check table. Each answer is on a new item tagged only to concept c1. Expected values are the table's (3 decimal places).",
+  "rows": [
+    { "id": "e01", "label": "3/3 MC (4 options)", "format": "mc", "options": 4, "bloom": "understand", "answers": [1, 1, 1], "expected": { "acc": 1.0, "pHat": 0.546, "pLow": 0.362, "r1": false, "band": "getting_there" } },
+    { "id": "e02", "label": "4/4 MC", "format": "mc", "options": 4, "bloom": "understand", "answers": [1, 1, 1, 1], "expected": { "acc": 1.0, "pHat": 0.583, "pLow": 0.416, "r1": false, "band": "getting_there" } },
+    { "id": "e03", "label": "10/10 T/F", "format": "tf", "options": 2, "bloom": "understand", "answers": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1], "expected": { "acc": 1.0, "pHat": 0.575, "pLow": 0.463, "r1": false, "band": "getting_there" } },
+    { "id": "e04", "label": "20/20 MC", "format": "mc", "options": 4, "bloom": "understand", "answers": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], "expected": { "acc": 1.0, "pHat": 0.791, "pLow": 0.732, "r1": false, "band": "getting_there" } },
+    { "id": "e05", "label": "6/6 typed", "format": "typed", "options": 0, "bloom": "understand", "answers": [1, 1, 1, 1, 1, 1], "expected": { "acc": 1.0, "pHat": 0.816, "pLow": 0.716, "r1": false, "band": "getting_there" } },
+    { "id": "e06", "label": "8/8 typed", "format": "typed", "options": 0, "bloom": "understand", "answers": [1, 1, 1, 1, 1, 1, 1, 1], "expected": { "acc": 1.0, "pHat": 0.851, "pLow": 0.776, "r1": false, "band": "solid" } },
+    { "id": "e07", "label": "8/8 typed at Bloom remember", "format": "typed", "options": 0, "bloom": "remember", "answers": [1, 1, 1, 1, 1, 1, 1, 1], "expected": { "acc": 1.0, "pHat": 0.825, "pLow": 0.741, "r1": false, "band": "getting_there" } },
+    { "id": "e08", "label": "typed: right, right, wrong", "format": "typed", "options": 0, "bloom": "understand", "answers": [1, 1, 0], "expected": { "acc": 0.667, "pHat": 0.499, "pLow": 0.32, "r1": true, "band": "iffy" } },
+    { "id": "e09", "label": "typed: wrong, right, right, right", "format": "typed", "options": 0, "bloom": "understand", "answers": [0, 1, 1, 1], "expected": { "acc": 0.75, "pHat": 0.656, "pLow": 0.494, "r1": false, "band": "getting_there" } },
+    { "id": "e10", "label": "MC: right, wrong, right, wrong", "format": "mc", "options": 4, "bloom": "understand", "answers": [1, 0, 1, 0], "expected": { "acc": 0.5, "pHat": 0.231, "pLow": 0.133, "r1": true, "band": "iffy" } },
+    { "id": "e11", "label": "typed: 3 wrong, then 4 right (hysteresis)", "format": "typed", "options": 0, "bloom": "understand", "answers": [0, 0, 0, 1, 1, 1, 1], "expected": { "acc": 0.571, "pHat": 0.641, "pLow": 0.512, "r1": true, "band": "iffy" } }
+  ]
+}

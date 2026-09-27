@@ -9,6 +9,8 @@ import {
 export * from "./planning";
 export * from "./learning";
 export * from "./course-intelligence";
+// owner: T05b. The data builder's course core (schema v5) replaces the placeholder module.
+export * from "./course-core";
 import type {
   CourseIntelligence,
   CourseIntelligenceView,
@@ -407,7 +409,17 @@ export const captureBatchSchema = z
       .object({
         id,
         label: z.string().min(1).max(200),
-        kind: z.enum(["canvas", "web", "fixture", "calendar", "gitlab"]),
+        // owner: T05b: kaltura (T32), mail (T30/T35) and feed (T31) are reserved source kinds.
+        kind: z.enum([
+          "canvas",
+          "web",
+          "fixture",
+          "calendar",
+          "gitlab",
+          "kaltura",
+          "mail",
+          "feed",
+        ]),
         accountScope: id,
         courseId: id,
         scope: id,
@@ -482,11 +494,35 @@ export interface DeadlineResolution {
   claims: DeadlineClaim[];
   reason: string;
 }
-export const privacySchema = z
-  .object({
+/**
+ * Hosted AI a student can choose. `chatgpt` stays accepted so stored preferences keep
+ * parsing; `codex` and `openrouter` are the P1 additions (T05d).
+ */
+export const hostedProviderSchema = z.enum([
+  "none",
+  "chatgpt",
+  "codex",
+  "claude",
+  "gemini",
+  "openrouter",
+]);
+export type HostedProvider = z.infer<typeof hostedProviderSchema>;
+/** Every recipient a context manifest, receipt or grant can name. */
+export const aiRecipientSchema = z.enum([
+  "jev",
+  "local",
+  "chatgpt",
+  "codex",
+  "claude",
+  "gemini",
+  "openrouter",
+]);
+export type AiRecipient = z.infer<typeof aiRecipientSchema>;
+function privacyShape<P extends z.ZodType<HostedProvider>>(hostedProvider: P) {
+  return {
     mode: z.enum(["local_only", "selective_cloud"]),
     jevEnabled: z.boolean(),
-    hostedProvider: z.enum(["none", "chatgpt", "claude", "gemini"]),
+    hostedProvider,
     shareCourseText: z.boolean(),
     shareStudentWork: z.boolean(),
     shareGrades: z.boolean().optional(),
@@ -495,7 +531,21 @@ export const privacySchema = z
     sharePlanning: z.boolean().optional(),
     shareHolds: z.boolean().optional(),
     shareAudit: z.boolean().optional(),
-  })
+    /** Show the blocking payload preview before every send, not only a category's first. */
+    alwaysPreview: z.boolean().optional(),
+  };
+}
+/**
+ * Stored preferences. An unknown `hostedProvider` string (for example one written by a
+ * later build) is ignored: it reads as "none", so no hosted AI other than Jev is selected
+ * and `maySend` refuses every such recipient. It never throws.
+ */
+export const privacySchema = z
+  .object(privacyShape(hostedProviderSchema.catch("none")))
+  .strict();
+/** The `privacy` command refuses an unknown provider instead of coercing it. */
+export const privacyCommandSchema = z
+  .object(privacyShape(hostedProviderSchema))
   .strict();
 export type PrivacyPreferences = Omit<
   z.infer<typeof privacySchema>,
@@ -505,6 +555,58 @@ export type PrivacyPreferences = Omit<
   shareComments?: boolean;
   shareCommunications?: boolean;
 };
+/**
+ * Who a consent record covers. `uw` is the first-run setup checkbox: Magic Canvas reading
+ * UW services with the student's own session (the Canvas page-view disclosure). The rest
+ * are hosted AI recipients. `local` never needs consent.
+ */
+export const consentRecipientSchema = z.enum([
+  "uw",
+  "jev",
+  "chatgpt",
+  "codex",
+  "claude",
+  "gemini",
+  "openrouter",
+]);
+export type ConsentRecipient = z.infer<typeof consentRecipientSchema>;
+export const disclosureVersionSchema = z
+  .string()
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/);
+/** One per recipient, written only by the `consent` command; the time comes from code. */
+export const consentRecordSchema = z
+  .object({
+    recipient: consentRecipientSchema,
+    disclosureVersion: disclosureVersionSchema,
+    grantedAt: instant,
+  })
+  .strict();
+export type ConsentRecord = z.infer<typeof consentRecordSchema>;
+export const consentChangeSchema = z.discriminatedUnion("action", [
+  z
+    .object({
+      action: z.literal("grant"),
+      recipient: consentRecipientSchema,
+      disclosureVersion: disclosureVersionSchema,
+    })
+    .strict(),
+  z
+    .object({ action: z.literal("revoke"), recipient: consentRecipientSchema })
+    .strict(),
+]);
+export type ConsentChange = z.infer<typeof consentChangeSchema>;
+/**
+ * The student's answer to a blocking payload preview. `payloadHash` (sha256 hex of the
+ * previewed payload) binds the answer to exactly what was shown.
+ */
+export const previewAckSchema = z
+  .object({
+    id,
+    payloadHash: z.string().regex(/^[a-f0-9]{64}$/),
+    decision: z.enum(["send", "decline"]),
+  })
+  .strict();
+export type PreviewAck = z.infer<typeof previewAckSchema>;
 export const defaultPrivacy: PrivacyPreferences = {
   mode: "local_only",
   jevEnabled: false,
@@ -517,6 +619,7 @@ export const defaultPrivacy: PrivacyPreferences = {
   sharePlanning: false,
   shareHolds: false,
   shareAudit: false,
+  alwaysPreview: false,
 };
 export interface Link {
   id: string;
@@ -566,7 +669,8 @@ export interface EgressReceipt {
   categories: string[];
   resourceIds: string[];
   characters: number;
-  status: "blocked" | "sent" | "failed";
+  /** `preview_required`: held until the student answers a blocking preview; nothing sent. */
+  status: "blocked" | "sent" | "failed" | "preview_required";
   createdAt: string;
 }
 export const ingestionSettingsSchema = z
@@ -611,7 +715,7 @@ export const mcpGrantSchema = z
   .object({
     id,
     label: z.string().min(1).max(200),
-    recipient: z.enum(["local", "chatgpt", "claude", "gemini"]),
+    recipient: aiRecipientSchema.exclude(["jev"]),
     enabled: z.boolean(),
     courses: z
       .array(z.object({ accountScope: id, courseId: id }).strict())
@@ -716,6 +820,9 @@ export interface Store {
   sources(): SourceHealth[];
   privacy(): PrivacyPreferences;
   setPrivacy(value: PrivacyPreferences): void;
+  /** Consent seams (T06 implements): read-only records, and the only writer. */
+  consents?(): ConsentRecord[];
+  setConsent?(change: ConsentChange, at: string): void;
   setCompleted(id: string, completed: boolean): void;
   links(): Link[];
   putLink(link: Link): void;
@@ -740,7 +847,7 @@ export interface Store {
 }
 export interface ContextManifest {
   effectivePolicy?: EffectiveCoursePolicy;
-  recipient: "jev" | "chatgpt" | "claude" | "gemini" | "local";
+  recipient: AiRecipient;
   purpose: string;
   categories: string[];
   resourceIds: string[];
@@ -771,7 +878,384 @@ export interface Snapshot {
   changes?: ResourceChange[];
   syncRuns?: SyncRun[];
   mcpGrants?: McpGrant[];
+  consents?: ConsentRecord[];
 }
+// owner: T05b. The integration seams: the learning channel (spec §8.1 of the learning spec,
+// its practice addendum, and T47/T53's practice.target and practice.assessmentQuiz), the
+// course map, corrections (D33), packs, UI events and the workspace command bar (D40).
+const ids = (max: number) => z.array(id).max(max);
+const studyFilterSchema = z.enum(["all", "starred", "missed", "iffy"]);
+const anchorInputSchema = z
+  .object({
+    resourceId: id,
+    version: z.number().int().min(0),
+    start: z.number().int().min(0),
+    end: z.number().int().min(0),
+  })
+  .strict();
+const learningOp = <T extends string, S extends z.ZodRawShape>(
+  op: T,
+  shape: S,
+) => z.object({ op: z.literal(op), ...shape }).strict();
+export const learningRequestSchema = z.discriminatedUnion("op", [
+  learningOp("notebook.open", { courseId: id }),
+  learningOp("notebook.include", {
+    courseId: id,
+    resourceId: id,
+    included: z.boolean(),
+  }),
+  learningOp("notebook.ask", {
+    courseId: id,
+    question: z.string().trim().min(1).max(2000),
+    scope: z
+      .object({ assessmentId: id.optional(), resourceIds: ids(50).optional() })
+      .strict()
+      .optional(),
+  }),
+  learningOp("notebook.artifact", {
+    courseId: id,
+    kind: z.enum([
+      "study_guide",
+      "briefing",
+      "faq",
+      "glossary",
+      "timeline",
+      "mind_map",
+    ]),
+    assessmentId: id.optional(),
+    rebuild: z.boolean().optional(),
+  }),
+  learningOp("notebook.coverage", { courseId: id, assessmentId: id }),
+  learningOp("notebook.dispute", {
+    artifactId: id,
+    citationId: id,
+    reason: z.enum([
+      "quote_missing",
+      "does_not_support",
+      "wrong_source",
+      "other",
+    ]),
+  }),
+  learningOp("study.plan", {
+    courseId: id.optional(),
+    assessmentId: id.optional(),
+    minutes: z.number().int().min(5).max(120),
+    difficulty: z.enum(["warmup", "normal", "push"]),
+    filter: studyFilterSchema.optional(),
+  }),
+  learningOp("study.answer", {
+    sessionId: id,
+    itemId: id,
+    itemVersion: z.number().int().min(0),
+    response: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("choice"), optionId: id }).strict(),
+      z.object({ kind: z.literal("text"), text: z.string().max(2000) }).strict(),
+      z
+        .object({
+          kind: z.literal("number"),
+          value: z.number(),
+          unit: z.string().max(40).optional(),
+        })
+        .strict(),
+    ]),
+    confidence: z.union([
+      z.literal(0),
+      z.literal(0.33),
+      z.literal(0.67),
+      z.literal(1),
+      z.null(),
+    ]),
+    responseMs: z.number().int().min(0).max(86_400_000),
+  }),
+  learningOp("study.hint", {
+    sessionId: id,
+    itemId: id,
+    level: z.enum(["hint", "explain"]),
+  }),
+  learningOp("study.review", {
+    cardId: id,
+    rating: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
+    reviewMs: z.number().int().min(0).max(86_400_000),
+  }),
+  learningOp("study.undoReview", { reviewId: id }),
+  learningOp("study.exam", {
+    courseId: id,
+    assessmentId: id,
+    length: z.number().int().min(5).max(60),
+    lean: z.boolean(),
+    timed: z.boolean(),
+  }),
+  learningOp("study.submit", { sessionId: id }),
+  learningOp("study.flag", {
+    itemId: id,
+    itemVersion: z.number().int().min(0),
+    reason: z.enum([
+      "wrong_key",
+      "two_correct",
+      "no_correct",
+      "unclear",
+      "off_topic",
+      "not_my_course",
+      "grade_wrong",
+    ]),
+    note: z.string().max(500).optional(),
+  }),
+  learningOp("study.unflag", { disputeId: id }),
+  learningOp("study.generate", {
+    courseId: id,
+    kind: z.enum(["flashcards", "quiz"]),
+    conceptIds: ids(20).optional(),
+    assessmentId: id.optional(),
+    count: z.number().int().min(1).max(30),
+  }),
+  learningOp("study.path", { courseId: id }),
+  learningOp("knowledge.state", { courseId: id }),
+  learningOp("knowledge.concept", { conceptId: id }),
+  learningOp("knowledge.selfRate", {
+    conceptId: id,
+    rating: z.enum(["dont_know", "shaky", "know_it"]),
+    delayed: z.boolean(),
+  }),
+  learningOp("knowledge.edit", {
+    conceptId: id,
+    edit: z.discriminatedUnion("kind", [
+      z
+        .object({
+          kind: z.literal("rename"),
+          label: z.string().trim().min(1).max(200),
+        })
+        .strict(),
+      z.object({ kind: z.literal("merge"), intoId: id }).strict(),
+      z.object({ kind: z.literal("hide") }).strict(),
+      z.object({ kind: z.literal("restore") }).strict(),
+    ]),
+  }),
+  learningOp("knowledge.retag", {
+    itemId: id,
+    conceptIds: z.array(id).min(1).max(3),
+    primary: id,
+  }),
+  learningOp("practice.path", { courseId: id }),
+  learningOp("practice.checkpoint", { courseId: id, assessmentId: id }),
+  learningOp("practice.quick", {
+    courseId: id.optional(),
+    minutes: z.union([z.literal(3), z.literal(5), z.literal(10)]),
+  }),
+  learningOp("practice.star", {
+    targetKind: z.enum(["item", "card", "concept"]),
+    targetId: id,
+    starred: z.boolean(),
+  }),
+  learningOp("practice.card.edit", {
+    itemId: id,
+    itemVersion: z.number().int().min(0),
+    front: z.string().max(2000).optional(),
+    back: z.string().max(4000).optional(),
+    explanation: z.string().max(4000).optional(),
+  }),
+  learningOp("practice.card.create", {
+    courseId: id,
+    front: z.string().trim().min(1).max(2000),
+    back: z.string().trim().min(1).max(4000),
+    anchor: anchorInputSchema.optional(),
+    conceptIds: ids(20).optional(),
+  }),
+  // T47 (spec H5): "quiz me on" chosen topics; a session never widens beyond them.
+  learningOp("practice.target", {
+    courseId: id,
+    topicIds: ids(50).optional(),
+    moduleIds: ids(50).optional(),
+    assessmentId: id.optional(),
+    description: z.string().trim().min(1).max(500).optional(),
+    filter: z.enum(["all", "starred", "missed", "iffy", "not_seen"]).optional(),
+    mode: z.enum(["flashcards", "learn", "write", "test"]),
+    count: z.number().int().min(1).max(60),
+    difficulty: z.enum(["warmup", "normal", "push"]).optional(),
+  }),
+  // T53 (spec H3): an assessment quiz sectioned by its chapters and modules.
+  learningOp("practice.assessmentQuiz", {
+    courseId: id,
+    assessmentId: id,
+    length: z.number().int().min(5).max(60),
+    sectionIds: ids(50).optional(),
+    timed: z.boolean().optional(),
+  }),
+  learningOp("insights.overview", { courseId: id }),
+  learningOp("insights.coverage", { assessmentId: id }),
+  learningOp("insights.errors", { courseId: id }),
+  learningOp("insights.calibration", { courseId: id.optional() }),
+  learningOp("insights.history", {
+    courseId: id.optional(),
+    weeks: z.number().int().min(1).max(52),
+  }),
+  learningOp("insights.changes", { courseId: id.optional() }),
+  learningOp("insights.digest", { weekStart: z.iso.date() }),
+  learningOp("insights.view", {
+    resourceId: id,
+    version: z.number().int().min(0),
+    start: z.number().int().min(0),
+    end: z.number().int().min(0),
+    activeSeconds: z.number().int().min(0).max(86_400),
+  }),
+]);
+export type LearningRequest = z.infer<typeof learningRequestSchema>;
+export type LearningOp = LearningRequest["op"];
+/** The learning router's answer. `not_built` is the stub's honest answer; the router (N25) refines `data`. */
+export interface LearningResult {
+  op: LearningOp;
+  status: "ok" | "not_built" | "unavailable" | "consent_needed" | "failed";
+  message?: string;
+  data?: unknown;
+}
+/** D33: the system settles every decision; the student may correct one in a click. There is no "confirm". */
+export const correctionSchema = z.discriminatedUnion("subject", [
+  z
+    .object({
+      subject: z.literal("scope"),
+      assessmentId: id,
+      target: z
+        .object({
+          kind: z.enum(["resource", "topic", "module", "session"]),
+          id,
+        })
+        .strict(),
+      action: z.enum(["include", "exclude"]),
+    })
+    .strict(),
+  z
+    .object({
+      subject: z.literal("role"),
+      resourceId: id,
+      // The closed role set is the data builder's; a slug crosses here and is checked there.
+      role: z.string().regex(/^[a-z][a-z0-9_.]{0,63}$/),
+      assessmentId: id.optional(),
+      tier: z.enum(["core", "supporting", "practice"]).optional(),
+    })
+    .strict(),
+]);
+export type Correction = z.infer<typeof correctionSchema>;
+export const packScopeSchema = z
+  .object({
+    courseId: id,
+    assessmentId: id.optional(),
+    resourceIds: ids(200).optional(),
+    topicIds: ids(50).optional(),
+  })
+  .strict();
+export type PackScope = z.infer<typeof packScopeSchema>;
+/** ui_events kinds (plan §3). "confirm" is replaced by "correct" per D33. */
+export const uiEventSchema = z
+  .object({
+    kind: z.enum(["expand_all", "move_tier", "open", "correct"]),
+    subject: id,
+    detail: z.string().max(200).optional(),
+  })
+  .strict();
+export type UiEvent = z.infer<typeof uiEventSchema>;
+/** D40: the command bar's command after code resolved it. Language code can't resolve stays in `text`. */
+export const workspaceCommandSchema = z
+  .object({
+    verb: z.enum(["open", "quiz", "cards", "explain", "due"]),
+    text: z.string().max(500).optional(),
+    courseId: id.optional(),
+    resourceId: id.optional(),
+    topicIds: ids(50).optional(),
+    days: z.number().int().min(1).max(60).optional(),
+  })
+  .strict();
+export type WorkspaceCommand = z.infer<typeof workspaceCommandSchema>;
+export interface WorkspaceResult {
+  verb: WorkspaceCommand["verb"];
+  status: "ok" | "not_built" | "unresolved";
+  /** open: the https link for the default browser (D40); the renderer calls openExternal. */
+  url?: string;
+  /** due: the items code resolved, soonest first. */
+  items?: {
+    id: string;
+    title: string;
+    courseName: string;
+    dueAt: string;
+    url: string;
+  }[];
+  message?: string;
+}
+// owner: T15. Scoped queries (O1): a view asks for what it shows instead of the whole workspace.
+export const queryRequestSchema = z.discriminatedUnion("view", [
+  z.object({ view: z.literal("summary") }).strict(),
+  z
+    .object({
+      view: z.literal("resources"),
+      courseId: id.optional(),
+      accountScope: id.optional(),
+      kinds: z.array(z.string().max(40)).max(10).optional(),
+      search: z.string().max(500).optional(),
+      cursor: z.string().max(200).optional(),
+      limit: z.number().int().min(1).max(200).optional(),
+    })
+    .strict(),
+  z.object({ view: z.literal("resource"), id }).strict(),
+  z
+    .object({
+      view: z.literal("changes"),
+      cursor: z.string().max(400).optional(),
+      courseId: id.optional(),
+      limit: z.number().int().min(1).max(500).optional(),
+    })
+    .strict(),
+]);
+export type QueryRequest = z.infer<typeof queryRequestSchema>;
+/** A list row: a resource without its bodies (text, raw HTML, parts, document pages). */
+export type ResourceSummary = Omit<
+  ResourceView,
+  "text" | "rawHtml" | "parts" | "document"
+> & {
+  excerpt: string;
+  textLength: number;
+  document?: Omit<NonNullable<ResourceView["document"]>, "pages">;
+};
+export interface CourseSummary {
+  accountScope: string;
+  courseId: string;
+  courseName: string;
+  resources: number;
+  open: number;
+  nextDue: string | null;
+  included: boolean;
+}
+export type QueryResult =
+  | {
+      view: "summary";
+      generatedAt: string;
+      sources: SourceHealth[];
+      privacy: PrivacyPreferences;
+      consents: ConsentRecord[];
+      ingestionSettings: IngestionSettings;
+      courseOverrides: CourseOverride[];
+      gatewayConfigured: boolean;
+      fixtureMode: boolean;
+      courses: CourseSummary[];
+      jobs: { pending: number; running: number; failed: number; done: number };
+      receipts: EgressReceipt[];
+      syncRuns: SyncRun[];
+      /** Pass to a "changes" query to get what changed after this summary. */
+      changesCursor: string;
+    }
+  | {
+      view: "resources";
+      items: ResourceSummary[];
+      total: number;
+      nextCursor?: string;
+    }
+  | { view: "resource"; resource: ResourceView; links: Link[]; changes: ResourceChange[] }
+  | {
+      view: "changes";
+      /** Oldest first. */
+      changes: ResourceChange[];
+      cursor: string;
+      /** false: more changed than one page can say; reload the views, then follow the new cursor. */
+      complete: boolean;
+    };
+// end owner: T15
 export const commandSchema = z.discriminatedUnion("type", [
   z
     .object({
@@ -829,12 +1313,16 @@ export const commandSchema = z.discriminatedUnion("type", [
   z
     .object({ type: z.literal("complete"), id, completed: z.boolean() })
     .strict(),
-  z.object({ type: z.literal("privacy"), value: privacySchema }).strict(),
+  z.object({ type: z.literal("privacy"), value: privacyCommandSchema }).strict(),
+  z.object({ type: z.literal("consent"), value: consentChangeSchema }).strict(),
+  z
+    .object({ type: z.literal("preview.ack"), value: previewAckSchema })
+    .strict(),
   z
     .object({
       type: z.literal("context"),
       id,
-      recipient: z.enum(["jev", "chatgpt", "claude", "gemini", "local"]),
+      recipient: aiRecipientSchema,
     })
     .strict(),
   z.object({ type: z.literal("enrich"), id }).strict(),
@@ -851,6 +1339,30 @@ export const commandSchema = z.discriminatedUnion("type", [
       confirmation: z.literal("DELETE LOCAL DATA"),
     })
     .strict(),
+  // owner: T05b. The seams; core's switch is exhaustive, so a variant here without a case is a type error.
+  z
+    .object({
+      type: z.literal("map"),
+      courseId: id,
+      accountScope: id.optional(),
+    })
+    .strict(),
+  z.object({ type: z.literal("correct"), value: correctionSchema }).strict(),
+  z
+    .object({
+      type: z.literal("pack"),
+      pack: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/),
+      scope: packScopeSchema,
+    })
+    .strict(),
+  z.object({ type: z.literal("ui_event"), value: uiEventSchema }).strict(),
+  z
+    .object({ type: z.literal("workspace"), value: workspaceCommandSchema })
+    .strict(),
+  z
+    .object({ type: z.literal("learning"), request: learningRequestSchema })
+    .strict(),
+  // end owner: T05b
 ]);
 export type Command = z.infer<typeof commandSchema>;
 export type CommandResult = {
@@ -858,6 +1370,12 @@ export type CommandResult = {
   snapshot: Snapshot;
   manifest?: ContextManifest;
   message?: string;
+  // owner: T05b. Seam results; each is filled only by its own command.
+  learning?: LearningResult;
+  map?: unknown;
+  pack?: unknown;
+  workspace?: WorkspaceResult;
+  // end owner: T05b
 };
 export const localQuestionSchema = z
   .object({
@@ -900,6 +1418,10 @@ export function localContextPayload(
 export interface AppBridge extends Partial<LearningBridge> {
   execute(command: Command): Promise<CommandResult>;
   openExternal(url: string): Promise<void>;
+  /** owner: T05b. A link card (D40): the default browser, https only. */
+  openLink?(url: string): Promise<void>;
+  /** owner: T15. A scoped query (O1); reads only, never a command. */
+  query?(request: QueryRequest): Promise<QueryResult>;
   importFile(): Promise<CommandResult | null>;
   signInUW?(service?: "canvas" | "gitlab" | "enroll" | "myuw"): Promise<void>;
   syncPlanning?(): Promise<CommandResult>;
@@ -909,6 +1431,44 @@ export interface AppBridge extends Partial<LearningBridge> {
   localAsk?(request: LocalQuestion): Promise<LocalAnswer>;
   cancelLocal?(): Promise<void>;
   exportMcp?(id: string): Promise<string>;
+  keepSignedIn?(value?: boolean): Promise<boolean>;
+  /** T80: the student's AI command-line clients, each in an app-owned profile. */
+  clients?: ClientsBridge;
+}
+/** T80. The AI command-line clients Magic Canvas can host in an app-owned profile. */
+export type ClientId = "claude" | "codex" | "gemini";
+/** Sign-in only for now; an interactive session needs its own threat model first (T81). */
+export type TerminalPurpose = "signin";
+export interface ClientStatus {
+  id: ClientId;
+  /** A binary was found. With `problem` set it exists but isn't usable. */
+  installed: boolean;
+  /** Why an installed client can't be used (e.g. `--version` failed); absent when it works. */
+  problem?: string;
+  version?: string;
+  /** The app-owned profile folder and its files exist. */
+  profileReady: boolean;
+  signedIn: boolean | "unknown";
+  method?: "subscription" | "api-key" | "unknown";
+  /** The client's own plan name when it reports one (e.g. Claude's pro/max); never identity. */
+  plan?: string;
+  /** True only where the client's own config directory is verified to be redirectable. */
+  isolated: boolean;
+  installUrl?: string;
+}
+export interface ClientsBridge {
+  detect(): Promise<ClientStatus[]>;
+  prepare(id: ClientId): Promise<ClientStatus>;
+  authStatus(id: ClientId): Promise<ClientStatus>;
+  choose(id: ClientId): Promise<void>;
+  terminal: {
+    open(id: ClientId, purpose: TerminalPurpose): Promise<{ sessionId: string }>;
+    write(sessionId: string, data: string): void;
+    resize(sessionId: string, cols: number, rows: number): void;
+    close(sessionId: string): Promise<void>;
+    onData(cb: (sessionId: string, chunk: string) => void): () => void;
+    onExit(cb: (sessionId: string, code: number | null) => void): () => void;
+  };
 }
 export type StoredPlanningRecord = PlanningRecord & {
   localId: string;

@@ -1,8 +1,28 @@
 import { createHash, randomUUID } from "node:crypto";
-import { chmodSync, mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+import { backup, DatabaseSync, type StatementSync } from "node:sqlite";
 import { planningMigration, planningRepository } from "./planning";
+import { textHash } from "../../retrieval/src/index";
+import { COURSE_CORE_SCHEMA, courseCoreRepository } from "./course-core";
+import { createPassageIndex, scopeToken } from "./passages";
+import { LEARNING_SCHEMA } from "./learning";
+import { decodePayload, encodePayload } from "./payload";
+import {
+  LIFE_COURSE_ID,
+  subjectJobSchema,
+  type ChangeWithSeq,
+  type CourseCoreStore,
+  type CourseJob,
+  type SubjectKind,
+} from "../../contracts/src/course-core";
 import {
   compileCourseIntelligence,
   courseInputHash,
@@ -28,6 +48,10 @@ import {
   defaultPrivacy,
   instant,
   privacySchema,
+  consentChangeSchema,
+  consentRecordSchema,
+  type ConsentChange,
+  type ConsentRecord,
   type Attempt,
   type EgressReceipt,
   type IngestReport,
@@ -41,8 +65,38 @@ import {
   type Store,
 } from "@magic/contracts";
 
-const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 7;
 const MAX_ATTEMPTS = 3;
+/** The latest pre-migration backup, beside the database (one kept; purge deletes it). */
+export function migrationBackupPath(path: string): string {
+  return `${resolve(path)}.pre-v${SCHEMA_VERSION}.bak`;
+}
+const BACKUP_PATTERN = /\.pre-v\d+\.bak$/;
+/** A failed migration. The single transaction rolled back, so the original file is intact. */
+export class MigrationError extends Error {
+  constructor(
+    message: string,
+    readonly from: number,
+    readonly backup: string | null,
+    options?: { cause?: unknown },
+  ) {
+    super(message, options);
+  }
+}
+/**
+ * Restore the pre-migration backup into the live path through SQLite's backup API (never a file
+ * copy: overwriting a file under an open connection corrupts it). Safe with a reader open.
+ */
+export async function restoreMigrationBackup(path: string): Promise<void> {
+  const file = migrationBackupPath(path);
+  if (!existsSync(file)) throw new Error("No pre-migration backup to restore.");
+  const source = new DatabaseSync(file, { readOnly: true });
+  try {
+    await backup(source, resolve(path));
+  } finally {
+    source.close();
+  }
+}
 type Row = Record<string, string | number | bigint | Uint8Array | null>;
 
 function timestamp(value: string): string {
@@ -101,23 +155,37 @@ function assertText(value: string, name: string, max = 512): void {
     throw new Error(`Invalid ${name}.`);
 }
 
+/** The text hash of a stored payload (registered for the v6 backfill). */
+function payloadTextHash(payload: unknown): string {
+  const item = decodePayload(payload) as { title?: string; text?: string };
+  return textHash(String(item.title ?? ""), String(item.text ?? ""));
+}
+
 /** One local writer. Network requests and model inference must happen outside its transactions. */
-export function createStore(path: string): Store {
-  if (path !== ":memory:")
-    mkdirSync(dirname(resolve(path)), { recursive: true, mode: 0o700 });
+export function createStore(path: string): Store & CourseCoreStore {
+  const file = path !== ":memory:";
+  if (file) mkdirSync(dirname(resolve(path)), { recursive: true, mode: 0o700 });
   const db = new DatabaseSync(path);
-  if (path !== ":memory:") chmodSync(path, 0o600);
+  if (file) chmodSync(path, 0o600);
   db.exec(
     "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000; PRAGMA secure_delete = ON;",
   );
-  const schemaVersion = Number(
-    db.prepare("PRAGMA user_version").get()!.user_version,
-  );
+  db.function("magic_text_hash", { deterministic: true }, payloadTextHash);
+  const readVersion = () =>
+    Number(db.prepare("PRAGMA user_version").get()!.user_version);
+  const schemaVersion = readVersion();
   if (schemaVersion > SCHEMA_VERSION) {
     db.close();
     throw new Error(
       "This database was created by a newer Magic Canvas version.",
     );
+  }
+  // O2: one prepared statement per SQL text for the life of the connection.
+  const statements = new Map<string, StatementSync>();
+  function prepare(sql: string): StatementSync {
+    let statement = statements.get(sql);
+    if (!statement) statements.set(sql, (statement = db.prepare(sql)));
+    return statement;
   }
 
   function transaction<T>(operation: () => T): T {
@@ -127,13 +195,18 @@ export function createStore(path: string): Store {
       db.exec("COMMIT");
       return result;
     } catch (error) {
-      db.exec("ROLLBACK");
+      // SQLite may already have rolled back (FULL, IOERR, BUSY); never mask the original error.
+      if (db.isTransaction) db.exec("ROLLBACK");
       throw error;
     }
   }
 
-  if (schemaVersion === 0)
-    transaction(() => {
+  // Every pending step runs in ONE transaction that re-reads user_version inside it (C1).
+  // Step bodies are the historical migrations, unchanged; planning's v4 and v5 are untouched.
+  const steps: [number, () => void][] = [];
+  steps.push([
+    1,
+    () => {
       db.exec(`
       CREATE TABLE sources (
         id TEXT PRIMARY KEY, label TEXT NOT NULL, kind TEXT NOT NULL,
@@ -201,18 +274,20 @@ export function createStore(path: string): Store {
       );
       PRAGMA user_version = 1;
     `);
-    });
-
-  if (schemaVersion < 2)
-    transaction(() => {
+    },
+  ]);
+  steps.push([
+    2,
+    () => {
       // Old links lack target evidence versions: hide them until their evidence is checked again.
       db.exec(
         "ALTER TABLE links ADD COLUMN target_hash TEXT NOT NULL DEFAULT ''; PRAGMA user_version = 2;",
       );
-    });
-
-  if (schemaVersion < 3)
-    transaction(() => {
+    },
+  ]);
+  steps.push([
+    3,
+    () => {
       db.exec(`
       ALTER TABLE sources ADD COLUMN details TEXT NOT NULL DEFAULT '{}';
       CREATE TABLE field_observations (
@@ -235,15 +310,120 @@ export function createStore(path: string): Store {
       CREATE TABLE mcp_grants (id TEXT PRIMARY KEY, payload TEXT NOT NULL);
       PRAGMA user_version = 3;
     `);
-    });
-
-  if (schemaVersion < 4)
-    transaction(() => db.exec(planningMigration + "PRAGMA user_version = 4;"));
+    },
+  ]);
+  steps.push([4, () => db.exec(planningMigration + "PRAGMA user_version = 4;")]);
+  steps.push([
+    5,
+    () =>
+      db.exec(`CREATE TABLE course_intelligence (
+    id TEXT NOT NULL, version INTEGER NOT NULL, input_hash TEXT NOT NULL, payload TEXT NOT NULL,
+    PRIMARY KEY(id,version)); PRAGMA user_version = 5;`),
+  ]);
+  // v6: the course core. Existing text is split into passages here, inside the same transaction.
+  steps.push([
+    6,
+    () => {
+      db.exec(COURSE_CORE_SCHEMA + "PRAGMA user_version = 6;");
+      backfillPassages();
+      db.exec("DROP TABLE resource_search;");
+    },
+  ]);
+  // v7: learning and practice tables (T10L, D17).
+  steps.push([7, () => db.exec(LEARNING_SCHEMA + "PRAGMA user_version = 7;")]);
+  const migrationBackup = file ? migrationBackupPath(path) : null;
+  const passageIndex = createPassageIndex(db, prepare);
+  const courseScope = (accountScope: string, courseId: string) =>
+    scopeToken(accountScope, courseId);
+  function backfillPassages() {
+    for (const row of db
+      .prepare(
+        `SELECT r.id, r.version, r.text_hash, s.account_scope, s.course_id, v.payload FROM resources r
+         JOIN sources s ON s.id = r.source_id
+         JOIN resource_versions v ON v.resource_id = r.id AND v.version = r.version WHERE r.deleted = 0`,
+      )
+      .iterate())
+      passageIndex.index(
+        String(row.id),
+        Number(row.version),
+        String(row.text_hash),
+        decodePayload(row.payload),
+        courseScope(String(row.account_scope), String(row.course_id)),
+      );
+  }
+  /** Every backup file this database has (any target version). */
+  function backupFiles(): string[] {
+    if (!file) return [];
+    const directory = dirname(resolve(path));
+    const base = `${basename(resolve(path))}.pre-v`;
+    return readdirSync(directory)
+      .filter((name) => name.startsWith(base) && BACKUP_PATTERN.test(name))
+      .map((name) => join(directory, name));
+  }
+  function takeBackup(target: string) {
+    // VACUUM INTO needs a missing or empty target: create it empty and private first. One kept.
+    for (const old of backupFiles()) rmSync(old, { force: true });
+    writeFileSync(target, "", { mode: 0o600 });
+    chmodSync(target, 0o600);
+    db.prepare("VACUUM INTO ?").run(target);
+  }
+  function migrate() {
+    if (schemaVersion >= SCHEMA_VERSION) return;
+    if (schemaVersion > 0 && migrationBackup) takeBackup(migrationBackup);
+    let from = schemaVersion;
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      from = readVersion(); // another process may have migrated since the first read
+      if (from > SCHEMA_VERSION)
+        throw new Error("This database was created by a newer Magic Canvas version.");
+      for (const [version, step] of steps) if (version > from) step();
+      if (db.prepare("PRAGMA foreign_key_check").all().length)
+        throw new Error("The migration left foreign-key violations.");
+      db.exec("COMMIT");
+    } catch (error) {
+      if (db.isTransaction) db.exec("ROLLBACK");
+      db.close();
+      throw new MigrationError(
+        `Updating the local database from v${from} failed; the original database is unchanged.`,
+        from,
+        migrationBackup && existsSync(migrationBackup) ? migrationBackup : null,
+        { cause: error },
+      );
+    }
+  }
+  migrate();
   const planning = planningRepository(db);
+  // owner: T06. Consent storage helpers.
+  function readConsents(): ConsentRecord[] {
+    const row = db
+      .prepare("SELECT value FROM preferences WHERE key = 'consents'")
+      .get();
+    if (!row) return [];
+    let raw: unknown;
+    try {
+      raw = JSON.parse(String(row.value));
+    } catch {
+      return [];
+    }
+    // A malformed or unknown entry reads as absent: it can only withhold consent, never grant it.
+    return Array.isArray(raw)
+      ? raw.flatMap((entry) => {
+          const parsed = consentRecordSchema.safeParse(entry);
+          return parsed.success ? [parsed.data] : [];
+        })
+      : [];
+  }
+  /** The same registered key as `consentRecordsKey` in @magic/domain (maySend reads it). */
+  function withConsentRecords(value: PrivacyPreferences): PrivacyPreferences {
+    return Object.defineProperty(value, Symbol.for("magic.consentRecords"), {
+      value: Object.freeze(readConsents()),
+      enumerable: false,
+    });
+  }
+  // end owner: T06
 
   function resourceRow(id: string): Row | undefined {
-    return db
-      .prepare(
+    return prepare(
         `SELECT r.*, v.payload, COALESCE(c.completed, 0) AS completed
       FROM resources r JOIN resource_versions v ON v.resource_id = r.id AND v.version = r.version
       LEFT JOIN completions c ON c.resource_id = r.id WHERE r.id = ?`,
@@ -253,7 +433,7 @@ export function createStore(path: string): Store {
 
   function readResource(row: Row): Resource {
     return {
-      ...(JSON.parse(String(row.payload)) as ResourceInput),
+      ...decodePayload(row.payload),
       id: String(row.id),
       sourceId: String(row.source_id),
       contentHash: String(row.content_hash),
@@ -264,21 +444,21 @@ export function createStore(path: string): Store {
       completed: Boolean(row.completed),
       fieldLastSeen: Object.fromEntries(
         (
-          db
-            .prepare(
-              "SELECT field, MAX(observed_at) AS observed_at FROM field_observations WHERE resource_id = ? GROUP BY field",
-            )
-            .all(String(row.id)) as Row[]
+          prepare(
+            "SELECT field, observed_at FROM field_observations WHERE resource_id = ?",
+          ).all(String(row.id)) as Row[]
         ).map((v) => [String(v.field), String(v.observed_at)]),
       ),
     };
   }
 
+  /** A live resource; with `hash`, only while it equals the content hash or the text hash (O5). */
   function liveResource(id: string, hash?: string): Row | undefined {
-    const row = db
-      .prepare("SELECT * FROM resources WHERE id = ? AND deleted = 0")
-      .get(id) as Row | undefined;
-    return row && (hash === undefined || row.content_hash === hash)
+    const row = prepare("SELECT * FROM resources WHERE id = ? AND deleted = 0").get(
+      id,
+    ) as Row | undefined;
+    return row &&
+      (hash === undefined || row.content_hash === hash || row.text_hash === hash)
       ? row
       : undefined;
   }
@@ -292,18 +472,38 @@ export function createStore(path: string): Store {
     assertText(kind, "job kind");
     const time = timestamp(now);
     if (!liveResource(resourceId, inputHash)) return;
-    db.prepare(
+    prepare(
       `INSERT OR IGNORE INTO jobs
-      (id, kind, resource_id, input_hash, status, attempts, run_after)
-      VALUES (?, ?, ?, ?, 'pending', 0, ?)`,
-    ).run(randomUUID(), kind, resourceId, inputHash, time);
+      (id, kind, subject_kind, subject_id, resource_id, input_hash, status, attempts, run_after)
+      VALUES (?, ?, 'resource', ?, ?, ?, 'pending', 0, ?)`,
+    ).run(randomUUID(), kind, resourceId, resourceId, inputHash, time);
   }
 
-  function readJob(row: Row): Job {
+  /** Per-subject staleness: a job is served only while its subject still holds its input. */
+  const fresh: Record<SubjectKind, (row: Row) => boolean> = {
+    resource: (row) =>
+      row.resource_id !== null &&
+      !!liveResource(String(row.resource_id), String(row.input_hash)),
+    course: (row) =>
+      row.source_id !== null &&
+      !!prepare(
+        "SELECT 1 FROM sources WHERE id = ? AND account_scope || ':' || course_id = ?",
+      ).get(row.source_id, row.subject_id),
+    assessment: (row) =>
+      !!prepare("SELECT 1 FROM assessments WHERE id = ?").get(row.subject_id),
+    source: (row) =>
+      !!prepare("SELECT 1 FROM sources WHERE id = ?").get(row.subject_id),
+    // A pack job's inputs are checked by its handler before anything is written.
+    pack: () => true,
+  };
+  const isFresh = (row: Row) =>
+    (fresh[row.subject_kind as SubjectKind] ?? (() => false))(row);
+
+  function readJob(row: Row): CourseJob {
     return {
       id: String(row.id),
       kind: String(row.kind),
-      resourceId: String(row.resource_id),
+      resourceId: row.resource_id === null ? "" : String(row.resource_id),
       inputHash: String(row.input_hash),
       status: row.status as Job["status"],
       attempts: Number(row.attempts),
@@ -311,7 +511,10 @@ export function createStore(path: string): Store {
       leaseUntil: row.lease_until === null ? null : String(row.lease_until),
       leaseToken: row.lease_token === null ? null : String(row.lease_token),
       error: row.error === null ? null : String(row.error),
-    };
+      subjectKind: String(row.subject_kind) as SubjectKind,
+      subjectId: String(row.subject_id),
+      sourceId: row.source_id === null ? null : String(row.source_id),
+    } satisfies CourseJob;
   }
 
   function readJudgment(row: Row): Judgment {
@@ -338,15 +541,8 @@ export function createStore(path: string): Store {
     };
   }
 
-  if (schemaVersion < 5)
-    transaction(() =>
-      db.exec(`CREATE TABLE course_intelligence (
-    id TEXT NOT NULL, version INTEGER NOT NULL, input_hash TEXT NOT NULL, payload TEXT NOT NULL,
-    PRIMARY KEY(id,version)); PRAGMA user_version = 5;`),
-    );
   function latestIntelligence(id: string): CourseIntelligence | undefined {
-    const row = db
-      .prepare(
+    const row = prepare(
         "SELECT payload FROM course_intelligence WHERE id=? ORDER BY version DESC LIMIT 1",
       )
       .get(id);
@@ -358,8 +554,24 @@ export function createStore(path: string): Store {
     at: string,
     extraction?: CourseExtractionBatch,
   ) {
-    const rows = db
-      .prepare(
+    // The input hash needs only identity and version columns: decide the early exits before
+    // decoding every payload in the course (the same checks as below, on the same rows).
+    const previous = latestIntelligence(courseIntelligenceId(account, course));
+    const identities = (
+      prepare(
+        `SELECT r.id, r.source_id, r.content_hash, r.version FROM resources r JOIN sources s ON s.id=r.source_id
+        WHERE s.account_scope=? AND s.course_id=? AND r.deleted=0 ORDER BY r.id`,
+      ).all(account, course) as Row[]
+    ).map((r) => ({
+      id: String(r.id),
+      sourceId: String(r.source_id),
+      contentHash: String(r.content_hash),
+      version: Number(r.version),
+    })) as Resource[];
+    const identityHash = courseInputHash(identities);
+    if (extraction && extraction.inputHash !== identityHash) return false;
+    if (!extraction && previous?.inputHash === identityHash) return false;
+    const rows = prepare(
         `SELECT r.*,v.payload,COALESCE(c.completed,0) AS completed FROM resources r
       JOIN sources s ON s.id=r.source_id JOIN resource_versions v ON v.resource_id=r.id AND v.version=r.version
       LEFT JOIN completions c ON c.resource_id=r.id
@@ -367,14 +579,12 @@ export function createStore(path: string): Store {
       )
       .all(account, course) as Row[];
     const resources = rows.map(readResource);
-    const previous = latestIntelligence(courseIntelligenceId(account, course));
     if (extraction && extraction.inputHash !== courseInputHash(resources))
       return false;
     if (!extraction && previous?.inputHash === courseInputHash(resources))
       return false;
     if (!resources.length && extraction) return false;
-    const sourceRoles = db
-      .prepare(
+    const sourceRoles = prepare(
         "SELECT id,kind,scope FROM sources WHERE account_scope=? AND course_id=?",
       )
       .all(account, course) as unknown as Pick<
@@ -395,7 +605,7 @@ export function createStore(path: string): Store {
       previous?.extraction?.resultHash === profile.extraction?.resultHash
     )
       return false;
-    db.prepare("INSERT INTO course_intelligence VALUES (?,?,?,?)").run(
+    prepare("INSERT INTO course_intelligence VALUES (?,?,?,?)").run(
       profile.id,
       profile.version,
       profile.inputHash,
@@ -404,27 +614,79 @@ export function createStore(path: string): Store {
     return true;
   }
   // Existing databases are materialized locally at open; no model or network request.
-  for (const row of db
-    .prepare("SELECT DISTINCT account_scope,course_id FROM sources")
-    .all())
+  for (const row of prepare("SELECT DISTINCT account_scope,course_id FROM sources WHERE course_id <> ?")
+    .all(LIFE_COURSE_ID))
     rebuildIntelligence(
       String(row.account_scope),
       String(row.course_id),
       new Date().toISOString(),
     );
+  /** Every FTS5 table (not its shadow tables, not fts5vocab views). */
+  function ftsTables(): string[] {
+    return (
+      prepare(
+        "SELECT name FROM sqlite_schema WHERE type = 'table' AND sql LIKE 'CREATE VIRTUAL TABLE%USING fts5(%'",
+      ).all() as Row[]
+    ).map((r) => String(r.name));
+  }
+  /** Every ordinary table, each after all the tables that reference it (children first). */
+  function purgeOrder(): string[] {
+    const tables = (
+      prepare(
+        "SELECT name FROM pragma_table_list WHERE schema = 'main' AND type = 'table' AND name NOT LIKE 'sqlite_%'",
+      ).all() as Row[]
+    ).map((r) => String(r.name));
+    const children = new Map<string, string[]>(tables.map((t) => [t, []]));
+    for (const table of tables)
+      for (const fk of prepare('SELECT DISTINCT "table" AS parent FROM pragma_foreign_key_list(?)').all(
+        table,
+      ) as Row[])
+        if (fk.parent !== table) children.get(String(fk.parent))?.push(table);
+    const order: string[] = [];
+    const seen = new Set<string>();
+    const visit = (table: string) => {
+      if (seen.has(table)) return;
+      seen.add(table);
+      for (const child of children.get(table) ?? []) visit(child);
+      order.push(table);
+    };
+    for (const table of tables) visit(table);
+    return order;
+  }
+  /** A live resource's text at a version (default: its current one). */
+  function versionText(resourceId: string, version?: number) {
+    const row = prepare(
+      `SELECT r.id, r.source_id, r.version AS current, v.version, v.text_hash, v.payload FROM resources r
+       JOIN resource_versions v ON v.resource_id = r.id AND v.version = COALESCE(?, r.version)
+       WHERE r.id = ? AND r.deleted = 0`,
+    ).get(version ?? null, resourceId) as Row | undefined;
+    return row
+      ? {
+          resourceId: String(row.id),
+          sourceId: String(row.source_id),
+          version: Number(row.version),
+          currentVersion: Number(row.current),
+          textHash: String(row.text_hash),
+          item: decodePayload(row.payload),
+        }
+      : undefined;
+  }
+  const courseCore = courseCoreRepository(prepare, {
+    transaction,
+    timestamp,
+    versionText,
+  });
   let closed = false;
   return {
     courseIntelligence() {
-      return db
-        .prepare(
+      return prepare(
           "SELECT payload FROM course_intelligence p WHERE version=(SELECT MAX(version) FROM course_intelligence WHERE id=p.id) ORDER BY id",
         )
         .all()
         .map((row) => JSON.parse(String(row.payload)) as CourseIntelligence);
     },
     courseIntelligenceHistory(id) {
-      return db
-        .prepare(
+      return prepare(
           "SELECT payload FROM course_intelligence WHERE id=? ORDER BY version",
         )
         .all(id)
@@ -489,8 +751,7 @@ export function createStore(path: string): Store {
         });
       }
       return transaction(() => {
-        const prior = db
-          .prepare("SELECT * FROM sources WHERE id = ?")
+        const prior = prepare("SELECT * FROM sources WHERE id = ?")
           .get(source.id) as Row | undefined;
         if (
           prior &&
@@ -520,8 +781,7 @@ export function createStore(path: string): Store {
           status === "ok" &&
           batch.complete &&
           !diagnostics.some((d) => d.severity === "error");
-        const baseline = db
-          .prepare("SELECT * FROM scope_baselines WHERE source_id = ?")
+        const baseline = prepare("SELECT * FROM scope_baselines WHERE source_id = ?")
           .get(source.id) as Row | undefined;
         const count = records.length;
         const emptyRatio = count
@@ -553,14 +813,13 @@ export function createStore(path: string): Store {
           (status === "ok" || status === "partial")
         ) {
           for (const { value } of records) {
-            const old = db
-              .prepare(
+            const old = prepare(
                 `SELECT v.payload FROM resources r JOIN resource_versions v ON v.resource_id=r.id AND v.version=r.version
               WHERE r.source_id=? AND r.external_id=? AND r.deleted=0`,
               )
               .get(source.id, value.externalId);
             const oldText = old
-              ? (JSON.parse(String(old.payload)) as ResourceInput).text.trim()
+              ? decodePayload(old.payload).text.trim()
               : "";
             if (
               oldText.length >= 100 &&
@@ -591,7 +850,7 @@ export function createStore(path: string): Store {
           ...(batch.stats ? { stats: batch.stats } : {}),
           ...(batch.progress ? { progress: batch.progress } : {}),
         };
-        db.prepare(
+        prepare(
           `INSERT INTO sources
           (id,label,kind,account_scope,course_id,scope,status,last_attempt_at,last_success_at,complete,details)
           VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET label=excluded.label,status=excluded.status,
@@ -609,12 +868,16 @@ export function createStore(path: string): Store {
           Number(complete),
           JSON.stringify(details),
         );
-        db.prepare("INSERT INTO source_observations VALUES (?,?,?,?,?)").run(
+        prepare("INSERT INTO source_observations VALUES (?,?,?,?,?)").run(
           source.id,
           observedAt,
           status,
           Number(complete),
           count,
+        );
+        let seq = Number(
+          prepare("SELECT value FROM counters WHERE name = 'change_seq'").get()
+            ?.value ?? 0,
         );
         const addChange = (
           resourceId: string,
@@ -622,8 +885,8 @@ export function createStore(path: string): Store {
           oldValues: Record<string, unknown>,
           newValues: Record<string, unknown>,
         ) => {
-          db.prepare(
-            "INSERT INTO resource_changes VALUES (?,?,?,?,?,?,?,?)",
+          prepare(
+            "INSERT INTO resource_changes (id,resource_id,source_id,read_id,observed_at,type,old_values,new_values,seq) VALUES (?,?,?,?,?,?,?,?,?)",
           ).run(
             randomUUID(),
             resourceId,
@@ -633,6 +896,7 @@ export function createStore(path: string): Store {
             type,
             JSON.stringify(oldValues),
             JSON.stringify(newValues),
+            ++seq,
           );
         };
         // Restricted course rows are catalog observations, not successful reads of their content.
@@ -650,15 +914,12 @@ export function createStore(path: string): Store {
               )
             : [];
         for (const entry of accepted) {
-          const existing = db
-            .prepare(
+          const existing = prepare(
               "SELECT * FROM resources WHERE source_id = ? AND external_id = ?",
             )
             .get(source.id, entry.value.externalId) as Row | undefined;
           const previous = existing
-            ? (JSON.parse(
-                String(resourceRow(String(existing.id))!.payload),
-              ) as ResourceInput)
+            ? decodePayload(resourceRow(String(existing.id))!.payload)
             : undefined;
           if (restrictedCatalog && previous && previous.kind !== "course")
             continue;
@@ -687,6 +948,7 @@ export function createStore(path: string): Store {
                 })
               : entry.value;
           const hash = contentHash(item);
+          const itemTextHash = textHash(item.title, item.text);
           const id = existing ? String(existing.id) : randomUUID();
           const modified = !existing || existing.content_hash !== hash;
           const revived = Boolean(existing?.deleted);
@@ -694,8 +956,8 @@ export function createStore(path: string): Store {
             ? Number(existing.version) + Number(modified)
             : 1;
           if (!existing) {
-            db.prepare(
-              "INSERT INTO resources (id,source_id,external_id,content_hash,version,observed_at,captured_at) VALUES (?,?,?,?,?,?,?)",
+            prepare(
+              "INSERT INTO resources (id,source_id,external_id,content_hash,version,observed_at,captured_at,text_hash) VALUES (?,?,?,?,?,?,?,?)",
             ).run(
               id,
               source.id,
@@ -704,36 +966,39 @@ export function createStore(path: string): Store {
               version,
               observedAt,
               capturedAt,
+              itemTextHash,
             );
             report.created++;
           } else {
-            db.prepare(
-              "UPDATE resources SET content_hash=?,version=?,observed_at=?,captured_at=?,deleted=0 WHERE id=?",
+            prepare(
+              "UPDATE resources SET content_hash=?,version=?,observed_at=?,captured_at=?,deleted=0,text_hash=? WHERE id=?",
             ).run(
               hash,
               version,
               observedAt,
               modified ? capturedAt : existing.captured_at,
+              itemTextHash,
               id,
             );
             if (modified || revived) report.changed++;
             else report.unchanged++;
           }
           if (modified)
-            db.prepare("INSERT INTO resource_versions VALUES (?,?,?,?,?)").run(
-              id,
-              version,
-              hash,
-              JSON.stringify(item),
-              capturedAt,
-            );
-          db.prepare("INSERT INTO observations VALUES (?,?,?,0)").run(
+            prepare(
+              "INSERT INTO resource_versions (resource_id,version,content_hash,payload,captured_at,text_hash) VALUES (?,?,?,?,?,?)",
+            ).run(id, version, hash, encodePayload(item), capturedAt, itemTextHash);
+          prepare("INSERT INTO observations VALUES (?,?,?,0)").run(
             id,
             observedAt,
             version,
           );
+          // Latest observation per field only (D4); history was never read.
           for (const field of observedFields(observation))
-            db.prepare("INSERT INTO field_observations VALUES (?,?,?,?,?)").run(
+            prepare(
+              `INSERT INTO field_observations VALUES (?,?,?,?,?) ON CONFLICT(resource_id, field) DO UPDATE SET
+              observed_at=excluded.observed_at, read_id=excluded.read_id, version=excluded.version
+              WHERE excluded.observed_at >= field_observations.observed_at`,
+            ).run(
               id,
               field,
               observedAt,
@@ -829,85 +1094,88 @@ export function createStore(path: string): Store {
               );
           }
           if (modified || revived) {
-            db.prepare("DELETE FROM resource_search WHERE resource_id = ?").run(
+            // The version's passages replace the old ones in the same transaction (T11b):
+            // an old version is never searchable, and the new one is at once.
+            passageIndex.index(
               id,
+              version,
+              itemTextHash,
+              item,
+              courseScope(source.accountScope, source.courseId),
             );
-            db.prepare(
-              "INSERT INTO resource_search(resource_id,title,course_name,body) VALUES (?,?,?,?)",
-            ).run(id, item.title, item.courseName, item.text);
-            db.prepare(
-              `UPDATE jobs SET status='failed',error='Resource changed.',lease_until=NULL,lease_token=NULL WHERE resource_id=? AND input_hash<>? AND status IN ('pending','running')`,
-            ).run(id, hash);
-            db.prepare(
-              `UPDATE jobs SET status='pending',attempts=0,run_after=?,error=NULL WHERE resource_id=? AND input_hash=? AND status='failed' AND error IN ('Resource changed.','Resource deleted.','Resource changed or deleted.')`,
-            ).run(capturedAt, id, hash);
+            // Jobs keyed to the text hash survive a submission or grade change (O5).
+            prepare(
+              `UPDATE jobs SET status='failed',error='Resource changed.',lease_until=NULL,lease_token=NULL WHERE resource_id=? AND input_hash NOT IN (?,?) AND status IN ('pending','running')`,
+            ).run(id, hash, itemTextHash);
+            prepare(
+              `UPDATE jobs SET status='pending',attempts=0,run_after=?,error=NULL WHERE resource_id=? AND input_hash IN (?,?) AND status='failed' AND error IN ('Resource changed.','Resource deleted.','Resource changed or deleted.')`,
+            ).run(capturedAt, id, hash, itemTextHash);
             enqueue("enrich.resource", id, hash, capturedAt);
           }
         }
         if (complete) {
-          const present = db
-            .prepare(
+          const present = prepare(
               "SELECT id,external_id,version FROM resources WHERE source_id=? AND deleted=0",
             )
             .all(source.id) as Row[];
           for (const row of present)
             if (!identities.has(String(row.external_id))) {
               const id = String(row.id);
-              db.prepare(
+              prepare(
                 "UPDATE resources SET deleted=1,observed_at=? WHERE id=?",
               ).run(observedAt, id);
-              db.prepare("INSERT INTO observations VALUES (?,?,?,1)").run(
+              prepare("INSERT INTO observations VALUES (?,?,?,1)").run(
                 id,
                 observedAt,
                 row.version,
               );
-              db.prepare("DELETE FROM resource_search WHERE resource_id=?").run(
-                id,
-              );
-              db.prepare(
+              passageIndex.remove(id);
+              prepare(
                 `UPDATE jobs SET status='failed',error='Resource deleted.',lease_until=NULL,lease_token=NULL WHERE resource_id=? AND status IN ('pending','running')`,
               ).run(id);
               addChange(id, "removed", { deleted: false }, { deleted: true });
               report.deleted++;
             }
           // Slowly adapt healthy baselines. An anomalous capture never teaches the detector its own failure.
-          db.prepare(
+          prepare(
             `INSERT INTO scope_baselines VALUES (?,?,?,?,?,?) ON CONFLICT(source_id) DO UPDATE SET
             successful_reads=scope_baselines.successful_reads+1,record_count=scope_baselines.record_count*0.7+excluded.record_count*0.3,
             empty_text_ratio=scope_baselines.empty_text_ratio*0.7+excluded.empty_text_ratio*0.3,
             date_coverage_ratio=scope_baselines.date_coverage_ratio*0.7+excluded.date_coverage_ratio*0.3,observed_at=excluded.observed_at`,
           ).run(source.id, 1, count, emptyRatio, dateRatio, observedAt);
         }
-        rebuildIntelligence(source.accountScope, source.courseId, capturedAt);
+        prepare("INSERT INTO counters VALUES ('change_seq', ?) ON CONFLICT(name) DO UPDATE SET value = excluded.value").run(seq);
+        if (source.courseId !== LIFE_COURSE_ID)
+          rebuildIntelligence(source.accountScope, source.courseId, capturedAt);
         return report;
       });
     },
 
     resources(search?: string): Resource[] {
-      // Treat all input as literal search terms, never as FTS operators or SQL.
-      const terms =
-        search
-          ?.normalize("NFKC")
-          .match(/[\p{L}\p{N}_]+/gu)
-          ?.slice(0, 50) ?? [];
-      if (search?.trim() && !terms.length) return [];
-      const match = terms.map((term) => `"${term}"*`).join(" AND ");
       const base = `SELECT r.*, v.payload, COALESCE(c.completed, 0) AS completed
         FROM resources r JOIN resource_versions v ON v.resource_id = r.id AND v.version = r.version
         LEFT JOIN completions c ON c.resource_id = r.id`;
-      const rows = match
-        ? db
-            .prepare(
-              `${base} JOIN resource_search s ON s.resource_id = r.id
-            WHERE r.deleted = 0 AND resource_search MATCH ? ORDER BY rank, r.id`,
-            )
-            .all(match)
-        : db
-            .prepare(
-              `${base} WHERE r.deleted = 0 ORDER BY r.source_id, r.external_id`,
-            )
-            .all();
-      return (rows as Row[]).map(readResource);
+      if (!search?.trim())
+        return (
+          prepare(
+            `${base} WHERE r.deleted = 0 ORDER BY r.source_id, r.external_id`,
+          ).all() as Row[]
+        ).map(readResource);
+      // Passage search (T11b): all input is literal terms, never FTS operators or SQL. The best
+      // passage ranks its resource; a page of at most 20 resources, in rank order.
+      const ids = passageIndex.resourceIds(search);
+      if (!ids?.length) return [];
+      const rows = new Map(
+        (
+          prepare(
+            `${base} WHERE r.deleted = 0 AND r.id IN (SELECT value FROM json_each(?))`,
+          ).all(JSON.stringify(ids)) as Row[]
+        ).map((row) => [String(row.id), row]),
+      );
+      return ids.flatMap((id) => {
+        const row = rows.get(id);
+        return row ? [readResource(row)] : [];
+      });
     },
     resource(id) {
       const row = resourceRow(id);
@@ -915,8 +1183,7 @@ export function createStore(path: string): Store {
     },
     sources() {
       return (
-        db
-          .prepare(
+        prepare(
             `SELECT s.*, (SELECT COUNT(*) FROM resources r WHERE r.source_id = s.id AND r.deleted = 0) AS resource_count
         FROM sources s ORDER BY s.id`,
           )
@@ -938,8 +1205,7 @@ export function createStore(path: string): Store {
       }));
     },
     ingestionSettings() {
-      const row = db
-        .prepare("SELECT value FROM preferences WHERE key='ingestion'")
+      const row = prepare("SELECT value FROM preferences WHERE key='ingestion'")
         .get();
       return row
         ? ingestionSettingsSchema.parse(JSON.parse(String(row.value)))
@@ -947,14 +1213,13 @@ export function createStore(path: string): Store {
     },
     setIngestionSettings(value) {
       const parsed = ingestionSettingsSchema.parse(value);
-      db.prepare(
+      prepare(
         "INSERT INTO preferences VALUES ('ingestion',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
       ).run(JSON.stringify(parsed));
     },
     courseOverrides() {
       return (
-        db
-          .prepare(
+        prepare(
             "SELECT * FROM course_overrides ORDER BY account_scope,course_id",
           )
           .all() as Row[]
@@ -967,11 +1232,11 @@ export function createStore(path: string): Store {
     setCourseOverride(value) {
       const parsed = courseOverrideSchema.parse(value);
       if (parsed.included === null)
-        db.prepare(
+        prepare(
           "DELETE FROM course_overrides WHERE account_scope=? AND course_id=?",
         ).run(parsed.accountScope, parsed.courseId);
       else
-        db.prepare(
+        prepare(
           "INSERT INTO course_overrides VALUES (?,?,?) ON CONFLICT(account_scope,course_id) DO UPDATE SET included=excluded.included",
         ).run(parsed.accountScope, parsed.courseId, Number(parsed.included));
     },
@@ -996,8 +1261,7 @@ export function createStore(path: string): Store {
       const limit = filter.limit ?? 200;
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 2000)
         throw new Error("Invalid change limit.");
-      const rows = db
-        .prepare(
+      const rows = prepare(
           `SELECT c.*,s.account_scope,s.course_id,s.scope FROM resource_changes c JOIN sources s ON s.id=c.source_id ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""} ORDER BY c.observed_at DESC,c.rowid DESC LIMIT ?`,
         )
         .all(...params, limit) as Row[];
@@ -1017,8 +1281,7 @@ export function createStore(path: string): Store {
     },
     scopeBaselines() {
       return (
-        db
-          .prepare("SELECT * FROM scope_baselines ORDER BY source_id")
+        prepare("SELECT * FROM scope_baselines ORDER BY source_id")
           .all() as Row[]
       ).map((r): ScopeBaseline => ({
         sourceId: String(r.source_id),
@@ -1031,8 +1294,7 @@ export function createStore(path: string): Store {
     },
     syncRuns() {
       return (
-        db
-          .prepare(
+        prepare(
             "SELECT payload FROM sync_runs ORDER BY started_at DESC,id DESC LIMIT 100",
           )
           .all() as Row[]
@@ -1043,55 +1305,81 @@ export function createStore(path: string): Store {
       if (Date.parse(parsed.finishedAt) < Date.parse(parsed.startedAt))
         throw new Error("Sync finish precedes its start.");
       transaction(() => {
-        db.prepare(
+        prepare(
           "INSERT INTO sync_runs VALUES (?,?,?) ON CONFLICT(id) DO NOTHING",
         ).run(parsed.id, timestamp(parsed.startedAt), JSON.stringify(parsed));
-        db.prepare(
+        prepare(
           "DELETE FROM sync_runs WHERE id NOT IN (SELECT id FROM sync_runs ORDER BY started_at DESC,id DESC LIMIT 100)",
         ).run();
       });
     },
     mcpGrants() {
       return (
-        db.prepare("SELECT payload FROM mcp_grants ORDER BY id").all() as Row[]
+        prepare("SELECT payload FROM mcp_grants ORDER BY id").all() as Row[]
       ).map((r) => mcpGrantSchema.parse(JSON.parse(String(r.payload))));
     },
     setMcpGrant(value) {
       const parsed = mcpGrantSchema.parse(value);
-      db.prepare(
+      prepare(
         "INSERT INTO mcp_grants VALUES (?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload",
       ).run(parsed.id, JSON.stringify(parsed));
     },
     privacy() {
-      const row = db
-        .prepare("SELECT value FROM preferences WHERE key = 'privacy'")
+      const row = prepare("SELECT value FROM preferences WHERE key = 'privacy'")
         .get();
-      return row
-        ? {
-            ...defaultPrivacy,
-            ...privacySchema.parse(JSON.parse(String(row.value))),
-          }
-        : { ...defaultPrivacy };
+      // owner: T06. Consent rides along read-only (non-enumerable; see readConsents).
+      return withConsentRecords(
+        row
+          ? {
+              ...defaultPrivacy,
+              ...privacySchema.parse(JSON.parse(String(row.value))),
+            }
+          : { ...defaultPrivacy },
+      );
+      // end owner: T06
     },
     setPrivacy(value: PrivacyPreferences) {
       const parsed = privacySchema.parse(value);
-      db.prepare(
+      prepare(
         "INSERT INTO preferences VALUES ('privacy', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
       ).run(JSON.stringify(parsed));
     },
+    // owner: T06. Consent records live in preferences under 'consents' (no schema change).
+    // Only the `consent` command calls setConsent; the privacy command cannot reach it.
+    consents() {
+      return readConsents();
+    },
+    setConsent(change: ConsentChange, at: string) {
+      const parsed = consentChangeSchema.parse(change);
+      const kept = readConsents().filter((r) => r.recipient !== parsed.recipient);
+      const next =
+        parsed.action === "grant"
+          ? [
+              ...kept,
+              consentRecordSchema.parse({
+                recipient: parsed.recipient,
+                disclosureVersion: parsed.disclosureVersion,
+                grantedAt: timestamp(at),
+              }),
+            ]
+          : kept;
+      db.prepare(
+        "INSERT INTO preferences VALUES ('consents', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      ).run(JSON.stringify(next));
+    },
+    // end owner: T06
     setCompleted(id, completed) {
       if (!liveResource(id))
         throw new Error(
           "Cannot change completion for a missing or deleted resource.",
         );
-      db.prepare(
+      prepare(
         `INSERT INTO completions VALUES (?, ?) ON CONFLICT(resource_id) DO UPDATE SET completed = excluded.completed`,
       ).run(id, Number(completed));
     },
     links() {
       return (
-        db
-          .prepare(
+        prepare(
             `SELECT l.* FROM links l JOIN resources f ON f.id = l.from_id
         JOIN resources t ON t.id = l.to_id WHERE f.deleted = 0 AND t.deleted = 0
           AND f.content_hash = l.input_hash AND t.content_hash = l.target_hash ORDER BY l.id`,
@@ -1115,11 +1403,9 @@ export function createStore(path: string): Store {
           throw new Error(
             "Cannot save a link with missing, deleted, or stale input.",
           );
-        const fromScope = db
-          .prepare("SELECT account_scope, course_id FROM sources WHERE id = ?")
+        const fromScope = prepare("SELECT account_scope, course_id FROM sources WHERE id = ?")
           .get(from.source_id)!;
-        const toScope = db
-          .prepare("SELECT account_scope, course_id FROM sources WHERE id = ?")
+        const toScope = prepare("SELECT account_scope, course_id FROM sources WHERE id = ?")
           .get(to.source_id)!;
         if (
           fromScope.account_scope !== toScope.account_scope ||
@@ -1128,8 +1414,7 @@ export function createStore(path: string): Store {
           throw new Error(
             "Automatic links must remain within one account and course.",
           );
-        const existing = db
-          .prepare("SELECT * FROM links WHERE id = ?")
+        const existing = prepare("SELECT * FROM links WHERE id = ?")
           .get(link.id) as Row | undefined;
         if (
           existing &&
@@ -1140,7 +1425,7 @@ export function createStore(path: string): Store {
           throw new Error(
             "A link ID cannot be reassigned to different endpoints or type.",
           );
-        db.prepare(
+        prepare(
           `INSERT INTO links (id, from_id, to_id, type, reason, status, input_hash, target_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(id) DO UPDATE SET reason = excluded.reason, input_hash = excluded.input_hash, target_hash = excluded.target_hash,
             status = CASE WHEN links.status IN ('accepted', 'rejected') THEN links.status ELSE excluded.status END`,
@@ -1159,8 +1444,7 @@ export function createStore(path: string): Store {
     decideLink(id, status) {
       if (!["accepted", "rejected"].includes(status))
         throw new Error("Invalid link decision.");
-      const result = db
-        .prepare(
+      const result = prepare(
           `UPDATE links SET status = ? WHERE id = ? AND EXISTS
         (SELECT 1 FROM resources f JOIN resources t ON t.id = links.to_id
           WHERE f.id = links.from_id AND f.deleted = 0 AND t.deleted = 0
@@ -1171,55 +1455,94 @@ export function createStore(path: string): Store {
         throw new Error("Cannot decide a missing or stale link.");
     },
     enqueue,
-    lease(now, leaseMs) {
+    enqueueSubject(value, now) {
+      const job = subjectJobSchema.parse(value);
+      const time = timestamp(now);
+      const resourceId =
+        job.subjectKind === "resource" ? (job.resourceId ?? job.subjectId) : (job.resourceId ?? null);
+      if (job.subjectKind === "resource" && resourceId !== job.subjectId)
+        throw new Error("A resource job's subject is its resource.");
+      const sourceId = job.sourceId ?? null;
+      if (["course", "assessment", "source"].includes(job.subjectKind) && !sourceId)
+        throw new Error("A course, assessment or source job names its source, so it cascades.");
+      return transaction(() => {
+        const row: Row = {
+          subject_kind: job.subjectKind,
+          subject_id: job.subjectId,
+          resource_id: resourceId,
+          source_id: sourceId,
+          input_hash: job.inputHash,
+        };
+        if (sourceId && !prepare("SELECT 1 FROM sources WHERE id = ?").get(sourceId)) return false;
+        if (!isFresh(row)) return false;
+        return (
+          Number(
+            prepare(
+              `INSERT OR IGNORE INTO jobs (id,kind,subject_kind,subject_id,resource_id,source_id,input_hash,status,attempts,run_after)
+               VALUES (?,?,?,?,?,?,?,'pending',0,?)`,
+            ).run(randomUUID(), job.kind, job.subjectKind, job.subjectId, resourceId, sourceId, job.inputHash, time)
+              .changes,
+          ) > 0
+        );
+      });
+    },
+    lease(now, leaseMs, kinds?: readonly string[]) {
       const time = timestamp(now);
       if (!Number.isSafeInteger(leaseMs) || leaseMs < 1 || leaseMs > 3_600_000)
         throw new Error("Invalid job lease duration.");
+      if (
+        kinds !== undefined &&
+        (!Array.isArray(kinds) || !kinds.length || kinds.length > 100 || !kinds.every((k) => typeof k === "string"))
+      )
+        throw new Error("Invalid job kinds.");
+      const filter = kinds ? "AND kind IN (SELECT value FROM json_each(?))" : "";
+      const params = kinds ? [JSON.stringify(kinds)] : [];
       return transaction(() => {
-        db.prepare(
-          `UPDATE jobs SET status = 'failed', error = 'Resource changed or deleted.', lease_until = NULL, lease_token = NULL
-          WHERE status IN ('pending', 'running') AND NOT EXISTS
-          (SELECT 1 FROM resources r WHERE r.id = jobs.resource_id AND r.content_hash = jobs.input_hash AND r.deleted = 0)`,
-        ).run();
-        db.prepare(
-          `UPDATE jobs SET status = 'failed', error = 'Retry limit reached.', lease_until = NULL, lease_token = NULL
-          WHERE attempts >= ? AND ((status = 'running' AND lease_until <= ?) OR status = 'pending')`,
-        ).run(MAX_ATTEMPTS, time);
-        const row = db
-          .prepare(
-            `SELECT * FROM jobs WHERE attempts < ? AND
-          ((status = 'pending' AND run_after <= ?) OR (status = 'running' AND lease_until <= ?))
-          ORDER BY run_after, rowid LIMIT 1`,
-          )
-          .get(MAX_ATTEMPTS, time, time) as Row | undefined;
-        if (!row) return undefined;
-        const token = randomUUID();
-        const until = new Date(Date.parse(time) + leaseMs).toISOString();
-        db.prepare(
-          `UPDATE jobs SET status = 'running', attempts = attempts + 1, lease_until = ?, lease_token = ?, error = NULL
-          WHERE id = ?`,
-        ).run(until, token, row.id);
-        return readJob({
-          ...row,
-          status: "running",
-          attempts: Number(row.attempts) + 1,
-          lease_until: until,
-          lease_token: token,
-          error: null,
-        });
+        // Only the head candidate is checked, so a lease is O(stale + 1), not a sweep of every job.
+        for (;;) {
+          const row = prepare(
+            `SELECT * FROM jobs WHERE ((status = 'pending' AND run_after <= ?) OR (status = 'running' AND lease_until <= ?))
+             ${filter} ORDER BY run_after, rowid LIMIT 1`,
+          ).get(time, time, ...params) as Row | undefined;
+          if (!row) return undefined;
+          const error =
+            Number(row.attempts) >= MAX_ATTEMPTS
+              ? "Retry limit reached."
+              : !isFresh(row)
+                ? "Resource changed or deleted."
+                : undefined;
+          if (error) {
+            prepare(
+              "UPDATE jobs SET status = 'failed', error = ?, lease_until = NULL, lease_token = NULL WHERE id = ?",
+            ).run(error, row.id);
+            continue;
+          }
+          const token = randomUUID();
+          const until = new Date(Date.parse(time) + leaseMs).toISOString();
+          prepare(
+            `UPDATE jobs SET status = 'running', attempts = attempts + 1, lease_until = ?, lease_token = ?, error = NULL
+            WHERE id = ?`,
+          ).run(until, token, row.id);
+          return readJob({
+            ...row,
+            status: "running",
+            attempts: Number(row.attempts) + 1,
+            lease_until: until,
+            lease_token: token,
+            error: null,
+          });
+        }
       });
     },
     finish(job, error, now = new Date().toISOString()) {
       const time = timestamp(now);
       return transaction(() => {
-        const row = db
-          .prepare(
-            `SELECT * FROM jobs WHERE id = ? AND status = 'running' AND lease_token = ?
-          AND resource_id = ? AND input_hash = ? AND lease_until > ?`,
-          )
-          .get(job.id, job.leaseToken, job.resourceId, job.inputHash, time) as
-          Row | undefined;
-        if (!row || !liveResource(job.resourceId, job.inputHash)) return false;
+        const row = prepare(
+          `SELECT * FROM jobs WHERE id = ? AND status = 'running' AND lease_token = ?
+          AND input_hash = ? AND lease_until > ?`,
+        ).get(job.id, job.leaseToken, job.inputHash, time) as Row | undefined;
+        if (!row || (row.resource_id ?? "") !== job.resourceId || !isFresh(row))
+          return false;
         const failed = error !== undefined;
         const status = !failed
           ? "done"
@@ -1230,7 +1553,7 @@ export function createStore(path: string): Store {
           Date.parse(time) +
             Math.min(60_000, 1_000 * 2 ** (Number(row.attempts) - 1)),
         ).toISOString();
-        db.prepare(
+        prepare(
           `UPDATE jobs SET status = ?, run_after = ?, lease_until = NULL, lease_token = NULL, error = ? WHERE id = ?`,
         ).run(
           status,
@@ -1243,14 +1566,13 @@ export function createStore(path: string): Store {
     },
     jobs() {
       return (
-        db.prepare("SELECT * FROM jobs ORDER BY rowid").all() as Row[]
+        prepare("SELECT * FROM jobs ORDER BY rowid").all() as Row[]
       ).map(readJob);
     },
     judgment(key) {
-      const row = db
-        .prepare(
+      const row = prepare(
           `SELECT j.* FROM judgments j JOIN resources r ON r.id = j.resource_id
-        WHERE j.key = ? AND r.deleted = 0 AND r.content_hash = j.input_hash`,
+        WHERE j.key = ? AND r.deleted = 0 AND (r.content_hash = j.input_hash OR r.text_hash = j.input_hash)`,
         )
         .get(key) as Row | undefined;
       return row ? readJudgment(row) : undefined;
@@ -1265,8 +1587,7 @@ export function createStore(path: string): Store {
         throw new Error("A judgment result must be serializable.");
       return transaction(() => {
         if (!liveResource(value.resourceId, value.inputHash)) return false;
-        const previous = db
-          .prepare("SELECT * FROM judgments WHERE key = ?")
+        const previous = prepare("SELECT * FROM judgments WHERE key = ?")
           .get(value.key) as Row | undefined;
         if (
           previous &&
@@ -1279,7 +1600,7 @@ export function createStore(path: string): Store {
             "A judgment cache key cannot be reused for different inputs.",
           );
         if (previous && String(previous.created_at) > createdAt) return false;
-        db.prepare(
+        prepare(
           `INSERT INTO judgments VALUES (?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(key) DO UPDATE SET result = excluded.result, created_at = excluded.created_at`,
         ).run(
@@ -1296,10 +1617,9 @@ export function createStore(path: string): Store {
     },
     judgments() {
       return (
-        db
-          .prepare(
+        prepare(
             `SELECT j.* FROM judgments j JOIN resources r ON r.id = j.resource_id
-        WHERE r.deleted = 0 AND r.content_hash = j.input_hash ORDER BY j.created_at, j.key`,
+        WHERE r.deleted = 0 AND (r.content_hash = j.input_hash OR r.text_hash = j.input_hash) ORDER BY j.created_at, j.key`,
           )
           .all() as Row[]
       ).map(readJudgment);
@@ -1334,24 +1654,22 @@ export function createStore(path: string): Store {
         value.confidence,
         timestamp(value.createdAt),
       ] as const;
-      const existing = db
-        .prepare("SELECT * FROM attempts WHERE id = ?")
+      const existing = prepare("SELECT * FROM attempts WHERE id = ?")
         .get(value.id);
       if (existing) {
         if (JSON.stringify(Object.values(existing)) !== JSON.stringify(row))
           throw new Error("An attempt ID cannot overwrite existing evidence.");
         return;
       }
-      db.prepare("INSERT INTO attempts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
+      prepare("INSERT INTO attempts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
         ...row,
       );
     },
     attempts(resourceId) {
       const rows =
         resourceId === undefined
-          ? db.prepare("SELECT * FROM attempts ORDER BY created_at, id").all()
-          : db
-              .prepare(
+          ? prepare("SELECT * FROM attempts ORDER BY created_at, id").all()
+          : prepare(
                 "SELECT * FROM attempts WHERE resource_id = ? ORDER BY created_at, id",
               )
               .all(resourceId);
@@ -1372,7 +1690,8 @@ export function createStore(path: string): Store {
       assertText(value.recipient, "receipt recipient");
       assertText(value.purpose, "receipt purpose", 2000);
       if (
-        !["blocked", "sent", "failed"].includes(value.status) ||
+        // owner: T06: preview_required records a held request; nothing was sent.
+        !["blocked", "sent", "failed", "preview_required"].includes(value.status) ||
         !Number.isSafeInteger(value.characters) ||
         value.characters < 0 ||
         !Array.isArray(value.categories) ||
@@ -1383,7 +1702,7 @@ export function createStore(path: string): Store {
         throw new Error("Invalid egress receipt.");
       // This also rejects receipts from operations that were in flight when the user purged the store.
       if (value.resourceIds.some((id) => !liveResource(id))) return;
-      db.prepare(
+      prepare(
         `INSERT INTO receipts VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO NOTHING`,
       ).run(
@@ -1399,8 +1718,7 @@ export function createStore(path: string): Store {
     },
     receipts() {
       return (
-        db
-          .prepare("SELECT * FROM receipts ORDER BY created_at, id")
+        prepare("SELECT * FROM receipts ORDER BY created_at, id")
           .all() as Row[]
       ).map((row): EgressReceipt => ({
         id: String(row.id),
@@ -1415,16 +1733,70 @@ export function createStore(path: string): Store {
     },
     purge() {
       transaction(() => {
-        db.exec(
-          "DELETE FROM course_intelligence; DELETE FROM planning_versions; DELETE FROM planning_sources;",
-        );
-        db.exec(`DELETE FROM receipts; DELETE FROM preferences; DELETE FROM course_overrides; DELETE FROM sync_runs; DELETE FROM mcp_grants; DELETE FROM resource_search; DELETE FROM sources;
-          INSERT INTO resource_search(resource_search) VALUES ('optimize');`);
+        // Every FTS index first, then every table in sqlite_schema, children before parents, so no
+        // cascade walks a child table per parent row. Nothing is listed by hand (P2 synthesis C3).
+        for (const fts of ftsTables())
+          db.exec(`INSERT INTO "${fts}"("${fts}") VALUES ('delete-all')`);
+        for (const table of purgeOrder()) db.exec(`DELETE FROM "${table}"`);
+        if (prepare("SELECT 1 FROM sqlite_schema WHERE name = 'sqlite_sequence'").get())
+          db.exec("DELETE FROM sqlite_sequence");
       });
-      // Delete live database content and compact SQLite files; this is not a promise to erase backups or SSD history.
+      passageIndex.invalidate();
+      // Compact the SQLite files. A reader holding a snapshot keeps its pages until it ends.
       db.exec(
         "PRAGMA wal_checkpoint(TRUNCATE); VACUUM; PRAGMA wal_checkpoint(TRUNCATE);",
       );
+      // The pre-migration backup is a full plaintext copy we wrote: it goes too.
+      for (const backupFile of backupFiles()) rmSync(backupFile, { force: true });
     },
+    passages: (resourceId) => passageIndex.passages(resourceId),
+    passage: (pid) => passageIndex.passage(pid),
+    rebuildPassages(resourceId) {
+      return transaction(() => {
+        const row = prepare(
+          `SELECT r.id, r.version, r.text_hash, s.account_scope, s.course_id, v.payload FROM resources r
+           JOIN sources s ON s.id = r.source_id
+           JOIN resource_versions v ON v.resource_id = r.id AND v.version = r.version
+           WHERE r.id = ? AND r.deleted = 0`,
+        ).get(resourceId) as Row | undefined;
+        if (!row) return 0;
+        return passageIndex.index(
+          resourceId,
+          Number(row.version),
+          String(row.text_hash),
+          decodePayload(row.payload),
+          courseScope(String(row.account_scope), String(row.course_id)),
+        );
+      });
+    },
+    searchPassages: (input) => passageIndex.search(input),
+    changesAfter(after, limit = 200) {
+      if (!Number.isSafeInteger(after) || after < 0) throw new Error("Invalid change cursor.");
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 2000)
+        throw new Error("Invalid change limit.");
+      return (
+        prepare(
+          `SELECT c.*,s.account_scope,s.course_id,s.scope FROM resource_changes c JOIN sources s ON s.id=c.source_id
+           WHERE c.seq > ? ORDER BY c.seq LIMIT ?`,
+        ).all(after, limit) as Row[]
+      ).map((r): ChangeWithSeq => ({
+        id: String(r.id),
+        resourceId: String(r.resource_id),
+        sourceId: String(r.source_id),
+        accountScope: String(r.account_scope),
+        courseId: String(r.course_id),
+        scope: String(r.scope),
+        readId: String(r.read_id),
+        observedAt: String(r.observed_at),
+        type: r.type as ChangeType,
+        oldValues: JSON.parse(String(r.old_values)),
+        newValues: JSON.parse(String(r.new_values)),
+        seq: Number(r.seq),
+      }));
+    },
+    migrationBackup() {
+      return migrationBackup && existsSync(migrationBackup) ? migrationBackup : null;
+    },
+    ...courseCore,
   };
 }

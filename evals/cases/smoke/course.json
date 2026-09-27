@@ -1,0 +1,76 @@
+{
+  "source": {
+    "id": "synthetic-smoke",
+    "label": "Synthetic smoke course (not real course material)",
+    "kind": "fixture",
+    "accountScope": "synthetic",
+    "courseId": "SYN101",
+    "scope": "course"
+  },
+  "observedAt": "2026-09-20T15:00:00.000Z",
+  "complete": true,
+  "status": "ok",
+  "resources": [
+    {
+      "externalId": "syn101-syllabus",
+      "kind": "material",
+      "courseId": "SYN101",
+      "courseName": "SYN 101 Synthetic Algorithms (Synthetic)",
+      "title": "Syllabus (Synthetic)",
+      "url": "https://example.edu/synthetic/syn101/syllabus",
+      "text": "SYN 101 Synthetic Algorithms. This is a synthetic course written for automated tests; it is not real course material.\n\nSchedule\nModule 1: Asymptotic analysis (weeks 1-2).\nModule 2: Recurrences (weeks 3-4).\nModule 3: Hashing (weeks 5-6).\n\nAssessments\nExam 1 covers Module 1 and Module 2. Exam 1 is on October 8.\nExam 2 covers Module 3. Exam 2 is on November 5.\nHomework is due on Fridays at 11:59 pm.\n\nGenerative AI tools are not permitted on graded homework in this synthetic course.",
+      "deadlines": [],
+      "points": null,
+      "submitted": null
+    },
+    {
+      "externalId": "syn101-lecture-1",
+      "kind": "material",
+      "courseId": "SYN101",
+      "courseName": "SYN 101 Synthetic Algorithms (Synthetic)",
+      "title": "Lecture 1: Asymptotic analysis (Synthetic)",
+      "url": "https://example.edu/synthetic/syn101/lecture-1",
+      "text": "Lecture 1: Asymptotic analysis\n\nBig-O notation gives an upper bound on the growth of a function. We say f(n) is O(g(n)) if there are constants c > 0 and n0 such that f(n) <= c * g(n) for all n >= n0. Big-Omega notation gives a lower bound on growth. Big-Theta holds when both the upper and the lower bound hold.\n\nA loop that runs n times and does constant work per iteration takes Theta(n) time. Two nested loops that each run n times take Theta(n^2) time. Constant factors and lower-order terms are dropped, so 3n^2 + 5n is Theta(n^2).",
+      "deadlines": [],
+      "points": null,
+      "submitted": null
+    },
+    {
+      "externalId": "syn101-lecture-2",
+      "kind": "material",
+      "courseId": "SYN101",
+      "courseName": "SYN 101 Synthetic Algorithms (Synthetic)",
+      "title": "Lecture 2: Recurrences (Synthetic)",
+      "url": "https://example.edu/synthetic/syn101/lecture-2",
+      "text": "Lecture 2: Recurrences\n\nMerge sort splits the array into two halves, sorts each half recursively, and merges the results in linear time. Its running time satisfies T(n) = 2T(n/2) + n. The recursion tree has log n levels and each level does n work, so merge sort runs in Theta(n log n) time.\n\nBinary search halves the search range at each step. Its recurrence is T(n) = T(n/2) + 1, which solves to Theta(log n).\n\nThe master theorem compares f(n) with n raised to the power log_b a for recurrences of the form T(n) = aT(n/b) + f(n).",
+      "deadlines": [],
+      "points": null,
+      "submitted": null
+    },
+    {
+      "externalId": "syn101-lecture-3",
+      "kind": "material",
+      "courseId": "SYN101",
+      "courseName": "SYN 101 Synthetic Algorithms (Synthetic)",
+      "title": "Lecture 3: Hashing (Synthetic)",
+      "url": "https://example.edu/synthetic/syn101/lecture-3",
+      "text": "Lecture 3: Hashing\n\nA hash table maps keys to buckets using a hash function. When two keys map to the same bucket, the table has a collision. Chaining stores colliding keys in a linked list at each bucket.\n\nThe load factor alpha is the number of stored keys divided by the number of buckets. Under simple uniform hashing, an unsuccessful search with chaining takes expected Theta(1 + alpha) time.\n\nOpen addressing stores every key in the table itself and probes for an empty slot. Linear probing checks the next slot in order and suffers from primary clustering.",
+      "deadlines": [],
+      "points": null,
+      "submitted": null
+    },
+    {
+      "externalId": "syn101-homework-3",
+      "kind": "assignment",
+      "courseId": "SYN101",
+      "courseName": "SYN 101 Synthetic Algorithms (Synthetic)",
+      "title": "Homework 3: Hash tables (Synthetic)",
+      "url": "https://example.edu/synthetic/syn101/homework-3",
+      "text": "Homework 3 (synthetic). Implement a hash table that resolves collisions by chaining, then measure how search time changes as the load factor grows. Submit your code and a one-page write-up.",
+      "dueAt": "2026-10-23T04:59:00.000Z",
+      "deadlines": [],
+      "points": 20,
+      "submitted": null
+    }
+  ]
+}

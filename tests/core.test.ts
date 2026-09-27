@@ -4,6 +4,16 @@ import { createStore } from "@magic/storage";
 import { createCore } from "@magic/core";
 import { captureBatchSchema, defaultPrivacy } from "@magic/contracts";
 import fixture from "../fixtures/course.json";
+import { CONSENT_DISCLOSURE_VERSION } from "@magic/domain";
+// T06: Jev needs its own consent record before any send; these tests exercise sends.
+const jevConsent = {
+  type: "consent" as const,
+  value: {
+    action: "grant" as const,
+    recipient: "jev" as const,
+    disclosureVersion: CONSENT_DISCLOSURE_VERSION,
+  },
+};
 const batch = captureBatchSchema.parse(fixture);
 const enabled = {
   ...defaultPrivacy,
@@ -55,6 +65,7 @@ test("local default ingests immediately, blocks egress, and compiles exactly the
     "title",
   ]);
   assert.ok(!JSON.stringify(expected).includes(r.url));
+  await core.execute(jevConsent);
   await core.execute({ type: "privacy", value: enabled });
   await core.settled();
   assert.equal(calls, 1);
@@ -69,6 +80,7 @@ test("revoking cloud access discards a late successful response", async () => {
   let resolve!: (value: typeof result) => void;
   const store = createStore(":memory:");
   store.setPrivacy(enabled);
+  store.setConsent!(jevConsent.value, "2026-09-26T12:00:00Z");
   const core = createCore(store, {
     fixture: batch,
     gateway: {
@@ -90,6 +102,7 @@ test("deleting local data prevents an in-flight result or receipt from recreatin
   let resolve!: (value: typeof result) => void;
   const store = createStore(":memory:");
   store.setPrivacy(enabled);
+  store.setConsent!(jevConsent.value, "2026-09-26T12:00:00Z");
   const core = createCore(store, {
     fixture: batch,
     gateway: {
@@ -114,6 +127,7 @@ test("a source change while evaluation is running prevents old classification re
   let calls = 0;
   const store = createStore(":memory:");
   store.setPrivacy(enabled);
+  store.setConsent!(jevConsent.value, "2026-09-26T12:00:00Z");
   const core = createCore(store, {
     fixture: batch,
     gateway: {

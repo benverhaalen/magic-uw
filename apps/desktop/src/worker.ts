@@ -2,17 +2,19 @@ import { createLocalCourseExtractor } from "@magic/ai";
 import { createStore } from "@magic/storage";
 import { createCore } from "@magic/core";
 import { captureBatchSchema, planningCaptureSchema, type PlanningCapture } from "@magic/contracts";
+import { queryRequestSchema } from "@magic/contracts"; // owner: T15
 import fixture from "../../../fixtures/course.json";
 import { randomUUID } from "node:crypto";
 import { createLocalService } from "./local-service";
 import { createLearningService } from "./learning-service";
 import { createIngestion } from "./ingestion";
+import { createLearningRouter } from "../../../packages/learning/src/router"; // owner: T05b
 import { dirname } from "node:path";
 import {
   createLocalDocumentExtractor,
   createLocalOcrAdapter,
 } from "../../../packages/connectors/src/documents";
-import { createPublicClient } from "../../../packages/connectors/src/network";
+import { createWorkerClients } from "./worker-clients"; // owner: T06
 import { pullPublicSubjects, pullPublicTerms } from "../../../packages/connectors/src/planning-public";
 import type { UwPlanningSyncResult } from "../../../packages/connectors/src/uw-planning-sync";
 const port = process.parentPort;
@@ -22,10 +24,16 @@ const pending = new Map<
   { resolve: (value: any) => void; reject: (error: Error) => void }
 >();
 const store = createStore(process.env.MAGIC_DB_PATH!);
+// owner: T06: every direct public client refuses until the setup consent record exists.
+const publicClients = createWorkerClients(store);
+// end owner: T06
 const core = createCore(store, {
   fixture: captureBatchSchema.parse(fixture),
   courseExtractor: createLocalCourseExtractor(),
+  planningPublicClient: publicClients.core, // owner: T06
   planningHttp: { read: (request, signal) => hostRead("planning-public-read", { request }, signal) },
+  // owner: T05b. The learning channel reaches the router stub; N25 takes the router over.
+  seams: { learning: createLearningRouter() },
   ...(process.env.MAGIC_GATEWAY_URL
     ? {
         gateway: {
@@ -128,12 +136,15 @@ const extractor = createLocalDocumentExtractor(
 const ingestion = createIngestion(store, {
   directory: dirname(process.env.MAGIC_DB_PATH!),
   extractor,
+  client: publicClients.ingestion, // owner: T06
   canvasFetch: sourceFetch("canvas"),
   gitlabFetch: sourceFetch("gitlab"),
+  onSaved: (sourceId) => void core.saved(sourceId), // owner: T05b: save → enqueue
+  spaceFetch: sourceFetch("space"), // owner: T05b: D41 access check
   secrets: (operation, key, value) =>
     hostRead("source-secret", { operation, key, value }),
 });
-const planningPublicClient = createPublicClient();
+const planningPublicClient = publicClients.planning; // owner: T06
 let planningAccountScope = /^uw-session:[a-f0-9-]{36}$/.test(process.env.MAGIC_PLANNING_SCOPE ?? "")
   ? process.env.MAGIC_PLANNING_SCOPE! : `uw-session:${randomUUID()}`;
 let planningGeneration = 0;
@@ -236,6 +247,17 @@ port.on("message", async ({ data }: { data: any }) => {
     ingestion.resume();
     return;
   }
+  if (data.kind === "presence") {
+    // Main's signal: OS input within 30 minutes and the screen unlocked. Gates signed-in reads.
+    ingestion.presence(data.present === true);
+    return;
+  }
+  // owner: T33. App focus runs the content probe on the next tick (D37).
+  if (data.kind === "focus") {
+    ingestion.focus();
+    return;
+  }
+  // end owner: T33
   if (data.kind === "reconnected") {
     ingestion.reconnected();
     return;
@@ -358,6 +380,27 @@ port.on("message", async ({ data }: { data: any }) => {
     }
     return;
   }
+  // owner: T15. Scoped queries (O1): a read with its own small payload.
+  if (data.kind === "query") {
+    try {
+      port.postMessage({
+        kind: "response",
+        id: data.id,
+        result: core.query(queryRequestSchema.parse(data.query)),
+      });
+    } catch (error) {
+      port.postMessage({
+        kind: "response",
+        id: data.id,
+        error:
+          error instanceof Error && error.name !== "ZodError"
+            ? error.message
+            : "The query did not match the workspace schema.",
+      });
+    }
+    return;
+  }
+  // end owner: T15
   if (data.kind !== "command") return;
   if (data.command?.type === "purge") {
     cancelPlanning();
