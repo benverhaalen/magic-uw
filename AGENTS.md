@@ -6,6 +6,10 @@ Start with [shared context](docs/README.md), [current implementation](docs/imple
 
 The outcome is learning tailored to the student, class, and professor with less school-management effort. Desktop comes first. Preserve the broader product direction while working on a bounded addition. A discussion, research request, or docs-only change does not authorize product implementation.
 
+## UI and design work
+
+Use the repo’s [Magic design skill](.agents/skills/magic-design/SKILL.md) for UI design, implementation and audit. Start with its small reading map and load only relevant contracts. Preserve the near-approved Home and current user corrections; external skills are selective references. For cross-platform handoffs, use [the design foundation](docs/design-handoff.md). At natural task boundaries, reread relevant changed guidance; pulling alone does not load it into an active agent.
+
 ## How we work here
 
 - Before substantial work, establish the normal entry point, default state, complete student journey, and observable success. Include correction and recovery where consequential. Keep simple changes simple.

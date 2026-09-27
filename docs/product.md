@@ -47,9 +47,9 @@ Local storage is the default. Hosted Jev is separately disclosed: Magic Canvas p
 
 **Desktop first:** the full workspace for Mac and Windows. **Website:** product information, working downloads, and GitHub links. **iOS later:** a focused companion if time permits.
 
-The current [Home and visual direction](home-design-direction.md) is the canonical surface decision: briefing-first Home, compact graded Upcoming, tailored Study & Learn, a quiet right Today calendar, and one collapsible left Home/Courses/My UW sidebar. Home is the hackathon flagship. It must connect evidence to a useful next action and the right working context. The earlier [organizing concepts](product-directions.md) remain background exploration, not six still-unresolved Home choices.
+The current [Home and visual direction](home-design-direction.md) is the canonical surface decision: briefing-first Home, compact graded Upcoming, tailored Study & Learn, a quiet right Today calendar, and one collapsible left Home/Courses/My UW/Calendar sidebar. Home is the hackathon flagship. It must connect evidence to a useful next action and the right working context. The earlier [organizing concepts](product-directions.md) remain background exploration, not six still-unresolved Home choices.
 
-Spaces and familiar external apps support the assignment/work journey. Voice and the floating control remain open interaction ideas; a separate calendar page is not implied by Home's Today rail.
+Spaces and familiar external apps support the assignment/work journey. Voice and the floating control remain open interaction ideas; Ben has explicitly requested Calendar alongside Home: current week by default, week/month views, commitments and accepted study blocks normally, and suggestions on request. Home's Today rail remains a compact daily projection. See the [calendar review](design/platform-handoff.md#seans-calendar-work).
 
 **Assignment detail:** cached title, course, submission location, points, date claims/resolution, source age, supporting materials, and an actionable brief. Later: evidence-backed progress, rubric feedback, relevant policy, and meaningful changes. A personal checkbox and verified submission are different states.
 
@@ -87,6 +87,6 @@ Avoid promises of universal course coverage, guaranteed correctness, impossible 
 
 ## Planning: current scope
 
-The accepted primary sidebar is **Home / Courses / My UW**, with a Wisconsin crest for My UW; Email is deferred, and Sources/Data & AI remain utilities. My UW makes degree requirements, course options, holds, and enrollment timing understandable while leaving every academic decision and school-changing action to the student. Home can surface holds and appointments. The official service handles enrollment.
+The accepted primary sidebar is **Home / Courses / My UW / Calendar**, with a Wisconsin crest for My UW; Email is deferred, and Sources/Data & AI remain utilities. My UW makes degree requirements, course options, holds, and enrollment timing understandable while leaving every academic decision and school-changing action to the student. Home can surface holds and appointments. The official service handles enrollment.
 
 The [planning handoff](planning-upgrade.md) states what is implemented and proven: native enrollment/history/saved-audit adapters, public course search and packages, a separate local planning store, and source-preserving academic comparisons. Progress outranks schedule fit; historical grades remain evidence. Results are individual options, not a combined schedule or guaranteed requirement approval. Unknown evidence stays unknown. Canvas gradebook results, recorded attempts, and DARS applied credits are distinct facts; agreement does not prove mastery. Existing unofficial transcript access has been researched, but production ingestion is unfinished. Natural-language planning and proposed calendars remain future work.

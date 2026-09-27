@@ -35,7 +35,7 @@ These are accepted directions. Account compatibility, hardware suitability, lice
 
 ## Product choices that can remain open
 
-Home and navigation are now settled at the structural level: briefing-first Home with Upcoming, Study & Learn, quiet Today rail, and a collapsible Home/Courses/My UW sidebar. See [Home and visual direction](home-design-direction.md) for the full current contract and the new flagship demo objective. Earlier organizing concepts are retained as exploration history.
+Home and navigation are now settled at the structural level: briefing-first Home with Upcoming, Study & Learn, quiet Today rail, and a collapsible Home/Courses/My UW/Calendar sidebar. See [Home and visual direction](home-design-direction.md) for the full current contract and the new flagship demo objective. Earlier organizing concepts are retained as exploration history.
 
 Still open: exact card color/interaction treatment, detailed course and work surfaces, floating pill/voice activation, provenance detail presentation, degree audit's role, and personalization from observed behavior versus explicit preference. The local visual prototype does not establish integrated capability.
 
@@ -93,7 +93,7 @@ Named objects within briefing prose should be visibly clickable and lead to cont
 
 ## Planning decisions — September 26 update
 
-- Primary navigation: **Home / Courses / My UW** with the Wisconsin crest; Email later. Holds and enrollment appointments can appear on Home.
+- Primary navigation: **Home / Courses / My UW / Calendar** with the Wisconsin crest; Email later. Holds and enrollment appointments can appear on Home.
 - Rank evidenced degree progress before schedule preferences. Grades and professor ratings provide optional comparison evidence, never an easier-grading optimization target.
 - Preserve independent Canvas, student-history, DARS, and eventual transcript claims. Do not convert percentages into letters, audit applications into earned credits, or recorded grades into mastery/readiness.
 - Compare exact course/term identities only after fresh native account binding. Unknown/partial/stale evidence cannot establish eligibility, full degree coverage, or an all-clear state.
@@ -114,3 +114,7 @@ Ben resolved the pricing/provider disagreement with: "nathaniels is the way" (th
 - **Disclosure flow accepted:** Ben chose "Adopt this flow (Recommended)": consent once per provider, visible selected context and a receipt per request, with a blocking preview for the first sharing of a new sensitive category or when the student enables **always preview**. Keep the exact outgoing payload inspectable. Code must enforce course/category grants and revocation on every request; ongoing consent does not permit new categories or recipients. Disclosure timing does not relax data minimization or identity scrubbing.
 - These answers resolve commercial direction, paid-provider access, Jev billing, and disclosure timing. Other research-branch choices, including runtime permissions and storage/MCP architecture, still need scoped integration review; this is not a blanket branch merge.
 - Existing local-model code stays documented honestly. Automatic local model setup is no longer a launch requirement. No runtime, payment, or account settings were changed by this documentation correction.
+
+## Design foundation and handoff — September 26
+
+Ben selected foundation/handoff before Electron implementation and described the cohesive Home as approximately 95% desired. Preserve it through the [portable constitution](design-handoff.md). His latest Calendar decision accepts week/month views, current-week default, and suggestions on request; detailed interaction and implementation remain pending. Original quotes, scoped inferences and open refinements live in the [decision record](design/decision-record.md). The repo skill routes by task and uses independent reviews with original constraints; neither a pull nor a passing critic proves adoption or product integration.

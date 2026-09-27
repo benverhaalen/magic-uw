@@ -40,6 +40,10 @@ Official documentation below was inspected September 26, 2026. “Documented” 
 | Codex/Claude desktop layouts; Claude/ChatGPT/Gemini artifacts — visual and working-surface candidates | Named references remain to be inspected at the exact current screen/version before copying layout or claiming behavioral parity | Compare stable course/project navigation and a persistent artifact with conversational help beside it. Keep a short answer short. Verify returning to an artifact without searching a transcript. |
 | [Learn Git Branching](https://learngitbranching.js.org/) — learning interaction candidate | Public page confirms a browser Git simulation; its actual lessons still need interactive inspection | Test a prediction → action → visible state change → explanation loop tied to a real skill. Keep it only where manipulation improves understanding over a concise explanation and practice. |
 
+## Near-approved direction and scoped iteration
+
+Ben’s cohesive Home is already the visual anchor, described by him as approximately 95% desired. Use the [design foundation](design-handoff.md); do not restart distinct-direction generation for routine work or inherit a generic marketing-page pipeline. Generate only what resolves an open design question or a new asset need. Future clean implementation uses the accepted image and behavior contracts rather than the exploratory mock’s CSS. Preserve actual reference properties and inspect the resulting journey.
+
 ## Concept images
 
 Use the selected reference folders as actual image inputs. Check that downloads are valid images, readable at useful resolution, and complete; repair failed or placeholder downloads before use. Keep provenance and permitted-use notes with the reference set, and private student material outside the repository.

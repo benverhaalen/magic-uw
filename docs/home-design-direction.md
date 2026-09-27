@@ -1,6 +1,8 @@
 # Home and visual direction
 
-Updated September 26, 2026. **Current product direction from Ben; visual alternatives are still under review.** This page supersedes the older neutral/no-serif direction and the unresolved Home/navigation discussion. It does not claim these screens are integrated in the Electron app.
+Updated September 26, 2026. **Current product direction from Ben; latest cohesive Home is the near-approved visual anchor (Ben described it as approximately 95% desired). Remaining local refinements are still under review.** This page supersedes the older neutral/no-serif direction and the unresolved Home/navigation discussion. It does not claim these screens are integrated in the Electron app.
+
+Use the [design foundation and handoff](design-handoff.md) for the portable visual asset, tokens, component contracts and scoped agent workflow. This page remains the canonical Home product/visual explanation. The recorded 95% is a satisfaction judgment, not a measured image-match threshold.
 
 ## The flagship experience
 
@@ -12,7 +14,7 @@ A representative demo should show a non-obvious requirement recovered from its s
 
 ## Settled structure and interaction
 
-- One collapsible left navigation sidebar: Home, Courses with expandable individual courses, and My UW with the Wisconsin symbol. Email is deferred. My UW holds planning; consequential holds and enrollment windows also appear on Home. Course overview uses one card per course.
+- One collapsible left navigation sidebar: Home, Courses with expandable individual courses, My UW with the Wisconsin symbol, and Calendar. Email is deferred. My UW holds planning; consequential holds and enrollment windows also appear on Home. Course overview uses one card per course. Calendar opens to the current week, offers week/month views, and shows suggestions on request; normal content is real commitments and accepted study blocks. See the [review of Sean’s Today rail](design/platform-handoff.md#seans-calendar-work).
 - Home content order: **Briefing → Upcoming → Study & Learn**. The briefing is the focal point. Home may scroll vertically.
 - Explicit exception to the earlier no-right-column rule: a quiet right-hand **Today** calendar. Today’s tasks and their times anchor at the top right; a readable hourly lecture/event timeline anchors at the bottom right while the main Home content scrolls. It is not a second navigation sidebar.
 - Compact native Mac/Codex-like window. Traffic controls, history arrows, sidebar toggle, and context-aware new-chat control live at the top. Current page name is centered.
@@ -70,12 +72,12 @@ Study & Learn contains concrete activities already chosen for the student: a par
 - Warm ivory main pane, bold ember/red sidebar and a thin wrapping frame; gradients welcome. Compact borders and comfortable interior spacing.
 - Color should feel deliberate and distinctive. More vibrant cards are the current exploration. No predominantly green direction. The earlier restriction to only minor blue notes is superseded: stronger blue accents are welcome alongside the warm shell. Purple remains restrained. Color must preserve text contrast and carry a consistent meaning.
 - Background/shell color should eventually be customizable in Settings; this is an accepted future design direction, not an urgent implementation task. Preserve contrast and semantic distinction under customization.
-- Exact supplied **Cooper Light BT** in private mocks for selective headings and action titles; **Geist** for prose, navigation, metadata, and controls. Readability and cohesion take precedence over negative tracking. Normal tracking is the current baseline. Forrest and approximate substitute serifs are superseded.
+- Exact supplied **Cooper Light BT** in private mocks for identity, centered page title and selective section/action text, including Briefing, Upcoming and Study & Learn. Ben permits some additional serif in those areas; this is not a heading-only prohibition. The current reference uses **Geist** for prolonged prose, navigation, metadata and controls. Keep readability and cohesion; tracking is flexible, with normal tracking the current baseline. Forrest and approximate substitute serifs are superseded.
 - No landing-page-sized titles, excessive icons, nested panels, or visual previews. Preserve the agreed structure while transferring design language from references.
 - Screenshots look like a MacBook app screenshot. No “concept preview” language inside them. Artifact notes separately disclose scenario and capability limits.
 - Supplied font files, private captures, and personal-course mock screenshots stay outside this repository. Production font selection/distribution remains a separate decision.
 
-## Current visual comparison — proposals
+## Earlier visual comparisons — historical proposals
 
 Three card treatments were locally rendered with the same shell and section order. These remain historical comparisons; the latest correction requires clearer deadlines and a flexible, information-bearing briefing:
 
@@ -83,7 +85,7 @@ Three card treatments were locally rendered with the same shell and section orde
 2. **Action zone:** quiet title area with a more saturated destination/launch zone. The color points toward the action rather than indicating urgency. Risk: the zone looks like a separate required button. Test whole-card discoverability and one-click destination expectations.
 3. **Prepared bundles:** two compact graded-work cards expose the assembled resource categories, with the next item below; learning remains a short action list. Risk: more visible resource detail and column scanning steal attention. Test whether users understand what opens with less effort, without losing the briefing.
 
-These are proposals, not a chosen winner. Ben may reject all three or combine useful properties. Model recommendations and rendered checks are not user preference evidence.
+These were proposals at that stage. Ben subsequently described the latest cohesive Home as approximately 95% desired. Use the [current visual baseline](design/visual-baseline.md), not these older alternatives, for future implementation. Model recommendations and rendered checks are not user preference evidence.
 
 ## Professional references and transfer limits
 
@@ -196,3 +198,13 @@ Repeated corrections justify a small shared identity/type/palette/radius/border/
 Local `magic-canvas-cohesive-home.html` and matching screenshot, rendered at 1440×900 with 2× pixels. Actual Opus 5.5 screenshot review verified in a local model receipt: adopted clearer book icon, stronger submenu metadata, and compacted secondary cards so their source links clear the bottom edge. Rejected a proposed neutral-button reversal because Ben explicitly requested colored actions; retained his serif card direction. Review is expert judgment, not student usability evidence.
 
 Browser checks passed for exact fonts, body-size time tags, loaded assets, right-aligned actions, full-width informational prose, keyboard links, readings/exam/assignment routes, independent confirmation and reload/Undo, individual course identity and refresh, course expansion, sidebar collapse, profile menu, and SQL practice feedback. No page errors or horizontal overflow at 1440/1280/1100/900 widths. This remains a local visual prototype: audio generation, live selection, multi-app launching, and the teammate's newer My UW implementation are not integrated into it. Raw course captures, fonts, screenshots, and CLI logs stay outside Git.
+
+## September 26 — foundation, autonomous refinement and latest scope
+
+Ben selected **“Design foundation and handoff first”** and asked for a repo-specific skill shaped by the accumulated conversation. The [design foundation](design-handoff.md) now routes to a synthetic visual reference, semantic token seed, component/state contracts, platform boundaries, selective reference use and independent audit process. These are documented implementation targets; they do not integrate the prototype into production.
+
+Ben’s later assessment — “the thing we made earlier is like 95% of what id want that static home page to look like essentially.” — makes preservation the starting point. Clean rebuild means a fresh implementation from this composition and behavior contract; it does not reopen the aesthetic. Keep exact font roles, hierarchy and current structure while resolving outlined actions/time tags, source-link backing, glyph scale and combined review/handled footprint. Original timestamp unavailable; recorded September 26.
+
+Newest navigation instruction: “on the side with the Home and Courses, My UW, and Calendar should be things too.” This supersedes the previous omission of a separate Calendar destination. Sean’s unmerged code supplies a Today rail; a full Calendar page has not been built. Ben subsequently accepted week/month views with suggestions on request; detailed interactions still require design. Follow the platform review for reusable code and material gaps.
+
+Generation and independent judging may proceed autonomously within accepted intent. Human checkpoints occur for a meaningful new surface/visual family, a first complete coded journey, or a material departure/conflicting opinion. Continue unaffected work while awaiting input. A generated image is not a runtime test; reviewers must receive controlling original excerpts and inspect the actual output. See the [decision record](design/decision-record.md) and [iteration process](../.agents/skills/magic-design/references/iteration-and-review.md).
