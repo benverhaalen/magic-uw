@@ -1,5 +1,6 @@
 import { schedulePlanning, scheduleRailResources } from './schedule-projection';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from "react";
+import { createPortal } from "react-dom";
 import { createOperationScope } from "../../../../packages/ui/src/operation-scope";
 import { MOTION_EASE, MOTION_MS } from "../../../../packages/ui/src/motion/tokens";
 import { requirePlanSave } from "./today-plan-save";
@@ -209,6 +210,9 @@ function TodayRailContent({
   const [detail, setDetail] = useState<{ kind: "suggestion" | "event"; id: string } | null>(null);
   const toggleDetail = (kind: "suggestion" | "event", id: string) =>
     setDetail(d => d?.id === id && d.kind === kind ? null : { kind, id });
+  // After a click the pointer is still over the block; keep its hover bar hidden until it leaves.
+  const [barOff, setBarOff] = useState<string | null>(null);
+  const popRef = useRef<HTMLDivElement>(null);
   const focused =
     visible.find((s) => s.id === focusId) ??
     visible.find((s) => s.state === "planned") ??
@@ -485,6 +489,8 @@ function TodayRailContent({
     setDetail(null);
     railRoot.current?.querySelector<HTMLElement>(`[data-focus-key="${key}"]`)?.focus({ preventScroll: true });
   };
+  const closeRef = useRef(closeDetail);
+  closeRef.current = closeDetail;
   const dueLabel = (s: RailSuggestion) => {
     const resource = resources.find(r => r.id === s.resourceId);
     const planning = resource ? schedulePlanning(resource, timeZone) : null;
@@ -527,7 +533,7 @@ function TodayRailContent({
           <>
             {choices(openSuggestion).map((c, i) => (
               <Action key={c.label} tone={i === 0 ? "primary" : "quiet"} pending={!!pending && i === 0}
-                onClick={() => { if (!pendingRef.current) void c.fn(); }}>
+                onClick={() => { if (pendingRef.current) return; if (c.label === "Edit") setDetail(null); void c.fn(); }}>
                 {c.label}
               </Action>
             ))}
@@ -544,10 +550,51 @@ function TodayRailContent({
       </div>
     </section>
   ) : null;
+  // The details open beside the clicked block, over the page, like a calendar event popover:
+  // the rail is too narrow for them and the timeline keeps its size and scroll position.
+  const [popPos, setPopPos] = useState<{ top: number; left: number } | null>(null);
+  useLayoutEffect(() => {
+    if (!detail) { setPopPos(null); return; }
+    const place = () => {
+      const block = railRoot.current?.querySelector<HTMLElement>(`[data-focus-key="block-${detail.id}"]`);
+      const pop = popRef.current;
+      if (!block || !pop) return;
+      // Beside the rail (not just the block) so the hour labels stay visible; below it when there's no room.
+      const b = block.getBoundingClientRect(), h = pop.offsetHeight, w = pop.offsetWidth, gap = 12;
+      const edge = railRoot.current?.getBoundingClientRect().left ?? b.left;
+      const beside = edge - w - gap >= 8;
+      const left = beside ? edge - w - gap : Math.max(8, Math.min(b.left, window.innerWidth - w - 8));
+      const want = beside ? b.top : b.bottom + 6 + h <= window.innerHeight - 8 ? b.bottom + 6 : b.top - 6 - h;
+      const top = Math.max(8, Math.min(want, window.innerHeight - h - 8));
+      setPopPos(p => (p && p.top === top && p.left === left ? p : { top, left }));
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => { window.removeEventListener("resize", place); window.removeEventListener("scroll", place, true); };
+  });
+  useEffect(() => {
+    if (!detail) return;
+    const outside = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (!target || popRef.current?.contains(target) || target.closest(".rail-block")) return;
+      setDetail(null);
+    };
+    // Escape works even after a save re-renders the card and focus falls back to the page.
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (document.activeElement && document.activeElement !== document.body &&
+          !popRef.current?.contains(document.activeElement) && !railRoot.current?.contains(document.activeElement)) return;
+      closeRef.current();
+    };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); };
+  }, [detail]);
 
   return (
     <aside ref={railRoot} tabIndex={-1} className={`today-rail${isCompactEmpty ? " is-compact-empty" : ""}`} aria-label="Today's schedule"
-      onKeyDown={(event) => { if (event.key === "Escape" && detailCard && !editing) { event.stopPropagation(); closeDetail(); } }}>
+      onKeyDown={(event) => { if (event.key === "Escape" && detailCard && !editing) { event.preventDefault(); event.stopPropagation(); closeDetail(); } }}>
       <div className="rail-heading">
         <span>Due today</span>
         <span>{due.length || ""}</span>
@@ -636,8 +683,6 @@ function TodayRailContent({
             </button>
           </div>
         </form>
-      ) : detailCard ? (
-        detailCard
       ) : focused ? (
         <>
           <div className="rail-heading">
@@ -777,7 +822,8 @@ function TodayRailContent({
             return (
               <div
                 key={s.id}
-                className="rail-slot"
+                className={`rail-slot${openSuggestion?.id === s.id ? " is-open" : ""}${barOff === s.id ? " bar-off" : ""}`}
+                onMouseLeave={() => setBarOff(b => (b === s.id ? null : b))}
                 style={{ top: top(s.startMin) + 1, height: height(s.startMin, s.endMin), ...across(s.id) }}
               >
                 <button
@@ -786,7 +832,7 @@ function TodayRailContent({
                   aria-label={`${label}: ${s.title}, ${clock(s.startMin)} to ${clock(s.endMin)}`}
                   data-focus-key={`block-${s.id}`}
                   aria-expanded={openSuggestion?.id === s.id}
-                  onClick={() => { setFocusId(s.id); toggleDetail("suggestion", s.id); }}
+                  onClick={() => { setFocusId(s.id); setBarOff(s.id); toggleDetail("suggestion", s.id); }}
                 >
                   <b>
                     {s.state === "done" ? "✓ " : ""}
@@ -812,6 +858,13 @@ function TodayRailContent({
           )}
         </div>
       </div>}
+      {detailCard ? createPortal(
+        <div ref={popRef} className="rail-pop" role="dialog" aria-modal="false"
+          aria-label={`Details: ${(openSuggestion ?? openEvent)!.title}`}
+          style={popPos ? { top: popPos.top, left: popPos.left } : { top: 0, left: 0, visibility: "hidden" }}
+          onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeDetail(); } }}>
+          {detailCard}
+        </div>, document.body) : null}
       <div className="rail-action-feedback" role={actionError ? "alert" : "status"}>
         {actionError || (pending ? `${pending}…` : "")}
       </div>

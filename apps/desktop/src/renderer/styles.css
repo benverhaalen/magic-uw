@@ -1688,7 +1688,31 @@ select {
   outline: 2px solid #4a6fd6;
   outline-offset: 0;
 }
-/* Details of the block the student clicked, in place of the Next up card. */
+/* Details of the block the student clicked: a popover beside the block, over the page
+   (rendered in document.body so the rail's scroll box can't clip it). */
+.rail-pop {
+  position: fixed;
+  z-index: 1000;
+  width: min(320px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  border-radius: 9px;
+  font-family: var(--magic-font-interface, inherit);
+  color: var(--magic-ink, #1f1f1b);
+}
+.rail-pop .rail-detail {
+  margin-bottom: 0;
+  padding: 12px 14px 14px;
+  gap: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16), 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.rail-pop .rail-detail-title { font-size: 15px; }
+.rail-pop .rail-detail-facts { font-size: 12.5px; gap: 6px; }
+.rail-pop .rail-detail-row { grid-template-columns: 76px minmax(0, 1fr); }
+.rail-slot.is-open .rail-tools,
+.rail-slot.bar-off .rail-tools {
+  display: none !important;
+}
 .rail-detail {
   display: flex;
   flex-direction: column;
