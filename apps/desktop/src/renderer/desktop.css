@@ -36,6 +36,7 @@
 .desktop-profile { margin-top: auto; padding-top: 15px; display: flex; align-items: center; gap: 4px; }
 .desktop-profile-button { border: 0; background: none; color: inherit; padding: 5px 3px; border-radius: var(--magic-radius-control); display: flex; align-items: center; gap: 10px; font-size: 12px; min-width: 0; flex: 1; }
 .desktop-avatar { display: grid; place-items: center; background: var(--magic-fill-avatar); color: var(--magic-ink-avatar); width: 32px; height: 32px; border-radius: 50%; font-size: 11px; flex: 0 0 32px; }
+.desktop-avatar img { display: block; width: 100%; height: 100%; max-width: 32px; max-height: 32px; object-fit: contain; }
 .desktop-source-shortcut { background: none; color: inherit; border: 0; padding: 7px; }
 /* Collapse keeps every row in place: the column narrows, labels fade (magic-motion-fade) and
  * icons shift 3px to the 64px column's center. Width is the one layout property animated here. */

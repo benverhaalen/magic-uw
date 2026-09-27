@@ -804,6 +804,94 @@ select {
   padding-left: 0;
   padding-right: 0;
 }
+.privacy-intro {
+  padding: 34px 0 25px;
+  max-width: 710px;
+}
+.privacy-intro h1 {
+  font-family: var(--magic-font-editorial);
+  font-weight: 500;
+  line-height: 1.2;
+}
+.privacy-intro-copy {
+  color: var(--magic-ink-prose);
+  font-size: var(--magic-type-control);
+  max-width: 590px;
+  margin: 12px 0 20px;
+}
+.privacy-jump-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  padding: 0 0 18px;
+}
+.privacy-jump-links a {
+  color: var(--magic-ink-secondary);
+  font-size: var(--magic-type-control);
+  text-decoration: none;
+}
+.privacy-source-action {
+  margin: 15px 0 25px 8px;
+}
+.privacy-source-action .magic-fb-pill {
+  border: 0;
+  color: var(--magic-ink-secondary);
+  font-size: var(--magic-type-control);
+  font-family: inherit;
+  background-color: var(--magic-fb-pill-rest);
+}
+.privacy-save-note {
+  color: var(--magic-ink-muted-strong);
+  font-size: var(--magic-type-meta);
+  margin: 0;
+}
+.privacy-page .settings-section {
+  scroll-margin-top: 28px;
+}
+.privacy-page .visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.privacy-local-details {
+  max-width: 610px;
+  margin: 18px 0;
+  color: var(--magic-ink-prose);
+}
+.privacy-local-details summary {
+  cursor: pointer;
+  font-size: var(--magic-type-control);
+  color: var(--magic-ink-link);
+}
+.privacy-local-details p {
+  margin: 10px 0 0;
+  font-size: var(--magic-type-control);
+}
+.privacy-page .settings-section > h2 {
+  font-family: var(--magic-font-editorial);
+  font-size: var(--magic-type-section);
+  font-weight: 500;
+  line-height: 1.25;
+}
+.privacy-page .settings-section > p {
+  font-size: var(--magic-type-control);
+  line-height: 1.6;
+}
+.privacy-page .mode-choice strong,
+.privacy-page .setting-toggle strong {
+  font-size: var(--magic-type-control);
+}
+.privacy-page .mode-choice > span > span,
+.privacy-page .setting-toggle > span > span {
+  font-size: var(--magic-type-control);
+  line-height: 1.55;
+}
 .settings-section {
   border-top: 1px solid var(--border);
   padding: 27px 0;

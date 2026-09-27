@@ -7,7 +7,7 @@ import { ChatPane, chatCourse, chatScopeForPage, chatPromptError, startChat, con
 import { resetChats } from "./chat/store";
 import { EvidenceInfo } from "../../../../packages/ui/src/evidence-info";
 import { requirePlanSave } from "./today-plan-save";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import type {
   AppNotification,
   Command,
@@ -286,8 +286,21 @@ export function App() {
   // owner: T06. Consent wiring: no UW contact until the setup checkbox is agreed; a Data & AI
   // change that would start sharing with a recipient without an agreement waits for one.
   const [consentPending, setConsentPending] = useState<PrivacyPreferences | null>(null);
+  const privacyReturnFocus = useRef<string | null>(null);
+  const consentReturnToPrivacy = useRef(false);
+  useLayoutEffect(() => {
+    if (view !== "privacy" || !privacyReturnFocus.current) return;
+    const key = privacyReturnFocus.current;
+    privacyReturnFocus.current = null;
+    const target = document.querySelector<HTMLElement>(`[data-focus-key="${key}"]`);
+    target?.scrollIntoView({ block: "center" });
+    target?.focus({ preventScroll: true });
+  }, [view]);
   const uwConsented = hasUwConsent(snapshot);
   const openConsent = (pending: PrivacyPreferences | null = null) => {
+    consentReturnToPrivacy.current = view === "privacy";
+    if (view === "privacy")
+      privacyReturnFocus.current = (document.activeElement as HTMLElement | null)?.dataset.focusKey ?? null;
     setConsentPending(pending);
     setView("consent");
   };
@@ -542,15 +555,16 @@ export function App() {
             onAgreedToSetup={() => {
               const next = consentPending;
               setConsentPending(null);
-              setView(next ? "privacy" : "today");
-              if (!next) void startSignIn();
+              const returnToPrivacy = Boolean(next) || consentReturnToPrivacy.current;
+              setView(returnToPrivacy ? "privacy" : "today");
+              if (!returnToPrivacy) void startSignIn();
             }}
             onSample={() => {
               setView("today");
               void run({ type: "fixture" });
             }}
             onClose={() => {
-              const back = consentPending ? "privacy" : "today";
+              const back = consentPending || consentReturnToPrivacy.current ? "privacy" : "today";
               setConsentPending(null);
               setView(back);
             }}
@@ -580,6 +594,10 @@ export function App() {
             run={run}
             open={open}
             onConsent={openConsent /* owner: T06 */}
+            onSources={() => {
+              privacyReturnFocus.current = "privacy-connected-sources";
+              setView("sources");
+            }}
           />
         )}
     </DesktopShell>
@@ -1283,16 +1301,24 @@ function Privacy({
   run,
   open,
   onConsent,
+  onSources,
 }: {
   snapshot: Snapshot;
   busy: boolean;
   run: Run;
   open: (url: string) => void;
   onConsent: (pending?: PrivacyPreferences | null) => void;
+  onSources: () => void;
 }) {
   const [deleteText, setDeleteText] = useState("");
   const [showDelete, setShowDelete] = useState(false);
   const value = snapshot.privacy;
+  const jumpTo = (event: MouseEvent<HTMLAnchorElement>, id: string) => {
+    event.preventDefault();
+    const section = document.getElementById(id);
+    section?.scrollIntoView({ block: "start" });
+    section?.querySelector("h2")?.focus({ preventScroll: true });
+  };
   // owner: T06: a change that would start sharing with a recipient lacking an agreement
   // opens that agreement first; it is saved only after the student agrees.
   const update = (patch: Partial<PrivacyPreferences>) => {
@@ -1314,27 +1340,25 @@ function Privacy({
     }
   };
   return (
-    <div className="settings-page">
-      <div className="page-heading">
-        <div>
-          <p className="eyebrow">Your data, your choice</p>
-          <h1>Data & AI</h1>
-        </div>
-        <span className="badge">
-          {value.mode === "local_only"
-            ? "Cloud access off"
-            : "Selective cloud access"}
-        </span>
-      </div>
-      <section className="settings-section">
-        <h2>Where your data goes</h2>
-        <p>
-          Course records, source history, completion state, and practice records
-          are stored on this device. UW sign-in sessions stay in the app’s local
-          browser. Degree audits, holds, course history, and planning records also stay local; this build does not send them to hosted AI or expose them through coursework MCP connections.
-        </p>
+    <div className="settings-page privacy-page">
+      <header className="privacy-intro">
+        <p className="eyebrow">Your information</p>
+        <h1>Data & AI</h1>
+        <p className="privacy-intro-copy">Coursework and activity are saved on this device. You choose what context AI tools can use or receive. School and calendar connections are managed separately.</p>
+        <nav className="privacy-jump-links" aria-label="Data and AI sections">
+          <a className="magic-fb-pill" href="#privacy-cloud" onClick={(event) => jumpTo(event, "privacy-cloud")}>Cloud access</a>
+          <a className="magic-fb-pill" href="#privacy-information" onClick={(event) => jumpTo(event, "privacy-information")}>Information</a>
+          <a className="magic-fb-pill" href="#privacy-tools" onClick={(event) => jumpTo(event, "privacy-tools")}>AI tools</a>
+          <a className="magic-fb-pill" href="#privacy-activity" onClick={(event) => jumpTo(event, "privacy-activity")}>Activity and deletion</a>
+        </nav>
+        <p className="privacy-save-note" role="status" aria-live="polite">{value.mode === "local_only" ? "Cloud AI sharing is off." : "Selective cloud access is on."}</p>
+      </header>
+      <section className="settings-section" id="privacy-cloud">
+        <h2 tabIndex={-1}>Cloud access</h2>
+        <p>Choose whether AI context can leave this device. School and calendar connections are managed separately.</p>
+        <div className="privacy-source-action"><button type="button" className="magic-fb-pill" data-focus-key="privacy-connected-sources" onClick={onSources}>Connected sources</button></div>
         <fieldset className="mode-choices" disabled={busy}>
-          <legend>Cloud access</legend>
+          <legend className="visually-hidden">Cloud access choice</legend>
           <label
             className={
               value.mode === "local_only"
@@ -1345,6 +1369,7 @@ function Privacy({
             <input
               type="radio"
               name="cloud-mode"
+              data-focus-key="privacy-mode-local"
               checked={value.mode === "local_only"}
               onChange={() => void update({ mode: "local_only" })}
             />
@@ -1365,6 +1390,7 @@ function Privacy({
             <input
               type="radio"
               name="cloud-mode"
+              data-focus-key="privacy-mode-selective"
               checked={value.mode === "selective_cloud"}
               onChange={() => void update({ mode: "selective_cloud" })}
             />
@@ -1380,13 +1406,64 @@ function Privacy({
           Local data settings control AI sharing. Refreshing Canvas still
           contacts UW, and opening an original source contacts that website.
         </p>
+        <details className="privacy-local-details"><summary>What stays on this device</summary><p>Course records, source history, completion state, and practice records are stored locally. UW sign-in sessions stay in the app’s local browser. Degree audits, holds, course history, and planning records also stay local; this build does not send them to hosted AI or expose them through coursework MCP connections.</p></details>
         {/* owner: T06 */}
-        <button className="subtle-button" disabled={busy} onClick={() => onConsent(null)}>
-          Agreements
+        <button className="subtle-button" data-focus-key="privacy-agreements" disabled={busy} onClick={() => onConsent(null)}>
+          Review agreements
         </button>
       </section>
-      <section className="settings-section" data-place-anchor="privacy-models">
-        <h2>Models & services</h2>
+      <section className="settings-section" id="privacy-information">
+        <h2 tabIndex={-1}>Information AI can use</h2>
+        <p>These permissions apply to future AI requests. Turn them off at any time.</p>
+        <SettingToggle
+          label="Course text"
+          focusKey="privacy-course-text"
+          description="Relevant course name, item title, instructions, and policy evidence. Preview the exact selection from an item before sending."
+          checked={value.shareCourseText}
+          disabled={busy || value.mode === "local_only"}
+          onChange={(checked) => void update({ shareCourseText: checked })}
+        />
+        <SettingToggle
+          label="Your work"
+          focusKey="privacy-student-work"
+          description="Allow student-authored material, including connected GitLab content, when a feature or MCP connection requests it."
+          checked={value.shareStudentWork}
+          disabled={busy || value.mode === "local_only"}
+          onChange={(checked) => void update({ shareStudentWork: checked })}
+        />
+        <SettingToggle
+          label="Grades"
+          focusKey="privacy-grades"
+          description="Scores and grading status. Stored locally; sharing is off by default."
+          checked={!!value.shareGrades}
+          disabled={busy || value.mode === "local_only"}
+          onChange={(checked) => void update({ shareGrades: checked })}
+        />
+        <SettingToggle
+          label="Grader comments"
+          focusKey="privacy-comments"
+          description="Feedback that can help explain mistakes. Keeping comments locally does not enable cloud sharing."
+          checked={!!value.shareComments}
+          disabled={busy || value.mode === "local_only"}
+          onChange={(checked) => void update({ shareComments: checked })}
+        />
+        <SettingToggle
+          label="Course communications"
+          focusKey="privacy-communications"
+          description="Selected announcements and messages, and the subject and Outlook preview of email. With Jev on, these help sort Notifications; the sender is described only by role, such as advisor. These may contain personal information."
+          checked={!!value.shareCommunications}
+          disabled={busy || value.mode === "local_only"}
+          onChange={(checked) => void update({ shareCommunications: checked })}
+        />
+        <p className="small muted">
+          UW sign-in credentials, login cookies, and the shared Jev key are not
+          part of model context. Turning off access prevents future sends; it
+          cannot recall data already sent.
+        </p>
+      </section>
+      <section className="settings-section" id="privacy-tools" data-place-anchor="privacy-models">
+        <h2 tabIndex={-1}>AI tools</h2>
+        <p>Select which tools may use the information you allowed above.</p>
         <SettingToggle
           focusKey="privacy-jev"
           label="Jev judgments"
@@ -1406,6 +1483,7 @@ function Privacy({
           </label>
           <select
             id="provider"
+            data-focus-key="privacy-provider"
             disabled={busy || value.mode === "local_only"}
             value={value.hostedProvider}
             onChange={(event) =>
@@ -1428,53 +1506,10 @@ function Privacy({
         </div>
       </section>
       <LocalAiPanel privacyKey={JSON.stringify(value)} />
-      <section className="settings-section">
-        <h2>What may be shared</h2>
-        <SettingToggle
-          label="Course text"
-          description="Relevant course name, item title, instructions, and policy evidence. Preview the exact selection from an item before sending."
-          checked={value.shareCourseText}
-          disabled={busy || value.mode === "local_only"}
-          onChange={(checked) => void update({ shareCourseText: checked })}
-        />
-        <SettingToggle
-          label="Your work"
-          description="Allow student-authored material, including connected GitLab content, when a feature or MCP connection requests it."
-          checked={value.shareStudentWork}
-          disabled={busy || value.mode === "local_only"}
-          onChange={(checked) => void update({ shareStudentWork: checked })}
-        />
-        <SettingToggle
-          label="Grades"
-          description="Scores and grading status. Stored locally; sharing is off by default."
-          checked={!!value.shareGrades}
-          disabled={busy || value.mode === "local_only"}
-          onChange={(checked) => void update({ shareGrades: checked })}
-        />
-        <SettingToggle
-          label="Grader comments"
-          description="Feedback that can help explain mistakes. Keeping comments locally does not enable cloud sharing."
-          checked={!!value.shareComments}
-          disabled={busy || value.mode === "local_only"}
-          onChange={(checked) => void update({ shareComments: checked })}
-        />
-        <SettingToggle
-          label="Course communications"
-          description="Selected announcements and messages, and the subject and Outlook preview of email. With Jev on, these help sort Notifications; the sender is described only by role, such as advisor. These may contain personal information."
-          checked={!!value.shareCommunications}
-          disabled={busy || value.mode === "local_only"}
-          onChange={(checked) => void update({ shareCommunications: checked })}
-        />
-        <p className="small muted">
-          UW sign-in credentials, login cookies, and the shared Jev key are not
-          part of model context. Turning off access prevents future sends; it
-          cannot recall data already sent.
-        </p>
-      </section>
       <ProviderGuidance open={open} disabled={busy} />
       <McpConnections snapshot={snapshot} busy={busy} run={run} />
-      <section className="settings-section">
-        <h2>Recent data activity</h2>
+      <section className="settings-section" id="privacy-activity">
+        <h2 tabIndex={-1}>AI sharing activity</h2>
         <p className="muted">
           Receipts record the destination and amount of context, without storing
           a second copy of the sent text.

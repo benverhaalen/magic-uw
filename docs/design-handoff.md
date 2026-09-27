@@ -31,6 +31,22 @@ Renderer paths above are under `apps/desktop/src/renderer`. Contracts and comman
 
 ## What is verified and what remains
 
+### Data & AI navigation follow-up · September 27, 09:50 UTC
+
+The next renderer batch groups existing settings under Cloud access, Information, AI tools, and Activity/deletion with heading-focus section links. Connected sources returns to the exact settings trigger; Review agreements → Not now returns to Data & AI without saving. Current PR #39 Jev and communications disclosures are preserved. The wizard avatar now fits its 32px container using `object-fit: contain` in both sidebar widths. Full build/typecheck passes; a copied-data normal-entry run demonstrated all four jumps, both return paths, both avatar sizes and no renderer/font errors. No privacy write or deletion was performed. Source publication and its later visible refresh remain separate receipts.
+
+### Demonstration priorities and acceptance
+
+| Journey | Observable completion | Current boundary |
+| --- | --- | --- |
+| Calendar → create → Google export | Saved intended event/block, usable export with correct timezone, user-controlled Google import, return without duplicates | Existing planning and Calendar UI; export slice under implementation |
+| Upcoming → full assignment workspace | One entry opens sourced instructions/resources, assignment-specific tool proposal, persisted choices and truthful Continue in the normal browser | Existing detail/prepared links; complete remembered workspace under implementation |
+| Voice → observed computer action → Stop | Actual current computer context, intended navigation/action/result, immediate cancellation reaching active operations | Private voice/media implementation; hardware/external action not demonstrated |
+| Study → artifact/video → source → Back | Course-targeted source-grounded artifact, relevant explainable video selection, persisted context and exact source return | Current material links; shared learning producers/adapters still being connected |
+| Policy-aware learning | Every actual producing request uses current scoped course/assignment policy and source versions; cache/revocation checks preserve it; administrative and graded help follow the actual policy | Existing partial policy gates; mixed-source request and policy-version gaps require Nate coordination |
+
+These priorities order delivery within the seven-area scope. A button or private fixture alone does not complete a journey. Preserve teammate frontend and backend implementations by feature ownership and adapt their actual contracts before adding a parallel producer.
+
 ### September 27 09:42 UTC visible runtime receipt
 
 Published code **`f5a2df5`** is now running in the actual original desktop workspace, using the normal Electron entry and its existing data. Ready time: **09:42:02 UTC**, Electron PID **61214**, persistent launcher/monitor PID **61071**. The captured view is Home with the expanded sidebar and message composer. The previous app processes were already closed at preflight; a closed-database backup was retained before launch. No live route or unsaved draft could be captured from that closed process, so this receipt does not claim their restoration.
