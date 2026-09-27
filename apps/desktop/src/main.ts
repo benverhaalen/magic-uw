@@ -67,7 +67,7 @@ import { checkedGraphUrl } from "../../../packages/connectors/src/graph";
 import { OUTLOOK_MAIL_COURSE_ID, OUTLOOK_CALENDAR_COURSE_ID, type OutlookStatus } from "@magic/contracts";
 // end owner: T30
 import { MadgradesHttp, madgradesRequestSchema } from "../../../packages/connectors/src/madgrades";
-import sampleFixture from "../../../fixtures/course.json";
+import sampleFixture from "../../../fixtures/sample-courses.json";
 // owner: T05c
 import { Tray, Menu, nativeImage } from "electron";
 import { clearUwLoginCookies } from "./sign-in-cookies";
@@ -2408,7 +2408,7 @@ app
           "window.magic.execute({type:'fixture'})",
         );
         if (
-          imported.snapshot.resources.length !== sampleFixture.resources.length ||
+          imported.snapshot.resources.length !== sampleFixture.reduce((n, batch) => n + batch.resources.length, 0) ||
           !imported.snapshot.fixtureMode
         )
           throw new Error("Fixture import failed");

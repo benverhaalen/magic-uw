@@ -221,6 +221,8 @@ export interface DailyBriefProjection {
 /** Home's admission boundary: course inclusion alone cannot establish current enrollment. */
 export function currentEnrollmentBrief(input: BriefInput): DailyBriefProjection {
   const at = new Date(input.now ?? Date.now());
+  // The labelled synthetic sample has no UW enrollment to verify: its invented courses are the sample.
+  if (input.sources.length && input.sources.every(s => s.kind === 'fixture')) return projectDailyBrief(input);
   const verified = verifiedCanvasEnrollment(input.planning, new Set(input.sources.filter(s => s.kind === 'canvas').map(s => s.accountScope)), at);
   if (!verified) return { items: [], coverage: briefCoverage(input.sources), surfacedMaterialIds: new Set(),
     fallback: { action: 'sources', text: 'Current enrollment is not confirmed in this saved capture. Check your sources for a current brief.' } };

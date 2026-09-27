@@ -12,7 +12,7 @@ import { createCore } from "@magic/core";
 import { captureBatchSchema, planningCaptureSchema, type PlanningCapture, type Resource } from "@magic/contracts";
 import { queryRequestSchema } from "@magic/contracts"; // owner: T15
 import type { MailTriageState, MessageTriageState } from "@magic/contracts"; // owner: notifications gateway relay
-import fixture from "../../../fixtures/course.json";
+import fixture from "../../../fixtures/sample-courses.json"; // the synthetic sample: one batch per invented course
 import { randomUUID } from "node:crypto";
 import { createLocalService } from "./local-service";
 import { createIngestion, ACQUISITION_APP } from "./ingestion";
@@ -380,7 +380,7 @@ jobs.register(
 );
 // end owner: site-recipes
 const core = createCore(store, {
-  fixture: captureBatchSchema.parse(fixture),
+  fixture: fixture.map((batch) => captureBatchSchema.parse(batch)),
   planningPublicClient: publicClients.core, // owner: T06
   // owner: drain. Passages, links and facts and the course pass are reconciled in budgeted batches
   // (jobs/derive.ts), not queued per row; the registry keeps only kinds that need a queue.
