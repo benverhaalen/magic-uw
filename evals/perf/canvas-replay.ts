@@ -6,7 +6,10 @@
  */
 import { canvasConnector, type CanvasConnectorOptions } from "../../packages/connectors/src/canvas";
 import type { CanvasFetch } from "../../packages/connectors/src/canvas-http";
-import { createSyntheticCanvasUniversity } from "../../packages/connectors/src/canvas-fixture";
+import {
+  createSyntheticCanvasUniversity,
+  type SyntheticUniversityOptions,
+} from "../../packages/connectors/src/canvas-fixture";
 import type { CaptureBatch, Store } from "@magic/contracts";
 
 export interface RecordedResponse {
@@ -40,8 +43,11 @@ function headerPairs(headers: Headers): Array<[string, string]> {
 export const syncNow = () => new Date("2026-09-26T15:00:00Z");
 
 /** Records one full synthetic sync; the fixture's injected 429 is disabled so timings are transport-only. */
-export async function recordSyntheticCanvas(): Promise<Recording> {
-  const university = createSyntheticCanvasUniversity({ rateLimit: false });
+export async function recordSyntheticCanvas(
+  shape: SyntheticUniversityOptions = {},
+  connector: Partial<CanvasConnectorOptions> = {},
+): Promise<Recording> {
+  const university = createSyntheticCanvasUniversity({ ...shape, rateLimit: false });
   const entries: RecordedResponse[] = [];
   const fetch: CanvasFetch = async (url, init) => {
     const response = await university.fetch(url, init);
@@ -49,12 +55,12 @@ export async function recordSyntheticCanvas(): Promise<Recording> {
     entries.push({ url, status: response.status, headers: headerPairs(response.headers), body });
     return new Response(body, { status: response.status, headers: response.headers });
   };
-  for await (const _ of canvasConnector({ fetch, origin: university.origin, now: syncNow }).pull()) {
+  for await (const _ of canvasConnector({ fetch, origin: university.origin, now: syncNow, ...connector }).pull()) {
     // Drain: the recording is the side effect.
   }
   return {
     origin: university.origin,
-    source: "createSyntheticCanvasUniversity({ rateLimit: false }), revision 1",
+    source: `createSyntheticCanvasUniversity(${JSON.stringify({ ...shape, rateLimit: false })}), revision 1`,
     entries,
   };
 }
@@ -71,6 +77,16 @@ export interface ReplayTransport {
   bytes(): number;
   misses(): number;
   byCourse(): Map<string, CourseTraffic>;
+  /** Most requests that were in flight at once. */
+  maxInFlight(): number;
+}
+export interface ReplayOptions {
+  /**
+   * A latency model: every response is held this long (ms) before it is returned, like a
+   * network round trip plus Canvas's own processing. Without it the replay answers at once
+   * and cannot show what concurrency buys.
+   */
+  latencyMs?: number;
 }
 
 /** Query parameters derived from the clock (announcement windows end at `now`); ignored when matching. */
@@ -82,7 +98,7 @@ export function replayKey(url: string): string {
 }
 
 /** Serves recorded responses by URL (repeat requests cycle through that URL's recordings). */
-export function replayTransport(recording: Recording): ReplayTransport {
+export function replayTransport(recording: Recording, options: ReplayOptions = {}): ReplayTransport {
   const byUrl = new Map<string, RecordedResponse[]>();
   for (const entry of recording.entries) {
     const key = replayKey(entry.url);
@@ -95,16 +111,34 @@ export function replayTransport(recording: Recording): ReplayTransport {
   const start = performance.now();
   let requests = 0,
     bytes = 0,
-    misses = 0;
-  const fetch: CanvasFetch = async (url) => {
+    misses = 0,
+    inFlight = 0,
+    maxInFlight = 0;
+  const fetch: CanvasFetch = async (url, init) => {
     requests++;
+    inFlight++;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    try {
+      if (options.latencyMs)
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(resolve, options.latencyMs);
+          init?.signal?.addEventListener("abort", () => {
+            clearTimeout(timer);
+            reject(init.signal!.reason);
+          }, { once: true });
+        });
+      return serve(url);
+    } finally {
+      inFlight--;
+    }
+  };
+  const serve = (url: string): Response => {
     const course = courseOf(url);
     const traffic =
       courses.get(course) ??
       { requests: 0, bytes: 0, firstMs: performance.now() - start, lastMs: 0 };
     courses.set(course, traffic);
     traffic.requests++;
-    await Promise.resolve();
     const key = replayKey(url);
     const list = byUrl.get(key);
     let response: Response;
@@ -129,6 +163,7 @@ export function replayTransport(recording: Recording): ReplayTransport {
     bytes: () => bytes,
     misses: () => misses,
     byCourse: () => courses,
+    maxInFlight: () => maxInFlight,
   };
 }
 
@@ -151,6 +186,7 @@ export interface SyncRun {
   misses: number;
   batches: number;
   byCourse: Map<string, CourseTraffic>;
+  maxInFlight: number;
 }
 
 /** One sync the way the worker runs the Canvas phase: connector options from the store, then save() per batch. */
@@ -159,8 +195,9 @@ export async function replaySync(
   recording: Recording,
   now: () => Date,
   extra: Partial<CanvasConnectorOptions> = {},
+  replay: ReplayOptions = {},
 ): Promise<SyncRun> {
-  const transport = replayTransport(recording);
+  const transport = replayTransport(recording, replay);
   const started = performance.now();
   let ingestMs = 0,
     batches = 0;
@@ -192,5 +229,6 @@ export async function replaySync(
     misses: transport.misses(),
     batches,
     byCourse: transport.byCourse(),
+    maxInFlight: transport.maxInFlight(),
   };
 }

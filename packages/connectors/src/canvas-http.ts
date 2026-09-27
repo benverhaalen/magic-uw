@@ -1,5 +1,10 @@
 import type { CaptureBatch } from "@magic/contracts";
 import { isLoginHtml } from "./external"; // owner: T05c
+import {
+  createFetchScheduler,
+  DEFAULT_HOST_CONCURRENCY,
+  type FetchScheduler,
+} from "./fetch-scheduler"; // owner: T17
 
 export type CanvasFetch = (
   url: string,
@@ -27,6 +32,13 @@ export interface CanvasHttpOptions {
   sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
   requestTimeoutMs?: number;
   onRate?: (rate: CanvasRate) => void;
+  /**
+   * owner: T17. The request scheduler to share (one per sync, so its probes and full read share
+   * one per-host limit and one singleflight). Default: a scheduler of this reader's own.
+   */
+  scheduler?: FetchScheduler;
+  /** owner: T17. Requests in flight per host for a reader's own scheduler; default 6. */
+  hostConcurrency?: number;
 }
 export function canvasOrigin(input = "https://canvas.wisc.edu"): string {
   const url = new URL(input);
@@ -363,15 +375,25 @@ export class CanvasHttp {
   readonly origin: string;
   readonly rate: CanvasRate = { requests: 0 };
   private readonly auth = new AbortController();
-  private active = 0;
-  private readonly waiting: Array<() => void> = [];
   readonly concurrency: number;
+  readonly scheduler: FetchScheduler;
   constructor(private readonly options: CanvasHttpOptions) {
     this.origin = canvasOrigin(options.origin);
     this.concurrency = Math.max(
       1,
       Math.min(16, Math.floor(options.metadataConcurrency ?? 8)),
     );
+    // owner: T17. The student's metadata setting stays a ceiling on requests in flight.
+    this.scheduler =
+      options.scheduler ??
+      createFetchScheduler({
+        concurrency: Math.min(
+          options.hostConcurrency ?? DEFAULT_HOST_CONCURRENCY,
+          this.concurrency,
+        ),
+        sleep: options.sleep,
+        random: options.random,
+      });
   }
   get needsSignIn() {
     return this.auth.signal.aborted;
@@ -416,17 +438,113 @@ export class CanvasHttp {
     }
   }
   // end owner: T05c
+  /**
+   * owner: T17. One GET through the scheduler: identical GETs share one read (singleflight), each
+   * attempt waits for a per-host slot and the budget, and a rate-limit answer backs off.
+   */
   async request(
     input: string,
     signal?: AbortSignal,
     scopeStats?: { requests: number },
+    priority = 0,
   ): Promise<{ data: unknown; link: string | null }> {
     const url = checkedCanvasUrl(input, this.origin);
     signal?.throwIfAborted();
     if (this.needsSignIn) throw new CanvasFailure("needs_sign_in");
-    if (this.active >= this.concurrency)
-      await new Promise<void>((resolve) => this.waiting.push(resolve));
-    else this.active++;
+    const { value, shared } = await this.scheduler.once(
+      url,
+      (leader) => this.read(url, leader, scopeStats, priority),
+      signal,
+    );
+    // A shared result is copied, so no caller can change the records another caller parses.
+    return shared ? { data: structuredClone(value.data), link: value.link } : value;
+  }
+  /** One attempt's exchange, inside a scheduler slot: the slot covers the whole body transfer. */
+  private async exchange(
+    url: string,
+    signal: AbortSignal | undefined,
+    scopeStats: { requests: number } | undefined,
+  ): Promise<
+    | { redirect: true; facts?: CanvasProfileFacts }
+    | {
+        redirect: false;
+        status: number;
+        type: string;
+        body: string;
+        link: string | null;
+        retry: string | null;
+        location: string | null;
+        url: string;
+      }
+  > {
+    if (this.needsSignIn) throw new CanvasFailure("needs_sign_in");
+    const requestSignal = AbortSignal.any([
+      AbortSignal.timeout(this.options.requestTimeoutMs ?? 15_000),
+      this.auth.signal,
+      ...(signal ? [signal] : []),
+    ]);
+    this.rate.requests++;
+    if (scopeStats) scopeStats.requests++;
+    const response = await abortable(
+      this.options.fetch(url, {
+        method: "GET",
+        credentials: "include",
+        redirect: "manual",
+        headers: { Accept: "application/json" },
+        signal: requestSignal,
+      }),
+      requestSignal,
+    );
+    for (const [header, key] of [
+      ["x-rate-limit-remaining", "remaining"],
+      ["x-request-cost", "cost"],
+    ] as const) {
+      const raw = response.headers.get(header);
+      if (raw !== null && Number.isFinite(Number(raw)) && Number(raw) >= 0)
+        this.rate[key] = Number(raw);
+    }
+    const remaining = response.headers.get("x-rate-limit-remaining");
+    if (remaining !== null && Number.isFinite(Number(remaining)))
+      this.scheduler.observe(this.origin, { remaining: Number(remaining) });
+    this.options.onRate?.({ ...this.rate });
+    // owner: T05c. Expiry classification (spec A1). A redirect, a login page or a 401 that is
+    // not a permission denial only makes the session suspect; needs_sign_in is declared after
+    // the profile read confirms it (canvasProfileSignedOut). Permission errors stay scoped.
+    const type = response.headers.get("content-type") ?? "";
+    const html = /text\/html|application\/xhtml\+xml/i.test(type);
+    if (
+      (response.status >= 300 && response.status < 400) ||
+      response.redirected ||
+      response.type === "opaqueredirect" ||
+      (response.url &&
+        (new URL(response.url).origin !== this.origin ||
+          new URL(response.url).pathname !== new URL(url).pathname)) ||
+      (html && response.status !== 403 && response.status !== 429)
+    ) {
+      // The profile read is its own confirmation; it never triggers a second profile read.
+      if (new URL(url).pathname === canvasProfilePath)
+        return { redirect: true, facts: await profileFacts(response, requestSignal) };
+      void response.body?.cancel().catch(() => {});
+      return { redirect: true };
+    }
+    // end owner: T05c
+    return {
+      redirect: false,
+      status: response.status,
+      type,
+      body: await bodyText(response, requestSignal),
+      link: response.headers.get("link"),
+      retry: response.headers.get("retry-after"),
+      location: response.headers.get("location"),
+      url: response.url,
+    };
+  }
+  private async read(
+    url: string,
+    signal: AbortSignal | undefined,
+    scopeStats: { requests: number } | undefined,
+    priority: number,
+  ): Promise<{ data: unknown; link: string | null }> {
     try {
       for (let attempt = 0; attempt <= 4; attempt++) {
         signal?.throwIfAborted();
@@ -435,84 +553,43 @@ export class CanvasHttp {
           1,
           Math.max(0, this.options.random?.() ?? Math.random()),
         );
-        await (this.options.sleep ?? canvasDelay)(
-          (this.rate.remaining !== undefined && this.rate.remaining < 100
-            ? 600
-            : 0) +
-            25 +
-            random * 75,
-          signal,
+        // No fixed per-request sleep: the scheduler paces only when the budget is low. The slot is
+        // held until the expiry check settles, so no queued read starts while a session is suspect.
+        const { outcome, verdict } = await this.scheduler.run(
+          this.origin,
+          async () => {
+            const outcome = await this.exchange(url, signal, scopeStats);
+            if (this.needsSignIn) throw new CanvasFailure("needs_sign_in");
+            // owner: T05c
+            const isProfile = new URL(url).pathname === canvasProfilePath;
+            if (outcome.redirect) return await this.confirmSignedOut(outcome.facts);
+            const { status, type, body } = outcome;
+            const verdict = classifyCanvasAuth(status, body);
+            if (verdict === "inaccessible")
+              throw new CanvasFailure("inaccessible", "not_authorized");
+            if (verdict === "suspect" || (verdict === "pass" && /^\s*</.test(body)))
+              await this.confirmSignedOut(
+                isProfile
+                  ? {
+                      status,
+                      body,
+                      contentType: type,
+                      location: outcome.location,
+                      url: outcome.url,
+                    }
+                  : undefined,
+              );
+            // end owner: T05c
+            return { outcome, verdict };
+          },
+          { priority, signal },
         );
-        if (this.needsSignIn) throw new CanvasFailure("needs_sign_in");
-        const requestSignal = AbortSignal.any([
-          AbortSignal.timeout(this.options.requestTimeoutMs ?? 15_000),
-          this.auth.signal,
-          ...(signal ? [signal] : []),
-        ]);
-        this.rate.requests++;
-        if (scopeStats) scopeStats.requests++;
-        const response = await abortable(
-          this.options.fetch(url, {
-            method: "GET",
-            credentials: "include",
-            redirect: "manual",
-            headers: { Accept: "application/json" },
-            signal: requestSignal,
-          }),
-          requestSignal,
-        );
-        for (const [header, key] of [
-          ["x-rate-limit-remaining", "remaining"],
-          ["x-request-cost", "cost"],
-        ] as const) {
-          const raw = response.headers.get(header);
-          if (raw !== null && Number.isFinite(Number(raw)) && Number(raw) >= 0)
-            this.rate[key] = Number(raw);
-        }
-        this.options.onRate?.({ ...this.rate });
-        // owner: T05c. Expiry classification (spec A1). A redirect, a login page or a 401 that is
-        // not a permission denial only makes the session suspect; needs_sign_in is declared after
-        // the profile read confirms it (canvasProfileSignedOut). Permission errors stay scoped.
-        const type = response.headers.get("content-type") ?? "";
-        const html = /text\/html|application\/xhtml\+xml/i.test(type);
-        // The profile read is its own confirmation; it never triggers a second profile read.
-        const isProfile = new URL(url).pathname === canvasProfilePath;
-        if (
-          (response.status >= 300 && response.status < 400) ||
-          response.redirected ||
-          response.type === "opaqueredirect" ||
-          (response.url &&
-            (new URL(response.url).origin !== this.origin ||
-              new URL(response.url).pathname !== new URL(url).pathname)) ||
-          (html && response.status !== 403 && response.status !== 429)
-        ) {
-          if (isProfile)
-            await this.confirmSignedOut(await profileFacts(response, requestSignal));
-          void response.body?.cancel().catch(() => {});
-          await this.confirmSignedOut();
-        }
-        const body = await bodyText(response, requestSignal);
-        const verdict = classifyCanvasAuth(response.status, body);
-        if (verdict === "inaccessible")
-          throw new CanvasFailure("inaccessible", "not_authorized");
-        if (verdict === "suspect" || (verdict === "pass" && /^\s*</.test(body)))
-          await this.confirmSignedOut(
-            isProfile
-              ? {
-                  status: response.status,
-                  body,
-                  contentType: type,
-                  location: response.headers.get("location"),
-                  url: response.url,
-                }
-              : undefined,
-          );
+        const { status, type, body } = outcome;
         const limited = verdict === "rate_limited";
-        // end owner: T05c
         if (limited) {
           if (attempt === 4)
             throw new CanvasFailure("partial", "rate_limit_exhausted");
-          const retry = response.headers.get("retry-after");
+          const retry = outcome.retry;
           const asked =
             retry === null
               ? NaN
@@ -525,22 +602,25 @@ export class CanvasHttp {
               "partial",
               "rate_limit_wait_exceeds_budget",
             );
-          await (this.options.sleep ?? canvasDelay)(
+          // Canvas itself sends no Retry-After (request_throttle.rb); one is honoured when present,
+          // else the wait backs off exponentially. The whole host pauses, not only this request.
+          const wait =
             (Number.isFinite(asked)
               ? Math.max(0, asked)
               : Math.min(30_000, 1000 * 2 ** attempt)) +
-              random * 250,
-            signal,
-          );
+            random * 250;
+          this.scheduler.pause(this.origin, wait);
+          await (this.options.sleep ?? canvasDelay)(wait, signal);
           continue;
         }
-        if (response.status === 404 || response.status === 410)
+        if (status === 404 || status === 410)
           throw new CanvasFailure("inaccessible", "not_accessible");
-        if (!response.ok) throw new CanvasFailure("error", "http_failure");
+        if (status < 200 || status >= 300)
+          throw new CanvasFailure("error", "http_failure");
         if (!/application\/(?:[a-z0-9.-]+\+)?json(?:\s*;|$)/i.test(type))
           throw new CanvasFailure("partial", "unexpected_content_type");
         try {
-          return { data: JSON.parse(body), link: response.headers.get("link") };
+          return { data: JSON.parse(body), link: outcome.link };
         } catch {
           throw new CanvasFailure("partial", "invalid_json");
         }
@@ -552,10 +632,6 @@ export class CanvasHttp {
       if (error instanceof Error && error.name === "TimeoutError")
         throw new CanvasFailure("partial", "request_time_limit");
       throw error;
-    } finally {
-      const waiting = this.waiting.shift();
-      if (waiting) waiting();
-      else this.active--;
     }
   }
 }

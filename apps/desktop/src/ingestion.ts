@@ -13,6 +13,11 @@ import {
 } from "../../../packages/connectors/src/canvas";
 import { CanvasHttp } from "../../../packages/connectors/src/canvas-http";
 import {
+  createFetchScheduler,
+  DEFAULT_HOST_CONCURRENCY,
+  type FetchScheduler,
+} from "../../../packages/connectors/src/fetch-scheduler"; // owner: T17
+import {
   calendarConnector,
   outlookCalendarConnector,
 } from "../../../packages/connectors/src/calendar";
@@ -247,6 +252,7 @@ export function createIngestion(store: Store, host: IngestionHost) {
     const http = new CanvasHttp({
       fetch: host.canvasFetch,
       metadataConcurrency: settings.metadataConcurrency,
+      scheduler: scheduler(), // owner: T17
     });
     let index = 0;
     await Promise.all(
@@ -578,6 +584,20 @@ export function createIngestion(store: Store, host: IngestionHost) {
   const spaces = new Map<string, CourseSpace[]>();
   const moduleHashes = new Map<string, string>();
   let recheckAll = false;
+  // owner: T17. One request scheduler per sync: its probes, full read, documents and inventory
+  // share one per-host limit, and an identical GET within the sync is read once (the hot probe's
+  // to-do list, the content probe's stream and each course's modules are reused by the full read).
+  let runScheduler: FetchScheduler | undefined;
+  function scheduler() {
+    return (runScheduler ??= createFetchScheduler({
+      concurrency: Math.min(
+        DEFAULT_HOST_CONCURRENCY,
+        store.ingestionSettings().metadataConcurrency,
+      ),
+      reuseMs: 120_000,
+    }));
+  }
+  // end owner: T17
   const canvasScope: Partial<Record<CourseSpace["kind"], string>> = {
     canvas_page: "pages",
     canvas_file: "files",
@@ -619,7 +639,7 @@ export function createIngestion(store: Store, host: IngestionHost) {
   }
   async function inventory(only: Set<string> | undefined, signal: AbortSignal) {
     const s = store.ingestionSettings();
-    const http = new CanvasHttp({ fetch: host.canvasFetch, metadataConcurrency: s.metadataConcurrency });
+    const http = new CanvasHttp({ fetch: host.canvasFetch, metadataConcurrency: s.metadataConcurrency, scheduler: scheduler() });
     const sources = new Map(store.sources().map((x) => [x.id, x]));
     const all = store.resources();
     for (const { resource: course, source } of courses()) {
@@ -664,6 +684,7 @@ export function createIngestion(store: Store, host: IngestionHost) {
   const coordinator = createRefreshCoordinator({
     now,
     begin() {
+      runScheduler = undefined; // owner: T17: a new sync reads afresh
       activeStart = performance.now();
       firstValueMs = undefined;
       nextWeekInstructionsMs = undefined;
@@ -685,7 +706,7 @@ export function createIngestion(store: Store, host: IngestionHost) {
     feeds,
     async probe(signal) {
       const result = await fetchCanvasActivitySummary(
-        { fetch: host.canvasFetch },
+        { fetch: host.canvasFetch, scheduler: scheduler() },
         signal,
       );
       if (result.status === "needs_sign_in") markExpired();
@@ -699,7 +720,7 @@ export function createIngestion(store: Store, host: IngestionHost) {
     },
     // owner: T33. The hot tick, the content probe and the warm read of only the moved courses.
     async hot(signal) {
-      const http = new CanvasHttp({ fetch: host.canvasFetch });
+      const http = new CanvasHttp({ fetch: host.canvasFetch, scheduler: scheduler() });
       const probe = await fetchCanvasHotProbe(http, signal);
       probeRequests += probe.requests;
       if (probe.status === "needs_sign_in") markExpired();
@@ -714,6 +735,7 @@ export function createIngestion(store: Store, host: IngestionHost) {
       const http = new CanvasHttp({
         fetch: host.canvasFetch,
         metadataConcurrency: s.metadataConcurrency,
+        scheduler: scheduler(), // owner: T17
       });
       const ids = [...new Set(courses().map(({ resource }) => resource.courseId))];
       const probe = await fetchCanvasContentProbe(http, ids, signal, s.metadataConcurrency);
@@ -746,6 +768,7 @@ export function createIngestion(store: Store, host: IngestionHost) {
     for await (const batch of canvasConnector({
       fetch: host.canvasFetch,
       metadataConcurrency: s.metadataConcurrency,
+      scheduler: scheduler(), // owner: T17
       collectComments: s.collectComments,
       selectedTerm: s.selectedTerm,
       courseOverrides: store.courseOverrides(),
@@ -811,12 +834,40 @@ export function createIngestion(store: Store, host: IngestionHost) {
       });
     }
   }
+  // owner: T17. One sync after sign-in. Main's `reconnected` only re-arms the coordinator; the
+  // renderer's sync call (startSignIn) owns the read. If a background tick got to it first, a
+  // manual call while that read runs joins it (the coordinator's own guard), and one that arrives
+  // within a minute after it finished is answered by it instead of reading everything again.
+  let signInPending = false,
+    signInRead: { at: number; run: Awaited<ReturnType<typeof coordinator.tick>> } | undefined;
+  function tick(trigger: "manual" | "background" = "background") {
+    if (trigger === "manual" && signInRead && now().getTime() - signInRead.at < 60_000) {
+      const { run } = signInRead;
+      signInRead = undefined;
+      return Promise.resolve(run);
+    }
+    const running = coordinator.tick(trigger);
+    if (signInPending) {
+      signInPending = false;
+      const claimed = trigger;
+      void running.then((run) => {
+        if (run?.action === "refreshed" && !run.needsSignIn) {
+          if (claimed === "background") signInRead = { at: now().getTime(), run };
+        } else signInPending = true; // nothing was read: the next tick still owns the sign-in sync
+      });
+    }
+    return running;
+  }
+  // end owner: T17
   return {
     ...coordinator,
+    tick, // owner: T17
     markExpired,
     // owner: T05b
     reconnected() {
       recheckAll = true;
+      signInPending = true; // owner: T17
+      signInRead = undefined; // owner: T17
       coordinator.reconnected();
     },
     spaces: () => [...spaces.values()].flat(),
