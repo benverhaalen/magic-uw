@@ -1,0 +1,52 @@
+{
+  "registered": "2026-09-27",
+  "registeredBy": "the item-quality harness builder (branch feat/item-eval), before any rating",
+  "note": "The blind rubric for generated flashcards and quiz items (measurement plan MS4 'human-rated rubric'). Raters see items with no system name, no source quote and one normalised format; the key to which system wrote which item is sealed until scoring. Each dimension is an ordinal 1-4 scale; 'na' only where the dimension says so.",
+  "scale": [1, 2, 3, 4],
+  "acceptable": 3,
+  "dimensions": [
+    {
+      "id": "accuracy",
+      "question": "Is the item correct according to the course material given as the reference?",
+      "anchors": { "1": "Wrong: the keyed answer contradicts the reference, or more than one answer is right.", "2": "Partly wrong or ambiguous: a careful student could defend another answer.", "3": "Correct, with a minor imprecision that would not mislead.", "4": "Correct and exactly as the reference states it." },
+      "na": false
+    },
+    {
+      "id": "clarity",
+      "question": "Can a student tell exactly what is asked and what counts as the answer?",
+      "anchors": { "1": "Unclear what is asked.", "2": "Answerable, but wording, blank placement or format gets in the way.", "3": "Clear, with small wording issues.", "4": "Clear and concise." },
+      "na": false
+    },
+    {
+      "id": "examRelevance",
+      "question": "Does the item test something this course would plausibly assess, rather than trivia from the material?",
+      "anchors": { "1": "Trivia or incidental detail (a speaker's aside, a page artefact).", "2": "Peripheral.", "3": "A relevant fact or skill.", "4": "A central concept or skill of the course." },
+      "na": false
+    },
+    {
+      "id": "difficultyFit",
+      "question": "Is the difficulty right for a student preparing for this course's exam (not a giveaway, not beyond the material)?",
+      "anchors": { "1": "A giveaway (the answer is visible or guessable from the wording) or beyond the material.", "2": "Too easy or too hard for the course level.", "3": "Reasonable.", "4": "Well pitched: requires the knowledge the course teaches." },
+      "na": false
+    },
+    {
+      "id": "distractorQuality",
+      "question": "Multiple choice only: are the wrong options plausible to a student who has not learned the idea, and clearly wrong to one who has?",
+      "anchors": { "1": "Implausible or off-topic distractors, or a distractor is also right.", "2": "One or more distractors are obviously wrong (length, form or topic gives them away).", "3": "Mostly plausible.", "4": "All plausible, same form and length as the key, each clearly wrong." },
+      "na": true
+    }
+  ],
+  "pairwise": {
+    "question": "Which of the two items would better prepare a student for this course's exam? Answer A, B or tie.",
+    "orderSwap": "Every pair is presented twice, once in each order, in separately shuffled positions. A pair counts toward a preference only when both presentations agree (Zheng et al. 2023, arXiv 2306.05685: position bias; swap consistency is reported)."
+  },
+  "raters": {
+    "rules": [
+      "An LLM rater must be a different model family from every generator whose items are in the set (measurement plan MT4); the scorer refuses otherwise.",
+      "Rate against the reference material, not general knowledge (reference-guided judging; Zheng et al. 2023 reports it cut wrong 'correct' math verdicts from 14 of 20 to 3 of 20).",
+      "Math and numeric items: the harness's code recomputation is the reference for the value; the rater judges wording and relevance.",
+      "Never open the sealed folder before scoring."
+    ],
+    "agreement": "With two raters on overlapping tasks: quadratic-weighted Cohen's kappa per ordinal dimension (never pooled across dimensions), Cohen's kappa for the pairwise verdict. With rotating raters or missing ratings, switch to Krippendorff's alpha (not implemented here)."
+  }
+}
