@@ -3,63 +3,172 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>My Magic UW</title>
-    <style>
-      body {
-        font:
-          16px/1.6 system-ui,
-          sans-serif;
-        color: #222;
-        background: #fbfbfa;
-        max-width: 760px;
-        margin: 12vh auto;
-        padding: 24px;
-      }
-      h1 {
-        font-size: 48px;
-        letter-spacing: -2px;
-        line-height: 1.1;
-      }
-      a {
-        color: inherit;
-      }
-      small {
-        color: #666;
-      }
-      section {
-        margin-top: 48px;
-        border-top: 1px solid #ddd;
-        padding-top: 24px;
-      }
-    </style>
+    <title>Magic Canvas · Stop managing school. Start learning.</title>
+    <meta
+      name="description"
+      content="An AI workspace for UW–Madison students that already knows your classes and turns your free time into learning that fits the course."
+    />
+    <!--#head-->
   </head>
   <body>
-    <small>MY MAGIC UW · UW–MADISON</small>
-    <h1>Stop managing school.<br />Start learning.</h1>
-    <p>
-      A desktop workspace for your classes, the materials you need, and learning
-      that fits you.
-    </p>
-    <section>
-      <h2>Built around your data</h2>
-      <p>
-        Course records stay on your device. Hosted AI receives only selected
-        context when you enable sharing. Fully local mode keeps hosted
-        processing off.
-      </p>
-      <p>
-        My Magic UW is in development. Signed Mac and Windows downloads are not
-        available yet.
-      </p>
-      <a href="https://github.com/benverhaalen/magic-uw"
-        >Follow development on GitHub ↗</a
-      >
-    </section>
-    <section>
-      <small
-        >Student project at Badger BuildFest 2026. Not an official UW–Madison
-        service.</small
-      >
-    </section>
+    <div class="page">
+      <!--#header home-->
+      <main class="rooms">
+        <section class="room bg-yellow hero" aria-labelledby="hero-title">
+          <div class="hero-copy">
+            <h1 class="display" id="hero-title">Stop managing school. Start learning.</h1>
+            <p class="lede">
+              An AI workspace that already knows your classes and turns your free time into
+              learning that fits the course.
+            </p>
+            <div class="btn-row">
+              <span class="btn btn-navy btn-soon">Mac download coming soon</span>
+              <a class="btn btn-white" href="https://github.com/benverhaalen/magic-uw">Follow on GitHub</a>
+            </div>
+          </div>
+          <div class="hero-art">
+            <img src="/assets/logo/mark-color.svg" alt="" width="148" height="238" />
+          </div>
+        </section>
+
+        <section class="pillars" id="how" aria-label="How it works">
+          <div class="pillar bg-blue">
+            <h2>Know</h2>
+            <p class="body">
+              Every assignment already has its instructions next to it. Changed dates show what
+              they used to say.
+            </p>
+          </div>
+          <div class="pillar bg-sky">
+            <h2>Act</h2>
+            <p class="body">One click opens the pages, files and editor for the thing you're working on.</p>
+          </div>
+          <div class="pillar bg-butter">
+            <h2>Practice</h2>
+            <p class="body">Questions in the style of this course, with one gap and one next step at a time.</p>
+          </div>
+        </section>
+
+        <section class="room bg-paper split" aria-labelledby="today-title">
+          <div class="today" aria-label="Example Today view with illustrative courses">
+            <div class="today-label">TODAY</div>
+            <div class="today-row"><strong>CS 400 · P3 Hash tables</strong><span>Due tonight · rubric ready</span></div>
+            <div class="today-row"><strong>MATH 234 · Exam Monday</strong><span>Practice 2 shaky skills</span></div>
+          </div>
+          <div class="stack">
+            <h2 class="title" id="today-title">One calm view of your day.</h2>
+            <p class="body">
+              Before class: prep. After class: review. Before an exam: practice. One useful action
+              for each item.
+            </p>
+          </div>
+        </section>
+
+        <section class="room bg-sky spaces" aria-labelledby="spaces-title">
+          <div class="spaces-head">
+            <div class="stack">
+              <div class="eyebrow">Assignment spaces</div>
+              <h2 class="title" id="spaces-title">One click opens everything it needs.</h2>
+            </div>
+            <p class="body">
+              Click an assignment and the homework, the textbook and your tools open together, in
+              the apps you already use.
+            </p>
+          </div>
+          <div class="stage" data-step="3" role="img" aria-label="Animation: clicking MATH 234 Homework 6 opens the Canvas assignment, the textbook page and Desmos side by side.">
+            <div class="today">
+              <div class="today-label">TODAY</div>
+              <div class="today-row"><strong>CS 400 · P3 Hash tables</strong><span>Due tonight · rubric ready</span></div>
+              <div class="today-row pick"><strong>MATH 234 · Homework 6</strong><span>Due Friday · 3 resources</span></div>
+              <div class="today-row"><strong>BIO 151 · Lab 4 pre-brief</strong><span>Before Friday's lab</span></div>
+            </div>
+            <div class="win win-canvas">
+              <div class="win-bar"><span class="win-dot" style="background: #e4572e"></span>Homework 6 · Canvas</div>
+              <div class="win-body">
+                <strong>MATH 234 · Homework 6</strong>
+                <span>3. Find the critical points of f(x, y) = x³ − 3xy + y³ and classify each one.</span>
+              </div>
+            </div>
+            <div class="win win-book">
+              <div class="win-bar"><span class="win-dot" style="background: #d94f3d; height: 18px; border-radius: 2px"></span>Calculus textbook.pdf · p. 959</div>
+              <div class="win-body">
+                <strong>14.7 Maximum and minimum values</strong>
+                <span>A point (a, b) is a critical point of f if f<sub>x</sub>(a, b) = 0 and f<sub>y</sub>(a, b) = 0…</span>
+              </div>
+            </div>
+            <div class="win win-desmos">
+              <div class="win-bar"><span class="win-dot" style="background: #2f9e44"></span>Desmos · Graphing calculator</div>
+              <div class="desmos">
+                <ol>
+                  <li>x³−3xy+y³=0</li>
+                  <li>(1, 1)</li>
+                  <li>(0, 0)</li>
+                </ol>
+                <svg viewBox="0 0 220 250" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+                  <g stroke="#eceff4" stroke-width="1"><path d="M0 25H220M0 75H220M0 175H220M0 225H220M30 0V250M80 0V250M180 0V250"></path></g>
+                  <path d="M0 125H220M130 0V250" stroke="#9aa3b2" stroke-width="1.5"></path>
+                  <path d="M60 250 C95 170 110 140 130 125 C150 110 185 95 220 60" fill="none" stroke="#2c55b8" stroke-width="3"></path>
+                  <path d="M130 125 C150 75 185 70 180 95 C175 120 150 125 130 125 Z" fill="none" stroke="#2c55b8" stroke-width="3"></path>
+                  <circle cx="130" cy="125" r="5" fill="#e4572e"></circle>
+                  <circle cx="170" cy="92" r="5" fill="#e4572e"></circle>
+                </svg>
+              </div>
+            </div>
+            <div class="cursor" aria-hidden="true">
+              <svg width="26" height="30" viewBox="0 0 26 30"><path d="M2 2 L2 24 L8 18.5 L12.5 28 L16.5 26 L12 17 L20 17 Z" fill="#1b1d33" stroke="#fff" stroke-width="2" stroke-linejoin="round"></path></svg>
+            </div>
+          </div>
+        </section>
+
+        <section class="room bg-butter notebook" aria-labelledby="notebook-title">
+          <div class="notebook-head">
+            <div class="stack">
+              <div class="eyebrow">Study notebook</div>
+              <h2 class="title" id="notebook-title">Made from your actual course.</h2>
+            </div>
+            <div class="arrows">
+              <button class="arrow" type="button" data-scroll="-1" aria-label="Previous">←</button>
+              <button class="arrow dark" type="button" data-scroll="1" aria-label="Next">→</button>
+            </div>
+          </div>
+          <ul class="cards" data-cards>
+            <li class="card"><div class="card-art bg-sky"><svg aria-hidden="true" focusable="false" width="96" height="96" viewBox="0 0 80 80"><rect x="18" y="8" width="44" height="64" rx="5" fill="#fff" stroke="#1b1d33" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></rect><rect x="25" y="22" width="10" height="10" rx="2" fill="#fff" stroke="#1b1d33" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></rect><path d="M40 27H54" stroke="#1b1d33" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></path><path d="M26.5 27 L29.5 30 L34 23" fill="none" stroke="#2c55b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="30" style="animation:mcDraw 3.6s 0s infinite ease-in-out;transform-box:fill-box;transform-origin:center"></path><rect x="25" y="38" width="10" height="10" rx="2" fill="#fff" stroke="#1b1d33" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></rect><path d="M40 43H54" stroke="#1b1d33" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></path><path d="M26.5 43 L29.5 46 L34 39" fill="none" stroke="#2c55b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="30" style="animation:mcDraw 3.6s 0.45s infinite ease-in-out;transform-box:fill-box;transform-origin:center"></path><rect x="25" y="54" width="10" height="10" rx="2" fill="#fff" stroke="#1b1d33" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></rect><path d="M40 59H54" stroke="#1b1d33" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></path><path d="M26.5 59 L29.5 62 L34 55" fill="none" stroke="#2c55b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="30" style="animation:mcDraw 3.6s 0.9s infinite ease-in-out;transform-box:fill-box;transform-origin:center"></path></svg></div><div class="card-text"><h3>Practice exams</h3><p>In the style of past exams</p></div></li>
+            <li class="card"><div class="card-art bg-yellow"><svg aria-hidden="true" focusable="false" width="96" height="96" viewBox="0 0 80 80"><rect x="16" y="20" width="46" height="34" rx="5" fill="#fffdf7" stroke="#1b1d33" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" transform="rotate(-8 39 37)"></rect><g style="animation:mcFlip 4s 0s infinite ease-in-out;transform-box:fill-box;transform-origin:center"><rect x="18" y="26" width="46" height="34" rx="5" fill="#fff" stroke="#1b1d33" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></rect><g style="animation:mcFaceA 4s infinite"><text x="41" y="50" text-anchor="middle" font-family="Young Serif, serif" font-size="20" fill="#1b1d33">?</text></g><g style="animation:mcFaceB 4s infinite"><path d="M28 38H54M28 46H48" stroke="#1b1d33" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></path></g></g></svg></div><div class="card-text"><h3>Flashcards</h3><p>From terms and missed answers</p></div></li>
+            <li class="card"><div class="card-art bg-sky"><svg aria-hidden="true" focusable="false" width="96" height="96" viewBox="0 0 80 80"><rect x="10" y="14" width="60" height="44" rx="5" fill="#fff" stroke="#1b1d33" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></rect><rect x="18" y="29" width="36" height="8" rx="2" fill="#f7c440" style="animation:mcSweep 3.4s 0s infinite ease-in-out;transform-box:fill-box;transform-origin:left"></rect><path d="M20 24H52M20 33H50M20 42H44M20 50H38" stroke="#1b1d33" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></path><path d="M40 58V66M30 68H50" stroke="#1b1d33" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></path></svg></div><div class="card-text"><h3>Lecture digests</h3><p>Every lecture, with page numbers</p></div></li>
+            <li class="card"><div class="card-art bg-navy"><svg aria-hidden="true" focusable="false" width="96" height="96" viewBox="0 0 80 80"><rect x="10.5" y="16" width="7" height="48" rx="3.5" fill="#fff" style="animation:mcBar 1.1s 0s infinite ease-in-out;transform-box:fill-box;transform-origin:bottom"></rect><rect x="22.5" y="16" width="7" height="48" rx="3.5" fill="#f7c440" style="animation:mcBar 1.1s 0.14s infinite ease-in-out;transform-box:fill-box;transform-origin:bottom"></rect><rect x="34.5" y="16" width="7" height="48" rx="3.5" fill="#fff" style="animation:mcBar 1.1s 0.28s infinite ease-in-out;transform-box:fill-box;transform-origin:bottom"></rect><rect x="46.5" y="16" width="7" height="48" rx="3.5" fill="#f7c440" style="animation:mcBar 1.1s 0.42000000000000004s infinite ease-in-out;transform-box:fill-box;transform-origin:bottom"></rect><rect x="58.5" y="16" width="7" height="48" rx="3.5" fill="#fff" style="animation:mcBar 1.1s 0.56s infinite ease-in-out;transform-box:fill-box;transform-origin:bottom"></rect></svg></div><div class="card-text"><h3>Review podcasts</h3><p>Quizzes you out loud</p></div></li>
+            <li class="card"><div class="card-art bg-sky"><svg aria-hidden="true" focusable="false" width="96" height="96" viewBox="0 0 80 80"><path d="M22 22 L56 30 M22 22 L30 58 M56 30 L30 58 M56 30 L60 60" fill="none" stroke="#2c55b8" stroke-width="3" stroke-linecap="round" stroke-dasharray="44" style="animation:mcDraw 3.6s infinite ease-in-out;stroke-dashoffset:0"></path><circle cx="22" cy="22" r="7.5" fill="#f7c440" stroke="#1b1d33" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></circle><circle cx="56" cy="30" r="7.5" fill="#fff" stroke="#1b1d33" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></circle><circle cx="30" cy="58" r="7.5" fill="#fff" stroke="#1b1d33" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></circle><circle cx="60" cy="60" r="7.5" fill="#fff" stroke="#1b1d33" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></circle></svg></div><div class="card-text"><h3>Concept maps</h3><p>You draw the links</p></div></li>
+            <li class="card"><div class="card-art bg-yellow"><svg aria-hidden="true" focusable="false" width="96" height="96" viewBox="0 0 80 80"><rect x="18" y="8" width="44" height="64" rx="5" fill="#fff" stroke="#1b1d33" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></rect><path d="M26 22H48M26 32H54M26 42H50M26 52H42" stroke="#1b1d33" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></path><polygon points="56,46 59.3,53.2 67,54 61.2,59.2 62.8,67 56,63 49.2,67 50.8,59.2 45,54 52.7,53.2" fill="#f7c440" stroke="#1b1d33" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" style="animation:mcPop 3.2s 0s infinite ease-in-out;transform-box:fill-box;transform-origin:center"></polygon></svg></div><div class="card-text"><h3>Exam sheets</h3><p>Everything on one page</p></div></li>
+          </ul>
+        </section>
+
+        <section class="room bg-navy ai" aria-labelledby="ai-title">
+          <h2 class="title" id="ai-title">Bring your own AI, or run it locally.</h2>
+          <div>
+            <ul class="chips">
+              <li class="chip"><img src="/assets/providers/openai.svg" alt="" />ChatGPT</li>
+              <li class="chip"><img src="/assets/providers/claude.svg" alt="" />Claude</li>
+              <li class="chip"><img src="/assets/providers/gemini.svg" alt="" />Gemini</li>
+              <li class="chip local">Local model</li>
+            </ul>
+            <p class="body">Stored on your device. Your UW password never goes to an AI.</p>
+          </div>
+        </section>
+
+        <section class="closer" id="download" aria-labelledby="download-title">
+          <img src="/assets/logo/mark-color.svg" alt="" width="148" height="238" />
+          <h2 id="download-title">Give your attention back to learning.</h2>
+          <p class="body">
+            Magic Canvas is in development for Badger BuildFest 2026. Mac and Windows downloads
+            will be here as soon as they're ready.
+          </p>
+          <div class="btn-row">
+            <span class="btn btn-blue btn-soon">Mac download coming soon</span>
+            <a class="btn btn-sky" href="https://github.com/benverhaalen/magic-uw">Follow on GitHub</a>
+          </div>
+        </section>
+      </main>
+      <!--#footer-->
+    </div>
+    <script src="/assets/site.js" defer></script>
   </body>
 </html>

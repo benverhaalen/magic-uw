@@ -2,6 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "installCommand": "",
-  "buildCommand": "mkdir -p apps/web/dist && cp apps/web/index.html apps/web/dist/index.html",
+  "buildCommand": "node scripts/build-web.mjs",
   "outputDirectory": "apps/web/dist"
 }

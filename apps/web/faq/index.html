@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>FAQ · Magic Canvas</title>
+    <meta name="description" content="Questions about Magic Canvas: getting started, AI and privacy, and pricing." />
+    <!--#head-->
+  </head>
+  <body>
+    <div class="page">
+      <!--#header faq-->
+      <main class="rooms">
+        <section class="room bg-sky faq" aria-labelledby="faq-title">
+          <div class="faq-head">
+            <div class="stack" style="gap: 16px; max-width: 720px">
+              <div class="eyebrow">FAQ</div>
+              <h1 class="display" id="faq-title">Questions, answered.</h1>
+            </div>
+            <div class="filters" role="group" aria-label="Filter questions">
+              <button class="filter" type="button" data-filter="all" aria-pressed="true">All</button>
+              <button class="filter" type="button" data-filter="start" aria-pressed="false">Getting started</button>
+              <button class="filter" type="button" data-filter="privacy" aria-pressed="false">AI &amp; privacy</button>
+              <button class="filter" type="button" data-filter="pricing" aria-pressed="false">Pricing</button>
+            </div>
+          </div>
+
+          <div class="faq-body">
+            <div class="questions">
+              <details class="qa" data-cat="start" open>
+                <summary>What is Magic Canvas?</summary>
+                <p>An AI workspace that already knows your classes. It brings in Canvas, your calendar and UW GitLab, keeps every assignment with its instructions, opens what you need next, and builds practice in the style of your course.</p>
+              </details>
+              <details class="qa" data-cat="start">
+                <summary>What do I need to run it?</summary>
+                <p>A Mac or Windows computer and your UW sign-in. For the AI, all you need is Claude Code, Codex or Gemini CLI running on your machine. Or let Magic Canvas pick a local model that fits your computer.</p>
+              </details>
+              <details class="qa" data-cat="start">
+                <summary>Does it work outside computer science?</summary>
+                <p>Yes. It reads whatever your courses publish in Canvas: modules, pages, files, quizzes, discussions and announcements. How much it can do depends on what your instructors post.</p>
+              </details>
+              <details class="qa" data-cat="start">
+                <summary>Can I download it today?</summary>
+                <p>Magic Canvas is being built for Badger BuildFest 2026. The download will be on this site as soon as it's ready.</p>
+              </details>
+              <details class="qa" data-cat="privacy" id="privacy">
+                <summary>Where is my course data stored?</summary>
+                <p>On your device. When a feature needs your AI, only the context for that request is sent, such as the relevant course excerpt and your question, and Magic Canvas shows you what's included.</p>
+              </details>
+              <details class="qa" data-cat="privacy">
+                <summary>Does my UW password ever go to an AI?</summary>
+                <p>Never. Passwords, cookies and sign-in tokens are never sent to any AI provider.</p>
+              </details>
+              <details class="qa" data-cat="privacy">
+                <summary>Can it submit or post for me?</summary>
+                <p>No. Magic Canvas reads your school systems. It never submits assignments, enrolls you in anything or posts on your behalf.</p>
+              </details>
+              <details class="qa" data-cat="privacy">
+                <summary>Will it help me break my course’s AI rules?</summary>
+                <p>It checks your course's AI policy before helping. If the policy limits a request, it quotes the policy and suggests something that is allowed.</p>
+              </details>
+              <details class="qa" data-cat="privacy">
+                <summary>What is Jev?</summary>
+                <p>Jev makes the small judgments behind the scenes, like what matters most today. We pay for it and run it through our own server, and it gets only what it needs for each decision. A fully local mode turns it off, with some features limited.</p>
+              </details>
+              <details class="qa" data-cat="pricing">
+                <summary>How much does it cost?</summary>
+                <p>The Magic Canvas app is a one-time $10. The data pipeline underneath it is free and open source. This is planned pricing for the prototype.</p>
+              </details>
+              <details class="qa" data-cat="pricing">
+                <summary>Do I also pay for AI?</summary>
+                <p>You pay your AI provider directly for your own usage. A local model costs nothing. Jev processing is on us.</p>
+              </details>
+              <details class="qa" data-cat="pricing">
+                <summary>Can I use the data pipeline without the app?</summary>
+                <p>Yes. It's open source on GitHub, and its local MCP server lets your own AI app read your course data.</p>
+              </details>
+            </div>
+
+            <aside class="ask" aria-labelledby="ask-title">
+              <img src="/assets/logo/mark-on-dark.svg" alt="" width="148" height="238" />
+              <h2 id="ask-title">Still have a question?</h2>
+              <p>We're a team of four building Magic Canvas for Badger BuildFest 2026. Ask us anything.</p>
+              <a class="btn btn-yellow" href="mailto:amnorthcutt@wisc.edu,spleahy@wisc.edu,ngarelik@wisc.edu,bverhaalen@wisc.edu">Email the team</a>
+              <a class="underline" href="https://github.com/benverhaalen/magic-uw/issues">Open an issue on GitHub</a>
+            </aside>
+          </div>
+        </section>
+      </main>
+      <!--#footer-->
+    </div>
+    <script src="/assets/site.js" defer></script>
+  </body>
+</html>
