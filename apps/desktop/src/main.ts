@@ -385,6 +385,19 @@ app
         }
         return;
       }
+      // owner: client-health (D36, D50). Gemini's key for the worker's runner, only when the
+      // worker builds a Gemini backend. Read from the safeStorage vault; never logged.
+      if (message.kind === "ai-key") {
+        try {
+          if (message.payload?.provider !== "gemini") throw new Error();
+          const key = await vault.get("ai-key:gemini");
+          worker.postMessage({ kind: "source-response", id: message.id, result: { key: key || null } });
+        } catch {
+          worker.postMessage({ kind: "source-response", id: message.id, error: true });
+        }
+        return;
+      }
+      // end owner: client-health
       // owner: T30. The worker's Graph delta links and watermarks, in the encrypted vault.
       if (message.kind === "graph-state") {
         try {
@@ -999,6 +1012,33 @@ app
       await (await clients()).terminal.close(event.sender, sessionId);
     });
     // end owner: T80
+    // owner: client-health (D50). Health per client and mode, the saved mode, and Gemini's key
+    // (safeStorage vault; presence only crosses). Checks run the client's own --version, --help and
+    // status commands: no model call, no credential read, nothing sent to a provider.
+    let healthRuntime: import("./clients").ClientHealthRuntime | undefined;
+    async function clientHealth() {
+      if (healthRuntime) return healthRuntime;
+      const { createClientHealth } = await import("./clients");
+      healthRuntime = createClientHealth({ userData: data, vault });
+      return healthRuntime;
+    }
+    ipcMain.handle("magic:clients-health", async (event, id: unknown, mode?: unknown) => {
+      validateSender(event);
+      return (await clientHealth()).health(id, mode);
+    });
+    ipcMain.handle("magic:clients-set-mode", async (event, id: unknown, mode: unknown) => {
+      validateSender(event);
+      return (await clientHealth()).setMode(id, mode);
+    });
+    ipcMain.handle("magic:clients-gemini-key", async (event, op: unknown, key?: unknown) => {
+      validateSender(event);
+      const keys = (await clientHealth()).geminiKey;
+      if (op === "status") return keys.status();
+      if (op === "save") return keys.save(key);
+      if (op === "remove") return keys.remove();
+      throw new Error("Unknown key operation.");
+    });
+    // end owner: client-health
     ipcMain.handle("magic:execute", async (event, command) => {
       validateSender(event);
       const purging = command?.type === "purge";
@@ -1384,10 +1424,15 @@ app
       "magic:signin",
       async (event, requestedService?: unknown) => {
         validateSender(event);
-        if (requestedService !== undefined && !isSignInService(requestedService))
-          throw new Error("Unsupported sign-in source.");
-        if (!(await consentGate("magic:signin"))) throw new Error(consentRefused);
-        await openSignIn(requestedService);
+        // owner: client-health (FDB-002). The window's confirmed/cancelled result is returned as a
+        // typed SignInOutcome instead of being dropped; validation and the consent gate are unchanged.
+        const { handleSignInRequest } = await import("./sign-in-outcome");
+        return handleSignInRequest(requestedService, {
+          consented: () => consentGate("magic:signin"),
+          refused: consentRefused,
+          open: (service) => openSignIn(service),
+        });
+        // end owner: client-health
       },
     );
     // end owner: T05c
