@@ -70,6 +70,8 @@ ChatGPT, Claude, and Gemini are selectable data preferences and context-preview 
 | --------------------- | ------------------------------------------------------------------------------------------------------------- |
 | `apps/desktop`        | Isolated renderer/preload, browser session, desktop capabilities, local worker                                |
 | `apps/gateway`        | Narrow Jev endpoint, owner credential, enrollment and persistent usage limits                                 |
+| `api`                 | Vercel functions beside the website: the Lemon Squeezy payment webhook ([accounts and payments](accounts-and-payments.md)) |
+| `supabase/migrations` | Account and purchase-status schema for the hosted Supabase project |
 | `apps/web`            | Four-page website (Home, Pricing, About, FAQ) from the `marketing/` design exports; brand colours from the wizard palette (`marketing/logo-design-elements/README.md`), ink, surfaces and fonts from `docs/design/tokens.css`. `node scripts/build-web.mjs` fills shared header/footer into `apps/web/dist`, which Vercel serves via `vercel.json`. No download link until a release exists |
 | `packages/contracts`  | Shared schemas, store interface, commands, and renderer bridge                                                |
 | `packages/domain`     | Pure deadline resolution and data-sharing rules                                                               |

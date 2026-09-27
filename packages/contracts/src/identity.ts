@@ -39,7 +39,19 @@ export type RedactionKind =
   | "email"
   | "netid"
   | "student_id"
-  | "phone";
+  | "phone"
+  // owner: privacy. The code detectors beyond the roster (packages/core/src/privacy).
+  | "person"
+  | "secret_url"
+  | "card"
+  | "ssn"
+  | "campus_id"
+  | "dob"
+  | "address"
+  | "ip"
+  | "canvas_user";
+/** owner: privacy. Replacements per kind in one hosted send; never the values. */
+export type ProtectionCounts = Partial<Record<RedactionKind, number>>;
 /** What a manifest discloses about scrubbing; never contains original values. */
 export interface RedactionSummary {
   applied: boolean;

@@ -79,19 +79,26 @@ const bridge: AppBridge = {
   execute: (command) => ipcRenderer.invoke("magic:execute", command),
   openExternal: (url) => ipcRenderer.invoke("magic:open", url),
   openLink: (url) => ipcRenderer.invoke("magic:open-link", url), // owner: T05b
+  openDocument: (url) => ipcRenderer.invoke("magic:open-document", url), // owner: doc-window
   query: (request) => ipcRenderer.invoke("magic:query", request), // owner: T15
   startWork: (id, previewHash, only) => ipcRenderer.invoke("magic:start-work", id, previewHash, only),
   graph: (request) => ipcRenderer.invoke("magic:graph", request), // owner: pipeline
   importFile: () => ipcRenderer.invoke("magic:import"),
   signInUW: (service) => ipcRenderer.invoke("magic:signin", service),
-  syncCanvas: () => ipcRenderer.invoke("magic:sync"),
-  syncPlanning: () => ipcRenderer.invoke("magic:planning-sync"),
+  syncCanvas: (options?: { discover?: boolean; confirm?: boolean }) =>
+    ipcRenderer.invoke(
+      "magic:sync",
+      options?.confirm === true ? { confirm: true } : options?.discover === true ? { discover: true } : undefined,
+    ),
+  syncPlanning: (options?: { phase?: "enrollment" }) =>
+    ipcRenderer.invoke("magic:planning-sync", options?.phase === "enrollment" ? { phase: "enrollment" } : undefined),
   signOutUW: () => ipcRenderer.invoke("magic:signout"),
   localStatus: () => ipcRenderer.invoke("magic:local-status"),
   localAsk: (request) => ipcRenderer.invoke("magic:local-ask", request),
   cancelLocal: () => ipcRenderer.invoke("magic:local-cancel"),
   exportMcp: (id) => ipcRenderer.invoke("magic:mcp-export", id),
   keepSignedIn: (value) => ipcRenderer.invoke("magic:keep-signed-in", value),
+  rememberSignIn: (op) => ipcRenderer.invoke("magic:remember-signin", op), // owner: T05e
   clients,
   // owner: voice. Model files only; audio stays in the renderer.
   voice: {
@@ -110,5 +117,14 @@ const bridge: AppBridge = {
   calendarProposeEvent: (input) => ipcRenderer.invoke("magic:calendar-propose-event", input),
   calendarCreateEvent: (proposalId) => ipcRenderer.invoke("magic:calendar-create-event", proposalId),
   // end owner: T30
+  // owner: accounts. Sign-in code and purchase status; tokens stay in main.
+  account: {
+    status: () => ipcRenderer.invoke("magic:account-status"),
+    sendCode: (email) => ipcRenderer.invoke("magic:account-send-code", email),
+    verifyCode: (email, code) => ipcRenderer.invoke("magic:account-verify", email, code),
+    signOut: () => ipcRenderer.invoke("magic:account-sign-out"),
+    buy: () => ipcRenderer.invoke("magic:account-buy"),
+  },
+  // end owner: accounts
 };
 contextBridge.exposeInMainWorld("magic", bridge);

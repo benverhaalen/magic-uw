@@ -35,9 +35,14 @@ import {
 import { MaterialReadError } from "../../../packages/connectors/src/network";
 // end owner: acquisition
 import { clearSignOutSecrets, createSecretVault } from "./secrets";
+import { createAccount } from "./account";
 import { purgeHostData } from "./purge-host"; // owner: platform-fix
 import { createVoiceStore } from "./voice/store"; // owner: voice
 import { allowsVoiceMic } from "./voice/permission"; // owner: voice
+// owner: doc-window. A synced note's Word online or Google Doc in a signed-in window on persist:uw.
+import { createDocWindows } from "./doc-window";
+import { handleOpenDocument } from "./doc-window-policy";
+// end owner: doc-window
 import { createGoogleNotesAuth } from "./notes-google"; // owner: notes
 // owner: T30. Outlook through the app's own Microsoft sign-in (Graph); the token stays in main.
 import { createOutlook, readOutlookConfig } from "./outlook";
@@ -65,7 +70,32 @@ import {
   type TrayAction,
 } from "./keep-signed-in";
 // end owner: T05c
+// owner: T05e. Remember my sign-in (plan D39).
+import {
+  PRESENT_IDLE_SECONDS,
+  REMEMBERED_SIGNIN_FILE,
+  autoSignInWanted,
+  emptyAutoSignInRecord,
+  nextAutoSignInRecord,
+  studentAtKeyboard,
+  type AutoSignInEvent,
+  createAutoSignIn,
+  createRememberedSignInStore,
+  isNetIdLoginPage,
+  parseCapture,
+  rememberAvailability,
+  rememberSignInBuildEnabled,
+  type SignInCapture,
+  type SignInPageState,
+} from "./remember-signin";
+import {
+  canvasProfilePath,
+  canvasProfileSignedOut,
+} from "../../../packages/connectors/src/canvas-http";
+import type { RememberSignInStatus } from "@magic/contracts";
+// end owner: T05e
 import { CONSENT_DISCLOSURE_VERSION, consentGateAllows } from "../../../packages/core/src/egress"; // owner: T06
+import { logLine, redactForLog } from "../../../packages/core/src/privacy/log"; // owner: privacy
 import { consentRecordSchema, type ConsentRecord } from "@magic/contracts"; // owner: T06
 import { launchWorkSet, materializeCopy, selectWorkRetry } from "../../../packages/core/src/work-set";
 import {
@@ -141,7 +171,8 @@ function trialPath(input: string): string {
 function trialLog(event: Record<string, unknown>) {
   const file = process.env.MAGIC_TRIAL_LOG;
   if (!file) return;
-  void appendFile(file, JSON.stringify({ at: new Date().toISOString(), ...event }) + "\n").catch(() => {});
+  // owner: privacy: every line is redacted (URL → host + path class, no query, no identifiers).
+  void appendFile(file, logLine({ at: new Date().toISOString(), ...event })).catch(() => {});
 }
 function allowedLogin(input: string) {
   try {
@@ -194,6 +225,34 @@ app
       encrypt: (value) => safeStorage.encryptString(value),
       decrypt: (value) => safeStorage.decryptString(Buffer.from(value)),
     });
+    // owner: T05e. Remember my sign-in (plan D39): its own encrypted file, apart from the vault the
+    // worker's messages can reach. MAGIC_REMEMBER_SIGNIN is baked in by scripts/build.ts.
+    const remembered = createRememberedSignInStore(join(data, REMEMBERED_SIGNIN_FILE), {
+      available: () => safeStorage.isEncryptionAvailable(),
+      encrypt: (value) => safeStorage.encryptString(value),
+      decrypt: (value) => safeStorage.decryptString(Buffer.from(value)),
+    });
+    const rememberState = () =>
+      rememberAvailability({
+        buildEnabled: rememberSignInBuildEnabled(process.env.MAGIC_REMEMBER_SIGNIN),
+        encryptionAvailable: safeStorage.isEncryptionAvailable(),
+        platform: process.platform,
+        linuxBackend:
+          process.platform === "linux" ? safeStorage.getSelectedStorageBackend() : undefined,
+      });
+    // A build with the switch off keeps no saved sign-in from an earlier build.
+    if (rememberState().state === "off") await remembered.forget().catch(() => {});
+    // end owner: T05e
+    // owner: accounts. My Magic UW account and purchase status (docs/accounts-and-payments.md).
+    const account = createAccount(
+      {
+        url: process.env.MAGIC_SUPABASE_URL || undefined,
+        anonKey: process.env.MAGIC_SUPABASE_ANON_KEY || undefined,
+        accountUrl: process.env.MAGIC_ACCOUNT_URL || undefined,
+      },
+      { vault },
+    );
+    // end owner: accounts
     // owner: notes. Google Docs sync: OAuth (PKCE, loopback) and the Drive proxy; the token stays here.
     const notesGoogle = createGoogleNotesAuth({
       clientId: process.env.MAGIC_GOOGLE_CLIENT_ID || undefined,
@@ -243,7 +302,16 @@ app
       callback(false),
     );
     studentSession.setPermissionCheckHandler(() => false);
-    studentSession.on("will-download", (event) => event.preventDefault());
+    // owner: doc-window. Only a document window may download (the save prompt, Downloads only).
+    const docWindows = createDocWindows({
+      openExternal: (url) => shell.openExternal(url),
+      trialLog,
+    });
+    studentSession.on("will-download", (event, item, contents) => {
+      if (docWindows.owns(contents)) return docWindows.download(item, contents);
+      event.preventDefault();
+    });
+    // end owner: doc-window
     const worker = utilityProcess.fork(join(root, "worker.cjs"), [], {
       env: {
         ...process.env,
@@ -253,6 +321,40 @@ app
       stdio: "pipe",
       serviceName: "My Magic UW local workspace",
     });
+    // owner: privacy. The install secret: 32 random bytes wrapped by safeStorage in
+    // privacy-key.enc, sent to the worker over its channel (never env, argv or a log). The worker
+    // derives the at-rest and pseudonym keys from it. Purge deletes the file and sends a new one.
+    const privacyKeyPath = join(data, "privacy-key.enc");
+    async function privacySecret(): Promise<Buffer | null> {
+      if (!safeStorage.isEncryptionAvailable()) return null;
+      try {
+        return Buffer.from(safeStorage.decryptString(await readFile(privacyKeyPath)), "base64");
+      } catch (error) {
+        // An unreadable wrapped key is never overwritten: sealed rows might still open later.
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") return null;
+      }
+      const secret = randomBytes(32);
+      await writeFile(privacyKeyPath, safeStorage.encryptString(secret.toString("base64")), { mode: 0o600 });
+      return secret;
+    }
+    async function sendPrivacyKey() {
+      const secret = await privacySecret().catch(() => null);
+      worker.postMessage({ kind: "privacy-key", secret: secret ? secret.toString("base64") : null });
+      secret?.fill(0);
+    }
+    void sendPrivacyKey();
+    // end owner: privacy
+    // owner: client-detection. Off the launch path: the login shell's PATH (macOS, Linux; 2 s at
+    // most, once) plus every known install folder that exists, for main and then the worker, so
+    // a client installed through nvm, Volta or pnpm is found and a script-based one finds its node.
+    // Known folders are searched on every lookup anyway, so a timeout only loses shell-only folders.
+    void import("@magic/runner")
+      .then(({ extendPathForClients }) => extendPathForClients(process.env))
+      .then((added) => {
+        if (added.length) worker.postMessage({ kind: "client-path", path: process.env.PATH });
+      })
+      .catch(() => undefined);
+    // end owner: client-detection
     const calls = new Map<
       string,
       {
@@ -486,6 +588,7 @@ app
             http: planningHttp, accountSeed: planningAccountScope, signal: controller.signal,
             deadline: AbortSignal.timeout(70_000),
             storedAudits: message.payload?.storedAudits, freshSubjects: message.payload?.freshSubjects,
+            ...(message.payload?.phase === "enrollment" ? { phase: "enrollment" as const } : {}), // fix/current-courses-only
           });
           // end owner: planning-perf
           controller.signal.throwIfAborted();
@@ -686,6 +789,24 @@ app
               headers.location = to.origin + to.pathname;
             } catch {}
           }
+          // owner: T05e. A sync's profile read that confirms the session ended (spec A1): with
+          // Remember my sign-in on and the student present, the app signs in again.
+          if (
+            service === "canvas" &&
+            new URL(target).pathname === canvasProfilePath &&
+            canvasProfileSignedOut(
+              {
+                status: response.status,
+                body,
+                contentType: response.headers.get("content-type"),
+                location: headers.location,
+                url: response.url,
+              },
+              "https://canvas.wisc.edu",
+            )
+          )
+            void autoSignInAfterExpiry();
+          // end owner: T05e
           trialLog({ event: "fetch", service, to: trialPath(target), status: response.status, contentType: (response.headers.get("content-type") ?? "").split(";")[0], bytes: body.length, redirect: headers.location ? trialPath(headers.location) : undefined });
           worker.postMessage({
             kind: "source-response",
@@ -1062,18 +1183,23 @@ app
         if (purging) {
           for (const c of sourceReads.values()) c.abort();
           await vault.clear();
+          await remembered.forget(); // owner: T05e
           await outlook.disconnect().catch(() => {}); // owner: T30: tokens and state
           void postGraphScopes(); // owner: T30
           clientsRuntime?.terminal.closeAll(); // owner: T80
+          docWindows.closeAll(); // owner: doc-window: before persist:uw is cleared
           // owner: platform-fix. Both sessions lose their storage and their HTTP cache (sign-out
           // already cleared the cache; purge did not), and every app-owned folder goes.
           await purgeHostData({
             sessions: [studentSession, gitlabSession],
-            folders: [join(data, "clients"), join(data, "documents"), join(data, "mcp")], // clients: owner T80
+            folders: [join(data, "clients"), join(data, "documents"), join(data, "mcp"), join(data, "courses") /* owner: course-facts: syllabus.md briefs */], // clients: owner T80
             remove: (path) => rm(path, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }),
             also: [resetPlanningScope()],
           });
           // end owner: platform-fix
+          // owner: privacy: purge destroys the install secret; new data is sealed under a new one.
+          await rm(privacyKeyPath, { force: true });
+          await sendPrivacyKey();
         }
         return result;
       } finally {
@@ -1167,6 +1293,34 @@ app
       validateSender(event);
       worker.postMessage({ kind: "local-cancel" });
     });
+    // owner: accounts. Only the student's own actions reach the account server: no course data.
+    ipcMain.handle("magic:account-status", async (event) => {
+      validateSender(event);
+      return account.status();
+    });
+    ipcMain.handle("magic:account-send-code", async (event, email: unknown) => {
+      validateSender(event);
+      if (typeof email !== "string" || email.length > 320) return { sent: false, reason: "invalid" };
+      return account.sendCode(email);
+    });
+    ipcMain.handle("magic:account-verify", async (event, email: unknown, code: unknown) => {
+      validateSender(event);
+      if (typeof email !== "string" || email.length > 320 || typeof code !== "string" || code.length > 20)
+        return { signedIn: false, reason: "invalid" };
+      return account.verifyCode(email, code);
+    });
+    ipcMain.handle("magic:account-sign-out", async (event) => {
+      validateSender(event);
+      await account.signOut();
+    });
+    ipcMain.handle("magic:account-buy", async (event) => {
+      validateSender(event);
+      const url = account.buyUrl();
+      if (!url) throw new Error("Buying isn't set up in this build.");
+      if (headless) throw new Error("External windows are disabled in headless mode.");
+      await shell.openExternal(url);
+    });
+    // end owner: accounts
     ipcMain.handle("magic:open", async (event, url) => {
       validateSender(event);
       if (headless)
@@ -1214,6 +1368,17 @@ app
       await shell.openExternal(safeLinkCard(url));
     });
     // end owner: T05b
+    // owner: doc-window. A document link opens the signed-in document window; any other ordinary
+    // web link falls back to the default browser.
+    ipcMain.handle("magic:open-document", (event, url) => {
+      validateSender(event);
+      return handleOpenDocument(url, {
+        headless,
+        openWindow: (target) => docWindows.open(target),
+        openExternal: (target) => shell.openExternal(target),
+      });
+    });
+    // end owner: doc-window
     // Only stored destinations from the exact preview can launch. A retry is
     // restricted to failures in the previous receipt from this renderer.
     const workFailures = new Map<string, Set<string>>();
@@ -1284,8 +1449,9 @@ app
     // owner: T05c. magic:signin: one app-owned, visible sign-in window at a time (spec A1).
     // A second call while it is open waits for that window. Canvas and GitLab confirm with
     // their profile read; My UW and Enroll confirm with the existing session.json or
-    // student-info read and then close themselves. No script is injected, no field is read
-    // or filled, and no cookie is written.
+    // student-info read and then close themselves. No cookie is written. The only script is
+    // T05e's sign-in preload, which reads or fills the NetID form only on UW's exact NetID
+    // login origin, and only with Remember my sign-in ticked (signin-preload.ts).
     type SignInService = "canvas" | "gitlab" | "enroll" | "myuw";
     const isSignInService = (value: unknown): value is SignInService =>
       value === "canvas" || value === "gitlab" || value === "enroll" || value === "myuw";
@@ -1297,8 +1463,174 @@ app
       await writeSessionSettings(sessionSettingsPath, sessionSettings).catch(() => {});
     }
     const signInFlight = singleFlight<boolean>();
+    // owner: T05e. Remember my sign-in in the UW sign-in window. The window's preload
+    // (signin-preload.ts) sends two messages, accepted only from the open UW sign-in window's top
+    // frame while it is on UW's exact NetID login origin. A capture is held in memory and saved
+    // only once the sign-in is confirmed; an automatic window fills once and never retries.
+    let signInAttempt:
+      | {
+          contents: Electron.WebContents;
+          auto: ReturnType<typeof createAutoSignIn>;
+          pending?: SignInCapture;
+        }
+      | undefined;
+    // Present = input in the last minute, the screen unlocked, and one of the app's windows focused.
+    const studentPresent = () =>
+      studentAtKeyboard({
+        idleSeconds: powerMonitor.getSystemIdleTime(),
+        appFocused: BrowserWindow.getFocusedWindow() !== null,
+        locked: powerMonitor.getSystemIdleState(PRESENT_IDLE_SECONDS) === "locked",
+        headless,
+      });
+    // The automatic-attempt record (blocked flag and last open) lives in the session settings file,
+    // so the one-attempt-per-expiry rule and the spacing survive a restart.
+    const autoRecord = () => sessionSettings.autoSignIn ?? { ...emptyAutoSignInRecord };
+    async function recordAutoSignIn(event: AutoSignInEvent) {
+      const next = nextAutoSignInRecord(autoRecord(), event);
+      const current = autoRecord();
+      if (next.blocked === current.blocked && next.lastAt === current.lastAt) return;
+      sessionSettings = { ...sessionSettings, autoSignIn: next };
+      await writeSessionSettings(sessionSettingsPath, sessionSettings).catch(() => {});
+    }
+    /** The one decision for every automatic (filling) open; records the open when it says yes. */
+    async function claimAutoSignIn(): Promise<boolean> {
+      const saved = await remembered.saved(),
+        now = Date.now();
+      const wanted = autoSignInWanted({
+        availability: rememberState(),
+        saved,
+        present: studentPresent(),
+        headless,
+        signInOpen: signInFlight.pending,
+        record: autoRecord(),
+        now,
+      });
+      if (wanted) await recordAutoSignIn({ kind: "opened", at: now });
+      return wanted;
+    }
+    function signInFrame(event: IpcMainInvokeEvent | Electron.IpcMainEvent) {
+      const attempt = signInAttempt,
+        frame = event.senderFrame;
+      if (
+        !attempt ||
+        attempt.contents.isDestroyed() ||
+        event.sender !== attempt.contents ||
+        !frame ||
+        frame !== attempt.contents.mainFrame ||
+        !isNetIdLoginPage(frame.url)
+      )
+        throw new Error("Untrusted sign-in page.");
+      return attempt;
+    }
+    ipcMain.handle("magic-signin:page", async (event): Promise<SignInPageState> => {
+      const attempt = signInFrame(event);
+      const availability = rememberState();
+      if (availability.state === "off") return { offer: false };
+      if (availability.state === "unavailable")
+        return { offer: true, checked: false, disabledReason: availability.reason };
+      const saved = await remembered.saved();
+      const step = attempt.auto.formShown(saved);
+      if (step === "failed") {
+        // UW showed the NetID form again after the automatic submit: clear it, show the normal sign-in.
+        await remembered.forget();
+        trialLog({ event: "signin.remember", step: "auto-failed" });
+        return { offer: true, checked: false, notice: "failed" };
+      }
+      if (step === "fill") {
+        const fill = await remembered.load();
+        // Checked again after the awaits: the same window, its top frame, the exact origin.
+        signInFrame(event);
+        if (!fill) {
+          attempt.auto.abandon();
+          return { offer: true, checked: false };
+        }
+        trialLog({ event: "signin.remember", step: "auto-fill" });
+        return { offer: true, checked: true, fill };
+      }
+      return { offer: true, checked: saved };
+    });
+    ipcMain.on("magic-signin:capture", (event, payload: unknown) => {
+      let attempt: NonNullable<typeof signInAttempt>;
+      try {
+        attempt = signInFrame(event);
+      } catch {
+        return;
+      }
+      if (rememberState().state !== "available") return;
+      const capture = parseCapture(payload);
+      if (capture) attempt.pending = capture;
+    });
+    /** Wires one sign-in window; gitlab's window (its own partition) gets none of this. */
+    function trackSignIn(login: BrowserWindow, automatic: boolean, confirmedNow: () => boolean) {
+      const attempt = { contents: login.webContents, auto: createAutoSignIn(automatic) } as NonNullable<
+        typeof signInAttempt
+      >;
+      signInAttempt = attempt;
+      login.webContents.on("did-navigate", (_event, url) => attempt.auto.navigated(url));
+      login.webContents.on("did-fail-load", (_event, code, _description, _url, mainFrame) => {
+        // -3 is an aborted load (a newer navigation replaced it), not a failed sign-in.
+        if (mainFrame && code !== -3 && attempt.auto.loadFailed() === "failed") {
+          void remembered.forget().catch(() => {});
+          trialLog({ event: "signin.remember", step: "auto-failed" });
+        }
+      });
+      login.once("closed", () => {
+        if (signInAttempt === attempt) signInAttempt = undefined;
+        const confirmed = confirmedNow(),
+          pending = attempt.pending;
+        attempt.pending = undefined;
+        // An automatic window that closes unconfirmed blocks further automatic attempts until a
+        // confirmed sign-in or the student's own "Sign in again" (no Duo-push loop).
+        void recordAutoSignIn({ kind: "closed", automatic, confirmed });
+        if (attempt.auto.closed(confirmed) === "failed") {
+          void remembered.forget().catch(() => {});
+          trialLog({ event: "signin.remember", step: "auto-failed" });
+          return;
+        }
+        // Saved only after UW accepted it: a mistyped password is never stored.
+        if (!confirmed || !pending || rememberState().state !== "available") return;
+        const step = pending.remember ? "saved" : "declined";
+        void (pending.remember ? remembered.save(pending.signIn) : remembered.forget()).catch(
+          () => {},
+        );
+        trialLog({ event: "signin.remember", step });
+      });
+    }
+    /** A sync confirmed the session ended: sign in again, once per expiry, with the student here. */
+    async function autoSignInAfterExpiry() {
+      try {
+        if (!(await consentGate("magic:signin"))) return;
+        if (!(await claimAutoSignIn())) return;
+        trialLog({ event: "signin.remember", step: "auto-open" });
+        if (!(await openSignIn("canvas", true))) return;
+        const id = randomUUID();
+        const timer = setTimeout(() => {
+          calls.delete(id);
+          worker.postMessage({ kind: "refresh-cancel" });
+        }, 600_000);
+        calls.set(id, { resolve: () => {}, reject: () => {}, timer });
+        worker.postMessage({ kind: "refresh", id });
+      } catch {
+        /* The banner still offers Sign in again. */
+      }
+    }
+    ipcMain.handle(
+      "magic:remember-signin",
+      async (event, op: unknown): Promise<RememberSignInStatus> => {
+        validateSender(event);
+        if (op === "forget") await remembered.forget();
+        else if (op !== "status") throw new Error("Unknown operation.");
+        const availability = rememberState();
+        if (availability.state === "off") return { offered: false };
+        const saved = await remembered.saved();
+        return availability.state === "available"
+          ? { offered: true, available: true, saved }
+          : { offered: true, available: false, reason: availability.reason, saved };
+      },
+    );
+    // end owner: T05e
     /** Resolves when the window closes: true when a sign-in was confirmed. */
-    function openSignIn(requestedService?: SignInService): Promise<boolean> {
+    function openSignIn(requestedService?: SignInService, automatic = false): Promise<boolean> {
       if (headless)
         return Promise.reject(
           new Error(
@@ -1306,9 +1638,12 @@ app
           ),
         );
       if (signInFlight.pending) signIn?.focus();
-      return signInFlight.run(() => signInWindow(requestedService));
+      return signInFlight.run(() => signInWindow(requestedService, automatic));
     }
-    async function signInWindow(requestedService?: SignInService): Promise<boolean> {
+    async function signInWindow(
+      requestedService?: SignInService,
+      automatic = false, // owner: T05e: opened by the app, so a saved sign-in is filled
+    ): Promise<boolean> {
       const gitlab = requestedService === "gitlab",
         planning = requestedService === "enroll" || requestedService === "myuw"
           ? requestedService : undefined,
@@ -1328,6 +1663,8 @@ app
         autoHideMenuBar: true,
         webPreferences: {
           partition: gitlab ? "persist:gitlab" : "persist:uw",
+          // owner: T05e. The Remember my sign-in box, capture and fill (UW windows only).
+          ...(gitlab ? {} : { preload: join(root, "signin-preload.cjs") }),
           nodeIntegration: false,
           contextIsolation: true,
           sandbox: true,
@@ -1367,6 +1704,7 @@ app
           resolve();
         });
       });
+      if (!gitlab) trackSignIn(login, automatic, () => confirmed); // owner: T05e
       let checking = false;
       // Verify only after a user-driven navigation returns to the service; never keep a session alive.
       login.webContents.on("did-finish-load", async () => {
@@ -1454,7 +1792,11 @@ app
         return handleSignInRequest(requestedService, {
           consented: () => consentGate("magic:signin"),
           refused: consentRefused,
-          open: (service) => openSignIn(service),
+          // owner: T05e: the student's own sign-in lifts the one-automatic-attempt block.
+          open: async (service) => {
+            await recordAutoSignIn({ kind: "student-sign-in" });
+            return openSignIn(service);
+          },
         });
         // end owner: client-health
       },
@@ -1555,7 +1897,9 @@ app
         }
         // D33: after a previous sign-in, the UW window opens by itself.
         if (!decision.openSignIn || !(await consentGate("magic:signin"))) return;
-        if (!(await openSignIn("canvas"))) return;
+        // owner: T05e: opened by the app; it fills a saved sign-in only when the same rule as a
+        // sync's expiry allows it (at the keyboard, not blocked, spaced; recorded across restarts).
+        if (!(await openSignIn("canvas", await claimAutoSignIn()))) return;
         const id = randomUUID();
         const timer = setTimeout(() => {
           calls.delete(id);
@@ -1583,8 +1927,14 @@ app
       validateSender(event);
       return { connected: Boolean(await vault.get("calendar:outlook")) };
     });
-    ipcMain.handle("magic:sync", async (event) => {
+    ipcMain.handle("magic:sync", async (event, options?: unknown) => {
       validateSender(event);
+      // fix/current-courses-only: discovery reads only the course lists (onboarding's chooser).
+      const discover =
+        !!options && typeof options === "object" && (options as { discover?: unknown }).discover === true;
+      // "Start syncing": the student's confirmation, the only message that releases the hold.
+      const confirm =
+        !!options && typeof options === "object" && (options as { confirm?: unknown }).confirm === true;
       if (!(await consentGate("magic:sync"))) throw new Error(consentRefused);
       await ready;
       const id = randomUUID();
@@ -1599,11 +1949,16 @@ app
           );
         }, 600_000);
         calls.set(id, { resolve, reject, timer });
-        worker.postMessage({ kind: "refresh", id });
+        worker.postMessage({ kind: "refresh", id, ...(confirm ? { confirm: true } : discover ? { discover: true } : {}) });
       });
     });
-    ipcMain.handle("magic:planning-sync", async (event) => {
+    ipcMain.handle("magic:planning-sync", async (event, options?: unknown) => {
       validateSender(event);
+      // fix/current-courses-only: onboarding reads this term's enrollment first.
+      const phase =
+        !!options && typeof options === "object" && (options as { phase?: unknown }).phase === "enrollment"
+          ? ("enrollment" as const)
+          : undefined;
       if (!(await consentGate("magic:planning-sync"))) throw new Error(consentRefused);
       await ready;
       if (planningClears > 0) throw new Error("Planning is unavailable while local data or sessions are being cleared.");
@@ -1622,7 +1977,7 @@ app
           reject(new Error("Planning refresh timed out. Saved records are still available."));
         }, 90_000);
         calls.set(id, { resolve, reject, timer });
-        worker.postMessage({ kind: "planning-sync", id });
+        worker.postMessage({ kind: "planning-sync", id, ...(phase ? { phase } : {}) });
       });
       planningCall = { id, promise };
       try { return await promise; }
@@ -1638,12 +1993,14 @@ app
         worker.postMessage({ kind: "refresh-cancel" });
         for (const c of sourceReads.values()) c.abort();
         signIn?.close();
+        docWindows.closeAll(); // owner: doc-window: no live document page outlives the clear
         await studentSession.clearStorageData();
         await studentSession.clearCache();
         await gitlabSession.clearStorageData();
         await gitlabSession.clearCache();
         // Every saved calendar link goes, Outlook's included; its meetings are removed too.
         await clearSignOutSecrets(vault);
+        await remembered.forget(); // owner: T05e: Sign out deletes a saved sign-in
         await outlook.signOut().catch(() => {}); // owner: T30: the Microsoft tokens go too
         await postGraphScopes(); // owner: T30
         await execute({ type: "outlook-disconnect" });
@@ -1908,7 +2265,7 @@ app
       } catch (error) {
         console.error(
           "FAIL hidden desktop integration:",
-          error instanceof Error ? error.message : "unknown",
+          error instanceof Error ? redactForLog(error.message) : "unknown", // owner: privacy
         );
         process.exitCode = 1;
       } finally {

@@ -11,10 +11,12 @@ import type { Store } from "@magic/contracts";
 import type { AssessmentLink, ExamDate, MaterialLink, ReferencesPort } from "../../../learning/src/router-types";
 import { createCurrentReferences, examKind } from "../../../learning/src/analytics/references";
 import { canonicalAssessment, references } from "./references";
-import { courseIndex, courseOfSource, type PipelineStore } from "./course-index";
+import { courseOfSource, graphCall, type PipelineStore } from "./course-index";
 
 export function createPipelineReferences(store: PipelineStore): ReferencesPort {
   const fallback = createCurrentReferences(store as Store & PipelineStore);
+  // One request's reads: each course's index and references once, not once per assignment.
+  const call = graphCall(store);
   const refs = new Map<string, MaterialLink[]>();
   const served = new Map<string, Map<string, AssessmentLink[]>>();
   const examsByCourse = new Map<string, ExamDate[]>();
@@ -39,12 +41,12 @@ export function createPipelineReferences(store: PipelineStore): ReferencesPort {
     else {
       const out = new Map<string, MaterialLink>();
       const course = courseOfSource(store, self.sourceId);
-      const index = course ? courseIndex(store, course) : undefined;
+      const index = course ? call.index(course) : undefined;
       const indexed = index?.resources.get(self.id);
       const canonical = index && indexed ? canonicalAssessment(index, indexed) : self;
       if (canonical.kind === "assignment" && canonical.text.trim())
         out.set(canonical.id, { resourceId: canonical.id, title: canonical.title, reason: "The assignment's own page." });
-      for (const ref of references(store, assignmentId)) {
+      for (const ref of references(store, assignmentId, call)) {
         if (!ref.resourceId || out.has(ref.resourceId)) continue;
         const target = store.resource(ref.resourceId);
         if (!target || target.deleted || target.courseId !== self.courseId) continue;
@@ -65,7 +67,7 @@ export function createPipelineReferences(store: PipelineStore): ReferencesPort {
     let byMaterial = served.get(key);
     if (!byMaterial) {
       byMaterial = new Map();
-      const index = courseIndex(store, course);
+      const index = call.index(course);
       const exams = examDates(material.courseId);
       const examByRef = new Map(exams.map((e) => [e.resourceId ?? e.assessmentId, e]));
       const subjects: { id: string; link: AssessmentLink }[] = [];

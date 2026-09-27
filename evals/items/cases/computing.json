@@ -1,0 +1,150 @@
+{
+  "synthetic": true,
+  "note": "A synthetic course for the item-quality harness (evals/items). Written by the harness builder, not independent gold; not real course material.",
+  "family": "computing",
+  "batch": {
+    "source": {
+      "id": "syn-cs400-source",
+      "kind": "canvas",
+      "accountScope": "synthetic",
+      "courseId": "SYN-CS400",
+      "scope": "course",
+      "label": "COMP SCI 400 Synthetic Programming III (Synthetic)"
+    },
+    "observedAt": "2026-09-20T15:00:00.000Z",
+    "complete": true,
+    "status": "ok",
+    "resources": [
+      {
+        "externalId": "syn-cs400-course",
+        "kind": "course",
+        "courseId": "SYN-CS400",
+        "courseName": "COMP SCI 400 Synthetic Programming III",
+        "title": "COMP SCI 400 Synthetic Programming III",
+        "url": "https://example.edu/synthetic/syn-cs400",
+        "text": "",
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "course": {
+          "courseCode": "FA26 COMP SCI 400 001"
+        }
+      },
+      {
+        "externalId": "syn-cs400-m1",
+        "kind": "material",
+        "courseId": "SYN-CS400",
+        "courseName": "COMP SCI 400 Synthetic Programming III",
+        "title": "Module 1: Linear structures (Synthetic)",
+        "url": "https://example.edu/synthetic/syn-cs400/m1",
+        "text": "Module 1 (synthetic): linear structures. This synthetic lesson is written for automated tests and is not real course material. A stack is a last-in, first-out collection of elements. A queue is a first-in, first-out collection of elements. A deque is a double-ended queue that allows insertion and removal at both ends. Each list node holds 4 bytes, so 25 nodes use 25 * 4 = 100 bytes in total.",
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "policy": {
+          "mode": "coaching",
+          "evidence": "Synthetic: AI help is allowed for practice in this synthetic course."
+        }
+      },
+      {
+        "externalId": "syn-cs400-m2",
+        "kind": "material",
+        "courseId": "SYN-CS400",
+        "courseName": "COMP SCI 400 Synthetic Programming III",
+        "title": "Module 2: Hashing (Synthetic)",
+        "url": "https://example.edu/synthetic/syn-cs400/m2",
+        "text": "Module 2 (synthetic): hashing. A hash function is a function that maps keys to bucket indexes. A collision is the event of two keys mapping to one bucket. Chaining is a method that stores colliding entries in a linked list. A table with 8 buckets and 3 keys per bucket holds 8 * 3 = 24 keys. The load factor is the number of stored keys divided by the number of buckets.",
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "policy": {
+          "mode": "coaching",
+          "evidence": "Synthetic: AI help is allowed for practice in this synthetic course."
+        }
+      },
+      {
+        "externalId": "syn-cs400-m3",
+        "kind": "material",
+        "courseId": "SYN-CS400",
+        "courseName": "COMP SCI 400 Synthetic Programming III",
+        "title": "Module 3: Running time (Synthetic)",
+        "url": "https://example.edu/synthetic/syn-cs400/m3",
+        "text": "Module 3 (synthetic): running time. Big-O notation is a way to give an upper bound on the growth of a function. Binary search on 1024 sorted items needs at most 10 + 1 = 11 comparisons. A recurrence is an equation that defines a sequence in terms of its earlier values. Merge sort is a sorting algorithm that splits the input in half and merges the sorted halves.",
+        "deadlines": [],
+        "points": null,
+        "submitted": null,
+        "policy": {
+          "mode": "coaching",
+          "evidence": "Synthetic: AI help is allowed for practice in this synthetic course."
+        }
+      }
+    ]
+  },
+  "gold": [
+    {
+      "label": "stack",
+      "resource": "syn-cs400-m1",
+      "quote": "A stack is a last-in, first-out collection of elements."
+    },
+    {
+      "label": "queue",
+      "resource": "syn-cs400-m1",
+      "quote": "A queue is a first-in, first-out collection of elements."
+    },
+    {
+      "label": "deque",
+      "resource": "syn-cs400-m1",
+      "quote": "A deque is a double-ended queue that allows insertion and removal at both ends."
+    },
+    {
+      "label": "node memory",
+      "resource": "syn-cs400-m1",
+      "quote": "25 * 4 = 100 bytes"
+    },
+    {
+      "label": "hash function",
+      "resource": "syn-cs400-m2",
+      "quote": "A hash function is a function that maps keys to bucket indexes."
+    },
+    {
+      "label": "collision",
+      "resource": "syn-cs400-m2",
+      "quote": "A collision is the event of two keys mapping to one bucket."
+    },
+    {
+      "label": "chaining",
+      "resource": "syn-cs400-m2",
+      "quote": "Chaining is a method that stores colliding entries in a linked list."
+    },
+    {
+      "label": "table capacity",
+      "resource": "syn-cs400-m2",
+      "quote": "8 * 3 = 24 keys"
+    },
+    {
+      "label": "load factor",
+      "resource": "syn-cs400-m2",
+      "quote": "The load factor is the number of stored keys divided by the number of buckets."
+    },
+    {
+      "label": "Big-O notation",
+      "resource": "syn-cs400-m3",
+      "quote": "Big-O notation is a way to give an upper bound on the growth of a function."
+    },
+    {
+      "label": "binary search",
+      "resource": "syn-cs400-m3",
+      "quote": "10 + 1 = 11 comparisons"
+    },
+    {
+      "label": "recurrence",
+      "resource": "syn-cs400-m3",
+      "quote": "A recurrence is an equation that defines a sequence in terms of its earlier values."
+    },
+    {
+      "label": "merge sort",
+      "resource": "syn-cs400-m3",
+      "quote": "Merge sort is a sorting algorithm that splits the input in half and merges the sorted halves."
+    }
+  ]
+}

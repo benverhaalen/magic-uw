@@ -9,7 +9,7 @@ The app's third way into chat, after the full-pane chat and the command bar: a w
 | `model.ts` | Pure rules: the 5 px press threshold, corner choice and avoidance, panel placement and resizing, keys, persistence. |
 | `element.ts`, `element.css` | `<magic-floating-chat>`: the launcher, the "Click to chat" pill and the panel frame, all in a shadow root. |
 | `FloatingChat.tsx`, `floating-chat.css` | The app mount. It hosts the chat lane's `ChatPane` and store unchanged. |
-| `setting.tsx` | "Floating chat: on/off" (default off since September 27: the shell's chat launcher is the chat surface), shown on the Data & AI page. |
+| `setting.tsx` | "Floating chat: on/off" (default off since September 27: the shell's chat launcher is the chat surface; turned on in Data & AI), shown on the Data & AI page. |
 
 ## How it fits the app
 

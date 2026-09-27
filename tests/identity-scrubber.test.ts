@@ -90,11 +90,15 @@ test("emails, NetIDs, 10-digit IDs and phones are removed; comment authors who a
   const { core, byTitle } = await setup();
   const payload = core.context(byTitle("Tariff essay").id, "jev").payload;
   for (const secret of ["Sam", "Rivera", "srivera7", "9081234567", "555-0142", "Maya"]) assert.ok(!JSON.stringify(payload).includes(secret), secret);
-  assert.match(payload.text, /Peer reviewer: \[STUDENT_2\] \(NetID: \[NETID_1\], ID \[STUDENT_ID_1\], phone \[PHONE_1\]\)/);
+  // privacy (lead decision, September 27): classmates are numbered per request in HMAC order, so the
+  // numbers are not fixed; one person keeps one placeholder and two people never share one.
+  const reviewer = /Peer reviewer: (\[STUDENT_\d+\]) \(NetID: \[NETID_1\], ID \[STUDENT_ID_1\], phone \[PHONE_1\]\)/.exec(payload.text)?.[1];
+  assert.ok(reviewer, payload.text);
   // Instructor from course metadata and a cited author are kept.
   assert.ok(payload.text.includes("Questions go to Elena Ruiz."));
   assert.ok(payload.text.includes("Frederick Jackson Turner"));
-  assert.equal(payload.policy, "AI may explain; [STUDENT_1]'s draft is not shared.");
+  const author = /^AI may explain; (\[STUDENT_\d+\])'s draft is not shared\.$/.exec(payload.policy)?.[1];
+  assert.ok(author && author !== reviewer, payload.policy);
   await core.close();
 });
 
@@ -295,7 +299,8 @@ test("a fresh Canvas sync with zero manual setup scrubs the student's own name, 
   const sent = bodies.find((b) => b.includes("Lead:"));
   assert.ok(sent, "the injected assignment was sent to Jev");
   for (const secret of ["Avery", "Quinlan", "aquinlan", "Rowan", "Tessier"]) assert.ok(!sent.includes(secret), secret);
-  assert.match(sent, /Lead: \[STUDENT_SELF\] \(\[NETID_1\], \[EMAIL_1\]\)\. Pair with \[STUDENT_1\]; questions to Dana Whitfield\./);
+  // privacy (lead decision, September 27): the student stays [STUDENT_SELF]; classmates are numbered per request.
+  assert.match(sent, /Lead: \[STUDENT_SELF\] \(\[NETID_1\], \[EMAIL_1\]\)\. Pair with \[STUDENT_\d+\]; questions to Dana Whitfield\./);
   await core.close();
 });
 
@@ -343,9 +348,10 @@ test("MCP output is scrubbed, keeps teacher names, and its citations resolve to 
     for (const secret of ["Maya", "maya.chen", "Sam Rivera", "srivera7", "9081234567"]) assert.ok(!out.includes(secret), secret);
   assert.ok(item.text.includes("Professor Elena Ruiz"));
   assert.ok(comments.includes('"authorName":"Elena Ruiz"'));
-  assert.ok(comments.includes('"authorName":"[STUDENT_2]"'));
+  // privacy (lead decision, September 27): per-request numbering; each MCP call is its own request.
+  assert.match(comments, /"authorName":"\[STUDENT_\d+\]"/);
   assert.equal(item.excerpt.basis, "outgoing");
-  const quote = "[STUDENT_1] argued that the tariff";
+  const quote = /\[STUDENT_\d+\] argued that the tariff/.exec(item.text)![0];
   const at = item.text.indexOf(quote) + item.excerpt.start;
   const [result] = validateCitations(store, [{ resourceId: d.id, contentHash: item.citation.contentHash, projectionId: item.citation.projectionId, quote, start: at, end: at + quote.length }]);
   assert.equal(result!.status, "supported");

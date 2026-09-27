@@ -2,6 +2,8 @@ export {
   definePack,
   strictSchemaIssues,
   buildPrompt,
+  catalogueEntry, // owner: course-facts
+  packCatalogue, // owner: course-facts
   packCacheKey,
   quotesGrounded,
   createPackRuntime,

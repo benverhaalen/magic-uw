@@ -1,5 +1,6 @@
 import { lookup } from "node:dns/promises";
-import type { ApiKeyStatus, ClientHealth, ClientHealthState, ClientId, ClientMode } from "@magic/contracts";
+import type { ApiKeyStatus, ClientDiagnostics, ClientHealth, ClientHealthState, ClientId, ClientMode } from "@magic/contracts";
+import { cliSearchDirs } from "@magic/runner"; // owner: client-detection
 import {
   RunnerError,
   createApiBackend,
@@ -14,6 +15,7 @@ import { CLIENTS, authStatus, detectClient, resolveClient } from "./profiles";
 import {
   instantEnv,
   instantRunOptions,
+  codexToolsOffArgs,
   instantSupport,
   instantWorkDir,
   modeOf,
@@ -29,7 +31,9 @@ import {
  * 0.156.1); "binary" means the text is in the installed executable but the situation could not be
  * produced here (no free or limited account was available), so its mapping is unverified.
  */
-export const HEALTH_EVIDENCE: readonly { client: "claude" | "codex"; text: string; state: ClientHealthState | "process_failed"; source: "observed" | "binary" }[] = [
+export const HEALTH_EVIDENCE: readonly { client: "claude" | "codex"; text: string; state: ClientHealthState | "process_failed"; source: "observed" | "binary" | "issue" }[] = [
+  // owner: client-detection. From user reports (anthropics/claude-code#44028), not produced here.
+  { client: "claude", text: "SecKeychainItemCopyContent failed: errSecInteractionNotAllowed (exit 36)", state: "keychain_locked", source: "issue" },
   { client: "claude", text: '{"loggedIn":false,"authMethod":"none",…} (auth status --json, exit 1)', state: "not_signed_in", source: "observed" },
   { client: "claude", text: '{"loggedIn":true,"authMethod":"claude.ai","subscriptionType":"max",…}', state: "ok", source: "observed" },
   { client: "claude", text: "Not logged in · Please run /login", state: "not_signed_in", source: "observed" },
@@ -59,6 +63,7 @@ const CLAUDE_FREE_PLANS = new Set(["free"]);
 /** The client's own status in the chosen mode, as a health state. */
 export function stateFromAuth(id: ClientId, auth: ParsedAuth): { state: ClientHealthState; plan?: string } {
   const plan = auth.plan && /^[A-Za-z0-9 _.-]{1,32}$/.test(auth.plan) ? auth.plan : undefined;
+  if (auth.keychainLocked) return { state: "keychain_locked" }; // owner: client-detection
   if (auth.signedIn === null) return { state: "installed" };
   if (!auth.signedIn) return { state: "not_signed_in" };
   if (id === "claude" && auth.method === "subscription" && plan && CLAUDE_FREE_PLANS.has(plan.toLowerCase()))
@@ -81,6 +86,10 @@ export function stateFromError(error: RunnerError): ClientHealthState | null {
       return "model_unavailable";
     case "offline":
       return "offline";
+    case "keychain_locked": // owner: client-detection
+      return "keychain_locked";
+    case "tool_use_blocked":
+      return "tool_use_blocked";
     default:
       return null;
   }
@@ -101,6 +110,10 @@ export function errorForState(health: Pick<ClientHealth, "state" | "resetsAt">):
       return new RunnerError("model_unavailable", "health");
     case "offline":
       return new RunnerError("offline", "health");
+    case "keychain_locked": // owner: client-detection
+      return new RunnerError("keychain_locked", "health");
+    case "tool_use_blocked":
+      return new RunnerError("tool_use_blocked", "health");
     default:
       return null;
   }
@@ -139,7 +152,9 @@ async function instantStatus(id: "claude" | "codex", deps: HealthDeps): Promise<
       timeoutMs: deps.timeoutMs ?? 20_000,
       maxOutputBytes: 64 * 1024,
     });
-    return id === "claude" ? parseClaudeAuth(r.stdout) : parseCodexLogin(`${r.stdout}\n${r.stderr}`, r.code);
+    return id === "claude"
+      ? parseClaudeAuth(r.stdout, { stderr: r.stderr, code: r.code }) // owner: client-detection: Keychain refusal
+      : parseCodexLogin(`${r.stdout}\n${r.stderr}`, r.code);
   } catch (error) {
     if (error instanceof RunnerError) return { signedIn: null, method: null, plan: null };
     throw error;
@@ -160,6 +175,40 @@ async function isolatedStatus(id: "claude" | "codex", deps: HealthDeps): Promise
  * the client's own status command; never a model call, never a credential read. A saved instant
  * mode that this version no longer supports is reported, and run, as isolated.
  */
+/**
+ * owner: client-detection. What detection saw, for the notice's "Why wasn't my client found?":
+ * the folders searched and where the client was found, the home folder shown as `~` so a student
+ * can paste it to us without their account name. Names only; nothing is read from any file.
+ */
+export function clientDiagnostics(id: "claude" | "codex", deps: Pick<HealthDeps, "env" | "resolve" | "userData">): ClientDiagnostics {
+  const env = deps.env ?? process.env;
+  const home = env.USERPROFILE || env.HOME || "";
+  const tilde = (p: string) => homeRelative(p, home);
+  const command = resolveClient(id, { ...deps, userData: deps.userData });
+  return {
+    searched: cliSearchDirs(env).map(tilde),
+    ...(command ? { found: tilde(command.prefixArgs.at(-1) && /\.(?:c|m)?js$/i.test(command.prefixArgs.at(-1)!) ? command.prefixArgs.at(-1)! : command.file) } : {}),
+  };
+}
+
+/**
+ * owner: client-detection (security review). A path with the home folder shown as `~`, matched
+ * on a separator boundary after normalising (so `C:\Users\Sam` doesn't match `C:\Users\Samantha`),
+ * case-insensitively only where the file system is (Windows, macOS).
+ */
+export function homeRelative(path: string, home: string, platform: NodeJS.Platform = process.platform): string {
+  if (!home) return path;
+  const norm = (p: string) => p.replace(/[\\/]+/g, "/").replace(/\/+$/, "");
+  const [p, h] = [norm(path), norm(home)];
+  const same = platform === "linux" ? (a: string, b: string) => a === b : (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  if (same(p, h)) return "~";
+  if (p.length > h.length && p[h.length] === "/" && same(p.slice(0, h.length), h)) {
+    const rest = p.slice(h.length);
+    return `~${platform === "win32" ? rest.replace(/\//g, "\\") : rest}`;
+  }
+  return path;
+}
+
 export async function checkHealth(id: ClientId, requested: ClientMode | undefined, deps: HealthDeps): Promise<ClientHealth> {
   const checkedAt = new Date((deps.now ?? Date.now)()).toISOString();
   if (id === "gemini") {
@@ -177,7 +226,7 @@ export async function checkHealth(id: ClientId, requested: ClientMode | undefine
   const saved = requested ?? (await modeOf(id, deps.userData));
   const mode: "instant" | "isolated" = saved === "isolated" ? "isolated" : "instant";
   const detected = await detectClient(id, deps);
-  const base = { id, checkedAt, ...(detected.version ? { version: detected.version } : {}) };
+  const base = { id, checkedAt, ...(detected.version ? { version: detected.version } : {}), diagnostics: clientDiagnostics(id, deps) };
   if (!detected.installed || detected.problem)
     return { ...base, state: "not_installed", mode, source: "detect", instant: { available: false }, modes: ["instant", "isolated"] };
   const plan = await instantSupport(id, detected.version, deps);
@@ -273,7 +322,14 @@ export async function clientRunOptions(
     return { mode: "instant", options: await instantRunOptions(id, command, plan, deps), check };
   }
   const options = await isolated();
-  return options ? { mode: "isolated", options, check } : null;
+  if (!options) return null;
+  if (id === "codex") {
+    // owner: client-detection (security): the app's own profile turns Codex's tools off too.
+    const off = await codexToolsOffArgs(deps, health.version);
+    if (!off) return null;
+    return { mode: "isolated", options: { ...options, extraArgs: [...(options.extraArgs ?? []), ...off] }, check };
+  }
+  return { mode: "isolated", options, check };
 }
 
 /** The chosen client's backend in its mode, health-gated before every run. */

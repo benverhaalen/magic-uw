@@ -10,10 +10,11 @@ export function courseInclusion(
   resources: Resource[] = store.resources(),
 ): (resource: Resource) => boolean {
   const sources = new Map(store.sources().map((s) => [s.id, s]));
+  // One read per inclusion map: the settings cannot change while one call uses it. A store that
+  // offers both inputs in one statement is read once.
+  const inputs = store.inclusionInputs?.() ?? { overrides: store.courseOverrides(), ingestion: store.ingestionSettings() };
   const overrides = new Map(
-    store
-      .courseOverrides()
-      .map((o) => [`${o.accountScope}:${o.courseId}`, o.included]),
+    inputs.overrides.map((o) => [`${o.accountScope}:${o.courseId}`, o.included]),
   );
   const courses = new Map(
     resources
@@ -28,6 +29,7 @@ export function courseInclusion(
         r.course,
       ]),
   );
+  const selectedTerm = inputs.ingestion.selectedTerm;
   return (resource) => {
     const source = sources.get(resource.sourceId);
     if (!source) return false;
@@ -39,10 +41,10 @@ export function courseInclusion(
     )
       return false;
     if (
-      store.ingestionSettings().selectedTerm &&
+      selectedTerm &&
       course &&
-      store.ingestionSettings().selectedTerm !== course.termName &&
-      store.ingestionSettings().selectedTerm !== course.termId
+      selectedTerm !== course.termName &&
+      selectedTerm !== course.termId
     )
       return false;
     if (

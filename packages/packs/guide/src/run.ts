@@ -11,7 +11,8 @@ import { buildPrompt, packCacheKey, type ArtifactStore, type LedgerStore, type P
 import { runPack } from "../../../core/src/jobs/pack";
 import { buildReceipt, egressFor, payloadHash } from "../../../core/src/egress";
 import { contentCategories } from "../../../core/src/access";
-import { payloadScrubber, rosterFor, scrubText, toOriginalSpan } from "../../../core/src/identity";
+import { rosterFor, toOriginalSpan } from "../../../core/src/identity";
+import { classOf, protectedPayloadScrubber, protectionCounts } from "../../../core/src/privacy/protect"; // owner: privacy
 import { findQuote } from "../../../retrieval/src/quotes";
 import { conceptState, toView } from "../../../learning/src/knowledge/state";
 import { confusablePairs, frequentDistractors } from "../../../learning/src/insights/errors";
@@ -19,7 +20,8 @@ import { tagOptions } from "../../../learning/src/insights/option-tags";
 import { GUIDE_PACKS } from "./packs";
 import { reviewAny, type ConceptMapDoc, type DropCode, type GuideDoc, type GuideDrop, type ReviewStats } from "./review";
 import { personalize, type ConceptMapView, type GuideView, type PersonalSignals } from "./personalize";
-import { selectGuideInputs, type GuideSelection, type GuideStore } from "./inputs";
+import { selectGuideInputs, selectGuideScope, type GuideSelection, type GuideStore } from "./inputs";
+import type { CoursePrefixSource } from "../../../core/src/course-facts/prefix"; // owner: course-facts
 import { changedSources, putLatest, readLatest, withoutChangedSpans, type SourceChange } from "./latest";
 import type { ConceptMapOutput, GuideInput, GuideKind, GuideOutput } from "./schema";
 
@@ -48,6 +50,8 @@ export interface GuideDeps {
   artifacts: ArtifactStore;
   ledger: LedgerStore;
   now?: () => Date;
+  /** owner: course-facts. The course prefix (brief + pack catalogue); absent: the old prefix. */
+  prefix?: CoursePrefixSource | null;
 }
 
 const empty = (pack: GuideKind, status: GuideRunStatus, message: string, courseRef: string | null = null): GuideRunResult => ({
@@ -100,7 +104,7 @@ export async function generateGuide(
   const now = deps.now ?? (() => new Date());
   const at = () => now().toISOString();
   const signal = options.signal;
-  const picked = selectGuideInputs(store, kind, scope, options.passageTokenBudget);
+  const picked = selectGuideInputs(store, kind, scope, options.passageTokenBudget, deps.prefix ?? null); // owner: course-facts: prefix
   if (!picked.ok) return empty(kind, picked.status, picked.message, picked.courseRef);
   const sel = picked.selection;
   store.learning.course(sel.accountScope, sel.courseId, sel.label);
@@ -125,11 +129,14 @@ export async function generateGuide(
   };
   const runner = await deps.runner();
   const hosted = runner ? runner.client !== "local" : store.privacy().mode !== "local_only";
-  const roster = rosterFor(store, sel.courseId, sel.accountScope);
-  const scrubber = payloadScrubber(store, hosted, sel.accountScope);
-  const scrub = (value: string) => scrubber.field(value, sel.courseId);
+  // owner: privacy: the protection pass (roster + code detectors + per-request pseudonyms).
+  const scrubber = protectedPayloadScrubber(store, hosted, sel.accountScope, `guide:${sel.courseRef}`);
+  // Labels, facts, the frame and the assembled prompt are teaching text; a passage is its resource's class.
+  const scrub = (value: string) => scrubber.field(value, sel.courseId, "teaching");
+  const passageClass = (sourceId: string) => { const r = store.resource(sel.resourceOf.get(sourceId) ?? ""); return r ? classOf(r) : "personal"; };
+  scrubber.prime([...sel.passages.map((p): [string, "teaching" | "personal"] => [p.text, passageClass(p.sourceId)]), ...[sel.input.scope, ...sel.input.materials, ...sel.input.topics, ...sel.input.facts, sel.frame.course, sel.frame.skeleton, sel.frame.policy].map((t): [string, "teaching"] => [t, "teaching"])], sel.courseId);
   // Freeze the exact passage projection; quotes map back to the original text through it.
-  const frozen = new Map(sel.passages.map((p) => [p.sourceId, { original: p.text, result: hosted ? scrubText(p.text, roster) : { text: p.text, spans: [] } }]));
+  const frozen = new Map(sel.passages.map((p) => [p.sourceId, { original: p.text, result: scrubber.text(p.text, sel.courseId, passageClass(p.sourceId)) }]));
   const toOriginal = (sourceId: string | null, quote: string | null): string | null => {
     const p = sourceId ? frozen.get(sourceId) : undefined;
     if (!p) return quote;
@@ -141,7 +148,7 @@ export async function generateGuide(
   };
   const passages = sel.passages.map((p) => ({ ...p, text: frozen.get(p.sourceId)!.result.text }));
   const input: GuideInput = { ...sel.input, scope: scrub(sel.input.scope), materials: sel.input.materials.map(scrub), topics: sel.input.topics.map(scrub), facts: sel.input.facts.map(scrub) };
-  const frame = { ...sel.frame, course: scrub(sel.frame.course), skeleton: scrub(sel.frame.skeleton), policy: scrub(sel.frame.policy) };
+  const frame = { ...sel.frame, course: scrub(sel.frame.course), skeleton: scrub(sel.frame.skeleton), policy: scrub(sel.frame.policy), ...(sel.frame.brief !== undefined ? { brief: scrub(sel.frame.brief) } : {}) }; // owner: course-facts: brief
   const prompt = buildPrompt(pack, frame, input, passages);
   const cacheKey = payloadHash({ version: "guide-projection-v1", route: runner?.client ?? store.privacy().hostedProvider, fingerprint, key: packCacheKey(pack, prompt.systemPrompt, input, passages) });
 
@@ -194,7 +201,9 @@ export async function generateGuide(
   const lane = options.lane ?? "interactive";
   const authorize = (recipient: string, categories: string[], payload?: unknown) => {
     validate();
-    categories = [...new Set([...categories, ...sel.resources.flatMap(contentCategories)])];
+    // owner: course-facts: the brief's sources are sent too, so their categories are checked and receipted.
+    const briefResources = sel.briefResourceIds.flatMap((id) => store.resource(id) ?? []);
+    categories = [...new Set([...categories, ...sel.resources.flatMap(contentCategories), ...briefResources.flatMap(contentCategories)])];
     const parsed = aiRecipientSchema.safeParse(recipient);
     if (!parsed.success) return { allowed: false, reason: "This recipient is not supported." };
     const permission = maySend(store.privacy(), recipient, categories);
@@ -204,11 +213,12 @@ export async function generateGuide(
       recipient: parsed.data,
       purpose: `Generate a ${NOUN[kind]} from course materials`,
       categories,
-      resourceIds: sel.resources.map((r) => r.id),
+      resourceIds: [...new Set([...sel.resources.map((r) => r.id), ...sel.briefResourceIds])],
       characters: JSON.stringify(payload ?? {}).length,
       allowed: permission.allowed,
       reason: permission.reason,
       payload,
+      ...(hosted ? { protection: protectionCounts(payload) } : {}), // owner: privacy
     };
     const decision = egressFor(store).check(m, { at: at(), background: lane === "background" });
     if (decision.status === "blocked") {
@@ -321,9 +331,9 @@ export type GuideViewResult =
  * changed sources; a new one is made only when the student asks (the pack command).
  */
 export function guideView(deps: Pick<GuideDeps, "store" | "now">, kind: GuideKind, scope: PackScope): GuideViewResult {
-  const picked = selectGuideInputs(deps.store, kind, scope);
-  if (!picked.ok) return { op: "guide.view", status: picked.status, pack: kind, courseRef: picked.courseRef, message: picked.message, modelCalls: 0 };
-  const sel = picked.selection;
+  // The view needs the scope's course and resources only; generation's inputs are not selected here.
+  const sel = selectGuideScope(deps.store, scope);
+  if (!sel.ok) return { op: "guide.view", status: sel.status, pack: kind, courseRef: sel.courseRef, message: sel.message, modelCalls: 0 };
   const latest = readLatest(deps.store.learning, kind, sel.courseRef, scope);
   if (!latest)
     return { op: "guide.view", status: "missing", pack: kind, courseRef: sel.courseRef, message: `There's no ${NOUN[kind]} for this material yet. Generate one first.`, modelCalls: 0 };

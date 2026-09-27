@@ -550,6 +550,29 @@
   }
 }
 
+/* fix/current-courses-only: the course chooser (reuses the connection rows) */
+.onb-course {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  cursor: pointer;
+}
+.onb-course input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--magic-ink);
+  flex: none;
+}
+.onb-other-courses {
+  margin-top: 20px;
+}
+.onb-other-courses > summary {
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--magic-ink-muted);
+  padding: 6px 0 10px;
+}
 /* Agreement step: uses the window's width instead of one long column (operator, September 27).
    Left: what reading UW means and the one decision; right: who receives what, as cards.
    The disclosure texts are T06's exact wording; only their arrangement changes here. */

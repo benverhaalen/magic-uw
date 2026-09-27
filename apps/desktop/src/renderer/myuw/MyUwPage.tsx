@@ -155,6 +155,8 @@ export function MyUwPage({ snapshot, busy, run, open, signIn, refresh }: MyUwPro
         {problems.length ? <button type="button" className="myuw-quiet" onClick={() => go("sources")}>See sources</button> : null}
         {outcome ? <span className="myuw-outcome">{outcome.checked === 0 ? "Refresh finished without new UW information. Saved records are unchanged." : `${outcome.current} of ${outcome.checked} sources updated${outcome.problems.length ? `; ${outcome.problems.map((source) => `${source.label} ${sourceStateLabel[source.state].toLowerCase()}`).join(", ")}` : ""}.`}</span> : null}
       </div>
+      {/* owner: privacy. Sealed planning rows the current key can't open: the list is incomplete. */}
+      {snapshot.planning?.unreadable ? <p role="status" className="evidence-note">{snapshot.planning.unreadable} saved planning record{snapshot.planning.unreadable === 1 ? "" : "s"} can’t be opened on this device (the encryption key changed). Refresh planning to read them again; until then this list is incomplete.</p> : null}
 
       {model.attention.length ? <section className="myuw-section" id="myuw-attention" aria-labelledby="myuw-attention-title">
         <h2 id="myuw-attention-title" tabIndex={-1}>Needs attention</h2>

@@ -18,12 +18,16 @@ export * from "./notes";
 import { notesRequestSchema, type NotesResult } from "./notes";
 // end owner: notes
 import type { GraphQuery, GraphResult } from "./course-core"; // owner: pipeline
+// owner: page-views
+export * from "./page-views";
+import { pageViewRequestSchemas, type PageViewResult } from "./page-views";
+// end owner: page-views
 import type {
   CourseIntelligence,
   CourseIntelligenceView,
   EffectiveCoursePolicy,
 } from "./course-intelligence";
-import { identityRosterSchema, citationClaimSchema, type IdentityRoster, type RedactionSummary, type CitationResult, type AutoIdentityState, type AutoIdentityUpdate } from "./identity";
+import { identityRosterSchema, citationClaimSchema, type IdentityRoster, type RedactionSummary, type CitationResult, type AutoIdentityState, type AutoIdentityUpdate, type ProtectionCounts } from "./identity";
 export * from "./identity";
 
 export const instant = z.iso.datetime({ offset: true });
@@ -570,6 +574,9 @@ export const captureBatchSchema = z
           "mail",
           "feed",
           "notes", // owner: T30: OneNote and OneDrive through Graph; owner: notes: session notes (passages)
+          // owner: site-recipes: items code extracted from a course website's stored pages with a
+          // layout recipe (D32). Kept apart from "web" so the crawler never reads them back as pages.
+          "site",
         ]),
         accountScope: id,
         courseId: id,
@@ -875,6 +882,8 @@ export interface EgressReceipt {
   /** `preview_required`: held until the student answers a blocking preview; nothing sent. */
   status: "blocked" | "sent" | "failed" | "preview_required";
   createdAt: string;
+  /** owner: privacy. Replacements per kind in the payload of this send (counts only, never values). */
+  protection?: ProtectionCounts;
 }
 export const ingestionSettingsSchema = z
   .object({
@@ -897,6 +906,11 @@ export const ingestionSettingsSchema = z
     crawlMaxPages: z.number().int().min(1).max(1000).default(300),
     maxFileBytes: z.number().int().min(1024).max(104857600).default(104857600),
     selectedTerm: z.string().max(300).nullable().default(null),
+    /**
+     * fix/current-courses-only. Set by onboarding's course discovery, cleared by "Start syncing"
+     * (the next manual sync): background reads wait, across restarts, until the student confirms.
+     */
+    awaitingCourseChoice: z.boolean().default(false),
   })
   .strict();
 export type IngestionSettings = z.infer<typeof ingestionSettingsSchema>;
@@ -1041,12 +1055,16 @@ export interface Store {
     ignored: boolean;
   };
   planningRecords(): StoredPlanningRecord[];
+  /** owner: privacy. Current planning records that cannot be opened (a lost or different at-rest key). */
+  planningUnreadable?(): number;
   planningSources(): PlanningSourceHealth[];
   close(): void;
   ingest(batch: unknown): IngestReport;
   ingestionSettings(): IngestionSettings;
   setIngestionSettings(value: IngestionSettings): void;
   courseOverrides(): CourseOverride[];
+  /** Course inclusion's inputs (the overrides and the ingestion settings) in one read; optional. */
+  inclusionInputs?(): { overrides: CourseOverride[]; ingestion: IngestionSettings };
   setCourseOverride(value: CourseOverride): void;
   changes(filter?: ChangeFilter): ResourceChange[];
   scopeBaselines(): ScopeBaseline[];
@@ -1073,6 +1091,11 @@ export interface Store {
   removeSource(sourceId: string): number;
   resources(search?: string): Resource[];
   resource(id: string): Resource | undefined;
+  /**
+   * fix/current-courses-only. Earlier stored versions of one resource, newest first (read-only);
+   * lets a caller put back a version a later observation overwrote, instead of deleting.
+   */
+  resourceHistory?(id: string): Array<{ version: number; capturedAt: string; resource: ResourceInput }>;
   sources(): SourceHealth[];
   privacy(): PrivacyPreferences;
   setPrivacy(value: PrivacyPreferences): void;
@@ -1123,6 +1146,8 @@ export interface ContextManifest {
   payload: { course: string; title: string; text: string; policy: string };
   /** Present when free text was scrubbed for a hosted recipient; payload is the exact outgoing text. */
   redaction?: RedactionSummary;
+  /** owner: privacy. Replacements per kind in `payload` (counts only); copied to the receipt. */
+  protection?: ProtectionCounts;
   citationProjections?: { resourceId: string; contentHash: string; field: "text"; projectionId: string }[];
 }
 export interface ResourceView extends Resource {
@@ -1415,6 +1440,81 @@ export const learningRequestSchema = z.discriminatedUnion("op", [
     anchorIds: z.array(id).min(1).max(50),
   }),
   // end owner: analytics
+  // owner: exam-prep. The exam blueprint, the practice exam and interactive solving (N15, P09's
+  // input). Course-scoped like the practice ops; every check runs in code (0 tokens at study time).
+  learningOp("exam.blueprint", {
+    courseId: id,
+    anchorIds: z.array(id).min(1).max(50),
+    assessmentId: id,
+  }),
+  learningOp("exam.build", {
+    courseId: id,
+    anchorIds: z.array(id).min(1).max(50),
+    assessmentId: id,
+    length: z.number().int().min(3).max(60),
+    lean: z.boolean(),
+    timed: z.boolean(),
+    minutes: z.number().int().min(5).max(300).optional(),
+    examConditions: z.boolean(),
+    operationId: id,
+  }),
+  learningOp("exam.solve", {
+    courseId: id,
+    anchorIds: z.array(id).min(1).max(50),
+    problemIds: ids(20).optional(),
+    topicIds: ids(20).optional(),
+    count: z.number().int().min(1).max(10),
+    fade: z.boolean(),
+    operationId: id,
+  }),
+  learningOp("exam.session", { sessionId: id }),
+  learningOp("exam.answer", {
+    sessionId: id,
+    revision: z.number().int().nonnegative(),
+    operationId: id,
+    questionId: id,
+    stepId: id,
+    response: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("choice"), optionId: id }).strict(),
+      z.object({ kind: z.literal("text"), text: z.string().max(4000) }).strict(),
+      z.object({ kind: z.literal("number"), value: z.number(), unit: z.string().max(40).optional() }).strict(),
+      z.object({ kind: z.literal("expression"), text: z.string().max(300) }).strict(),
+      z
+        .object({
+          kind: z.literal("order"),
+          blocks: z.array(z.object({ id, indent: z.number().int().min(0).max(8) }).strict()).max(40),
+        })
+        .strict(),
+      z.object({ kind: z.literal("mark"), mark: z.enum(["right", "partly", "wrong"]) }).strict(),
+    ]),
+    /** Optional self-explanation of the step, graded against its key ideas; never required. */
+    explanation: z.string().max(2000).optional(),
+    confidence: z.union([z.literal(0), z.literal(0.33), z.literal(0.67), z.literal(1), z.null()]),
+    responseMs: z.number().int().min(0).max(86_400_000),
+  }),
+  learningOp("exam.hint", {
+    sessionId: id,
+    revision: z.number().int().nonnegative(),
+    operationId: id,
+    questionId: id,
+    stepId: id,
+  }),
+  learningOp("exam.submit", {
+    sessionId: id,
+    revision: z.number().int().nonnegative(),
+    operationId: id,
+  }),
+  // end owner: exam-prep
+  // owner: mastery (D57). Course mastery, 0 tokens. Course-scoped like analytics: the anchors are
+  // required and each is authorized by the worker's trusted resolver.
+  learningOp("course.mastery", { courseId: id, anchorIds: z.array(id).min(1).max(50) }),
+  learningOp("mastery.assessment", { courseId: id, anchorIds: z.array(id).min(1).max(50), assessmentId: id }),
+  learningOp("mastery.forItems", { courseId: id, anchorIds: z.array(id).min(1).max(50), itemIds: z.array(id).min(1).max(100) }),
+  learningOp("mastery.history", { courseId: id, anchorIds: z.array(id).min(1).max(50) }),
+  learningOp("mastery.claim", { courseId: id, anchorIds: z.array(id).min(1).max(50), topicId: id, operationId: id }),
+  learningOp("mastery.hide", { courseId: id, anchorIds: z.array(id).min(1).max(50), topicId: id, hidden: z.boolean() }),
+  learningOp("course.grades", { courseId: id, anchorIds: z.array(id).min(1).max(50) }),
+  // end owner: mastery
 ]);
 export type LearningRequest = z.infer<typeof learningRequestSchema>;
 export type LearningOp = LearningRequest["op"];
@@ -1450,6 +1550,16 @@ export const correctionSchema = z.discriminatedUnion("subject", [
       tier: z.enum(["core", "supporting", "practice"]).optional(),
     })
     .strict(),
+  // owner: agenda. D49: the student's own effort estimate for an item (5 min–40 h); it wins
+  // over code's and the model's, and teaches the course's calibration.
+  z
+    .object({
+      subject: z.literal("estimate"),
+      resourceId: id,
+      minutes: z.number().int().min(5).max(2400),
+    })
+    .strict(),
+  // end owner: agenda
 ]);
 export type Correction = z.infer<typeof correctionSchema>;
 export const packScopeSchema = z
@@ -1607,6 +1717,25 @@ export const queryRequestSchema = z.discriminatedUnion("view", [
     })
     .strict(),
   // end owner: guides
+  // owner: agenda. D49: the critical-action agenda and the launch view, read from the local
+  // database only (no network, 0 model calls). `timeZone` is an IANA name for the display dates.
+  z
+    .object({
+      view: z.literal("agenda.ranked"),
+      limit: z.number().int().min(1).max(50).optional(),
+      accountScope: id.optional(),
+      courseId: id.optional(),
+      timeZone: z.string().min(1).max(64).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      view: z.literal("workspace.bootstrap"),
+      top: z.number().int().min(1).max(20).optional(),
+      timeZone: z.string().min(1).max(64).optional(),
+    })
+    .strict(),
+  // end owner: agenda
   // owner: intent. The command bar's live hint while typing or dictating: the code resolver only,
   // 0 tokens, never the model, and no snapshot recompute (the query channel).
   z
@@ -1617,8 +1746,132 @@ export const queryRequestSchema = z.discriminatedUnion("view", [
     })
     .strict(),
   // end owner: intent
+  // owner: page-views. One composite read per page: assignment.workspace, lecture.session, assessment.page.
+  ...pageViewRequestSchemas,
+  // end owner: page-views
 ]);
 export type QueryRequest = z.infer<typeof queryRequestSchema>;
+// owner: agenda. D49 result shapes; the ranking and every number in them are code's.
+export type AgendaItemKind = "assignment" | "quiz" | "exam" | "discussion";
+/** Slack bands for display: overdue (past due, still accepted), start_now (the latest start has passed). */
+export type AgendaBand = "overdue" | "start_now" | "today" | "soon" | "week" | "later";
+export interface AgendaEstimate {
+  /** Bounded to 5 min–40 h. */
+  minutes: number;
+  /** student: the student's correction (wins); model: their AI refined it; code: the app's rule. */
+  method: "code" | "model" | "student";
+  label: "estimate";
+  /** A per-course calibration from the student's corrections was applied. */
+  calibrated: boolean;
+}
+export interface AgendaWeight {
+  points: number | null;
+  /**
+   * The grade weight and how complete it is (FDB-001): `listed` is the Canvas group weight or the
+   * syllabus's stated weight; `computed` is this item's share, only with complete coverage. The
+   * ranking uses listed or computed only; unknown falls back to points.
+   */
+  grade: { basis: "listed" | "computed"; percent: number; source: "canvas_group" | "syllabus" } | null;
+}
+export interface AgendaItem {
+  /** A resource ID, or `assessment:<id>` for a syllabus-only exam. */
+  id: string;
+  resourceId: string | null;
+  kind: AgendaItemKind;
+  title: string;
+  accountScope: string;
+  courseId: string;
+  courseName: string;
+  url: string | null;
+  /** The due date, or the lock date when there's no due date (`dateKind: "closes"`). */
+  dueAt: string;
+  dateKind: "due" | "closes";
+  lockAt: string | null;
+  unlockAt: string | null;
+  estimate: AgendaEstimate;
+  /** dueAt − estimate − buffer. */
+  latestStartAt: string;
+  /** latestStartAt − now, in minutes (negative: behind). */
+  slackMinutes: number;
+  band: AgendaBand;
+  weight: AgendaWeight;
+  flags: {
+    /** Canvas says missing, or past due with nothing submitted. */
+    missing: boolean;
+    /** Past due and still accepted. */
+    late: boolean;
+    /** Not unlocked yet. */
+    notYetOpen: boolean;
+  };
+  /** One line on why it matters now: the student's AI over code's facts (checked), or code's line. */
+  why: { text: string; source: "model" | "code" };
+  /** 1-based position among ranked items; 0 for a flagged item that isn't ranked. */
+  rank: number;
+}
+export interface AgendaCounts {
+  /** Open items with a date (ranked plus flagged). */
+  open: number;
+  ranked: number;
+  overdue: number;
+  missing: number;
+  dueToday: number;
+  dueThisWeek: number;
+  /** Open items with no due or lock date: not ranked. */
+  undated: number;
+  notYetOpen: number;
+  estimatedBy: { code: number; model: number; student: number };
+}
+export interface AgendaClassMeeting {
+  key: string;
+  courseKey: string;
+  title: string;
+  startsAt: string;
+}
+export interface AgendaNarration {
+  /** model: every shown line is the model's; partial: some fell back to code; code: none cached. */
+  status: "model" | "partial" | "code";
+  /** The hash the narration is cached under; it changes when the top items' facts or the day change. */
+  factHash: string;
+  /** Model lines code dropped because a number or date didn't match the facts. */
+  dropped: number;
+}
+export interface BootstrapCourse {
+  accountScope: string;
+  courseId: string;
+  courseName: string;
+  included: boolean;
+  open: number;
+  missing: number;
+  nextDueAt: string | null;
+}
+export type AgendaQueryResult =
+  | {
+      view: "agenda.ranked";
+      generatedAt: string;
+      timeZone: string;
+      items: AgendaItem[];
+      /** Ranked items in scope (items holds the first `limit`). */
+      total: number;
+      /** Flagged and not ranked: closed without a submission, or overdue past the window. Never hidden. */
+      missing: AgendaItem[];
+      counts: AgendaCounts;
+      /** Class meetings for display only; never ranked. */
+      classes: AgendaClassMeeting[];
+      narration: AgendaNarration;
+      modelCalls: 0;
+    }
+  | {
+      view: "workspace.bootstrap";
+      generatedAt: string;
+      timeZone: string;
+      fixtureMode: boolean;
+      lastSyncAt: string | null;
+      sources: { total: number; ok: number; attention: number };
+      courses: BootstrapCourse[];
+      agenda: { items: AgendaItem[]; total: number; missing: number; counts: AgendaCounts; classes: AgendaClassMeeting[]; narration: AgendaNarration };
+      modelCalls: 0;
+    };
+// end owner: agenda
 /** A list row: a resource without its bodies (text, raw HTML, parts, document pages). */
 export type ResourceSummary = Omit<
   ResourceView,
@@ -1688,7 +1941,9 @@ export type QueryResult =
       guide: unknown;
     }
   // end owner: guides
-  | { view: "intent.preview"; preview: IntentCommandResult }; // owner: intent
+  | AgendaQueryResult // owner: agenda
+  | { view: "intent.preview"; preview: IntentCommandResult } // owner: intent
+  | PageViewResult; // owner: page-views
 // end owner: T15
 export const commandSchema = z.discriminatedUnion("type", [
   z
@@ -1958,11 +2213,46 @@ export function localContextPayload(
     policy: payload.policy.slice(0, 2000),
   };
 }
+// owner: accounts. The My Magic UW account and whether it has bought the app
+// (docs/accounts-and-payments.md). Tokens stay in main; the renderer sees only this status.
+export type AccountPurchase = "paid" | "not-bought" | "refunded" | "test-only" | "unknown";
+export type AccountStatus =
+  | { state: "unconfigured" }
+  | { state: "signed-out" }
+  | {
+      state: "signed-in";
+      email: string;
+      purchase: AccountPurchase;
+      /** Paid, confirmed now or within the offline grace period. Nothing is locked by it yet. */
+      entitled: boolean;
+      /** When the server last confirmed the purchase state. */
+      checkedAt?: string;
+      /** The server couldn't be reached; the purchase shown is the last confirmed one. */
+      offline: boolean;
+    };
+export interface AccountBridge {
+  status(): Promise<AccountStatus>;
+  /** Emails a sign-in code. */
+  sendCode(email: string): Promise<{ sent: boolean; reason?: "invalid" | "rate-limited" | "unavailable" }>;
+  verifyCode(email: string, code: string): Promise<{ signedIn: boolean; reason?: "invalid" | "wrong-code" | "unavailable" }>;
+  signOut(): Promise<void>;
+  /** Opens the website's account page to buy, in the default browser. */
+  buy(): Promise<void>;
+}
+// end owner: accounts
+
 export interface AppBridge {
+  /** owner: accounts. Sign-in and purchase status; absent in builds without the bridge. */
+  account?: AccountBridge;
   execute(command: Command): Promise<CommandResult>;
   openExternal(url: string): Promise<void>;
   /** owner: T05b. A link card (D40): the default browser, https only. */
   openLink?(url: string): Promise<void>;
+  /**
+   * owner: doc-window. A synced note's Word online or Google Doc in the app's signed-in document
+   * window (UW single sign-on, https document hosts only); any other web link opens in the browser.
+   */
+  openDocument?(url: string): Promise<{ opened: "window" | "browser" }>;
   /** owner: T15. A scoped query (O1); reads only, never a command. */
   query?(request: QueryRequest): Promise<QueryResult>;
   /** Reviewed destination hash is mandatory; `only` retries previously failed IDs. */
@@ -1972,8 +2262,10 @@ export interface AppBridge {
   importFile(): Promise<CommandResult | null>;
   /** owner: client-health (FDB-002). Resolves with how the window ended; `confirmed` is the only success. */
   signInUW?(service?: SignInService): Promise<SignInOutcome>;
-  syncPlanning?(): Promise<CommandResult>;
-  syncCanvas?(): Promise<CommandResult>;
+  /** `phase: "enrollment"` (fix/current-courses-only): this term's enrollment only, before course discovery. */
+  syncPlanning?(options?: { phase?: "enrollment" }): Promise<CommandResult>;
+  /** `discover` (fix/current-courses-only): read only the course lists, so the student chooses first. */
+  syncCanvas?(options?: { discover?: boolean; confirm?: boolean }): Promise<CommandResult>;
   signOutUW?(): Promise<void>;
   /** Saves (or with null, removes) the published Outlook calendar link in the encrypted vault. */
   setOutlookCalendar?(url: string | null): Promise<{ connected: boolean }>;
@@ -2004,6 +2296,8 @@ export interface AppBridge {
   cancelLocal?(): Promise<void>;
   exportMcp?(id: string): Promise<string>;
   keepSignedIn?(value?: boolean): Promise<boolean>;
+  /** T05e: Remember my sign-in's status, or forget it. The NetID and password never cross. */
+  rememberSignIn?(op: "status" | "forget"): Promise<RememberSignInStatus>;
   /** T80: the student's AI command-line clients, each in an app-owned profile. */
   clients?: ClientsBridge;
   /** owner: voice. The local speech-to-text model's files. */
@@ -2027,6 +2321,13 @@ export interface VoiceBridge {
   file(name: string): Promise<Uint8Array>;
   remove(): Promise<VoiceModelStatus>;
 }
+/**
+ * T05e (plan D39). `offered: false` in a build with the feature switched off (a UW licence).
+ * `available: false` when the OS offers no protected storage, with the reason shown.
+ */
+export type RememberSignInStatus =
+  | { offered: false }
+  | { offered: true; available: boolean; reason?: string; saved: boolean };
 /** T80. The AI command-line clients Magic Canvas can host in an app-owned profile. */
 export type ClientId = "claude" | "codex" | "gemini";
 /**
@@ -2108,6 +2409,8 @@ export interface PlanningSnapshot {
   records: StoredPlanningRecord[];
   sources: PlanningSourceHealth[];
   reconciliation?: import("./planning").AcademicReconciliation;
+  /** owner: privacy. Saved records this device cannot open; they are not shown, and the view must say so. */
+  unreadable?: number;
 }
 export interface PlanningComparison {
   termCode: string;

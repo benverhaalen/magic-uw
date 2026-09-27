@@ -9,9 +9,11 @@
  */
 import type {
   CourseCoreStore,
+  Judgment,
   QueryRequest,
   QueryResult,
   Resource,
+  SourceHealth,
   ResourceChange,
   ResourceSummary,
   ResourceView,
@@ -20,9 +22,12 @@ import type {
 import { resolveDeadline } from "@magic/domain";
 import { judgmentResultSchema } from "@magic/ai";
 import { evidenceFor } from "./evidence";
-import { courseIncluded, courseInclusion } from "./access";
+import { courseInclusion } from "./access";
+import { readOnce } from "./graph/read-once";
 import { createHash } from "node:crypto";
 import { guideQuery } from "../../packs/guide/src/query"; // owner: guides
+import { agendaRankedView, workspaceBootstrapView } from "./priority/query"; // owner: agenda
+import { runPageView } from "./views/index"; // owner: page-views
 
 /** Canvas submission types that name the kind exactly; code decides these, Jev never sees them. */
 const EXACT_KINDS: Record<string, "quiz" | "discussion"> = { online_quiz: "quiz", discussion_topic: "discussion" };
@@ -33,22 +38,36 @@ export function codeAssignmentKind(r: Pick<Resource, "kind" | "submissionTypes">
   return kinds.size === 1 ? [...kinds][0]! : null;
 }
 
-/** The one mapping from stored resources to what a view shows: deadline, label, order. */
-export function resourceViews(store: Store, list: Resource[]): ResourceView[] {
-  const included = courseInclusion(store);
-  const sources = new Map(store.sources().map(source => [source.id, source]));
+/**
+ * The one mapping from stored resources to what a view shows: deadline, label, order. `all` is
+ * the caller's own unsearched `store.resources()` from this call, when it has one, so the
+ * evidence does not read every resource a second time.
+ */
+export function resourceViews(
+  store: Store,
+  list: Resource[],
+  all?: Resource[],
+  /** What the caller already read in this call: its sources, and its course inclusion over `all`. */
+  shared: { sources?: SourceHealth[]; inclusion?: (resource: Resource) => boolean } = {},
+): ResourceView[] {
+  // Inclusion and the evidence share one full resource list (the caller's, or one read here) and
+  // one sources read (the caller's, or one here).
+  const inclusion = shared.inclusion;
+  const sourceList = shared.sources ?? store.sources();
+  const view = Object.create(readOnce(store, all ?? store.resources()), { sources: { value: () => sourceList } }) as Store;
+  const included = inclusion ?? courseInclusion(view);
+  const sources = new Map(sourceList.map(source => [source.id, source]));
   const permitted = (resource: Resource) => !resource.deleted && included(resource) && sources.get(resource.sourceId)?.status !== "inaccessible";
-  const evidence = evidenceFor(store, permitted);
-  const judgments = store.judgments();
+  const evidence = evidenceFor(view, permitted);
+  // The last kind judgment per resource, as findLast over the list would pick it, indexed once.
+  const kindJudgments = new Map<string, Judgment>();
+  for (const j of store.judgments())
+    if (j.questionVersion === "assignment.kind.v1") kindJudgments.set(j.resourceId, j);
   return list
     .map((r) => {
       // store.judgments() holds only judgments whose input (content or text hash) is current,
       // so a text-hash judgment stays visible after a grade or submission change (O5).
-      const judgment = judgments.findLast(
-        (j) =>
-          j.resourceId === r.id &&
-          j.questionVersion === "assignment.kind.v1",
-      );
+      const judgment = kindJudgments.get(r.id);
       const parsed = judgmentResultSchema.safeParse(judgment?.result);
       // Provisional display threshold; never presented as calibrated correctness.
       const exact = codeAssignmentKind(r);
@@ -153,7 +172,10 @@ export function runQuery(store: Store, request: QueryRequest, context: QueryCont
     case "summary": {
       const sources = store.sources();
       const all = store.resources();
-      const views = resourceViews(store, all.filter((r) => r.kind === "assignment"));
+      // Inclusion is the same for every resource of one course: built once from this call's list,
+      // and shared with the views.
+      const included = courseInclusion(readOnce(store, all));
+      const views = resourceViews(store, all.filter((r) => r.kind === "assignment"), all, { sources, inclusion: included });
       const courses = new Map<string, { accountScope: string; courseId: string; courseName: string; resources: number; open: number; nextDue: string | null; included: boolean }>();
       const scopeOf = new Map(sources.map((s) => [s.id, s.accountScope]));
       for (const r of all) {
@@ -167,7 +189,7 @@ export function runQuery(store: Store, request: QueryRequest, context: QueryCont
           resources: 0,
           open: 0,
           nextDue: null,
-          included: courseIncluded(store, r),
+          included: included(r),
         };
         row.resources++;
         courses.set(key, row);
@@ -212,17 +234,19 @@ export function runQuery(store: Store, request: QueryRequest, context: QueryCont
     }
     case "resources": {
       const offset = decode(request.cursor, isOffset)?.o ?? 0;
-      const scopes = new Map(store.sources().map((s) => [s.id, s.accountScope]));
+      const sources = store.sources();
+      const scopes = new Map(sources.map((s) => [s.id, s.accountScope]));
       const kinds = request.kinds ? new Set<string>(request.kinds) : undefined;
-      const rows = store
-        .resources(request.search)
+      const listed = store.resources(request.search);
+      const rows = listed
         .filter(
           (r) =>
             (!request.courseId || r.courseId === request.courseId) &&
             (!request.accountScope || scopes.get(r.sourceId) === request.accountScope) &&
             (!kinds || kinds.has(r.kind)),
         );
-      const views = resourceViews(store, rows);
+      // Unsearched, the list read above is every resource: the evidence reuses it.
+      const views = resourceViews(store, rows, request.search?.trim() ? undefined : listed, { sources });
       const limit = request.limit ?? 50;
       const page = views.slice(offset, offset + limit).map(summarize);
       return {
@@ -235,11 +259,13 @@ export function runQuery(store: Store, request: QueryRequest, context: QueryCont
     case "resource": {
       const r = store.resource(request.id);
       if (!r || r.deleted) throw new Error("This item is no longer available.");
-      const [view] = resourceViews(store, [r]);
+      // One links read, shared by the evidence and this item's own links.
+      const links = store.links();
+      const [view] = resourceViews(Object.create(store, { links: { value: () => links } }) as Store, [r]);
       return {
         view: "resource",
         resource: view!,
-        links: store.links().filter((l) => l.fromId === r.id || l.toId === r.id),
+        links: links.filter((l) => l.fromId === r.id || l.toId === r.id),
         changes: store.changes({ resourceId: r.id, limit: 50 }),
       };
     }
@@ -329,8 +355,21 @@ export function runQuery(store: Store, request: QueryRequest, context: QueryCont
     case "guide":
       return guideQuery(store, request, context.now());
     // end owner: guides
+    // owner: agenda. D49: the critical-action agenda and the launch view; local reads only, 0 model calls.
+    case "agenda.ranked":
+      return agendaRankedView(store, request, context.now());
+    case "workspace.bootstrap":
+      return workspaceBootstrapView(store, request, context.now());
+    // end owner: agenda
     // owner: intent. Answered by core's intent seam before runQuery; reaching here means no seam.
     case "intent.preview":
       throw new Error("The command bar isn't built yet.");
+    // owner: page-views. One composite read per page (packages/core/src/views): 0 tokens, reads only.
+    case "assignment.workspace":
+    case "lecture.session":
+    case "assessment.page":
+    case "study.offers":
+      return runPageView(store, request, context.now());
+    // end owner: page-views
   }
 }

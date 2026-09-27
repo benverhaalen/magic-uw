@@ -36,10 +36,12 @@ import { Action, Disclosure } from "../../../../packages/ui/src";
 import { useDesktopNavigation, type DesktopView } from "./navigation";
 import { CourseSpaceDetails } from "./CourseSpaceDetails";
 import { NotificationsMenu } from "./NotificationsMenu";
+import { RememberSignIn } from "./RememberSignIn"; // owner: T05e
 import { FloatingChat, FloatingChatSetting, chatWarmPolicy, dictateIntoFloatingChat, openFloatingChat, setWizardState } from "./floating-chat";
 import { useLocalDictation } from "./voice/useLocalDictation";
 import { VoiceSetting } from "./voice/VoiceSetting";
 import { chatShortcut, shortcutLabel } from "./voice/rules";
+import { AccountSection } from "./AccountSection"; // owner: accounts
 
 type View = DesktopView;
 // owner: T05b. Route slots, each rendering nothing until its task fills it: the notebook (T43),
@@ -183,6 +185,10 @@ export function App() {
   const snapshotGate = useRef(new SnapshotGate());
   const busyRef = useRef(false);
   const mounted = useRef(true);
+  // Opening an item tells the worker, which reads the item's `read_once` links once.
+  useEffect(() => {
+    if (selectedId) void window.magic.execute({ type: "ui_event", value: { kind: "open", subject: selectedId } }).catch(() => {});
+  }, [selectedId]);
 
   useEffect(() => {
     const handle = (event: Event) => navigation.navigate("resource", (event as CustomEvent<string>).detail);
@@ -1186,10 +1192,14 @@ function Sources({
         {/* owner: T05c. Keep me signed in toggle. */}
         <KeepSignedInToggle busy={busy} />
         {/* end owner: T05c */}
+        {/* owner: T05e. Remember my sign-in: Forget my sign-in. */}
+        <RememberSignIn busy={busy} />
+        {/* end owner: T05e */}
         <p className="small muted">
           If UW requests Duo or a new sign-in, complete it in the browser.
           Previously captured records remain available when a session expires.
-          Clearing the UW session also disconnects a published Outlook calendar.
+          Clearing the UW session also disconnects a published Outlook calendar
+          and deletes a saved sign-in.
         </p>
       </section>
       <OutlookCalendar busy={busy} onSync={onSync} />
@@ -1507,6 +1517,7 @@ function Privacy({
       </section>
       <FloatingChatSetting /* owner: floating-chat */ />
       {voice}
+      <AccountSection /> {/* owner: accounts */}
       <section className="settings-section danger-section">
         <h2>Delete local data</h2>
         <p>
@@ -1556,8 +1567,8 @@ function Privacy({
           </div>
         )}
         <p className="small muted">
-          Deleting local data also clears app-owned UW sessions, calendar feed
-          secrets, downloaded documents, and exported MCP connections. It does
+          Deleting local data also clears app-owned UW sessions, a saved sign-in,
+          calendar feed secrets, downloaded documents, and exported MCP connections. It does
           not delete UW records.
         </p>
       </section>

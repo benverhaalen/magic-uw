@@ -17,8 +17,11 @@ import { buildReceipt, egressFor } from "../../core/src/egress";
 import { courseInclusion } from "../../core/src/access";
 import { eligibleStudySource } from "../../learning/src/router";
 import { findQuote } from "../../retrieval/src/quotes";
-import type { ModelRunner } from "../../runner/src/index";
+import type { BackendCall, ModelRunner } from "../../runner/src/index";
 import type { NotesWorkspaceStore } from "./service";
+// owner: privacy: the slides are teaching text, the headings the student's own; both protected when hosted.
+import { toOriginalSpan } from "../../core/src/identity";
+import { classOf, protectedPayloadScrubber, protectionCounts } from "../../core/src/privacy/protect";
 
 export interface FillInput {
   blocks: { id: string; heading: string }[];
@@ -116,11 +119,28 @@ export async function fillFromSlides(
   const courseOf = (ref: string) => (ref === courseRef ? { accountScope: note.accountScope, courseId: note.courseId } : null);
   const runner = await deps.runner();
   const at = () => deps.now().toISOString();
+  // owner: privacy. Protect for a hosted client; quotes in the reply map back through `frozen`.
+  const hosted = runner ? runner.client !== "local" : store.privacy().mode !== "local_only";
+  const scrubber = protectedPayloadScrubber(store, hosted, note.accountScope, `notes.fill:${courseRef}`);
+  scrubber.prime([...passages.map((p): [string, "teaching" | "personal"] => [p.text, classOf(resourceOf.get(p.sourceId)!)]), ...targets.map((t): [string, "personal"] => [t.heading, "personal"])], note.courseId);
+  const frozen = new Map(passages.map((p) => [p.sourceId, scrubber.text(p.text, note.courseId, classOf(resourceOf.get(p.sourceId)!))]));
+  const quoteOf = (sourceId: string, quote: string) => {
+    const f = frozen.get(sourceId);
+    const start = f ? f.text.indexOf(quote) : -1;
+    const span = f && start >= 0 ? toOriginalSpan(f, start, start + quote.length) : null;
+    const original = passages.find((p) => p.sourceId === sourceId)?.text;
+    return span && original !== undefined ? original.slice(span.start, span.end) : quote;
+  };
+  const sentPassages = passages.map((p) => ({ ...p, text: frozen.get(p.sourceId)!.text }));
+  input.blocks = input.blocks.map((b) => ({ ...b, heading: scrubber.field(b.heading, note.courseId, "personal") }));
+  const beforeCall = (call: BackendCall): BackendCall =>
+    hosted ? { ...call, courseId: undefined, systemPrompt: scrubber.field(call.systemPrompt, note.courseId, "teaching"), input: scrubber.field(call.input, note.courseId, "teaching") } : call;
+  // end owner: privacy
   const authorize = (recipient: string, categories: string[]) => {
     const parsed = aiRecipientSchema.safeParse(recipient);
     if (!parsed.success) return { allowed: false, reason: "This recipient is not supported." };
     const permission = maySend(store.privacy(), recipient, categories);
-    const text = passages.map((p) => p.text).join("\n\n");
+    const text = sentPassages.map((p) => p.text).join("\n\n"); // owner: privacy
     const manifest = {
       recipient: parsed.data,
       purpose: "Suggest note bullets from this session's slides",
@@ -130,6 +150,7 @@ export async function fillFromSlides(
       allowed: permission.allowed,
       reason: permission.reason,
       payload: { course: note.courseName, title: "notes.fill", text, policy: "" },
+      ...(hosted ? { protection: protectionCounts(text) } : {}), // owner: privacy
     };
     const decision = egressFor(store).check(manifest, { at: at(), background: false });
     if (decision.status === "blocked") {
@@ -150,16 +171,16 @@ export async function fillFromSlides(
   // With no client, only a cached result can answer (0 tokens).
   const offline: ModelRunner | null = runner;
   if (!offline) {
-    const hit = readPackArtifact(artifacts, notesFillPack, frame, input, passages);
+    const hit = readPackArtifact(artifacts, notesFillPack, frame, input, sentPassages); // owner: privacy
     if (!hit) return { status: "no_client", message: "Connect your AI first: choose Claude or Codex in Settings and sign in, then try again.", receiptIds };
     return finish(hit.output, hit.cacheKey, true, { in: 0, cached: 0, out: 0 });
   }
   const result = await runPack(
-    { runner: offline, artifacts, ledger, authorize, now: () => deps.now().getTime() },
+    { runner: offline, artifacts, ledger, authorize, beforeCall, now: () => deps.now().getTime() }, // owner: privacy
     notesFillPack,
     frame,
     input,
-    passages,
+    sentPassages, // owner: privacy
     { lane: "interactive", scope: "resources", ...(signal ? { signal } : {}) },
   );
   if (result.status === "blocked") return { status: "blocked", message: result.reason, receiptIds };
@@ -173,7 +194,7 @@ export async function fillFromSlides(
     let dropped = 0;
     output.bullets.forEach((b, index) => {
       const r = resourceOf.get(b.sourceId);
-      const found = r ? findQuote(r.text, b.quote) : null;
+      const found = r ? findQuote(r.text, quoteOf(b.sourceId, b.quote)) : null; // owner: privacy
       if (!r || !found || found.status !== "unique" || !targets.some((t) => t.id === b.blockId) || written.has(norm(b.text))) {
         dropped++;
         return;

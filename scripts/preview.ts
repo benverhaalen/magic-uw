@@ -15,6 +15,7 @@ import { createStudyContextResolver } from "../apps/desktop/src/learning-context
 import { seedLearningFixture } from "./learning-fixture";
 import { seedSyncResilienceFixture } from "./sync-resilience-fixture";
 import { linkExactEvidence } from "../packages/core/src/evidence";
+import { createPipelineReferences } from "../packages/core/src/graph/references-port"; // owner: mastery
 // Explicit opt-in QA output, never a substitute for live model inference.
 const syncFixture = process.env.MAGIC_PREVIEW_SYNC_FIXTURE === "1";
 const learningFixture = process.env.MAGIC_PREVIEW_LEARNING_FIXTURE === "1";
@@ -35,6 +36,9 @@ const core = createCore(store, {
       store: store.learning,
       resolveContext: (resourceId): StudyContext | null =>
         resolveStudyContext(resourceId),
+      // owner: mastery: course mastery and grades read the same ports as the desktop worker (D57).
+      analyticsReferences: () => createPipelineReferences(store),
+      coursework: () => store,
     }),
   },
 });

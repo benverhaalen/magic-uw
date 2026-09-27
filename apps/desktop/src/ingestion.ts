@@ -62,6 +62,8 @@ import {
   contentHash,
   cleanLink,
 } from "../../../packages/connectors/src/external";
+// owner: site-recipes. Host triage: only `sync` hosts are crawled; `read_once` on demand.
+import { readOnceTargets, syncSeeds, type HostDecision } from "../../../packages/core/src/site-triage";
 import {
   createPublicClient,
   type PublicClient,
@@ -79,10 +81,15 @@ import { courseInclusion } from "../../../packages/core/src/access";
 import { createRefreshCoordinator } from "../../../packages/core/src/refresh";
 // owner: T33. Per-course freshness probes (D37).
 import {
+  canvasCourseCode,
   fetchCanvasContentProbe,
   fetchCanvasHotProbe,
+  type SelectableCanvasCourse,
 } from "../../../packages/connectors/src/canvas-selection";
 // end owner: T33
+// fix/current-courses-only: the student's UW enrollment corroborates Canvas's current courses.
+import { currentEnrollment } from "../../../packages/domain/src/enrollment-match";
+import { courseChoices } from "./renderer/onboarding/model";
 import {
   linkExactEvidence,
   evidenceFor,
@@ -198,6 +205,17 @@ export interface IngestionHost {
   onSaved?(sourceId: string): void;
   /** owner: T05b. D41's session check: main's `source-fetch` service "space" (GET, no redirects). */
   spaceFetch?(url: string, init?: RequestInit): Promise<Response>;
+  /**
+   * owner: site-recipes. Host triage from Canvas evidence (no fetch): the crawler reads only hosts
+   * decided `sync`. Absent (tests, older hosts), every seed is crawled as before.
+   */
+  triage?(accountScope: string, courseId: string, signal?: AbortSignal): Promise<Map<string, { decision: HostDecision }>>;
+  /**
+   * owner: site-recipes. The stored triage decisions (no rule re-run, no model call). Opening an
+   * item reads its `read_once` links by these, so an open never costs a triage call. Absent,
+   * `triage` decides.
+   */
+  triageDecisions?(accountScope: string, courseId: string): Map<string, { decision: HostDecision }>;
   /** owner: T05b. A course's inventory with access states; the data builder stores it in course_spaces. */
   onSpaces?(accountScope: string, courseId: string, spaces: CourseSpace[]): void;
   /** owner: acquisition. Overrides of ACQUISITION_DEFAULTS (tests and the perf comparison). */
@@ -1145,6 +1163,91 @@ export function createIngestion(
     if (http.needsSignIn) markExpired();
     return http.needsSignIn;
   }
+  /**
+   * owner: site-recipes. A `read_once` link, read when the student opens the item that links it:
+   * at most five pages, GET only, robots and the public client's checks as in a sync, depth 0.
+   * Pages already read stay as they are ("once"); they land in their own `linked_pages` source,
+   * never in the crawler's, so a sync never re-reads or deletes them.
+   */
+  async function readLinked(resourceId: string, signal?: AbortSignal): Promise<{ read: number }> {
+    const item = store.resource(resourceId);
+    const sources = new Map(store.sources().map((s) => [s.id, s]));
+    const source = item && sources.get(item.sourceId);
+    if (!item || item.deleted || !source || source.kind !== "canvas" || !host.triage) return { read: 0 };
+    const decided = host.triageDecisions
+      ? host.triageDecisions(source.accountScope, item.courseId)
+      : await host.triage(source.accountScope, item.courseId, signal).catch(() => null);
+    if (!decided) return { read: 0 };
+    const onceId = `web-once:${contentHash(`${source.accountScope}:${item.courseId}`).slice(0, 24)}`;
+    const earlier = store.resources().filter((r) => r.sourceId === onceId && !r.deleted);
+    const targets = readOnceTargets(item, decided).filter((url) => !earlier.some((r) => r.url === url && (r.text || r.document)));
+    if (!targets.length) return { read: 0 };
+    const settings = store.ingestionSettings();
+    const manager = createDocumentManager({
+      directory: join(host.directory, "documents"),
+      client,
+      downloadConcurrency: settings.downloadConcurrency,
+      maxBytes: settings.maxFileBytes,
+      extractor: host.extractor,
+    });
+    const fresh: ResourceInput[] = [];
+    let status: CaptureBatch["status"] = "ok";
+    for await (const batch of externalCourseConnector({
+      accountScope: source.accountScope,
+      courseId: item.courseId,
+      courseName: item.courseName,
+      seeds: targets,
+      client,
+      maxDepth: 0,
+      maxPages: targets.length,
+      now,
+      onDocument: async ({ url, depth, discoveredFrom, response, signal }) => {
+        const result = await manager.capture({
+          id: contentHash(url),
+          sourceUrl: url,
+          downloadUrl: url,
+          allowedDownloadOrigins: [new URL(url).origin],
+          filename: new URL(url).pathname.split("/").pop(),
+          response,
+          signal,
+        });
+        return resourceInputSchema.parse({
+          externalId: contentHash(url),
+          kind: "material",
+          courseId: item.courseId,
+          courseName: item.courseName,
+          title: new URL(url).pathname.split("/").pop() || "Linked document",
+          url,
+          text: result.text,
+          parts: result.parts,
+          document: result.document,
+          crawl: { depth, discoveredFrom, fetchedAt: now().toISOString() },
+        });
+      },
+    }).pull(signal)) {
+      fresh.push(...batch.resources);
+      if (batch.status !== "ok") status = batch.status;
+    }
+    const kept = earlier
+      .filter((r) => !fresh.some((f) => f.externalId === r.externalId))
+      .map((r) => resourceInputSchema.strip().parse(r));
+    save({
+      source: {
+        id: onceId,
+        label: `${item.courseName} linked pages`.slice(0, 200),
+        kind: "web",
+        accountScope: source.accountScope,
+        courseId: item.courseId,
+        scope: "linked_pages",
+      },
+      observedAt: now().toISOString(),
+      // A failed read never deletes an earlier one: only a clean read replaces the set.
+      complete: status === "ok",
+      status,
+      resources: [...kept, ...fresh],
+    });
+    return { read: fresh.length };
+  }
   async function external(signal: AbortSignal, force: boolean) {
     let capturedExternal = false,
       capturedLatePage = false;
@@ -1159,7 +1262,7 @@ export function createIngestion(
             r.courseId === course.courseId &&
             sources.get(r.sourceId)?.accountScope === source.accountScope,
         );
-      const seeds = [
+      const linked = [
         ...new Set(
           resources
             .filter((r) => sources.get(r.sourceId)?.kind === "canvas")
@@ -1176,11 +1279,23 @@ export function createIngestion(
             }),
         ),
       ];
+      // owner: site-recipes. Triage first, from Canvas evidence only: the crawl reads `sync` hosts
+      // and nothing else. A failed triage reads nothing this run rather than everything.
+      let seeds = linked;
+      if (host.triage && linked.length) {
+        const decided = await host
+          .triage(source.accountScope, course.courseId, signal)
+          .catch(() => null);
+        signal.throwIfAborted();
+        seeds = decided ? syncSeeds(linked, decided) : [];
+      }
+      // The crawler's own source; pages read once on demand live in `linked_pages`.
       const publicSource = store
         .sources()
         .find(
           (s) =>
             s.kind === "web" &&
+            s.scope === "course_websites" &&
             s.accountScope === source.accountScope &&
             s.courseId === course.courseId,
         );
@@ -1205,7 +1320,11 @@ export function createIngestion(
           seeds,
           client,
           previous: resources
-            .filter((r) => sources.get(r.sourceId)?.kind === "web")
+            .filter(
+              (r) =>
+                sources.get(r.sourceId)?.kind === "web" &&
+                sources.get(r.sourceId)?.scope === "course_websites",
+            )
             .map(inputResource),
           maxDepth: settings.crawlMaxDepth,
           maxPages: settings.crawlMaxPages,
@@ -1529,6 +1648,7 @@ export function createIngestion(
                 (old) => !read.spaces.some((x) => x.url === old.url),
               ),
             ];
+      const probe = await probeFilter(source.accountScope, course.courseId, signal);
       const checked = await checkSpaceAccess(
         hydrateCourseSpaces(
           store,
@@ -1536,7 +1656,10 @@ export function createIngestion(
           course.courseId,
           merged,
         ),
-        accessDeps(source.accountScope, course.courseId, signal),
+        {
+          ...accessDeps(source.accountScope, course.courseId, signal),
+          ...(probe ? { only: probe } : {}),
+        },
       );
       spaces.set(key, checked);
       persistCourseSpaces(
@@ -1549,6 +1672,30 @@ export function createIngestion(
       host.onSpaces?.(source.accountScope, course.courseId, checked);
     }
   }
+  /**
+   * owner: site-recipes. Host triage gates D41's access check too: only hosts the app will read
+   * (`sync`, `read_once`) and Canvas's own spaces get the one plain request. `link_only` keeps the
+   * host table's state without a request; `ignore` gets none. No triage host: every space, as before.
+   */
+  async function probeFilter(
+    accountScope: string,
+    courseId: string,
+    signal: AbortSignal,
+  ): Promise<((space: CourseSpace) => boolean) | undefined> {
+    if (!host.triage) return undefined;
+    const decided = await host.triage(accountScope, courseId, signal).catch(() => null);
+    return (space) => {
+      if (space.route === "canvas_session") return true;
+      let name = "";
+      try {
+        name = new URL(space.url).hostname.toLowerCase();
+      } catch {
+        return false;
+      }
+      const decision = decided?.get(name)?.decision;
+      return decision === "sync" || decision === "read_once";
+    };
+  }
   /** D41: recheck on the content probe (what isn't readable) and after a sign-in (everything). */
   async function recheckAccess(signal: AbortSignal) {
     const all = recheckAll;
@@ -1558,12 +1705,14 @@ export function createIngestion(
         key.slice(0, key.lastIndexOf(":")),
         key.slice(key.lastIndexOf(":") + 1),
       ];
+      const probe = await probeFilter(accountScope, courseId, signal);
       const checked = await checkSpaceAccess(list, {
         ...accessDeps(accountScope, courseId, signal),
         only: (space) =>
-          all ||
-          space.route === "canvas_session" ||
-          space.access.state !== "readable",
+          (!probe || probe(space)) &&
+          (all ||
+            space.route === "canvas_session" ||
+            space.access.state !== "readable"),
       });
       spaces.set(key, checked);
       persistCourseSpaces(store, accountScope, courseId, checked);
@@ -1687,6 +1836,112 @@ export function createIngestion(
       recordRun(run);
     },
   });
+  /**
+   * fix/current-courses-only. The student's UW current enrollment (Course Search & Enroll), when
+   * planning has read it: a Canvas course matches an enrolled class by subject and catalog number
+   * (and section, when both name one). Code only; nothing here reaches AI, Jev or MCP. Without
+   * planning data, Canvas's own signals decide alone.
+   */
+  /** The enrollment matcher for the connector; authoritative whenever the read found this term's classes. */
+  function enrollmentOptions() {
+    const enrolledThisTerm = planningEnrollment();
+    return enrolledThisTerm ? { enrolledThisTerm, enrollmentAuthoritative: true } : {};
+  }
+  function planningEnrollment(): ((course: SelectableCanvasCourse) => boolean) | undefined {
+    const enrollment = currentEnrollment(store.planningRecords?.() ?? [], now());
+    return enrollment ? (course) => !!enrollment.match(course) : undefined;
+  }
+  /**
+   * fix/current-courses-only. Canvas's nameless `{id, access_restricted_by_date}` rows are no
+   * longer stored; a workspace that stored one before is repaired without losing history:
+   * - a course whose row an earlier version named (it became date-restricted and the nameless
+   *   observation overwrote its name) gets that named version back, marked restricted and not
+   *   included
+   * - only a row that never had a name and has no other source for its course is retired
+   * - anything else is left as it is (hidden from the course list, never deleted)
+   */
+  const NAMELESS = /^Course \d+ \(name unavailable\)$/;
+  function repairNamelessCourses() {
+    const sources = store.sources();
+    for (const r of store.resources()) {
+      if (r.kind !== "course" || r.deleted || !NAMELESS.test(r.courseName)) continue;
+      const source = sources.find((s) => s.id === r.sourceId);
+      if (!source || source.kind !== "canvas" || source.scope !== "course") continue;
+      const named = store.resourceHistory?.(r.id).find((v) => v.resource.courseName && !NAMELESS.test(v.resource.courseName));
+      if (named) {
+        const restored = resourceInputSchema.parse({
+          ...named.resource,
+          course: {
+            ...named.resource.course,
+            accessRestricted: true,
+            accessState: "date_restricted",
+            selection: {
+              score: named.resource.course?.selection?.score ?? 0,
+              included: false,
+              reasons: ["Canvas now restricts this course by date; kept with its last known name"],
+            },
+          },
+        });
+        const { id, label, kind, accountScope, courseId, scope } = source;
+        save({
+          source: { id, label: `${restored.courseName.slice(0, 145)} · course`.slice(0, 200) || label, kind, accountScope, courseId, scope },
+          observedAt: now().toISOString(),
+          status: "ok",
+          complete: true,
+          resources: [restored],
+          diagnostics: [{ code: "restored_named_course_version", path: [], severity: "warning" }],
+        });
+        continue;
+      }
+      const siblings = sources.some(
+        (s) => s.id !== source.id && s.accountScope === source.accountScope && s.courseId === source.courseId,
+      );
+      if (!siblings) store.removeSource(source.id);
+    }
+  }
+  /**
+   * fix/current-courses-only. Discovery before the first full read: the profile and the course
+   * lists only, so onboarding can show the courses and the student can choose. Background
+   * reads hold until the student starts the sync (the next manual run).
+   */
+  const holdForChoice = (value: boolean) => {
+    const settings = store.ingestionSettings();
+    if (settings.awaitingCourseChoice !== value) store.setIngestionSettings({ ...settings, awaitingCourseChoice: value });
+  };
+  /** The listable courses (onboarding's chooser rule): named, not past. */
+  const choiceCount = () =>
+    courseChoices({
+      sources: store.sources(),
+      resources: store.resources(),
+      courseOverrides: store.courseOverrides(),
+    } as unknown as Parameters<typeof courseChoices>[0]).length;
+  async function discover(signal = new AbortController().signal) {
+    // Held before anything is read, and any run already under way (a background tick, the
+    // 30-second timer, a reconnect) is cancelled first, so no unconfirmed course is read.
+    holdForChoice(true);
+    if (reconnectBarrier) await reconnectBarrier;
+    await coordinator.cancelAndWait();
+    const s = store.ingestionSettings();
+    for await (const batch of canvasConnector({
+      fetch: host.canvasFetch,
+      metadataConcurrency: s.metadataConcurrency,
+      selectedTerm: s.selectedTerm,
+      courseOverrides: store.courseOverrides(),
+      knownResources: store.resources(),
+      ...enrollmentOptions(),
+      now,
+      catalogOnly: true,
+    }).pull(signal))
+      save(batch);
+    repairNamelessCourses();
+    // Nothing to choose from: no hold (the next sync reads nothing unconfirmed anyway).
+    if (!choiceCount()) holdForChoice(false);
+  }
+  /** "Start syncing": the student confirmed the course choice. The only way the hold is released. */
+  function confirmCourses() {
+    holdForChoice(false);
+    return tick("manual");
+  }
   // owner: T33. One Canvas read: every included course (full), or only the given ones (warm).
   async function canvasRead(
     only: Set<string> | undefined,
@@ -1707,6 +1962,7 @@ export function createIngestion(
       selectedTerm: s.selectedTerm,
       courseOverrides: store.courseOverrides(),
       knownResources: store.resources(),
+      ...enrollmentOptions(), // fix/current-courses-only
       moduleRun,
       onModuleRun: (run) => {
         if (!signal.aborted && !reconnecting) moduleRun = run;
@@ -1731,6 +1987,7 @@ export function createIngestion(
         else accountSignIn = true;
       }
     }
+    repairNamelessCourses(); // fix/current-courses-only
     if (needsSignIn && accountSignIn) markExpired();
     else {
       // documents() stops at its first sign-in answer (one request) if the session is gone.
@@ -1811,6 +2068,11 @@ export function createIngestion(
     trigger: "manual" | "background" = "background",
   ): ReturnType<typeof coordinator.tick> {
     if (reconnectBarrier) return reconnectBarrier.then(() => tick(trigger));
+    // fix/current-courses-only: while the student chooses courses, only their own start reads.
+    // While the student chooses, a background tick reads nothing and a manual one (the launch
+    // sign-in, a refresh) refreshes the course list only. confirmCourses() releases the hold.
+    if (store.ingestionSettings().awaitingCourseChoice)
+      return trigger === "manual" ? discover().then(() => undefined) : Promise.resolve(undefined);
     const generation = sessionGeneration;
     if (
       trigger === "manual" &&
@@ -1840,6 +2102,8 @@ export function createIngestion(
     ...coordinator,
     tick, // owner: T17
     markExpired,
+    discover, // fix/current-courses-only
+    confirmCourses, // fix/current-courses-only
     // owner: T05b
     reconnected() {
       sessionGeneration++;
@@ -1858,6 +2122,11 @@ export function createIngestion(
       });
       reconnectBarrier = barrier;
       return barrier;
+    },
+    readLinked, // owner: site-recipes
+    /** owner: site-recipes. The core's `ui_event` seam: opening an item reads its `read_once` links. */
+    onUiEvent: async (event: { kind: string; subject: string }) => {
+      if (event.kind === "open") await readLinked(event.subject).catch(() => {});
     },
     spaces: () => [...spaces.values()].flat(),
     accessSummary: () => accessSummary([...spaces.values()].flat()),

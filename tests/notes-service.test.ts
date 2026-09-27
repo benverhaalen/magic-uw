@@ -265,6 +265,8 @@ test("v11 migration: an existing v9 file gains the notes tables and keeps its da
   assert.ok(SCHEMA_VERSION >= 11, "v11 is part of the chain; later migrations may follow");
   assert.equal(store.resources().length, 1);
   assert.deepEqual(store.notes.notes(), []);
-  assert.ok(store.migrationBackup());
+  // privacy (lead decision, September 27): a verified pre-v14 backup is deleted after the migration.
+  assert.equal(store.backupCheck()?.status, "deleted");
+  assert.equal(store.migrationBackup(), null);
   store.close();
 });

@@ -16,15 +16,21 @@ Read the [shared context](docs/README.md). It separates the product direction, p
 
 **How we build:** [reference-driven design](docs/reference-driven-design.md). Study the actual mechanism or interaction, adapt it to the student journey, and verify its effect in the product. [Agent instructions](AGENTS.md) carry this method into new sessions and delegated work.
 
-**Current state:** an Electron desktop workspace with versioned local SQLite storage, expanded Canvas reads, background refresh, independent calendar feeds, linked course-site/document/GitLab evidence, and local MCP tools with explicit sharing grants. My UW adds local enrollment, saved DARS audits, course search/sections, and conservative academic-source comparison. An owner-funded Jev gateway and an installed-local-model adapter provide bounded AI features. Embedded hosted account connections, managed model downloads, and the broader learning loop are still ahead. See [implementation status](docs/implementation-status.md) for the exact boundary and [development setup](docs/development.md) to run it.
+**Current state** (`main`, 2026-09-27; labels as defined in [architecture §1.1](docs/course-backend-architecture.md#11-status-labels)): an Electron desktop app over one local SQLite database. After one UW sign-in it reads every current course automatically (demonstrated on a real account), splits materials into passages with exact offsets, and maps each course by code: material roles, dates, terms, formulas and what each assignment references (demonstrated on 6 live courses). Quizzes, flashcards and study guides are generated with one checked call on the student's own Claude Code or Codex (integrated; a generation run on real course content is not yet recorded), lecture-note scaffolds are built by code, and study itself (FSRS flashcards, Learn rounds, sectioned quizzes, topic states, analytics) runs at zero model tokens (integrated). UW Outlook and Microsoft 365 connect through the app's own Microsoft sign-in (integrated; the live run against UW's tenant is pending). My UW adds local enrollment, saved DARS audits and course search, which never leave the computer. [Implementation status](docs/implementation-status.md) has the exact boundary and [development setup](docs/development.md) runs it.
 
-## The course backend and the open academic data platform
+## The platform: an open academic database for students and Badger developers
 
-Under the app is a local-first academic database. After one UW sign-in, code inventories and reads every course the student can already see, stores it in one SQLite file on their computer as passages with exact offsets, and checks every quote, ID and date. The student's own AI client writes only what code can't, and studying costs no model tokens. The same packages are MIT and open to Badger developers who want to build their own study tools.
+My Magic UW is built on an **agent-first academic database**: courses, modules, versioned resources, passages with offsets and full-text search, quoted material facts, a reference graph, the course profile, learning state and notes, all in one file on the student's computer. **AI writes, code decides:** code checks every quote, number, date and ID a model returns, the model never gets tools inside the app, and planning data never leaves the machine.
 
-- [Academic data platform](docs/academic-data-platform.md): what it is, what's built, a developer quickstart, the decisions with their evidence, and a sourced scorecard against NotebookLM, Quizlet, Anki and seven other tools.
-- [Course backend architecture](docs/course-backend-architecture.md): the system map and where the build stands.
-- [Build record](docs/course-backend-build-record.md): tests, measurements and the live trial.
+- **Open source (MIT) and free with the student's own AI.** Generation runs on the plan the student already has, so there are no extra usage credits; those calls do count toward that plan's limits, and whether the route fits each provider's terms is an open decision (H5). An optional hosted Jev service is the paid part; its price is an open team decision (H1).
+- **Built to be built on.** A versioned, grant-scoped, read-only agent API (`@magic/agent-api` v1) and a read-only MCP course bank let a developer's tool or a student's own AI client read their courses, with a receipt for every read.
+
+| Read next | What it answers |
+|---|---|
+| [Academic data platform](docs/academic-data-platform.md) | what the database stores, the agent API and MCP course bank, a developer quickstart, the business model, licensing, governance, the scorecard and the roadmap |
+| [Course backend architecture](docs/course-backend-architecture.md) | processes, the data flow from sign-in to study, the agent runtime, privacy layers, the job drain, freshness, and the measured effect of each design choice |
+| [Benchmarks](docs/benchmarks.md) | performance and quality measurements, with methods and the rows we lose |
+| [Business model](docs/notes/business-model.md) | pricing, the hosted service, the UW licence path, payments and distribution |
 
 ## Run the workspace
 
@@ -35,7 +41,7 @@ pnpm install
 pnpm dev
 ```
 
-The app starts empty with hosted AI sharing off. Load the explicitly synthetic sample course, import a local capture, or use the app's UW sign-in browser. No Jev key is needed to develop the local workspace. Ben's one shared key belongs only on the [gateway server](apps/gateway/README.md).
+The app starts empty with hosted AI sharing off. Load the explicitly synthetic sample course, import a local capture, or use the app's UW sign-in browser. No Jev key is needed to develop the local workspace. The team's Jev key belongs only on the [gateway server](apps/gateway/README.md).
 
 | Document                                                   | What it answers                                                                     |
 | ---------------------------------------------------------- | ----------------------------------------------------------------------------------- |

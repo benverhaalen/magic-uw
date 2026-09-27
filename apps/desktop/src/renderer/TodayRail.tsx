@@ -109,8 +109,9 @@ export function TodayRail({
   const now = suppliedNow ?? clockNow;
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const rail = useMemo(
-    () => buildTodayRail(resources, now, timeZone, plan),
-    [resources, now, timeZone, plan],
+    // Sources let copies of one Canvas assignment (assignments, to-do, upcoming, activity) collapse to one row.
+    () => buildTodayRail(resources, now, timeZone, plan, sources),
+    [resources, now, timeZone, plan, sources],
   );
   const due = homeDueItems ? homeDueItems.map(r => ({id:r.id,title:r.title,courseName:r.courseName,dueMin:localTime(r.deadline.planningAt!,timeZone).min,conflict:r.deadline.conflict})) : rail.due;
   const notes = useMemo(() => changeNotes(changes, now, timeZone), [changes, now, timeZone]);

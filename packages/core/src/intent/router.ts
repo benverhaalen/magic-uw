@@ -20,11 +20,13 @@ import { classifyPack, SLOT_GLOSSARY, type ClassifyInput, type ClassifyOutput, t
 import { readPackArtifact, runPack } from "../jobs/pack";
 import { defaultActions } from "./adapters";
 import { groundedAsk } from "./ask";
+import type { CoursePrefixSource } from "../course-facts/prefix"; // owner: course-facts
 import { authorizer } from "./consent";
 import { buildIndex, createResolve, indexSignature, refreshTopics, type IntentIndex } from "./courses";
 import { createRegistry, type ActionRegistry, type AnyAction } from "./registry";
 import { candidate, courseDisplay, normaliseUtterance, resolveCode, resolveSlots, type CodeOutcome } from "./resolve";
 import type { ActionContext, AskResult, IntentHost, IntentStore, ResolvedArgs, ResolvedCourse } from "./types";
+import { intentProtection } from "../privacy/intent"; // owner: privacy
 
 export interface IntentRouterDeps {
   store: IntentStore;
@@ -43,8 +45,12 @@ export interface IntentRouterDeps {
   buildIndex?: (store: IntentStore) => IntentIndex;
   /** false skips the code resolver: the AI-only baseline, for measurement. */
   codePath?: boolean;
+  /** owner: privacy. false skips the protection pass: the unprotected baseline, for measurement only. */
+  protect?: boolean;
   resolverBudgetMs?: number;
   clock?: () => number;
+  /** owner: course-facts. The course prefix (brief + pack catalogue) for a one-course ask. */
+  coursePrefix?: CoursePrefixSource;
 }
 
 const zero = () => ({ in: 0, cached: 0, out: 0 });
@@ -60,6 +66,13 @@ type ClassifyAttempt =
   | { status: "blocked"; reason: string }
   | { status: "failed"; reason: string };
 
+/** owner: privacy. The model's arguments with this request's placeholders put back as the student wrote them. */
+function restoreArgs(output: ClassifyOutput, restore: (v: string) => string): ClassifyOutput {
+  const fix = (a: ClassifySlots): ClassifySlots =>
+    Object.fromEntries(Object.entries(a).map(([k, v]) => [k, typeof v === "string" ? restore(v) : Array.isArray(v) ? v.map((x) => (typeof x === "string" ? restore(x) : x)) : v])) as ClassifySlots;
+  return { ...output, args: fix(output.args), alternatives: output.alternatives?.map((a) => ({ ...a, args: fix(a.args) })) ?? output.alternatives };
+}
+
 const clean = (s: ClassifySlots): IntentSlots =>
   Object.fromEntries(Object.entries(s).filter(([, v]) => v !== null && v !== "" && !(Array.isArray(v) && !v.length))) as IntentSlots;
 
@@ -72,6 +85,8 @@ export function createIntentRouter(deps: IntentRouterDeps) {
   const ledger = deps.ledger ?? memoryLedgerStore();
   const registry: ActionRegistry = createRegistry(defaultActions(deps.actions));
   const speculation = deps.speculation ?? "gate";
+  // owner: privacy: runs only in classify (after a code miss) and in ask; warmed with the index.
+  const protection = intentProtection(store, deps.protect !== false);
 
   let cached: IntentIndex | null = null;
   let checkedAt = -Infinity;
@@ -115,8 +130,17 @@ export function createIntentRouter(deps: IntentRouterDeps) {
       .map(([k, v]) => `${k}=${Array.isArray(v) ? v.join(", ") : String(v)}`);
 
   async function classify(text: string, hints: IntentSlots, contextCourse: ResolvedCourse | null, runnerP: Promise<ModelRunner | null>, signal: AbortSignal): Promise<ClassifyAttempt> {
-    const frame = classifyFrame();
-    const input: ClassifyInput = { utterance: normaliseUtterance(text) || text.trim().toLowerCase(), currentCourse: contextCourse ? courseDisplay(contextCourse) : null, hints: hintsOf(hints) };
+    // owner: privacy: the command and hints are the student's words; the catalogue and courses are teaching text.
+    const p = protection.request("classify");
+    const plainFrame = classifyFrame();
+    // The prefix and course labels are protected when the bar opens and cached by content; only
+    // the student's own words are protected here, between submit and send.
+    const frame: CourseFrame = { ...plainFrame, skeleton: protection.prefix(plainFrame.skeleton) };
+    const input: ClassifyInput = {
+      utterance: p.text(normaliseUtterance(text) || text.trim().toLowerCase(), "personal"),
+      currentCourse: contextCourse ? protection.prefix(courseDisplay(contextCourse)) : null,
+      hints: hintsOf(hints).map((h) => p.text(h, "personal")),
+    };
     const runner = await runnerP;
     if (signal.aborted) return { status: "failed", reason: "Cancelled." };
     const prompt = buildPrompt(classifyPack, frame, input, []);
@@ -130,11 +154,11 @@ export function createIntentRouter(deps: IntentRouterDeps) {
     if (!runner) {
       // No client: a cached classification still serves (0 tokens); a miss is the code path only.
       const art = readPackArtifact(artifacts, classifyPack, frame, input, []);
-      if (art) return { status: "done", output: art.output, cached: true, tokens: zero(), model: art.model };
+      if (art) return { status: "done", output: restoreArgs(art.output, p.restore), cached: true, tokens: zero(), model: art.model };
       return { status: "no_client" };
     }
     const result = await runPack({ runner, artifacts, ledger, authorize, now: () => now().getTime() }, classifyPack, frame, input, [], { lane: "interactive", scope: "command", signal });
-    if (result.status === "done") return { status: "done", output: result.artifact.output, cached: result.cached, tokens: result.cached ? zero() : result.artifact.usage, model: result.artifact.model };
+    if (result.status === "done") return { status: "done", output: restoreArgs(result.artifact.output, p.restore), cached: result.cached, tokens: result.cached ? zero() : result.artifact.usage, model: result.artifact.model }; // owner: privacy
     if (result.status === "blocked") return { status: "blocked", reason: result.reason };
     if (result.status === "needs_student") return { status: "failed", reason: "The AI's reading of that request didn't pass the app's checks." };
     return { status: "failed", reason: result.message };
@@ -151,7 +175,7 @@ export function createIntentRouter(deps: IntentRouterDeps) {
       signal,
       ask: async (question, courses, s): Promise<AskResult> => {
         const list = courses === "all" ? resolve.courses() : courses;
-        const r = await groundedAsk({ store, runner: () => runnerP, artifacts, ledger, now }, question, list, s);
+        const r = await groundedAsk({ store, runner: () => runnerP, artifacts, ledger, now, protection, ...(deps.coursePrefix ? { coursePrefix: deps.coursePrefix } : {}) /* owner: course-facts */ }, question, list, s); // owner: privacy
         spent.tokens = add(spent.tokens, r.tokens);
         return r;
       },
@@ -278,6 +302,7 @@ export function createIntentRouter(deps: IntentRouterDeps) {
     const t0 = clock();
     index();
     const frame = classifyFrame();
+    protection.warm(frame.skeleton); // owner: privacy: the roster and the protected prefix
     const runner = await acquire();
     if (runner && deps.warm) {
       const prompt = buildPrompt(classifyPack, frame, { utterance: "", currentCourse: null, hints: [] }, []);
@@ -292,6 +317,7 @@ export function createIntentRouter(deps: IntentRouterDeps) {
   /** Builds the index now (at launch, after the first bootstrap query) so no command waits on it. */
   function ready(): void {
     index();
+    protection.warm(classifyFrame().skeleton); // owner: privacy: the roster and the protected prefix
   }
 
   return { registry, handle, preview, prewarm, ready, resolve, index };

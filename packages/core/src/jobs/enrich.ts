@@ -105,7 +105,9 @@ export function createEnrichJob(deps: EnrichDeps): JobHandler {
       /** The lease is still ours and the item unchanged. */
       function current(leased: Job, resource: Resource) {
         const fresh = store.resource(resource.id);
-        const live = store.jobs().find((j) => j.id === leased.id);
+        // One indexed row, not the whole job table (thousands of rows after a backfill).
+        const lookup = (store as Partial<{ job(id: string): Job | undefined }>).job;
+        const live = lookup ? lookup(leased.id) : store.jobs().find((j) => j.id === leased.id);
         return (
           !!fresh &&
           !fresh.deleted &&

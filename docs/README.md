@@ -25,6 +25,7 @@ We are entering Applied AI & Automation, DoIT's Badgers Building for Badgers, an
 | Read                                                  | Contents                                                                                                 |
 | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | [Academic data platform](academic-data-platform.md)   | **Start here for the backend and for developers:** the app's backend as an open, local-first academic database; status per part, quickstart, decisions with evidence, sourced scorecard |
+| [Benchmarks](benchmarks.md) | How the app is measured and every result: method, performance, quality, robustness, the competitor protocol and what is not yet measured |
 | [Design system](../DESIGN.md) / [handoff](design-handoff.md) | Small entry point: visual anchor, semantic tokens, behavior contracts, platform handoffs and scoped audit workflow |
 | [Marketing materials](../marketing/README.md)          | Website page directions, wizard logo pack, and team photos (design exports, not the built site)          |
 | [Home and visual direction](home-design-direction.md) | Current flagship Home, near-approved layout/type, remaining local refinements and reference transfers |
@@ -44,6 +45,7 @@ We are entering Applied AI & Automation, DoIT's Badgers Building for Badgers, an
 | [Course intelligence](course-intelligence.md)          | Versioned course claims, source-bound policy interpretation, optional local extraction, and evidence limits |
 | [Planning integration](planning-upgrade.md)           | My UW adapters, source reconciliation, privacy, live evidence, and remaining work                         |
 | [Implementation status](implementation-status.md)     | Actual capability boundaries, evidence, and the remaining product scope                                  |
+| [Accounts and payments](accounts-and-payments.md)     | Email sign-in, Lemon Squeezy purchase status in Supabase, setup steps and data stored                     |
 | [Development](development.md)                         | Run the workspace and checks; configure the shared gateway safely                                        |
 | [Decisions and open points](decisions.md)             | What is established and what still needs input                                                           |
 | [BuildFest context](buildfest.md)                     | Event facts, judging audiences, opening-slide notes                                                      |

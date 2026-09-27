@@ -221,16 +221,25 @@ export function createPassageIndex(db: DatabaseSync, prepare: Prepare) {
         ).all(JSON.stringify(top.map((t) => t.pid))) as Row[]
       ).map((r) => [Number(r.pid), r]),
     );
-    const termHit = prepare("SELECT 1 FROM passage_fts WHERE passage_fts MATCH ? AND rowid = ?");
+    // Which of these passages each term matches: one probe per term, not one per term and passage.
+    const found = prepare(
+      "SELECT rowid AS pid FROM passage_fts WHERE passage_fts MATCH ? AND rowid IN (SELECT value FROM json_each(?))",
+    );
+    const listed = JSON.stringify([...rows.keys()]);
+    const hitsOf = new Map(
+      content.map((t) => [t, new Set((found.all(`{ctx body} : "${t}"`, listed) as Row[]).map((r) => Number(r.pid)))]),
+    );
+    // A resource's payload is decoded once per search, however many of its passages hit.
+    const items = new Map<string, ReturnType<typeof decodePayload>>();
     const hits: PassageHit[] = [];
     for (const { pid, score } of top) {
       const row = rows.get(pid);
       if (!row) continue;
-      const item = decodePayload(row.payload);
+      const version = `${row.resource_id}\u0000${row.version}`;
+      let item = items.get(version);
+      if (!item) items.set(version, (item = decodePayload(row.payload)));
       const passage = readPassage(row);
-      const matched = new Set(
-        content.filter((t) => termHit.get(`{ctx body} : "${t}"`, pid) !== undefined),
-      );
+      const matched = new Set(content.filter((t) => hitsOf.get(t)!.has(pid)));
       hits.push({
         pid,
         resourceId: passage.resourceId,

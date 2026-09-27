@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { ClientId, ClientStatus } from "@magic/contracts";
 import {
   RunnerError,
+  allowlistedEnv,
   resolveCli,
   runProcess,
   type CliCommand,
@@ -91,20 +92,11 @@ export const isIsolated = (id: ClientId): boolean => CLIENTS[id].homeVar !== nul
  * TMPDIR (macOS temp) and USER/LOGNAME (macOS Keychain and home lookup). Matched
  * case-insensitively, as Windows treats names.
  */
-const ENV_ALLOW = new Set([
-  "PATH", "PATHEXT", "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC",
-  "TEMP", "TMP", "TMPDIR", "HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
-  "APPDATA", "LOCALAPPDATA", "USER", "LOGNAME", "LANG", "LANGUAGE", "TERM",
-  "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
-]);
+// owner: client-detection: one list for every client spawn (terminal, status, runs, warm pool);
+// it lives in the runner as CLIENT_ENV_ALLOW and adds only non-secret system, XDG and
+// certificate variables to the reviewed list.
 export function allowedEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {};
-  for (const [key, value] of Object.entries(base)) {
-    if (value === undefined) continue;
-    const upper = key.toUpperCase();
-    if (ENV_ALLOW.has(upper) || /^LC_[A-Z]+$/.test(upper)) env[key] = value;
-  }
-  return env;
+  return allowlistedEnv(base);
 }
 
 /**

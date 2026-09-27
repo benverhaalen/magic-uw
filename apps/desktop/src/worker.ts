@@ -1,6 +1,9 @@
 import { judgmentFailureError } from "./judgment-errors";
 import { createLocalCourseExtractor } from "@magic/ai";
 import { createStore } from "@magic/storage";
+import { deriveInstallKeys } from "../../../packages/core/src/privacy/at-rest"; // owner: privacy
+import { configurePseudonymKey } from "../../../packages/core/src/privacy/pseudonyms"; // owner: privacy
+import { logLine } from "../../../packages/core/src/privacy/log"; // owner: privacy
 import { createCore } from "@magic/core";
 import { captureBatchSchema, planningCaptureSchema, type PlanningCapture } from "@magic/contracts";
 import { queryRequestSchema } from "@magic/contracts"; // owner: T15
@@ -11,6 +14,7 @@ import { createLocalService } from "./local-service";
 import { createIngestion, ACQUISITION_APP } from "./ingestion";
 import { createLearningRouter, type StudyContext } from "../../../packages/learning/src/router";
 import { createStudyContextResolver } from "./learning-context";
+import { createExamEvidence } from "../../../packages/learning/src/exam/evidence"; // owner: exam-prep
 import { dirname, join } from "node:path";
 import {
   createLocalDocumentExtractor,
@@ -20,7 +24,10 @@ import { createWorkerClients } from "./worker-clients"; // owner: T06
 import { pullPublicSubjects, pullPublicTerms } from "../../../packages/connectors/src/planning-public";
 import type { UwPlanningSyncResult } from "../../../packages/connectors/src/uw-planning-sync";
 // owner: pipeline
-import { pipelineJobRegistry } from "../../../packages/core/src/jobs/default-registry";
+import { appJobRegistry } from "../../../packages/core/src/jobs/default-registry";
+// owner: agenda. D49: the critical-action agenda's background job, correction and narration.
+import { correctAgendaEstimate, invalidateAgenda, narrateAgenda, registerAgendaJobs } from "../../../packages/core/src/priority/index";
+// end owner: agenda
 import { agenda, courseGraph, createPipelineReferences, references } from "../../../packages/core/src/graph/index";
 import { graphQuerySchema } from "../../../packages/contracts/src/course-core";
 // end owner: pipeline
@@ -40,6 +47,9 @@ const pending = new Map<
   { resolve: (value: any) => void; reject: (error: Error) => void }
 >();
 const store = createStore(process.env.MAGIC_DB_PATH!);
+// owner: privacy: a v14 backup that failed its check is kept; say why (redacted), never silently.
+const backupCheck = store.backupCheck();
+if (backupCheck?.status === "kept") process.stderr.write(logLine({ event: "privacy.backup-kept", reason: backupCheck.reason }));
 // owner: T06: every direct public client refuses until the setup consent record exists.
 const publicClients = createWorkerClients(store);
 // end owner: T06
@@ -49,6 +59,8 @@ const publicClients = createWorkerClients(store);
 import { createClaudeBackend, createCodexBackend, type ModelRunner } from "../../../packages/runner/src/index";
 import { createPackRuntime, DEFAULT_PACK_CONFIG } from "../../../packages/packs/core/src/index";
 import { createPackHandler } from "../../../packages/core/src/pack-handler";
+import { APPROACH_PACK, createApproachHandler } from "../../../packages/core/src/views/index"; // owner: page-views
+import type { PackScope } from "@magic/contracts"; // owner: page-views
 import { isIsolated, isProfileReady, profileEnv, readClientSettings, resolveClient, workDir } from "./clients/profiles";
 const generationUserData = dirname(process.env.MAGIC_DB_PATH!);
 // owner: client-health (D50). Every generation path (packs and guides, notes, the intent router)
@@ -98,8 +110,39 @@ async function generationRunner(): Promise<ModelRunner | null> {
   return generationRuntime.runner;
 }
 // end owner: client-health
-const generation = createPackHandler({ store, runner: generationRunner });
+// owner: client-detection. main's extended PATH (the login shell's folders and the known install
+// folders), sent once after launch; runners built afterwards find the client and its node.
+port.on("message", ({ data }: { data: any }) => {
+  if (data?.kind !== "client-path" || typeof data.path !== "string" || data.path.length > 32_768) return;
+  process.env.PATH = data.path;
+  generationRuntime = null;
+});
+// end owner: client-detection
+// owner: course-facts. The course brief, `<userData>/courses/<course>/syllabus.md`: the first,
+// byte-identical block of every pack and guide prompt about the course.
+import { createCourseBriefs } from "../../../packages/core/src/course-facts/brief";
+const courseBriefs = createCourseBriefs({ store, directory: generationUserData });
+// end owner: course-facts
+const generation = createPackHandler({ store, runner: generationRunner, brief: courseBriefs.courseBrief /* owner: course-facts */ });
 // end owner: generation
+// owner: page-views. The "page-approach" pack (the pages' optional "how to approach it"
+// paragraph) answers through the same pack seam; every other pack name goes on unchanged.
+{
+  const approach = createApproachHandler({ store, runner: generationRunner });
+  const packs = generation.pack;
+  Object.assign(generation, {
+    pack: (name: string, scope: PackScope, signal: AbortSignal): Promise<unknown> =>
+      name === APPROACH_PACK ? approach.run(scope, signal) : packs(name, scope, signal),
+  });
+}
+// end owner: page-views
+// owner: course-facts. The `course.facts` drain job: code selects each course's syllabus, then the
+// student's own client (the generation runner above: isolated profile, tools off, the background
+// budget) finds the course facts through the egress path, once per syllabus change. No client, or
+// fully local mode: the local (Ollama) extractor. It replaces core's Ollama-only course pass.
+// It registers on the shared job registry below (`jobs`), beside agenda and site-recipes.
+import { createCourseFactsJob } from "../../../packages/core/src/course-facts/index";
+// end owner: course-facts
 /** Jev judgments run in main (network + consent gate); the reply arrives as "evaluation". */
 function relayJudgment(
   message:
@@ -171,6 +214,7 @@ const intent = createIntentRouter({
   runner: intentRunner,
   actions: fromNotes({ notesActions }, intentNotes),
   warm: (request) => intentRuntime?.pool?.warm(request) ?? Promise.resolve(false),
+  coursePrefix: generation.coursePrefix, // owner: course-facts: a one-course ask opens with the course prefix
 });
 // end owner: intent
 // owner: notes. Session notes: batch scaffolds on the tick, "fill from slides" through the same
@@ -209,11 +253,38 @@ notesRemotes.microsoft = microsoftRemote(
 );
 const notes = createNotesService({ store, runner: generationRunner, remotes: notesRemotes });
 // end owner: notes
+// owner: agenda. The app's registry (owner: drain: only kinds that need a queue) plus agenda.estimate:
+// code estimates, then the student's own client on the background lane (one call per course
+// change, cached per text hash).
+const jobs = appJobRegistry();
+registerAgendaJobs(jobs, { runner: generationRunner });
+// end owner: agenda
+jobs.register(createCourseFactsJob({ runner: generationRunner, local: createLocalCourseExtractor(), brief: courseBriefs.courseBrief })); // owner: course-facts
+// owner: site-recipes (D32 step 4). A crawled course-site page saved or changed → organize that
+// course's stored site pages: stored recipes replay as code; only a new layout calls the
+// student's client (background lane, consent and receipts); leftovers go to Jev when configured.
+import { siteRecipeJob } from "../../../packages/core/src/site-recipes";
+import { createSiteTriage } from "../../../packages/core/src/site-triage";
+// Host triage before any crawl: code from Canvas evidence, one batched call for ambiguous hosts.
+const siteTriage = createSiteTriage({ store, runner: generationRunner });
+jobs.register(
+  siteRecipeJob({
+    runner: generationRunner,
+    onSaved: (sourceId) => void core.saved(sourceId),
+    ...(process.env.MAGIC_GATEWAY_URL
+      ? { jev: { evaluate: (payload, signal) => relayJudgment({ kind: "evaluate", payload }, signal) } }
+      : {}),
+  }),
+);
+// end owner: site-recipes
 const core = createCore(store, {
   fixture: captureBatchSchema.parse(fixture),
-  courseExtractor: createLocalCourseExtractor(),
   planningPublicClient: publicClients.core, // owner: T06
-  jobs: pipelineJobRegistry(), // owner: pipeline: passages, links and facts, the course pass
+  // owner: drain. Passages, links and facts and the course pass are reconciled in budgeted batches
+  // (jobs/derive.ts), not queued per row; the registry keeps only kinds that need a queue.
+  // owner: agenda: agenda.estimate; owner: site-recipes; course-facts adds course.facts (all on `jobs`).
+  jobs,
+  drain: { derive: true },
   madgrades: { read: (request, signal) => hostRead("madgrades-read", { request }, signal) },
   planningHttp: { read: (request, signal) => hostRead("planning-public-read", { request }, signal) },
   seams: { learning: createLearningRouter({
@@ -224,7 +295,18 @@ const core = createCore(store, {
     // and course-map assessment rows).
     analyticsReferences: () => createPipelineReferences(store),
     // end owner: analytics
-  }), pack: generation.pack /* owner: generation */, notes /* owner: notes */, intent /* owner: intent */ },
+    coursework: () => store, // owner: mastery: captured Canvas scores for grades and past exams (D57)
+    examEvidence: () => createExamEvidence(store), // owner: exam-prep
+  }), pack: generation.pack /* owner: generation */, notes /* owner: notes */, intent /* owner: intent */,
+    // owner: agenda. Only the estimate subject is built; the others keep core's honest message.
+    correct: (value, at) =>
+      value.subject === "estimate"
+        ? correctAgendaEstimate(store, value, at)
+        : "Corrections aren't built yet; nothing was changed.",
+    // end owner: agenda
+    // owner: site-recipes. Opening an item reads its `read_once` links (the renderer's "open" event).
+    uiEvent: (event) => void ingestion.onUiEvent(event),
+  },
   ...(process.env.MAGIC_GATEWAY_URL
     ? {
         gateway: {
@@ -331,6 +413,10 @@ const graphHost = {
 };
 // end owner: T30
 const ingestion = createIngestion(store, {
+  // owner: site-recipes: the crawler reads only hosts triage decided `sync`.
+  triage: async (accountScope, courseId, signal) =>
+    new Map((await siteTriage.decide({ accountScope, courseId }, signal)).hosts.map((h) => [h.host, h])),
+  triageDecisions: (accountScope, courseId) => siteTriage.decisions({ accountScope, courseId }),
   directory: dirname(process.env.MAGIC_DB_PATH!),
   extractor,
   client: publicClients.ingestion, // owner: T06
@@ -351,10 +437,21 @@ const ingestion = createIngestion(store, {
 // slice between jobs and nothing is leased until it ends; presence sets the slice size.
 const pipeline = core.pipeline;
 const syncTick = ingestion.tick;
+// Background derivations (the pipeline's reconcile, the notes' scaffolds) never run while a sync
+// reads: a sync starting stops them between stretches, and its end lets them continue.
+let syncing = 0;
+let notesRun: AbortController | undefined;
 ingestion.tick = (trigger) => {
+  syncing++;
+  notesRun?.abort();
   pipeline.syncStarted();
   const run = syncTick(trigger);
-  void run.finally(() => pipeline.syncEnded()).catch(() => {});
+  void run
+    .finally(() => {
+      syncing--;
+      pipeline.syncEnded();
+    })
+    .catch(() => {});
   return run;
 };
 const pipelineTimer = setInterval(() => pipeline.wake(), 60_000);
@@ -362,6 +459,28 @@ pipelineTimer.unref();
 const pipelineBackfill = setTimeout(() => void pipeline.backfill().then(() => pipeline.wake()), 20_000);
 pipelineBackfill.unref();
 // end owner: pipeline
+// owner: agenda. After the first sync of each local day, refresh the agenda's why-now lines once
+// (cached by the top items' fact hash, so an unchanged agenda costs nothing; a send already in
+// flight for the same hash, from the drain, is shared). Unless the lines end current (a paused,
+// blocked or unconnected client, or a throw), the day is cleared so the next sync tries again.
+let agendaNarratedDay = "";
+const agendaSyncTick = ingestion.tick;
+ingestion.tick = (trigger) => {
+  const run = agendaSyncTick(trigger);
+  void run
+    .then(async () => {
+      const day = new Date().toLocaleDateString("en-CA");
+      if (day === agendaNarratedDay) return;
+      agendaNarratedDay = day;
+      const narrated = await narrateAgenda(store, { runner: generationRunner });
+      if (!narrated.current && agendaNarratedDay === day) agendaNarratedDay = "";
+    })
+    .catch(() => {
+      agendaNarratedDay = "";
+    });
+  return run;
+};
+// end owner: agenda
 const planningPublicClient = publicClients.planning; // owner: T06
 let planningAccountScope = /^uw-session:[a-f0-9-]{36}$/.test(process.env.MAGIC_PLANNING_SCOPE ?? "")
   ? process.env.MAGIC_PLANNING_SCOPE! : `uw-session:${randomUUID()}`;
@@ -373,7 +492,7 @@ function cancelPlanning() {
   planningRun?.controller.abort();
 }
 
-function refreshPlanning(trigger: "manual" | "scheduled" = "manual"): Promise<void> {
+function refreshPlanning(trigger: "manual" | "scheduled" = "manual", phase?: "enrollment"): Promise<void> {
   // owner: planning-perf. Incremental: stored complete DARS reports are reconfirmed without a
   // download, term-fresh public reads are skipped, a slow sync keeps what arrived, and each
   // sync's captures are written in one transaction.
@@ -405,7 +524,7 @@ function refreshPlanning(trigger: "manual" | "scheduled" = "manual"): Promise<vo
   const promise = Promise.all([
     (async () => {
       let result: UwPlanningSyncResult;
-      const hints = { storedAudits: storedAuditReports(store), freshSubjects: termFreshSearchSubjects(store, nowIso) ?? undefined, scheduled: trigger === "scheduled" };
+      const hints = { storedAudits: storedAuditReports(store), freshSubjects: termFreshSearchSubjects(store, nowIso) ?? undefined, scheduled: trigger === "scheduled", ...(phase ? { phase } : {}) };
       try { result = await hostRead("planning-refresh", hints, signal, PLANNING_WORKER_TIMEOUT_MS); }
       catch {
         signal.throwIfAborted();
@@ -480,11 +599,18 @@ refreshTimer.unref();
 const tick = setInterval(() => core.wake(), 30000);
 tick.unref();
 // owner: notes. The rolling window's scaffolds (skipped when nothing changed) and the sync check.
-function notesTick() {
-  try {
-    notes.refresh();
-  } catch (error) {
-    console.error("Notes refresh failed:", error instanceof Error ? error.name : "unknown");
+// owner: drain. The scaffolds are reconciled incrementally in budgeted stretches, never during a
+// sync read (a sync starting aborts the run between stretches; the next tick continues).
+async function notesTick() {
+  if (!syncing && !notesRun) {
+    notesRun = new AbortController();
+    try {
+      await notes.reconcile({ signal: notesRun.signal });
+    } catch (error) {
+      console.error("Notes refresh failed:", error instanceof Error ? error.name : "unknown");
+    } finally {
+      notesRun = undefined;
+    }
   }
   notes.syncTick().catch((error) => console.error("Notes sync failed:", error instanceof Error ? error.name : "unknown"));
 }
@@ -492,6 +618,26 @@ const notesTimer = setInterval(notesTick, 30_000);
 notesTimer.unref();
 // end owner: notes
 port.on("message", async ({ data }: { data: any }) => {
+  // owner: privacy. Main's install secret: at-rest key for the store, pseudonym key for sends.
+  if (data.kind === "privacy-key") {
+    const secret = typeof data.secret === "string" ? Buffer.from(data.secret, "base64") : null;
+    const keys = secret ? deriveInstallKeys(secret) : null;
+    secret?.fill(0);
+    configurePseudonymKey(keys?.pseudonym ?? null);
+    try {
+      // A missing or different key leaves sealed records unopenable: say so (the planning snapshot
+      // counts them as unreadable, and the view shows it) instead of reading as clear.
+      const { keyMatches } = store.setAtRestKey(keys?.atRest ?? null);
+      if (!keys) process.stderr.write(logLine({ event: "privacy.key-unavailable" }));
+      else if (!keyMatches) process.stderr.write(logLine({ event: "privacy.key-mismatch" }));
+    } catch (error) {
+      process.stderr.write(logLine({ event: "privacy.seal-failed", error }));
+    }
+    keys?.atRest.fill(0);
+    keys?.pseudonym.fill(0);
+    return;
+  }
+  // end owner: privacy
   if (data.kind === "source-response") {
     const request = hostRequests.get(data.id);
     hostRequests.delete(data.id);
@@ -521,6 +667,9 @@ port.on("message", async ({ data }: { data: any }) => {
   if (data.kind === "graph") {
     try {
       const query = graphQuerySchema.parse(data.query);
+      // owner: drain. Opening a course derives it next, even a past one while the student is present.
+      if (query.type !== "references" && query.type !== "agenda")
+        pipeline.prioritize({ accountScope: query.accountScope, courseId: query.courseId });
       const result =
         query.type === "references"
           ? references(store, query.assignmentId)
@@ -572,7 +721,7 @@ port.on("message", async ({ data }: { data: any }) => {
   }
   if (data.kind === "planning-sync") {
     try {
-      await refreshPlanning();
+      await refreshPlanning("manual", data.phase === "enrollment" ? "enrollment" : undefined);
       port.postMessage({ kind: "response", id: data.id, result: {
         ...(await core.execute({ type: "snapshot" })),
         message: "Planning sources checked. Each source shows what was verified and what still needs attention.",
@@ -584,7 +733,10 @@ port.on("message", async ({ data }: { data: any }) => {
   }
   if (data.kind === "refresh") {
     try {
-      await ingestion.tick("manual");
+      // fix/current-courses-only: discovery reads the course lists only; the student then chooses.
+      if (data.confirm === true) await ingestion.confirmCourses();
+      else if (data.discover === true) await ingestion.discover();
+      else await ingestion.tick("manual");
       port.postMessage({
         kind: "response",
         id: data.id,
@@ -620,6 +772,7 @@ port.on("message", async ({ data }: { data: any }) => {
     // owner: pipeline
     clearInterval(pipelineTimer);
     clearTimeout(pipelineBackfill);
+    notesRun?.abort(); // owner: drain: an in-flight notes reconcile stops before the store closes
     await pipeline.stop();
     // end owner: pipeline
     clearInterval(planningCadence); // owner: planning-perf
@@ -704,12 +857,18 @@ port.on("message", async ({ data }: { data: any }) => {
     local.cancel();
   }
   try {
+    const result = await core.execute(data.command);
+    // owner: agenda. A completion isn't a source re-read: drop the agenda's cached facts before the
+    // renderer's next query.
+    if (data.command?.type === "complete") invalidateAgenda(store);
+    // end owner: agenda
     port.postMessage({
       kind: "response",
       id: data.id,
-      result: await core.execute(data.command),
+      result,
     });
     if (data.command?.type === "purge") {
+      courseBriefs.purge(); // owner: course-facts
       ingestion.resume();
       pipeline.resume(); // owner: pipeline
     }

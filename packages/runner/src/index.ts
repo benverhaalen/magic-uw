@@ -1,9 +1,18 @@
 export * from "./types";
 export {
   resolveCli,
+  knownCliDirs,
+  cliSearchDirs,
+  loginShellDirs,
+  readLoginShellPath,
+  parseShellPath,
+  extendPathForClients,
+  type ShellRunner,
   resolveNpmShim,
   runProcess,
   cliEnvironment,
+  allowlistedEnv,
+  CLIENT_ENV_ALLOW,
   type CliCommand,
   type ProcessResult,
 } from "./process";
@@ -42,3 +51,5 @@ export {
   type ActivityEvent,
   type LaneStatus,
 } from "./pool";
+export { claudeToolUse, codexToolUse, claudeStreamCheck, codexStreamCheck, toolUseError, DENY_TOOLS_SETTINGS, CLAUDE_ALLOWED_TOOLS } from "./tripwire"; // owner: client-detection
+export { killTree } from "./process"; // owner: client-detection

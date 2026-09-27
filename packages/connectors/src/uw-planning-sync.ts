@@ -44,6 +44,12 @@ export interface UwPlanningSyncOptions {
   freshSubjects?: unknown;
   recheckTimeoutMs?: number;
   now?: () => Date;
+  /**
+   * fix/current-courses-only. "enrollment": the student record and this term's enrollment only
+   * (onboarding needs them before choosing courses); degree history and saved audits are left
+   * for the full read that follows in the background, and are not marked unconfirmed.
+   */
+  phase?: "enrollment";
 }
 const identitySchema = z.object({ personAttributes: z.object({ emplid: z.string().regex(/^\d{1,30}$/) }) });
 const urls = {
@@ -151,22 +157,23 @@ export async function syncUwPlanning(options: UwPlanningSyncOptions): Promise<Uw
   privateCaptures.push(...normalizeUwStudentInfo(student.data, { accountScope, observedAt }));
   const canvas = await read({ kind: "canvas-profile" });
   const canvasId = canvas.status === "ok" ? sameInstitutionalLogin(student.data, canvas.data) : null;
-  privateCaptures.push(await pullUwDegreePlanHistory(client, { accountScope, observedAt, signal }));
+  if (options.phase !== "enrollment") privateCaptures.push(await pullUwDegreePlanHistory(client, { accountScope, observedAt, signal }));
   const termCode = getUwPrimaryTerm(student.data);
   if (termCode) {
     const enrolled = await read({ kind: "current-enrollment", term: termCode });
     if (enrolled.status === "ok") privateCaptures.push(...normalizeUwCurrentEnrollment(enrolled.data, { accountScope, observedAt, termCode }));
     else privateCaptures.push(health("uw_enroll", accountScope, { kind: "enrollment_term", key: termCode }, `https://enroll.wisc.edu/api/enroll/v1/current/${termCode}`, failure(enrolled).status, failure(enrolled).code, "Current enrollment could not be refreshed. Saved enrollment was retained."));
   }
-  if (termCode) {
+  if (termCode && options.phase !== "enrollment") {
     const auditSubjects = freshSubjects ?? captures.flatMap(c => c.records).filter(r => r.kind === "subject");
     const storedReportIds = new Set((storedAudits.success ? storedAudits.data : []).filter((row) => row.accountScope === accountScope).map((row) => row.reportId));
     privateCaptures.push(...await pullUwSavedAudits(client, { accountScope, observedAt, subjects: auditSubjects, currentTermCode: termCode, signal, storedReportIds, reconfirmed }));
-  } else {
+  } else if (options.phase !== "enrollment") {
     privateCaptures.push(health("uw_dars", accountScope, { kind: "audit_program", key: "saved-audits" }, urls.audits, "partial", "audit_term_unverified", "A current academic term could not be verified. Saved audit evidence was retained."));
   }
   // Any old report not explicitly refreshed loses freshness, never its records.
-  invalidated.push({ source: "uw_dars", status: "failed", code: deadline?.aborted ? "refresh_failed" : "audit_not_reconfirmed" });
+  if (options.phase !== "enrollment")
+    invalidated.push({ source: "uw_dars", status: "failed", code: deadline?.aborted ? "refresh_failed" : "audit_not_reconfirmed" });
   const rechecked = await recheck({ kind: "student-info" });
   if (rechecked.status !== "ok" || identity(rechecked.data) !== personId) {
     captures.push(health("uw_enroll", accountScope, { kind: "student_record", key: "connection:student-info" }, urls.student, "blocked", "account_recheck_failed", "The signed-in account changed or could not be rechecked. No new private records were saved; refresh after signing in."));
