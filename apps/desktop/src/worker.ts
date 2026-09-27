@@ -70,7 +70,12 @@ async function generationRunner(): Promise<ModelRunner | null> {
   generationRuntime = { client: chosen, runner: createPackRuntime(backend, DEFAULT_PACK_CONFIG).runner };
   return generationRuntime.runner;
 }
-const generation = createPackHandler({ store, runner: generationRunner });
+// owner: course-facts. The course brief, `<userData>/courses/<course>/syllabus.md`: the first,
+// byte-identical block of every pack and guide prompt about the course.
+import { createCourseBriefs } from "../../../packages/core/src/course-facts/brief";
+const courseBriefs = createCourseBriefs({ store, directory: generationUserData });
+// end owner: course-facts
+const generation = createPackHandler({ store, runner: generationRunner, brief: courseBriefs.courseBrief /* owner: course-facts */ });
 // end owner: generation
 // owner: course-facts. The `course.facts` drain job: code selects each course's syllabus, then the
 // student's own client (the generation runner above: isolated profile, tools off, the background
@@ -78,7 +83,7 @@ const generation = createPackHandler({ store, runner: generationRunner });
 // fully local mode: the local (Ollama) extractor. It replaces core's Ollama-only course pass.
 import { createCourseFactsJob } from "../../../packages/core/src/course-facts/index";
 const courseJobs = pipelineJobRegistry();
-courseJobs.register(createCourseFactsJob({ runner: generationRunner, local: createLocalCourseExtractor() }));
+courseJobs.register(createCourseFactsJob({ runner: generationRunner, local: createLocalCourseExtractor(), brief: courseBriefs.courseBrief }));
 // end owner: course-facts
 // owner: notes. Session notes: batch scaffolds on the tick, "fill from slides" through the same
 // runner, and Google Docs sync through main (which alone holds the token). Microsoft waits for graph.ts.
@@ -617,6 +622,7 @@ port.on("message", async ({ data }: { data: any }) => {
       result: await core.execute(data.command),
     });
     if (data.command?.type === "purge") {
+      courseBriefs.purge(); // owner: course-facts
       ingestion.resume();
       pipeline.resume(); // owner: pipeline
     }

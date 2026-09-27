@@ -13,6 +13,8 @@ import type { BackendCall, ModelRunner } from "../../runner/src/index";
 import { createClaudeBackend, createSessionPool, type CliCommand, type PoolOptions, type SessionPool } from "../../runner/src/index";
 import { GUIDE_PACKS } from "../../packs/guide/src/index";
 // end owner: ai-paths
+import { courseFactsPack } from "./course-facts/extractor"; // owner: course-facts
+import { briefPrompt, createCourseBriefs, type CourseBriefSource } from "./course-facts/brief"; // owner: course-facts
 import { buildPrompt, packCacheKey, type ArtifactStore, type CourseFrame, type LedgerStore, type PackSpec, type Passage } from "../../packs/core/src/index";
 import { learningArtifactStore, sqlLedgerStore } from "../../packs/core/src/learning-stores";
 import { quizDrafts, quizPack, type Draft, type GenerationInput } from "../../packs/items/src/index";
@@ -74,6 +76,11 @@ export interface PackHandlerDeps {
   artifacts?: ArtifactStore;
   ledger?: LedgerStore;
   now?: () => Date;
+  /**
+   * owner: course-facts. The course brief (`syllabus.md`) that opens every prompt about the course.
+   * Default: rendered from the store (no file). `null` turns it off (the old prefix).
+   */
+  brief?: CourseBriefSource | null;
 }
 export interface GenerateOptions {
   count?: number;
@@ -193,6 +200,9 @@ export function createPackHandler(deps: PackHandlerDeps) {
     return r ? { resourceId: r.id, contentHash: r.contentHash } : null;
   };
   const artifacts = deps.artifacts ?? learningArtifactStore(store.learning, sourceOf);
+  // owner: course-facts
+  const courseBrief: CourseBriefSource | null = deps.brief === undefined ? createCourseBriefs({ store }).courseBrief : deps.brief;
+  // end owner: course-facts
   const ledger = deps.ledger ?? sqlLedgerStore(store, courseOf);
 
   /** Topic and section labels → concept tags; new labels become model-origin concepts under their section. */
@@ -327,7 +337,8 @@ export function createPackHandler(deps: PackHandlerDeps) {
       topics: concepts.filter((c) => c.kind === "concept").map((c) => c.studentLabel ?? c.label).slice(0, 60),
       focus,
     };
-    const frame = frameFor(s, units);
+    const brief = courseBrief?.(s.courseRef); // owner: course-facts
+    const frame: CourseFrame = { ...frameFor(s, units), ...(brief ? { brief: briefPrompt(brief) } : {}) };
     return name === "quiz"
       ? execute(quizPack, quizDrafts, name, scope, s, passages, resourceOf, input, frame, signal, options)
       : execute(cardsPack, cardDrafts, name, scope, s, passages, resourceOf, input, frame, signal, options);
@@ -375,7 +386,7 @@ export function createPackHandler(deps: PackHandlerDeps) {
     });
     passages = passages.map((p) => ({ ...p, text: frozen.get(p.sourceId)!.result.text }));
     input = { ...input, sections: input.sections.map(scrub), topics: input.topics.map(scrub), focus: input.focus.map(scrub) };
-    frame = { ...frame, course: scrub(frame.course), skeleton: scrub(frame.skeleton), policy: scrub(frame.policy) };
+    frame = { ...frame, course: scrub(frame.course), skeleton: scrub(frame.skeleton), policy: scrub(frame.policy), ...(frame.brief !== undefined ? { brief: scrub(frame.brief) } : {}) };
     const prompt = buildPrompt(pack, frame, input, passages);
     const cacheKey = payloadHash({ version: "pack-projection-v1", route: runner?.client ?? store.privacy().hostedProvider, fingerprint, key: packCacheKey(pack, prompt.systemPrompt, input, passages) });
     const receiptIds: string[] = [];
@@ -472,7 +483,7 @@ export function createPackHandler(deps: PackHandlerDeps) {
   }
   // owner: guides. The study-guide kinds (guide, briefing, faq, timeline, compare, conceptmap)
   // and `<kind>-view`, the 0-token personalised view (op "guide.view"), answer through this seam.
-  const guideDeps = { store, runner: deps.runner, artifacts, ledger, now };
+  const guideDeps = { store, runner: deps.runner, artifacts, ledger, now, brief: courseBrief /* owner: course-facts */ };
   function guides(packName: string, scope: PackScope, signal?: AbortSignal): Promise<GuideRunResult | GuideViewResult> | null {
     if (isGuideKind(packName)) return generateGuide(guideDeps, packName, scope, signal ? { signal } : {});
     const viewOf = /^([a-z]+)-view$/.exec(packName)?.[1];
@@ -504,7 +515,7 @@ export function generatePack(
 // owner: ai-paths
 /** Pack id → output schema for every generation pack: the warm pool's union schema. */
 export function generationKinds(): PoolOptions["kinds"] {
-  return Object.fromEntries([quizPack, cardsPack, ...Object.values(GUIDE_PACKS)].map((p) => [p.id, p.schema as PoolOptions["kinds"][string]]));
+  return Object.fromEntries([quizPack, cardsPack, ...Object.values(GUIDE_PACKS), courseFactsPack /* owner: course-facts */].map((p) => [p.id, p.schema as PoolOptions["kinds"][string]]));
 }
 /**
  * The Claude route with one warm session per lane (D38): a follow-up pack call reuses the live

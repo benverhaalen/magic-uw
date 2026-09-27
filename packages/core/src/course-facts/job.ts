@@ -14,6 +14,7 @@ import type { JobHandler, JobOutcome } from "../jobs/registry";
 import { courseIncluded } from "../access";
 import { createClientCourseExtractor, type ClientExtractorDeps } from "./extractor";
 import { selectSyllabus } from "./select";
+import { courseKeyOf, type CourseBriefSource } from "./brief";
 
 export const COURSE_FACTS_JOB = "course.facts";
 
@@ -35,6 +36,8 @@ export interface CourseFactsJobDeps {
   artifacts?: ClientExtractorDeps["artifacts"];
   ledger?: ClientExtractorDeps["ledger"];
   now?: () => Date;
+  /** Keeps the course's `syllabus.md` current after each pass (it is rewritten only when its bytes change). */
+  brief?: CourseBriefSource;
 }
 export interface CourseFactsRun {
   route: "client" | "local" | "none";
@@ -60,13 +63,9 @@ export async function runCourseFacts(
 ): Promise<CourseFactsRun> {
   const profile = latestProfile(store, course.accountScope, course.courseId);
   const selection = selectSyllabus(store, course, (deps.now?.() ?? new Date()).toISOString());
-  // Only sources the stored profile also selected: the compiler rejects quotes from any other resource.
-  const accepted = new Set([
-    ...(profile?.syllabus ?? []).map((s) => s.resourceId),
-    ...selection.resources.filter((r) => r.externalId === "syllabus").map((r) => r.id),
-  ]);
+  // Storage's rebuild selects with the same rules and roles, so applying a batch recompiles the
+  // profile over the same sources.
   const chosen = selection.selected
-    .filter((s) => accepted.has(s.resourceId))
     .map((s) => selection.resources.find((r) => r.id === s.resourceId)!)
     .filter((r) => courseIncluded(store, r));
   const syllabusResourceIds = chosen.map((r) => r.id);
@@ -115,6 +114,7 @@ export function createCourseFactsJob(deps: CourseFactsJobDeps): JobHandler {
       if (split <= 0) return { status: "done" };
       const course = { accountScope: subject.slice(0, split), courseId: subject.slice(split + 1) };
       const run = await runCourseFacts(store, course, deps, signal);
+      if (!signal.aborted) deps.brief?.(courseKeyOf(course));
       // Paused (usage limit or the daily budget) and failed calls retry with the store's backoff; a
       // held preview or a refused grant waits for the student and the next course change.
       if (run.status === "paused" || run.status === "failed")

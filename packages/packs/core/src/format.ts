@@ -83,6 +83,12 @@ export interface CourseFrame {
   profile?: string;
   skeleton: string;
   policy: string;
+  /**
+   * owner: course-facts. The course brief (`syllabus.md`, with its constant preamble). When present
+   * it is the whole system prompt, identical for every pack on the course, so the provider's prompt
+   * cache and the warm session reuse it; the pack's role text, skeleton and policy move to the input.
+   */
+  brief?: string;
 }
 
 const lf = (text: string) => text.replace(/\r\n?/g, "\n").trimEnd();
@@ -96,6 +102,21 @@ export function buildPrompt<I, O>(
   input: I,
   passages: Passage[],
 ): { systemPrompt: string; input: string } {
+  // owner: course-facts
+  if (frame.brief !== undefined) {
+    const sources = passages.map((p) => `<passage id="${p.sourceId}">\n${lf(p.text)}\n</passage>`).join("\n");
+    return {
+      systemPrompt: lf(frame.brief),
+      input: [
+        `## Task\n${lf(pack.system)}`,
+        `## Course\n${lf(frame.skeleton)}`,
+        `## Course AI policy\n${lf(frame.policy) || "No policy was found; coach conservatively."}`,
+        ...(sources ? [sources] : []),
+        lf(pack.template(input)),
+      ].join("\n\n"),
+    };
+  }
+  // end owner: course-facts
   const systemPrompt = [
     lf(pack.system),
     `## Course\n${lf(frame.skeleton)}`,

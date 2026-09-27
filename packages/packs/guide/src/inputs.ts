@@ -11,6 +11,7 @@ import { normaliseLabel } from "../../../learning/src/concepts";
 import { eligibleStudySource } from "../../../learning/src/router";
 import { findQuote } from "../../../retrieval/src/quotes";
 import { courseInclusion } from "../../../core/src/access";
+import { briefPrompt, type CourseBriefSource } from "../../../core/src/course-facts/brief"; // owner: course-facts
 import type { Resolve } from "./review";
 import type { GuideInput, GuideKind } from "./schema";
 
@@ -49,7 +50,14 @@ export const localDay = (value: string): string | null => {
   return Number.isFinite(t) ? new Date(t).toLocaleDateString("en-CA") : null;
 };
 
-export function selectGuideInputs(store: GuideStore, kind: GuideKind, scope: PackScope, passageBudget = GUIDE_PASSAGE_BUDGET): SelectionResult {
+export function selectGuideInputs(
+  store: GuideStore,
+  kind: GuideKind,
+  scope: PackScope,
+  passageBudget = GUIDE_PASSAGE_BUDGET,
+  /** owner: course-facts. The course brief: when present it replaces the re-serialised profile. */
+  courseBrief: CourseBriefSource | null = null,
+): SelectionResult {
   const sources = new Map(store.sources().map((s) => [s.id, s]));
   const included = courseInclusion(store);
   const inCourse = store.resources().filter((r) => !r.deleted && r.courseId === scope.courseId && sources.has(r.sourceId));
@@ -176,7 +184,8 @@ export function selectGuideInputs(store: GuideStore, kind: GuideKind, scope: Pac
   // The prefix: course, sections and the profile (grading, assessments, topics), then the policy.
   const profile: string[] = [];
   let profileChars = 0;
-  for (const c of intelligence?.claims ?? []) {
+  const brief = courseBrief?.(courseRef) ?? null; // owner: course-facts: the brief carries the profile
+  for (const c of brief ? [] : (intelligence?.claims ?? [])) {
     if (c.kind === "ai_policy") continue;
     const line = `- ${c.kind}: ${clip(collapse(c.label), 120)}${c.value === null || c.value === "" ? "" : `: ${clip(collapse(String(c.value)), 200)}`}`;
     if (profileChars + line.length > PROFILE_CHARS) break;
@@ -190,6 +199,7 @@ export function selectGuideInputs(store: GuideStore, kind: GuideKind, scope: Pac
     course: label,
     skeleton: [`Course: ${label}`, ...units.map((u) => `Section: ${nameOf(u)}`), ...(profile.length ? ["Course profile:", ...profile] : [])].join("\n"),
     policy: aiPolicy ? `${aiPolicy.policyMode ?? "unknown"}: ${clip(collapse(String(aiPolicy.value ?? aiPolicy.label)), 600)}` : policy ? `${policy.mode}: ${policy.evidence}` : "",
+    ...(brief ? { brief: briefPrompt(brief) } : {}), // owner: course-facts
   };
 
   const byId = new Map(resources.map((r) => [r.id, r]));

@@ -157,6 +157,14 @@ export function createCore(store: Store, options: CoreOptions) {
     // owner: T15. The full snapshot stays for debugging; views use scoped queries (queries.ts).
     const resources = resourceViews(store, store.resources(search));
     const sources = store.sources();
+    // owner: course-facts. A course waiting on a queued or running `course.facts` job is pending.
+    const factsQueued = new Set(
+      store
+        .jobs()
+        .filter((j) => j.kind === "course.facts" && (j.status === "pending" || j.status === "running"))
+        .map((j) => (j as Job & { subjectId?: string }).subjectId ?? ""),
+    );
+    // end owner: course-facts
     return {
       courseIntelligence: store.courseIntelligence().map((p) => ({
         ...intelligenceView(p, store.sources(), now()),
@@ -165,7 +173,7 @@ export function createCore(store: Store, options: CoreOptions) {
         ) ?? {
           status: p.extraction
             ? (p.extraction.coverage?.status ?? "complete")
-            : options.courseExtractor
+            : options.courseExtractor || factsQueued.has(`${p.accountScope}:${p.courseId}`) // owner: course-facts
               ? "pending"
               : "unavailable",
         },
