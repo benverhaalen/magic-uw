@@ -1,9 +1,10 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Command, ResourceView, Snapshot } from '@magic/contracts';
 import { localTime } from '@magic/domain';
+import { courseDeadlineDisplay } from '../../../../packages/domain/src/course-page';
 import { createAssignmentTypeHues, deadlineEmphasis, deadlineSurface } from '../../../../packages/ui/src/deadline-emphasis';
 import { Action, EvidenceLink } from '../../../../packages/ui/src';
-import { InlineEntity, InlineTime, presentationLabel, sourceDates } from '../../../../packages/ui/src/inline-context';
+import { InlineEntity, InlineTime, presentationLabel, presentationLabels, sourceDates } from '../../../../packages/ui/src/inline-context';
 import { deadlineReportEvidence } from './PersonalReport';
 import { personalReportIssue, personalReportState, personalReportVersion } from '@magic/contracts';
 import { StartWork, preparedWorkRevision } from './StartWork';
@@ -35,6 +36,11 @@ export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPl
   const typeHueOf=useMemo(()=>createAssignmentTypeHues(snapshot.resources,snapshot.sources),[snapshot.resources,snapshot.sources]);
   const label=(r:ResourceView)=>homeCourseLabel(r,canonical,snapshot.sources);
   const course=(r:ResourceView)=>label(r).code ?? label(r).title;
+  const names=useMemo(()=>{
+    const projected=presentationLabels(canonical.map(r=>r.title),canonical.map(r=>{const c=homeCourseLabel(r,canonical,snapshot.sources);return {shownPrefixes:[c.code ?? c.title]};}));
+    return new Map(canonical.map((r,i)=>[r.id,projected[i]!]));
+  },[canonical,snapshot.sources]);
+  const nameOf=(r:ResourceView)=>names.get(r.id) ?? presentationLabel(r.title,{shownPrefixes:[course(r)]});
   const conflict = canonical.find(r => r.deadline.conflict && !r.completed && !r.submitted);
   // Reporting must use exactly the core's contributor set, not a display-only union.
   const originalConflict=conflict && resources.find(r=>r.id===conflict.id);
@@ -53,13 +59,14 @@ export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPl
   const launchable=new Set(shown.map(g=>g.items[0]!.id));
   function workRow(resource:ResourceView) {
     const due=resource.deadline.planningAt!;
+    const deadline=courseDeadlineDisplay(resource);
     return <StartWork key={resource.id} resource={resource} refreshKey={refreshKey} onInspect={() => onSelect(resource.id)} compact={{
       className:'home-work-typed',
       surface:deadlineSurface(deadlineEmphasis({today,due:resource.deadline.conflict?null:localTime(due,timeZone).date}).bin,typeHueOf(resource)?.hue??null),
-      description:`${course(resource)}, due ${when(due)} ${time(due)}${resource.deadline.conflict?', saved dates disagree':''}`,
+      description:deadline.conflict ? `${course(resource)}, saved dates disagree. Review dates.` : `${course(resource)}, due ${when(due)} ${time(due)}`,
       summary:<span className="home-work-summary">
-        <span className="home-work-identity"><span className="home-work-meta" title={label(resource).raw}>{course(resource)}{typeHueOf(resource) && <span>{typeHueOf(resource)!.groupName}</span>}{resource.points!=null && <span>{resource.points} pts</span>}</span><span className="home-work-name" title={resource.title}>{resource.title}</span></span>
-        <span className="home-work-due"><strong>{when(due)}</strong><span>{time(due)}</span>{resource.deadline.conflict && <span className="home-work-flag">Dates disagree</span>}</span>
+        <span className="home-work-identity"><span className="home-work-meta" title={label(resource).raw}>{course(resource)}{typeHueOf(resource) && <span>{typeHueOf(resource)!.groupName}</span>}{resource.points!=null && <span>{resource.points} pts</span>}</span><span className="home-work-name" title={resource.title}>{nameOf(resource).label}</span></span>
+        <span className="home-work-due"><strong>{deadline.cue ?? when(due)}</strong><span>{deadline.conflict ? "Review dates" : time(due)}</span></span>
       </span>,
       trailing:<a className="home-work-details" href={resourceHref(resource.id)} data-focus-key={`inspect-work-${resource.id}`} aria-label={`Details: ${resource.title}`} title="Details"><Glyph name="chevron"/></a>,
     }}/>;
@@ -77,7 +84,7 @@ export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPl
     });
   }
   // Conflict copy: literal concise name after the shown course; only dates a source states, each with its source when known.
-  const conflictLabel=conflict && presentationLabel(conflict.title,{shownPrefixes:[course(conflict)]});
+  const conflictLabel=conflict && nameOf(conflict);
   const conflictName=conflict && conflictLabel && <>{course(conflict)} <InlineEntity name={conflictLabel}><ObjectLink resource={conflict}>{conflictLabel.label}</ObjectLink></InlineEntity></>;
   const conflictDates=conflict ? sourceDates(conflict.deadline.claims) : [];
   const conflictSourced=conflictDates.every(d=>d.sources.length>0);
@@ -87,7 +94,7 @@ export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPl
       {passages.filter(p=>p.resource.id!==conflict?.id).slice(0,conflict?1:2).map(p=>{
         const due=p.resource.kind==='assignment' ? p.resource.deadline.planningAt : null;
         const launch=p.reason!=='changed-date' && p.resource.kind==='assignment' && !launchable.has(p.resource.id) && work.today.concat(work.upcoming.flatMap(g=>g.items)).some(r=>r.id===p.resource.id);
-        const name=presentationLabel(p.resource.title,{shownPrefixes:[course(p.resource)]});
+        const name=nameOf(p.resource);
         return <div className="briefing-passage" key={`${p.resource.id}:${p.span.start}`}><p>{course(p.resource)} <InlineEntity name={name}><ObjectLink resource={p.resource}>{name.label}</ObjectLink></InlineEntity>{due ? <> is due <InlineTime dateTime={due} parts={[whenInline(due), time(due)]} after="."/></> : ':'} <q>{p.span.text}</q></p>
           {p.reason==='changed-date' ? <div className="briefing-action"><Action data-focus-key={`briefing-${p.resource.id}`} onClick={()=>onSelect(p.resource.id)}>Review change <Glyph name="forward"/></Action></div>
             : launch ? <div className="briefing-action"><StartWork resource={p.resource} refreshKey={refreshKey} onInspect={() => onSelect(p.resource.id)} action/></div> : null}</div>;

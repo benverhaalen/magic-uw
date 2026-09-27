@@ -74,20 +74,13 @@
 .tone-rose { background: var(--magic-fill-identity-rose); color: var(--magic-ink-identity-rose); }
 .tone-blue { background: var(--magic-fill-identity-blue); color: var(--magic-ink-identity-blue); }
 .tone-coral { background: var(--magic-fill-identity-coral); color: var(--magic-ink-identity-coral); }
-.home-work-meta { font-size: 10px; line-height: 1.4; margin-bottom: 3px; font-weight: 600; }
 .home-work-meta span { margin-left: 9px; font-weight: 400; }
 .home-work-row h3 { font: 500 var(--magic-type-work-title)/1.25 var(--magic-font-editorial); margin: 0; overflow-wrap: anywhere; }
-.home-work-due { text-align: right; display: grid; gap: 4px; font-size: 11px; flex-shrink: 0; }
-.home-work-due strong { font-size: 12px; font-weight: 550; }
 .home-work-row>svg { width: 14px; flex: 0 0 14px; }
 .home-study { margin-top: 25px; }
 .home-study-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 11px; }
 .home-study-action { padding: 15px; border-radius: var(--magic-radius-card); background: var(--magic-fill-study); color: var(--magic-ink-study); text-decoration: none; min-height: 130px; }
 .home-study-action:nth-child(even) { background: var(--magic-fill-study-secondary); }
-.home-study-action>span { font-size: 10px; }
-.home-study-action h3 { font: 500 var(--magic-type-study-title)/1.3 var(--magic-font-editorial); margin: 17px 0 8px; }
-.home-study-action p { font-size: 11px; margin: 0 0 9px; }
-.home-study-action>div { display: flex; justify-content: space-between; gap: 12px; font-size: 10px; }
 .home-empty { font-size: 14px; color: var(--magic-ink-muted-strong); line-height: 1.65; margin: 0; }
 .home-today { position: sticky; top: 24px; align-self: start; max-height: calc(100vh - 125px); overflow: auto; min-width: 0; border-left: 1px solid var(--magic-line-quiet); padding-left: 21px; }
 .home-today-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 4px 0 22px; }
@@ -132,7 +125,8 @@
 .rail-empty-schedule { padding: 4px 0 14px; color: var(--magic-ink-muted-strong); font-size: 13px; line-height: 1.5; }
 .rail-empty-schedule p { margin: 0 0 8px; }
 
-.desktop-calendar .mc-calendar { height: calc(100vh - 116px); min-height: 420px; }
+.desktop-calendar { height:100%; min-height:0; padding:0; box-sizing:border-box; }
+.desktop-calendar .mc-calendar { height:100%; min-height:0; }
 
 /* Shell feedback is anchored above the workspace and never displaces page content. */
 .desktop-status { margin-left: auto; display: flex; align-items: center; gap: 10px; min-width: 0; max-width: min(320px, calc(50% - 120px)); -webkit-app-region: no-drag; }

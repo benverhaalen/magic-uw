@@ -34,9 +34,9 @@
   --magic-fill-shell-hover: #6f251d66;
 
   /* General command roles; review remains an alias for existing consumers. */
-  --magic-fill-action: linear-gradient(110deg, #a2c0eb, #d8e6f8);
-  --magic-fill-action-hover: linear-gradient(110deg, #91b4e5, #c9dcf4);
-  --magic-ink-action: #233f65;
+  --magic-fill-action: var(--magic-color-action-fill);
+  --magic-fill-action-hover: var(--magic-color-action-fill-hover);
+  --magic-ink-action: var(--magic-color-action-ink);
   --magic-fill-review: var(--magic-fill-action);
   --magic-fill-review-hover: var(--magic-fill-action-hover);
   --magic-ink-review: var(--magic-ink-action);

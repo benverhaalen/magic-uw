@@ -767,12 +767,13 @@ select {
   margin-bottom: 10px;
 }
 .settings-section > p {
-  color: #85857b;
-  font-size: 12px;
+  color: var(--magic-ink-prose);
+  font-size: var(--magic-type-control);
   max-width: 620px;
 }
 .settings-section > p.small {
-  font-size: 11px;
+  color: var(--magic-ink-muted-strong);
+  font-size: var(--magic-type-meta);
   margin-top: 16px;
   margin-bottom: 0;
 }
@@ -887,8 +888,8 @@ select {
   font-weight: 500;
 }
 .mode-choice > span > span {
-  font-size: 11px;
-  color: #939383;
+  font-size: var(--magic-type-compact-control);
+  color: var(--magic-ink-muted-strong);
   line-height: 1.6;
 }
 .selected-mode {
@@ -915,8 +916,8 @@ select {
   font-weight: 500;
 }
 .setting-toggle > span > span {
-  font-size: 11px;
-  color: #909080;
+  font-size: var(--magic-type-compact-control);
+  color: var(--magic-ink-muted-strong);
   line-height: 1.65;
 }
 .setting-toggle input {
@@ -957,10 +958,11 @@ select {
 .disabled-setting strong {
   color: #aaa99c;
 }
-.setting-note {
-  font-size: 10px !important;
-  color: #9a9a89 !important;
-  margin-top: 0 !important;
+.setting-note,
+.settings-section > p.setting-note {
+  font-size: var(--magic-type-meta);
+  color: var(--magic-ink-muted-strong);
+  margin-top: 0;
   margin-bottom: 20px;
 }
 .provider-setting {

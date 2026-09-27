@@ -16,7 +16,9 @@ export function useDesktopNavigation() {
   function capture(): Place {
     const pane = document.querySelector<HTMLElement>('.desktop-workspace');
     const active = document.activeElement as HTMLElement | null;
-    const focus = active?.getAttribute('data-focus-key') ?? (active?.closest('a')?.getAttribute('href') ?? null);
+    const focus = active && pane?.contains(active)
+      ? active.getAttribute('data-focus-key') ?? (active.closest('a')?.getAttribute('href') ?? null)
+      : current.focus;
     const anchors = Array.from(pane?.querySelectorAll<HTMLElement>('[data-place-anchor]') ?? []);
     const top = pane?.getBoundingClientRect().top ?? 0;
     const anchor = anchors.find(node => node.getBoundingClientRect().bottom > top);

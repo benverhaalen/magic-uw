@@ -17,11 +17,15 @@ test('removes only a verified, already-shown course prefix and keeps number, top
   assert.equal(presentationLabel('COMPSCI 574: Project 2 Part B draft', shown).label, 'Project 2 Part B draft');
 });
 
-test('label is always a contiguous literal slice of the raw title', () => {
+test('kept and removed spans reconstruct exact source without invented text', () => {
   const titles = ['COMPSCI 574: P1 (MySQL)', 'P1 (MySQL)', 'COMPSCI 574 · Week 5 quiz (FA26)', 'Quiz 3 (FA26)'];
   for (const raw of titles) {
     const p = presentationLabel(raw, { ...shown, shownSuffixes: [' (FA26)'] });
-    assert.ok(raw.includes(p.label), raw);
+    assert.equal(p.kept.map(k => k.text).join(''), p.label);
+    const spans = [...p.kept, ...p.removed].sort((a, b) => a.start - b.start);
+    assert.equal(spans.map(k => k.text).join(''), raw);
+    assert.equal(spans[0]?.start, 0);
+    for (let i = 1; i < spans.length; i++) assert.equal(spans[i - 1]!.end, spans[i]!.start);
     for (const r of p.removed) assert.equal(raw.slice(r.start, r.end), r.text);
     assert.ok(!p.label.includes('…') && !p.label.endsWith('...'));
   }
@@ -37,11 +41,11 @@ test('keeps the raw title when nothing verified is shown, casing differs or the 
   assert.equal(presentationLabel(longTitle, shown).label, longTitle.slice(13), 'long names stay whole');
 });
 
-test('keeps a numbered identity head and drops only a long instruction tail', () => {
+test('long colon tails retain their task content and stages', () => {
   const raw = 'COMPSCI 574: T-shirt cart request - Step 1: Draft the checkout flow and upload three annotated screenshots';
   const p = presentationLabel(raw, shown);
-  assert.equal(p.label, 'T-shirt cart request - Step 1');
-  assert.deepEqual(p.removed.map(r => r.kind), ['context-prefix', 'description-tail']);
+  assert.equal(p.label, raw.slice(13));
+  assert.deepEqual(p.removed.map(r => r.kind), ['context-prefix']);
   assert.equal(presentationLabel('Quiz 3: Graphs and traversal', shown).label, 'Quiz 3: Graphs and traversal', 'short topic tail stays');
   assert.equal(presentationLabel('Reflection: write about what you learned this week in detail').shortened, false, 'no numbered stage, no cut');
   assert.equal(presentationLabel('Step 1: Draft the checkout flow and upload three annotated screenshots').shortened, false, 'stage alone is not a topic');
@@ -105,4 +109,84 @@ test('disagreement tags only show due dates a source states, never title-derived
   ]);
   assert.deepEqual(sourceDates([{ value: '2026-10-01T23:59:00-05:00', kind: 'due', authority: 'structured', scopeConfirmed: true }]),
     [{ value: '2026-10-01T23:59:00-05:00', precision: 'minute', sources: [] }], 'unknown origin is not given a made-up name');
+});
+
+
+test('explicit submission/upload title produces a concise literal name with its numbered stage', () => {
+  const raw = 'DSP: Submit poster cart request to Campus Printing/Upload Cart URL - Step 1:DUE OCT 16';
+  const p = presentationLabel(raw);
+  assert.equal(p.label, 'DSP: poster cart request - Step 1');
+  assert.equal(p.raw, raw);
+  assert.deepEqual(p.removed.map(r => r.kind), ['instruction-verb', 'instruction-detail', 'due-hint']);
+  const spans = [...p.kept, ...p.removed].sort((a, b) => a.start - b.start);
+  assert.equal(spans.map(k => k.text).join(''), raw);
+  assert.equal(p.kept.map(k => k.text).join(''), p.label);
+  for (const span of spans) assert.equal(raw.slice(span.start, span.end), span.text);
+  assert.equal(presentationLabel(raw.replace('Step 1', 'Step 2')).label, 'DSP: poster cart request - Step 2');
+});
+
+test('same head and stage with different long tails remain distinguishable', () => {
+  const raws = [
+    'Cart request Step 1: Draft the checkout flow and upload three annotated screenshots',
+    'Cart request Step 1: Evaluate the pricing model and write a short recommendation',
+  ];
+  const labels = presentationLabels(raws);
+  assert.deepEqual(labels.map(l => l.label), raws);
+  assert.equal(new Set(labels.map(l => l.label)).size, 2);
+});
+
+test('collisions fall back without repeating semantic cleanup or inferring shared identity', () => {
+  const a = 'DSP: Submit poster cart request to Campus Printing/Upload Cart URL - Step 1:DUE OCT 16';
+  const b = a.replace('Campus Printing', 'City Printing');
+  assert.equal(presentationLabel(a).label, presentationLabel(b).label);
+  assert.deepEqual(presentationLabels([a, b]).map(l => l.label), [a, b]);
+  const wrapper = a + ' [FA26 ART 201 001]';
+  assert.deepEqual(presentationLabels([a, wrapper], { shownPrefixes: ['ART 201'] }).map(l => l.label), [a, wrapper]);
+  const raws = ['ART 201: Draft', 'HIST 201: Draft'];
+  assert.deepEqual(presentationLabels(raws, [{ shownPrefixes: ['ART 201'] }, { shownPrefixes: ['HIST 201'] }]).map(l => l.label), raws);
+});
+
+test('fallback collisions cascade safely and duplicate inputs stay duplicate', () => {
+  const raws = ['ART 201: Draft', 'ART 201: ART 201: Draft', 'HIST 201: Draft'];
+  const labels = presentationLabels(raws, { shownPrefixes: ['ART 201', 'HIST 201'] });
+  assert.equal(new Set(labels.map(l => l.label)).size, raws.length);
+  assert.deepEqual(labels.map(l => l.label), raws);
+  assert.deepEqual(presentationLabels(['ART 201: Draft', 'ART 201: Draft'], { shownPrefixes: ['ART 201'] }).map(l => l.label), ['Draft', 'Draft']);
+});
+
+test('unknown instructions, meaningful purpose, conditions and distinct identifiers stay visible', () => {
+  const raws = [
+    'Submit field report on evolution through natural selection',
+    'Video assignment to explain the causes of climate change',
+    'Submit poster cart request to Campus Printing/Upload Project 2 URL - Step 1',
+    'Submit poster cart request to Campus Printing/Upload Cart URL - Part B',
+    'Poster project due Friday with revised diagram',
+    'Poster project due October 16 unless extension approved',
+    'Poster project due Friday - Final Draft',
+    'Cart request Step 1: Part B and all supporting figures',
+    'Poster project - Found in Mod 4',
+    'Submit research proposal to improve public health/Upload URL',
+  ];
+  for (const raw of raws) assert.equal(presentationLabel(raw).label, raw, raw);
+});
+
+test('date suffix cleanup keeps hints as source spans and does not produce dates', () => {
+  for (const suffix of [': DUE OCT 16', ' (due October 16, 2026 at 5 PM)', ' due Friday']) {
+    const p = presentationLabel('Poster project - Step 2' + suffix);
+    assert.equal(p.label, 'Poster project - Step 2');
+    assert.equal(p.removed[0]?.kind, 'due-hint');
+    assert.equal(p.removed[0]?.text, suffix);
+    assert.equal('dueAt' in p, false);
+  }
+  assert.equal(presentationLabel('Poster project due October 160').shortened, false);
+});
+
+test('course wrappers require verified visible context, Unicode spans remain literal', () => {
+  const raw = '🌿 Field notes [FA26 ART 201 001]';
+  assert.equal(presentationLabel(raw).label, raw);
+  assert.equal(presentationLabel(raw, { shownPrefixes: ['ART 202'] }).label, raw);
+  const p = presentationLabel(raw, { shownPrefixes: ['ART201'] });
+  assert.equal(p.label, '🌿 Field notes');
+  assert.equal([...p.kept, ...p.removed].sort((a, b) => a.start - b.start).map(s => s.text).join(''), raw);
+  assert.equal(presentationLabel('').raw, '');
 });

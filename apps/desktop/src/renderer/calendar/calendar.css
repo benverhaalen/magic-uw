@@ -88,3 +88,35 @@
 .mc-calendar-month .mc-calendar-event-course { grid-column:2; grid-row:2; text-align:right; }
 .mc-calendar-other-month { background:#eee9e2; }
 .mc-calendar-event--submitted { opacity:.8; }
+
+/* The full-day disclosure lives in the top layer, so opening it cannot resize the calendar grid. */
+.mc-calendar-day-popover { position:fixed; inset:0; margin:auto; width:min(560px,calc(100vw - 40px)); max-height:min(620px,calc(100dvh - 64px)); padding:18px; box-sizing:border-box; overflow:auto; border:1px solid var(--magic-line-quiet); border-radius:var(--magic-radius-card); background:var(--magic-surface-workspace); color:var(--magic-ink); box-shadow:0 12px 40px #29231f24; }
+.mc-calendar-day-popover .mc-calendar-review-heading { position:sticky; top:-18px; z-index:1; background:var(--magic-surface-workspace); margin:-18px -18px 0; padding:18px 18px 12px; }
+.mc-calendar-day-popover h3 { font:500 19px/1.3 var(--magic-font-editorial); margin:0; }
+.mc-calendar-day-popover p { font-size:12px; color:var(--magic-ink-muted); margin:5px 0 0; }
+.mc-calendar-day-popover .mc-calendar-day-list { grid-template-columns:minmax(0,1fr); padding-top:4px; }
+.mc-calendar-day-popover .mc-calendar-event { height:auto; min-height:70px; scroll-margin-top:90px; overflow-wrap:anywhere; }
+.mc-calendar-day-popover .mc-calendar-event-title { display:block; overflow:visible; }
+.mc-calendar-day-popover .mc-calendar-event-course { white-space:normal; overflow:visible; }
+.mc-calendar-day-popover h3:focus { outline:none; }
+
+/* Month occupies the available pane. Week keeps its own scrollable time grid. */
+.mc-calendar > .mc-calendar-toolbar,
+.mc-calendar > .mc-calendar-meta,
+.mc-calendar > .mc-calendar-feedback,
+.mc-calendar > .mc-calendar-empty { flex-shrink:0; }
+.mc-calendar-scroll--month { scrollbar-gutter:auto; }
+.mc-calendar-month { min-width:0; height:100%; display:flex; flex-direction:column; }
+.mc-calendar-month-head { position:static; flex-shrink:0; }
+.mc-calendar-month-days { flex:1; min-height:0; }
+.mc-calendar-month-days section { min-width:0; min-height:0; box-sizing:border-box; padding:.25rem; gap:.1875rem; }
+.mc-calendar-month .mc-calendar-day-number { flex-shrink:0; box-sizing:border-box; height:1.5rem; padding:0 .375rem; font-size:.75rem!important; line-height:1.25; }
+.mc-calendar-month .mc-calendar-event--compact { height:2.5rem; min-height:2.5rem; padding:.25rem .3125rem; grid-template-rows:1rem .875rem; row-gap:0; }
+.mc-calendar-month .mc-calendar-event-title { font-size:.75rem; line-height:1rem; white-space:nowrap; display:block; text-overflow:ellipsis; }
+.mc-calendar-month .mc-calendar-event-detail,
+.mc-calendar-month .mc-calendar-event-course { font-size:.6875rem; line-height:.875rem; }
+.mc-calendar-month .mc-calendar-more { flex-shrink:0; box-sizing:border-box; height:1.5rem; padding:0 .3125rem; font-size:.75rem!important; line-height:1.25; white-space:nowrap; }
+@media (max-height:700px) {
+  .mc-calendar { padding:10px 16px 6px; }
+  .mc-calendar-meta { margin:8px 0; }
+}

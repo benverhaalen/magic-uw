@@ -85,6 +85,7 @@ export interface CourseCard {
   code: string | null;
   cue: string;
   next: ResourceView | null;
+  nextDeadline: CourseDeadlineDisplay | null;
   freshness: CoursePage["freshness"];
   syllabusMissing: boolean;
 }
@@ -105,6 +106,31 @@ export function courseKey(accountScope: string, courseId: string): string {
 }
 export function whenDue(r: ResourceView): string | null {
   return r.deadline?.dueAt ?? r.deadline?.planningAt ?? r.dueAt ?? null;
+}
+/** Presentation only: keep the original date for ordering and all claims on the resource.
+ * Callers may pass copies only after grouping by account, course and Canvas identity.
+ * A disputed saved date is never presented as a confirmed deadline or urgency cue.
+ */
+export interface CourseDeadlineDisplay {
+  sortAt: string | null;
+  displayAt: string | null;
+  conflict: boolean;
+  cue: "Dates disagree" | null;
+}
+export function courseDeadlineDisplay(r: ResourceView, copies: readonly ResourceView[] = [r]): CourseDeadlineDisplay {
+  const sortAt = whenDue(r);
+  const all = [r, ...copies];
+  const dated = all.map(whenDue).filter((at): at is string => !!at);
+  const conflict = all.some((copy) => copy.deadline?.conflict) || new Set(dated.map((at) => {
+    const parsed = Date.parse(at);
+    return Number.isNaN(parsed) ? at : parsed;
+  })).size > 1;
+  return {
+    sortAt,
+    displayAt: !conflict && sortAt && !Number.isNaN(Date.parse(sortAt)) ? sortAt : null,
+    conflict,
+    cue: conflict ? "Dates disagree" : null,
+  };
 }
 export function isDone(r: ResourceView): boolean {
   return r.completed || r.submitted === true;
@@ -346,6 +372,12 @@ export function buildCourseCards(input: CoursePageInput): CourseCard[] {
         code: page.code,
         cue,
         next,
+        nextDeadline: next ? courseDeadlineDisplay(next, page.groups.flatMap((group) => [
+          ...group.upcoming, ...group.undated, ...group.past,
+        ]).filter((copy) => copy.id === next.id || (
+          next.kind === "assignment" && !!next.externalId && copy.kind === "assignment" &&
+          copy.courseId === next.courseId && copy.externalId === next.externalId
+        ))) : null,
         freshness: page.freshness,
         syllabusMissing: page.syllabus.state === "missing",
       };

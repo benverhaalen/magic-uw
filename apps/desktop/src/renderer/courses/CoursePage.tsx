@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import type { ResourceView } from "@magic/contracts";
 import {
   isDone,
-  whenDue,
+  courseDeadlineDisplay,
   type CourseCard,
   type CourseFact,
   type CourseFactKind,
@@ -81,7 +81,7 @@ export function CoursesOverview({
             {card.code ? <span className="course-card-code">{card.code}</span> : null}
             <span className="course-card-cue">
               {card.cue}
-              {card.next ? <span className="muted"> · {card.next.deadline.conflict ? "Dates disagree" : when(whenDue(card.next))}</span> : null}
+              {card.next ? <span className="muted"> · {(card.nextDeadline ?? courseDeadlineDisplay(card.next)).cue ?? when((card.nextDeadline ?? courseDeadlineDisplay(card.next)).displayAt)}</span> : null}
             </span>
             {card.freshness === "stale" || card.freshness === "partial" ? (
               <span className="course-card-note">
@@ -174,11 +174,10 @@ const itemType: Record<string, string> = {
   Assignment: "Assignment",
 };
 
-/** Distinguishes a genuinely separate Canvas assignment that shares a title, and names date disagreement. */
+/** Distinguishes a genuinely separate Canvas assignment that shares a title. */
 function identityNotes(entry: WorkEntry): string[] {
   return [
     entry.sameTitleElsewhere ? `Canvas id ${entry.resource.externalId}` : "",
-    entry.resource.deadline.conflict || entry.dueDiffers ? "Dates disagree" : "",
   ].filter(Boolean);
 }
 
@@ -192,7 +191,7 @@ function WorkRow({
   onSelect: (id: string) => void;
 }) {
   const resource = entry.resource;
-  const due = whenDue(resource);
+  const deadline = courseDeadlineDisplay(resource, entry.copies);
   const done = isDone(resource);
   return (
     <li className={`course-row ${selected ? "selected" : ""} ${done ? "is-complete" : ""}`}>
@@ -206,7 +205,7 @@ function WorkRow({
         <span className="resource-title">{resource.title}</span>
         <span className="resource-subline">
           {[
-            due ? `Due ${when(due)}` : "No due date",
+            deadline.cue ?? (deadline.displayAt ? `Due ${when(deadline.displayAt)}` : "No due date"),
             resource.points != null ? `${resource.points} pts` : "",
             resource.submitted === true ? "Submitted" : resource.completed ? "Marked done" : "",
             resource.submission?.grade ? `Canvas grade ${resource.submission.grade}` : "",
@@ -279,9 +278,10 @@ function NextRow({
   onSelect: (id: string) => void;
 }) {
   const r = item.entry.resource;
-  const due = new Date(whenDue(r)!);
+  const deadline = courseDeadlineDisplay(r, item.entry.copies);
+  const due = deadline.displayAt ? new Date(deadline.displayAt) : null;
   // The type's hue; the shared recipe strengthens it as the local due date gets closer.
-  const emphasis = deadlineEmphasis({ today, due: r.deadline.conflict || item.entry.dueDiffers ? null : dueCivilDate(r, timeZone), completed: isDone(r) || undefined });
+  const emphasis = deadlineEmphasis({ today, due: deadline.displayAt ? dueCivilDate(r, timeZone) : null, completed: isDone(r) || undefined });
   return (
     <li>
       <button
@@ -305,9 +305,9 @@ function NextRow({
         <span className="course-next-due">
           <strong>
             {emphasis.label && emphasis.bin !== "unknown" ? <em>{emphasis.label}</em> : null}
-            {new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" }).format(due)}
+            {deadline.cue ?? (due ? new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" }).format(due) : "No due date")}
           </strong>
-          <span>{new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(due)}</span>
+          <span>{deadline.conflict ? "Review dates" : due ? new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(due) : null}</span>
         </span>
         <Glyph name="chevron" />
       </button>

@@ -265,14 +265,8 @@ export function createCore(store: Store, options: CoreOptions) {
                 ),
             );
     const profile = recipient === "jev" ? undefined : profileFor(r);
-    const effectivePolicy = effectiveCoursePolicy(profile, r);
-    if (
-      profile &&
-      intelligenceView(profile, store.sources(), now()).freshness !==
-        "current_capture" &&
-      effectivePolicy.mode === "allowed"
-    )
-      effectivePolicy.mode = "coaching";
+    const effectivePolicy = effectiveCoursePolicy(profile, r,
+      profile ? intelligenceView(profile, store.sources(), now()).freshness : undefined);
     const policyResources = effectivePolicy.resourceIds
       .map((id) => store.resource(id))
       .filter((s): s is Resource => !!s && !s.deleted);

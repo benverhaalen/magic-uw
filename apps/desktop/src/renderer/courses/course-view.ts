@@ -2,6 +2,7 @@ import type { PlanningMeeting, ResourceView } from "@magic/contracts";
 import {
   isDone,
   whenDue,
+  courseDeadlineDisplay,
   type CourseFactKind,
   type CoursePage,
 } from "../../../../../packages/domain/src/course-page";
@@ -15,7 +16,7 @@ export interface WorkEntry {
   resource: ResourceView;
   /** Every saved resource with this identity (the same assignment read from several Canvas lists). */
   copies: ResourceView[];
-  /** Copies disagree on the due time; the row says so instead of choosing silently. */
+  /** Saved deadline claims or same-object copies disagree; never a confirmed date cue. */
   dueDiffers: boolean;
   /** Another entry on this page has the same title but a different Canvas id. */
   sameTitleElsewhere: boolean;
@@ -89,7 +90,7 @@ export function courseWork(page: Pick<CoursePage, "groups" | "accountScope">, li
       key,
       resource: main,
       copies,
-      dueDiffers: new Set(copies.map((r) => whenDue(r))).size > 1,
+      dueDiffers: courseDeadlineDisplay(main, copies).conflict,
       sameTitleElsewhere: (titles.get(main.title)?.size ?? 0) > 1,
     });
   }

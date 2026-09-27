@@ -46,7 +46,7 @@ export function InlineTime({ dateTime, parts, destination, colors, after }: {
 /**
  * Inline object name. The child is the consumer's own link (EvidenceLink with the
  * exact resource route) whose text is `name.label`. When the label is a shortened
- * literal slice, the full source title stays inspectable on hover; Info remains
+ * literal projection, the full source title stays inspectable on hover; Info remains
  * the keyboard path. The source title is never rewritten.
  */
 export function InlineEntity({ name, children }: { name: PresentationLabel; children: ReactNode }) {
