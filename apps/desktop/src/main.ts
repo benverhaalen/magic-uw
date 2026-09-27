@@ -101,6 +101,7 @@ import { logLine, redactForLog } from "../../../packages/core/src/privacy/log"; 
 import { consentRecordSchema, type ConsentRecord } from "@magic/contracts"; // owner: T06
 import { launchWorkSet, materializeCopy, selectWorkRetry } from "../../../packages/core/src/work-set";
 import { startEmbeddedJev } from "./embedded-jev"; // owner: embedded-jev
+import { createTaskWindows, helperRunner, taskContextFrom } from "./task-windows/controller"; // owner: task-workspace
 import {
   commandSchema,
   captureBatchSchema,
@@ -1469,6 +1470,21 @@ app
       });
     });
     // end owner: doc-window
+    // owner: task-workspace. Fresh default-browser windows for one task; URLs are
+    // re-derived from the saved assignment and only observed windows are touched.
+    const taskWindows = createTaskWindows({
+      run: helperRunner(join(__dirname, "task-window-helper")),
+      headless,
+      beforeOpen: async () => { if (!(await consentGate("source-fetch"))) throw new Error(consentRefused); },
+      context: async (accountScope, resourceId) =>
+        taskContextFrom(await execute({ type: "work-set", id: resourceId }), accountScope, resourceId, "https://git.doit.wisc.edu"),
+      now: () => new Date(),
+    });
+    ipcMain.handle("magic:task-windows", async (event, request) => {
+      validateSender(event);
+      return taskWindows.handle(request);
+    });
+    // end owner: task-workspace
     ipcMain.handle("magic:import", async (event) => {
       validateSender(event);
       if (headless)

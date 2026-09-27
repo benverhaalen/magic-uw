@@ -36,7 +36,8 @@ export { scrubText, rosterFor, toOriginalSpan } from "./identity";
 // owner: privacy: resolves protected projections and delegates every other claim to identity.ts.
 export { validateProtectedCitations as validateCitations } from "./privacy/protect";
 import { buildWorkSet } from "./work-set";
-export { buildWorkSet, launchWorkSet, materializeCopy, safeWebLink, selectWorkRetry, MAX_WORK_ITEMS, type WorkLaunchHost } from "./work-set";
+export { resolveAssignmentContext, readContextSpan, assignmentAnchor, findSections, CONTEXT_LIMITS, CONTEXT_RESOLVER_VERSION } from "./assignment-context";
+export { buildWorkSet, directLinkId, launchWorkSet, materializeCopy, safeWebLink, selectWorkRetry, MAX_WORK_ITEMS, type WorkLaunchHost } from "./work-set";
 import { pullGuideForSubject } from "../../connectors/src/planning-public";
 import { gitlabProjectFromUrl } from "../../connectors/src/gitlab";
 import {

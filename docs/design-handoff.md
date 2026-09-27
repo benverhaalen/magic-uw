@@ -1,5 +1,17 @@
 # My Magic UW desktop handoff
 
+## 2026-09-27 12:05 UTC — task setup integrated, native browser trial pending
+
+Home assignment rows now open task setup directly. The full-width panel saves exact-account/assignment page choices on this device, offers captured external links, supports Add/Forget, and requests fresh default-browser windows with instructions left and a chosen work page right. Continue/Close address only main-process-verified task windows; unknown, altered or unobservable references cannot claim unrelated windows or cause implicit reopening. After restarting Magic, saved choices remain but old window ownership is not asserted: use Open fresh windows explicitly. Exact tabs, page scroll, unsaved drafts and successful page loading are not restored or claimed.
+
+The integrated build and focused ownership/context/entry tests pass. Hidden Electron on a closed copied profile passed Home → setup → save → Add → test-only open → Back/re-entry → reload/readback → Forget, with no renderer errors or horizontal overflow. The native bridge intentionally performed **zero browser effects**. The pure Swift helper selftest passed; actual default-browser split placement, Accessibility permission and Close still need a user trial. The copied profile predates the latest capture and is not evidence of current enrollment. Private receipt: work/desktop-build/recovery-20260927/workspace-native-r2/receipt.json; screenshots are beside it. Subsequent display tidying collapses source/window caveats and names the captured format “No Canvas submission.”
+
+Source excerpts render as plain text inside disclosure; original quotes, offsets and hashes remain intact. Sparse assignments may offer a bounded same-account/course schedule section as **Possibly related**, never confirmed instructions. The context resolver/work-set consumer is integrated, but a connected investigator and Nate agent API/MCP consumer remain pending. This slice does not claim intelligent source investigation, completed work or submission.
+
+This checkpoint incorporates main 02c5c19, including Sean's rail popover fix and Nate's informational packet 17. Pending teammate branches remain pending; no speculative merges or Ask/retrieval rewrite are included. The actual visible app remains 7b9bdf9 (PID 18668) until a separately verified idle-safe update. Study is next in the serialized hidden QA queue.
+
+Shared capability direction: reuse the connected CC/Codex agent and focused app tools/recipes; resolve exact selected sources before ranked retrieval, carry account/source/policy versions into producing calls, and verify actual action outcomes. Fast typed judgments and semantic retrieval remain proposals until baseline/owner review. Study's requested destination is direct contextual chat, with artifacts and verified videos inside the saved conversation; sources stay inline and open an exact passage on demand. Private assembly does not establish these connected consumers yet.
+
 ## 2026-09-27 11:31 UTC — retrieval baseline and shared ownership
 
 Ben authorized the retrieval upgrade on September 27. Five private lanes are collecting a baseline and candidates; **no retrieval upgrade is integrated or demonstrated yet**. The first comparison must measure known-answer paraphrases, abbreviations and typos alongside genuinely unsupported questions, recording retrieval rank and gate abstention. Real course passages, questions and per-item results stay outside Git; committed regressions use synthetic or public equivalents.

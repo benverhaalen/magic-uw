@@ -10,7 +10,8 @@ import type {
 import { copyFile, mkdir, constants, realpath, lstat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { evidenceFor } from "./evidence";
-import { courseIncluded } from "./access";
+import { courseIncluded, courseInclusion } from "./access";
+import { resolveAssignmentContext } from "./assignment-context";
 import { createHash } from "node:crypto";
 
 /** One click should not become a tab storm: the assignment plus a few materials. */
@@ -112,12 +113,58 @@ export function buildWorkSet(store: Store, id: string): WorkSet {
     const at = listed.indexOf(urlKey(r.url));
     return at < 0 ? listed.length : at;
   };
-  const supporting = evidenceFor(store)
-    .supporting(assignment)
-    .map((r, index) => ({ r, index }))
-    .sort((a, b) => position(a.r) - position(b.r) || a.index - b.index)
-    .map(({ r }) => r);
-  for (const material of supporting) {
+  const supporting = evidenceFor(store).supporting(assignment);
+  // Direct links the saved assignment itself lists. Links to saved resources go
+  // through the evidence graph above; links on the assignment's own site (Canvas
+  // navigation, other courses, unsaved pages) are never opened from here.
+  const savedUrls = new Set(store.resources().map((r) => urlKey(r.url)));
+  const home = (() => {
+    try {
+      return new URL(assignment.url).origin;
+    } catch {
+      return "";
+    }
+  })();
+  const direct: { key: string; url: string; title: string; at: number }[] = [];
+  (assignment.links ?? []).forEach((l, at) => {
+    const pointer = typeof l === "string" ? { url: l } : l;
+    let url: string;
+    try {
+      url = safeWebLink(pointer.url);
+    } catch {
+      return;
+    }
+    const key = urlKey(url);
+    if (savedUrls.has(key) || new URL(url).origin === home) return;
+    if (direct.some((d) => d.key === key)) return;
+    const text = "text" in pointer ? pointer.text?.trim() : undefined;
+    direct.push({ key, url, title: text || linkTitle(url), at });
+  });
+  const candidates = [
+    ...supporting.map((r, index) => ({ r, index, at: position(r) })),
+    ...direct.map((d, index) => ({ d, index: supporting.length + index, at: d.at })),
+  ].sort((a, b) => a.at - b.at || a.index - b.index);
+  for (const candidate of candidates) {
+    if ("d" in candidate) {
+      const link = candidate.d;
+      if (seen.has(link.key)) continue;
+      seen.add(link.key);
+      const resourceId = directLinkId(assignment.id, link.key);
+      if (materials.length >= MAX_WORK_ITEMS - 1) {
+        held.push({ resourceId, title: link.title, reason: "Also linked; open it from the assignment detail." });
+        continue;
+      }
+      materials.push({
+        resourceId,
+        title: link.title,
+        role: "material",
+        provenance: "assignment_link",
+        reason: "Linked directly in the saved assignment. This page isn't saved in Magic, so it opens as linked.",
+        target: { kind: "web", url: link.url },
+      });
+      continue;
+    }
+    const material = candidate.r;
     if (material.deleted || !sameCourse(material) || !courseIncluded(store, material)) continue;
     const key = urlKey(material.url);
     if (seen.has(key)) continue;
@@ -131,11 +178,13 @@ export function buildWorkSet(store: Store, id: string): WorkSet {
       continue;
     }
     const copy = localCopy(material);
+    const listedHere = listed.includes(key);
     materials.push({
       resourceId: material.id,
       title: material.title,
       role: "material",
-      reason: listed.includes(key)
+      provenance: listedHere ? "assignment_link" : "supporting_evidence",
+      reason: listedHere
         ? "Directly linked in the saved assignment."
         : "Connected through accepted supporting evidence; not a direct assignment link.",
       target: copy
@@ -163,6 +212,23 @@ export function buildWorkSet(store: Store, id: string): WorkSet {
     });
   }
 
+  // Provisional same-course context (e.g. the "Lecture 7" section of the course site) is
+  // shown, never opened automatically and never presented as the assignment's instructions.
+  const context = resolveAssignmentContext(store, assignment.id, {
+    permitted: courseInclusion(store),
+  });
+  for (const section of context.sections) {
+    if (materials.some((m) => m.resourceId === section.resourceId)) continue;
+    if (held.some((h) => h.resourceId === section.resourceId)) continue;
+    held.push({
+      resourceId: section.resourceId,
+      title: section.title,
+      reason: section.linkedToAssignment
+        ? `${context.anchor} section; linked to this assignment.`
+        : `Possibly related: its ${context.anchor} section. Not linked to this assignment.`,
+    });
+  }
+
   const notes: string[] = [];
   if (!materials.length)
     notes.push(
@@ -185,6 +251,7 @@ export function buildWorkSet(store: Store, id: string): WorkSet {
   const previewHash = createHash("sha256").update(JSON.stringify({
     items: items.map(item => ({ ...item, version: store.resource(item.resourceId)?.contentHash })),
     held,
+    context: context.sections.map((c) => [c.resourceId, c.contentHash, c.start, c.end]),
   })).digest("hex");
   return {
     previewHash,
@@ -194,7 +261,18 @@ export function buildWorkSet(store: Store, id: string): WorkSet {
     items,
     held,
     notes,
+    context,
   };
+}
+
+/** Stable ID for a direct assignment link that is not a saved resource. */
+export function directLinkId(assignmentId: string, url: string) {
+  return `${assignmentId}:link:${createHash("sha256").update(urlKey(url)).digest("hex").slice(0, 16)}`;
+}
+function linkTitle(url: string) {
+  const u = new URL(url);
+  const path = u.pathname.replace(/\/+$/, "");
+  return `${u.hostname}${path && path !== "/" ? path : ""}`.slice(0, 200);
 }
 
 /** Accepts only ordinary web links without embedded credentials. */

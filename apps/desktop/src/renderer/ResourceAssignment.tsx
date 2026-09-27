@@ -5,12 +5,13 @@ import { preparedWorkRevision } from './StartWork';
 import { PreparedWork } from './prepared-work/PreparedWork';
 import { EvidenceInfo } from '../../../../packages/ui/src/evidence-info';
 import { reportWorkspaceFailure } from './workspace-feedback';
+import { TaskWorkspace } from './task-workspace/TaskWorkspace';
 
 const formats: Record<string, string> = {
   online_upload: 'File upload', online_text_entry: 'Text entry', online_url: 'Website URL',
   media_recording: 'Media recording', student_annotation: 'Document annotation',
   external_tool: 'External tool', online_quiz: 'Online quiz', discussion_topic: 'Discussion',
-  on_paper: 'On paper', none: 'No online submission', not_graded: 'Not graded',
+  on_paper: 'On paper', none: 'No Canvas submission', not_graded: 'Not graded',
 };
 
 /** Exact captured requirements and rubric. No generated synopsis or inferred submission format. */
@@ -19,21 +20,24 @@ export function ResourceAssignment({ resource, snapshot, policy, provenance, onS
 }) {
   const submissionTypes = [...new Set(resource.submissionTypes ?? [])];
   return <div className="resource-assignment">
+<TaskWorkspace resource={resource} snapshot={snapshot} refreshKey={preparedWorkRevision(snapshot)} onSetup={onSetup} onFailure={reportWorkspaceFailure} />
     <div className="resource-assignment__reading">
-      <section className="detail-section resource-assignment__instructions" aria-labelledby="assignment-instructions">
+      {resource.text && <section className="detail-section resource-assignment__instructions" aria-labelledby="assignment-instructions">
         <h3 id="assignment-instructions">Instructions</h3>
         {resource.text ? <p className="source-text">{resource.text}</p>
           : <p className="muted">This capture has no instructions. Open the assignment to check its requirements.</p>}
-      </section>
+      </section>}
       {provenance}
     </div>
     <aside className="resource-assignment__work" aria-label="Assignment work and requirements">
-      <PreparedWork resource={resource} refreshKey={preparedWorkRevision(snapshot)} info={EvidenceInfo} onSetup={onSetup} onNotice={onNotice} onFailure={reportWorkspaceFailure} onOpenOriginal={onOpenOriginal} />
+      <Disclosure label="Other opening options" placeKey={`opening-options:${resource.id}`}>
+        <PreparedWork resource={resource} refreshKey={preparedWorkRevision(snapshot)} info={EvidenceInfo} onSetup={onSetup} onNotice={onNotice} onFailure={reportWorkspaceFailure} onOpenOriginal={onOpenOriginal} />
+      </Disclosure>
       {policy}
-      {submissionTypes.length > 0 && <section className="resource-assignment__support" aria-labelledby="assignment-submission">
+      {submissionTypes.length > 0 && <Disclosure label="Captured submission format" placeKey={`submission:${resource.id}`}><section className="resource-assignment__support" aria-labelledby="assignment-submission">
         <h3 id="assignment-submission">Submission</h3>
         <ul>{submissionTypes.map(type => <li key={type}>{formats[type] ?? type}</li>)}</ul>
-      </section>}
+      </section></Disclosure>}
       {resource.rubric && resource.rubric.length > 0 && <section className="resource-assignment__support" aria-labelledby="assignment-rubric">
         <h3 id="assignment-rubric">Grading criteria</h3>
         <ol className="resource-assignment__rubric">{resource.rubric.map((criterion, index) => <li key={`${criterion.id ?? criterion.criterionId ?? 'criterion'}:${index}`}>
