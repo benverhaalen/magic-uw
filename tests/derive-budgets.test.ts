@@ -77,6 +77,12 @@ test("first-launch backlog at 2,000+ resources keeps the request thread responsi
     assert.ok(derived.courses >= 7 && derived.writes > 1000, "the backlog was real work");
     assert.ok(notesStats.created >= 50, "the notes had sessions to scaffold");
     assert.deepEqual(derived.errors, []);
+    // Wall-clock budgets gate locally; on shared CI runners they report only (see PR #37), so a
+    // loaded runner can't fail a teammate's build. Set BUDGETS_TIMING=gate to enforce them in CI.
+    if (process.env.CI && process.env.BUDGETS_TIMING !== "gate") {
+      console.log(`DERIVE-BUDGETS (report only in CI) derive ${derived.maxBatchMs.toFixed(1)} ms, notes ${notesStats.maxBatchMs.toFixed(1)} ms, p99 ${p99.toFixed(1)} ms, max ${max.toFixed(1)} ms`);
+      return;
+    }
     assert.ok(derived.maxBatchMs <= STRETCH_BUDGET_MS, `derive stretch ${derived.maxBatchMs.toFixed(1)} ms ≤ ${STRETCH_BUDGET_MS} ms`);
     assert.ok(notesStats.maxBatchMs <= STRETCH_BUDGET_MS, `notes stretch ${notesStats.maxBatchMs.toFixed(1)} ms ≤ ${STRETCH_BUDGET_MS} ms`);
     assert.ok(p99 <= 50, `event-loop delay p99 ${p99.toFixed(1)} ms ≤ 50 ms`);
