@@ -1,6 +1,32 @@
 # Home handoff: clickable briefing references
 
-Updated: September 26, 2026. Human: Ben. Producing agent: Codex visual-direction work. Recipient: Home/routing implementer, ownership unconfirmed. Product design baseline: f7e4852. Status: local prototype evidence and design direction; production integration not established.
+## Current desktop integration — September 26, 2026
+
+Human owner: **Ben**. Driver: this Magic Canvas Codex conversation, with bounded shell/Home, personal-report and Start Work workers. Latest inspected remote main: `27abf33`. This update follows [Ben's exact progress-handoff instruction](../../sources.md#desktop-progress-handoffs). Other agents' reading/adoption remains unverified.
+
+**Local implementation, not pushed to main:** integration branch `codex/desktop-design-integration` reconciled main `780aaed` and committed design `fdff9c5` at `da7eecb`; `ddf93e9` repairs the shared UI React peer lock. Shell checkpoint `cb65496` adds cohesive Home and resource-return navigation. Personal-report leaf `c8b6fe7` is committed separately and awaits driver integration. Start Work is in progress on `codex/desktop-start-work`, porting the existing feature onto `ddf93e9`; no completed integration is claimed. This packet's publication does not publish those implementation commits.
+
+| Ownership / interface | Current boundary and dependency |
+| --- | --- |
+| Ben's shell/Home worker | `renderer/App.tsx`, `DesktopShell.tsx`, `Home.tsx`, `navigation.ts`, `desktop.css`, shell imports. Owns default Home, resource routing and preserved return; retain Sean's Today rail and shared `projectWork` identity. Coordinate before editing App or global styles. |
+| Ben's personal-report worker | Additive contracts/core command and storage module, no migration. `personal-report` carries operation ID, stable issue ID, exact resource/hash evidence, source version, handled state and expected revision. Latest-state snapshot only; durable Undo/history stays local and never means Canvas submission, verified reading or mastery. Renderer binding remains pending. |
+| Ben's Start Work worker | Work-set contracts/core and desktop bridge integration; preserve actual source links, consent and partial launch/retry receipts. Shared contracts/core edits must reconcile additively with reports and incoming learning. |
+
+**Evidence, with limits:** the shell worker reports `pnpm build` and hidden `pnpm test:desktop` passing at `cb65496` (renderer → preload → worker → SQLite, synthetic planning import/MCP export/purge). A separate hidden Electron run exercised fresh existing onboarding, synthetic Home, Cooper/Geist font loading, named resource → detail → Back with focus restored to the initiating EvidenceLink. Screenshots remain local; the driver has not independently reviewed them yet. Personal-report tests at `c8b6fe7` passed typecheck and 24 focused/adjacent checks, including file-backed SQLite restart/Undo, stale revisions, changed evidence, account boundaries and AI/MCP omission. The Start Work worker additionally reports a native synthetic bridge smoke covering consent denial and a reviewed two-destination dry run, malformed-launch refusal and 12 core tests; its scoped commit is still pending. A reported audit finding about stale receipts after a failed refetch was fixed, but actual external app opening remains unverified. Native external-source opening, report renderer/restart interaction and full app adoption are still unverified. Calendar week/month and its easy on-request suggestions remain outstanding; Home's compact Today rail is a separate existing capability.
+
+**Incoming teammate work to preserve:**
+
+- Prepared-practice learning is now **merged on main** at `9e32338`, with status corrected in `2f89992`; it has not yet been merged into this desktop branch. Reuse the canonical router, SQL adapter and contextual LearningPanel; do not duplicate them. Schema **v8** and exact production limits are in [learning sessions](../../../../docs/learning-sessions.md). Checked-pool preparation/T42 and live tutoring quality remain unfinished; an empty pool must remain honestly unavailable.
+- The [course-page packet](../courses/10-course-page.md), published at `3561a34`, describes an in-progress frame for Nathaniel's notebook on `feat/course-page`, based on `f850ea7`. Coordinate its Courses/App routing and Materials slot before integration; its packet does not establish a merged or demonstrated course page.
+- [Sync resilience](../../../../docs/sync-resilience-review.md), published as documentation at `18a8486`, describes local unpushed implementation and pending verification/reconciliation. Its earlier migration **8** proposal is superseded by the newer [backend branch audit](../backend/11-backend-branch-audit.md): sync resilience moved to **v9 locally**, preserving merged learning v8; this does not establish pushed implementation. Preserve its Sources/App and course-space seams; do not copy its dirty checkout.
+- The backend audit at `27abf33` also records a reproduced MCP derived-deadline privacy leak and a newer Start Work `previewHash` contract. Keep backend egress adaptation separate; do not merge the original Start Work branch over the active desktop adaptation.
+- Sean's Today rail is already in the integration baseline through main (merge `fc95f54`); the older [rail packet](5-today-rail.md) contains historical PR status. Reuse its existing behavior rather than rebuilding it.
+
+**Next boundary:** fetch and inspect relevant updates, integrate reviewed leaf commits in the isolated desktop branch, reconcile incoming learning and course/Sources owners, then verify the complete Home → useful resource/work → preserved return journey and report restart/Undo. Publish changes when a dependency, interface, blocker or verified state changes. No implementation merges, hooks, timers or private captures are part of this docs update; keep the [release cleanup](../team/3-release-cleanup.md).
+
+## Earlier design handoff (historical scope)
+
+Recorded September 26, 2026. Human: Ben. Producing agent: Codex visual-direction work. Recipient: Home/routing implementer, ownership then unconfirmed. Product design baseline: f7e4852. Status at that time: local prototype evidence and design direction; production integration not established.
 
 Original wording: [Ben's briefing-links excerpt](../../sources.md#briefing-links). Requirement: named briefing objects are recognizable links and lead to useful task context. Preserve source identity and briefing focus.
 

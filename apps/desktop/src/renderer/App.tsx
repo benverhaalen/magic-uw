@@ -10,6 +10,7 @@ import type {
 } from "@magic/contracts";
 import { MyUw, PlanningAlerts } from "./MyUw";
 import { LocalAiPanel } from "./LocalAiPanel";
+import { LearningPanel } from "./LearningPanel";
 import { ProviderGuidance } from "./ProviderGuidance";
 import { IngestionControls, McpConnections } from "./IngestionControls";
 // owner: T06
@@ -900,6 +901,7 @@ function ResourceDetail({
             "No AI policy was found in the captured material. Coaching is the default."}
         </p>
       </Disclosure>
+      <LearningPanel key={`${resource.id}:${source?.accountScope}:${resource.contentHash}:${JSON.stringify(snapshot.privacy)}`} resource={resource} accountScope={source?.accountScope} />
       <LocalAiPanel
         key={`${resource.contentHash}:${JSON.stringify(snapshot.privacy)}`}
         resource={resource}
@@ -1547,6 +1549,9 @@ function Privacy({
           not delete UW records.
         </p>
       </section>
+      <p className="small muted settings-affiliation">
+        My Magic UW is an independent student project. It is not affiliated with, sponsored by or endorsed by the University of Wisconsin–Madison.
+      </p>
     </div>
   );
 }

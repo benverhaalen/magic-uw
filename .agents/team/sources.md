@@ -37,3 +37,11 @@ Interpretation: recognizable named links and useful destinations. The noun-inspe
 > just have it there but dont create hooks just write it into whichever doc makes most sense
 
 Interpretation: keep an explicit release check in the existing repo; remove temporary team coordination content and purge its published history before September 27, 2026, 11 a.m. America/Chicago. No hook or scheduled job enforces this. Preserve product work and coordinate the eventual rewrite with teammates.
+
+## Desktop progress handoffs
+
+Speaker: Ben. Recorded September 26, 2026. Source: current Magic Canvas chat; exact original timestamp/message ID unavailable. Scope: shared progress and incoming changes during desktop integration.
+
+> ensure to continously pull in and update the docs on what you are doing too so everyones agents know
+
+Interpretation: fetch and inspect relevant changes at meaningful work boundaries, publish bounded handoffs, and preserve active work. A pushed packet establishes availability, not that another agent read or adopted it. No hooks or timers are added.

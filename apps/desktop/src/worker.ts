@@ -1,3 +1,4 @@
+import { judgmentFailureError } from "./judgment-errors";
 import { createLocalCourseExtractor } from "@magic/ai";
 import { createStore } from "@magic/storage";
 import { createCore } from "@magic/core";
@@ -7,7 +8,8 @@ import fixture from "../../../fixtures/course.json";
 import { randomUUID } from "node:crypto";
 import { createLocalService } from "./local-service";
 import { createIngestion } from "./ingestion";
-import { createLearningRouter } from "../../../packages/learning/src/router"; // owner: T05b
+import { createLearningRouter, type StudyContext } from "../../../packages/learning/src/router";
+import { createStudyContextResolver } from "./learning-context";
 import { dirname } from "node:path";
 import {
   createLocalDocumentExtractor,
@@ -26,13 +28,41 @@ const store = createStore(process.env.MAGIC_DB_PATH!);
 // owner: T06: every direct public client refuses until the setup consent record exists.
 const publicClients = createWorkerClients(store);
 // end owner: T06
+// owner: generation. The pack runner: the student's chosen client in its app-owned profile
+// (CLAUDE_CONFIG_DIR / CODEX_HOME), tools off, our system prompt, the background budget, and
+// the SQLite pack stores. No client connected: the pack command answers "Connect your AI first".
+import { createClaudeBackend, createCodexBackend, type ModelRunner } from "../../../packages/runner/src/index";
+import { createPackRuntime, DEFAULT_PACK_CONFIG } from "../../../packages/packs/core/src/index";
+import { createPackHandler } from "../../../packages/core/src/pack-handler";
+import { isIsolated, isProfileReady, profileEnv, readClientSettings, resolveClient, workDir } from "./clients/profiles";
+const generationUserData = dirname(process.env.MAGIC_DB_PATH!);
+let generationRuntime: { client: string; runner: ModelRunner } | null = null;
+async function generationRunner(): Promise<ModelRunner | null> {
+  const { chosen } = await readClientSettings(generationUserData);
+  if (!chosen || !isIsolated(chosen) || !(await isProfileReady(chosen, generationUserData))) return null;
+  if (generationRuntime?.client === chosen) return generationRuntime.runner;
+  const command = resolveClient(chosen, { userData: generationUserData });
+  if (!command) return null;
+  const env = Object.fromEntries(
+    Object.entries(profileEnv(chosen, { userData: generationUserData })).flatMap(([k, v]) => (v === undefined ? [] : [[k, v]])),
+  );
+  const options = { command, workDir: workDir(generationUserData, chosen), env };
+  const backend = chosen === "claude" ? createClaudeBackend(options) : createCodexBackend(options);
+  generationRuntime = { client: chosen, runner: createPackRuntime(backend, DEFAULT_PACK_CONFIG).runner };
+  return generationRuntime.runner;
+}
+const generation = createPackHandler({ store, runner: generationRunner });
+// end owner: generation
 const core = createCore(store, {
   fixture: captureBatchSchema.parse(fixture),
   courseExtractor: createLocalCourseExtractor(),
   planningPublicClient: publicClients.core, // owner: T06
+  madgrades: { read: (request, signal) => hostRead("madgrades-read", { request }, signal) },
   planningHttp: { read: (request, signal) => hostRead("planning-public-read", { request }, signal) },
-  // owner: T05b. The learning channel reaches the router stub; N25 takes the router over.
-  seams: { learning: createLearningRouter() },
+  seams: { learning: createLearningRouter({
+    store: store.learning,
+    resolveContext: (resourceId): StudyContext | null => resolveStudyContext(resourceId),
+  }), pack: generation.pack /* owner: generation */ },
   ...(process.env.MAGIC_GATEWAY_URL
     ? {
         gateway: {
@@ -63,6 +93,7 @@ const core = createCore(store, {
     : {}),
 });
 const local = createLocalService(store, core);
+const resolveStudyContext = createStudyContextResolver(store, core);
 const hostRequests = new Map<
   string,
   { resolve(value: any): void; reject(error: Error): void }
@@ -311,7 +342,7 @@ port.on("message", async ({ data }: { data: any }) => {
     const p = pending.get(data.id);
     pending.delete(data.id);
     if (p) {
-      if (data.error) p.reject(new Error("Judgment unavailable"));
+      if (data.error) p.reject(judgmentFailureError(data));
       else p.resolve(data.result);
     }
     return;
@@ -382,8 +413,9 @@ port.on("message", async ({ data }: { data: any }) => {
     ingestion.suspend();
     await ingestion.tick();
   }
-  if (["import", "planning-import", "fixture", "privacy", "purge"].includes(data.command?.type))
+  if (["import", "planning-import", "fixture", "privacy", "purge", "course-override"].includes(data.command?.type)) {
     local.cancel();
+  }
   try {
     port.postMessage({
       kind: "response",

@@ -140,7 +140,7 @@ function profileFiles(id: ClientId): Record<string, string> {
     // purge removes it. (openai/codex's own app-server test client sets `file` the same way.)
     return {
       "config.toml":
-        "# Written by Magic Canvas for its own Codex profile. Your ~/.codex is not used.\n" +
+        "# Written by My Magic UW for its own Codex profile. Your ~/.codex is not used.\n" +
         'cli_auth_credentials_store = "file"\n',
       "magic-mcp.json": mcp,
     };

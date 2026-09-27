@@ -14,6 +14,8 @@ import { textHash } from "../../retrieval/src/index";
 import { COURSE_CORE_SCHEMA, courseCoreRepository } from "./course-core";
 import { createPassageIndex, scopeToken } from "./passages";
 import { LEARNING_SCHEMA } from "./learning";
+import { LEARNING_V8 } from "./learning-v8";
+import { createSqlLearningStore, type SqlLearningStore } from "../../learning/src/sql-store";
 import { decodePayload, encodePayload } from "./payload";
 import { personalReportRepository } from "./personal-reports";
 import {
@@ -54,6 +56,11 @@ import {
   consentRecordSchema,
   type ConsentChange,
   type ConsentRecord,
+  identityRosterSchema,
+  autoIdentityStateSchema,
+  autoIdentityUpdateSchema,
+  type AutoIdentityUpdate,
+  type IdentityRoster,
   type Attempt,
   type DayPlanEntry,
   type EgressReceipt,
@@ -68,7 +75,7 @@ import {
   type Store,
 } from "@magic/contracts";
 
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 const MAX_ATTEMPTS = 3;
 /** The latest pre-migration backup, beside the database (one kept; purge deletes it). */
 export function migrationBackupPath(path: string): string {
@@ -168,7 +175,7 @@ function payloadTextHash(payload: unknown): string {
 export function createStore(
   path: string,
   options: { now?: () => Date } = {},
-): Store & CourseCoreStore {
+): Store & CourseCoreStore & { learning: SqlLearningStore } {
   const clock = options.now ?? (() => new Date());
   const file = path !== ":memory:";
   if (file) mkdirSync(dirname(resolve(path)), { recursive: true, mode: 0o700 });
@@ -338,6 +345,7 @@ export function createStore(
   ]);
   // v7: learning and practice tables (T10L, D17).
   steps.push([7, () => db.exec(LEARNING_SCHEMA + "PRAGMA user_version = 7;")]);
+  steps.push([8, () => db.exec(LEARNING_V8 + "PRAGMA user_version = 8;")]);
   const migrationBackup = file ? migrationBackupPath(path) : null;
   const passageIndex = createPassageIndex(db, prepare);
   const courseScope = (accountScope: string, courseId: string) =>
@@ -683,6 +691,7 @@ export function createStore(
     timestamp,
     versionText,
   });
+  const learning = createSqlLearningStore(prepare, transaction, () => clock().toISOString());
   let closed = false;
   // Keep two weeks of day-plan history, measured from the newest saved day.
   const DAY_PLAN_KEEP_DAYS = 14;
@@ -744,6 +753,7 @@ export function createStore(
   }, clock);
   return {
     ...personalReports,
+    learning,
     courseIntelligence() {
       return prepare(
           "SELECT payload FROM course_intelligence p WHERE version=(SELECT MAX(version) FROM course_intelligence WHERE id=p.id) ORDER BY id",
@@ -1482,6 +1492,50 @@ export function createStore(
         return ids.length;
       });
     },
+    identityRoster() {
+      // Stored in the existing preferences table: no schema change. Cleared by purge().
+      const row = db
+        .prepare("SELECT value FROM preferences WHERE key = 'identity_roster'")
+        .get();
+      return row
+        ? identityRosterSchema.parse(JSON.parse(String(row.value)))
+        : identityRosterSchema.parse({});
+    },
+    setIdentityRoster(value: IdentityRoster) {
+      const parsed = identityRosterSchema.parse(value);
+      db.prepare(
+        "INSERT INTO preferences VALUES ('identity_roster', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      ).run(JSON.stringify(parsed));
+    },
+    autoIdentities() {
+      // Kept apart from the manual roster so a sync can never overwrite manual entries.
+      const row = db
+        .prepare("SELECT value FROM preferences WHERE key = 'identity_roster_auto'")
+        .get();
+      return row
+        ? autoIdentityStateSchema.parse(JSON.parse(String(row.value)))
+        : { accounts: {} };
+    },
+    recordAutoIdentity(value: AutoIdentityUpdate) {
+      const update = autoIdentityUpdateSchema.parse(value);
+      const row = db
+        .prepare("SELECT value FROM preferences WHERE key = 'identity_roster_auto'")
+        .get();
+      const state = row
+        ? autoIdentityStateSchema.parse(JSON.parse(String(row.value)))
+        : { accounts: {} as ReturnType<typeof autoIdentityStateSchema.parse>["accounts"] };
+      const account = (state.accounts[update.accountScope] ??= { authorsByCourse: {} });
+      // The current profile replaces the account's previous automatic self identity.
+      if (update.self) account.self = update.self;
+      if (update.courseId && update.authors?.length) {
+        // Authors accumulate: a partial read never forgets a known student.
+        const known = account.authorsByCourse[update.courseId] ?? [];
+        account.authorsByCourse[update.courseId] = [...new Set([...known, ...update.authors])].slice(0, 2000);
+      }
+      db.prepare(
+        "INSERT INTO preferences VALUES ('identity_roster_auto', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      ).run(JSON.stringify(autoIdentityStateSchema.parse(state)));
+    },
     setCompleted(id, completed) {
       if (!liveResource(id))
         throw new Error(
@@ -1616,8 +1670,10 @@ export function createStore(
         for (;;) {
           const row = prepare(
             `SELECT * FROM jobs WHERE ((status = 'pending' AND run_after <= ?) OR (status = 'running' AND lease_until <= ?))
-             ${filter} ORDER BY run_after, rowid LIMIT 1`,
-          ).get(time, time, ...params) as Row | undefined;
+             ${filter} AND NOT EXISTS (
+               SELECT 1 FROM preferences WHERE key = 'jobCooldown:' || jobs.kind AND value > ?
+             ) ORDER BY run_after, rowid LIMIT 1`,
+          ).get(time, time, ...params, time) as Row | undefined;
           if (!row) return undefined;
           const error =
             Number(row.attempts) >= MAX_ATTEMPTS
@@ -1646,6 +1702,27 @@ export function createStore(
             error: null,
           });
         }
+      });
+    },
+    jobCooldown(kind) {
+      return (prepare("SELECT value FROM preferences WHERE key = ?").get(`jobCooldown:${kind}`) as Row | undefined)?.value as string | undefined;
+    },
+    defer(job, runAfter, reason, now = new Date().toISOString()) {
+      const time = timestamp(now), until = timestamp(runAfter);
+      if (until <= time) throw new Error("Job deferral must be in the future.");
+      return transaction(() => {
+        const row = prepare(
+          `SELECT * FROM jobs WHERE id = ? AND status = 'running' AND lease_token = ?
+           AND input_hash = ? AND kind = ? AND lease_until > ?`,
+        ).get(job.id, job.leaseToken, job.inputHash, job.kind, time) as Row | undefined;
+        if (!row || (row.resource_id ?? "") !== job.resourceId || !isFresh(row)) return false;
+        prepare(`INSERT INTO preferences (key, value) VALUES (?, ?)
+          ON CONFLICT(key) DO UPDATE SET value = MAX(value, excluded.value)`)
+          .run(`jobCooldown:${job.kind}`, until);
+        prepare(`UPDATE jobs SET status = 'pending', attempts = MAX(0, attempts - 1),
+          run_after = ?, lease_until = NULL, lease_token = NULL, error = ? WHERE id = ?`)
+          .run(until, reason.slice(0, 2000), job.id);
+        return true;
       });
     },
     finish(job, error, now = new Date().toISOString()) {

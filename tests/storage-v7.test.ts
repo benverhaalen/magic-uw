@@ -58,8 +58,8 @@ function seedLearning(db: DatabaseSync, resourceId: string) {
     INSERT INTO learning_item_sources VALUES ('q1',1,'${resourceId}',0,7,'h','th','Osmosis',1);
     INSERT INTO learning_item_concepts VALUES ('q1',1,'osmosis',1.0,1);
     INSERT INTO learning_item_checks VALUES ('q1',1,'verbatim_quote','code','pass',NULL,'${t(1)}');
-    INSERT INTO learning_cards (id,item_id,item_version,due,stability,difficulty,elapsed_days,scheduled_days,reps,lapses,state,fsrs_version,params_hash)
-      VALUES ('c1','q1',1,'${t(2)}',1,5,0,0,0,0,0,'5.4.2','p');
+    INSERT INTO learning_cards (id,item_id,item_version,course_id,concept_id,due,stability,difficulty,elapsed_days,scheduled_days,reps,lapses,state,fsrs_version,params_hash)
+      VALUES ('c1','q1',1,'student-1:course-1','osmosis','${t(2)}',1,5,0,0,0,0,0,'5.4.2','p');
     INSERT INTO learning_reviews VALUES ('rv1','c1',3,'{}','{}',1200,'2099-01-01',NULL,'${t(2)}');
     INSERT INTO learning_attempts (id,course_id,item_id,item_version,source_resource_id,correct,assistance,seen_before,created_at,format,mode,local_day)
       VALUES ('at1','student-1:course-1','q1',1,'${resourceId}',1,'none',0,'${t(3)}','mc','learn','2099-01-01');
@@ -68,7 +68,7 @@ function seedLearning(db: DatabaseSync, resourceId: string) {
     INSERT INTO learning_artifacts (id,course_id,kind,pack,pack_version,scope_json,cache_key,body_json,status,created_at)
       VALUES ('ar1','student-1:course-1','study_guide','guide','1','{}','k1','{}','ready','${t(3)}');
     INSERT INTO learning_artifact_sources VALUES ('ar1','${resourceId}','h');
-    INSERT INTO learning_coverage VALUES ('mid','osmosis','stated','core','${resourceId}',0,7,'Osmosis','proposed');
+    INSERT INTO learning_coverage VALUES ('mid','osmosis','stated','core','${resourceId}',0,7,'Osmosis','proposed',0);
     INSERT INTO learning_sessions VALUES ('se1','student-1:course-1','review','{}',10,NULL,'${t(3)}',NULL),
                                          ('se2',NULL,'review','{}',5,NULL,'${t(3)}',NULL);
     INSERT INTO learning_concept_state VALUES ('osmosis',0.1,2,NULL,0.5,NULL,'iffy',NULL,NULL,'v1','${t(3)}');
@@ -122,8 +122,8 @@ test("v6 → v7 keeps every row; cascades follow the anchor; attempts outlive a 
       const after = counts(db);
       for (const [table, n] of Object.entries(before)) assert.equal(after[table], n, `${table} keeps every row`);
       for (const name of LEARNING_TABLES) assert.equal(after[name], 0, `${name} starts empty`);
-      assert.equal(db.prepare("SELECT user_version FROM pragma_user_version").get()!.user_version, 7);
-      assert.equal(migrationBackupPath(file).endsWith(".pre-v7.bak"), true);
+      assert.equal(db.prepare("SELECT user_version FROM pragma_user_version").get()!.user_version, SCHEMA_VERSION);
+      assert.equal(migrationBackupPath(file).endsWith(`.pre-v${SCHEMA_VERSION}.bak`), true);
       seedLearning(db, r1!.id);
       for (const name of LEARNING_TABLES) assert.ok(Number(db.prepare(`SELECT count(*) AS n FROM ${name}`).get()!.n) > 0, `${name} seeded`);
       // An attempt outlives the item it came from; its reference clears.

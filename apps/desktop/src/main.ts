@@ -1,3 +1,4 @@
+import { judgmentFailure } from "./judgment-errors";
 import {
   app,
   BrowserWindow,
@@ -26,6 +27,7 @@ import {
 } from "../../../packages/connectors/src/network";
 import { checkedSpaceProbeUrl } from "../../../packages/connectors/src/space-hosts"; // owner: T05b
 import { clearSignOutSecrets, createSecretVault } from "./secrets";
+import { MadgradesHttp, madgradesRequestSchema } from "../../../packages/connectors/src/madgrades";
 import sampleFixture from "../../../fixtures/course.json";
 // owner: T05c
 import { Tray, Menu, nativeImage } from "electron";
@@ -63,6 +65,7 @@ if (headless) {
 }
 if (process.env.MAGIC_USER_DATA)
   app.setPath("userData", process.env.MAGIC_USER_DATA);
+// Internal data-folder name: kept stable across the display rename so existing local data stays in place.
 app.setName("Magic Canvas");
 let window: BrowserWindow | null = null,
   signIn: BrowserWindow | null = null;
@@ -171,6 +174,11 @@ app
       encrypt: (value) => safeStorage.encryptString(value),
       decrypt: (value) => safeStorage.decryptString(Buffer.from(value)),
     });
+    // The Madgrades token stays in the main-process vault; the workspace sends only fixed request shapes.
+    const madgradesHttp = new MadgradesHttp({
+      fetch: (url, init) => fetch(url, init),
+      token: () => vault.get("madgrades:token"),
+    });
     const sourceReads = new Map<string, AbortController>();
     studentSession.setPermissionRequestHandler((_wc, _permission, callback) =>
       callback(false),
@@ -184,7 +192,7 @@ app
         MAGIC_PLANNING_SCOPE: planningAccountScope,
       },
       stdio: "pipe",
-      serviceName: "Magic Canvas local workspace",
+      serviceName: "My Magic UW local workspace",
     });
     const calls = new Map<
       string,
@@ -315,6 +323,25 @@ app
           const request = message.payload?.request;
           if (planningClears > 0 || !["public-search", "enrollment-packages"].includes(request?.kind)) throw new Error("Unsupported planning read");
           const result = await planningHttp.read(request, controller.signal);
+          controller.signal.throwIfAborted();
+          worker.postMessage({ kind: "source-response", id: message.id, result });
+        } catch {
+          worker.postMessage({ kind: "source-response", id: message.id, error: true });
+        } finally { planningReads.delete(message.id); sourceReads.delete(message.id); }
+        return;
+      }
+      if (message.kind === "madgrades-read") {
+        if (!(await consentGate("planning-public-read"))) {
+          worker.postMessage({ kind: "source-response", id: message.id, error: true });
+          return;
+        }
+        const controller = new AbortController();
+        sourceReads.set(message.id, controller);
+        planningReads.add(message.id);
+        try {
+          const request = madgradesRequestSchema.parse(message.payload?.request);
+          if (planningClears > 0) throw new Error("Madgrades read cancelled");
+          const result = await madgradesHttp.read(request, controller.signal);
           controller.signal.throwIfAborted();
           worker.postMessage({ kind: "source-response", id: message.id, result });
         } catch {
@@ -528,11 +555,11 @@ app
             controller.signal,
           );
           worker.postMessage({ kind: "evaluation", id: message.id, result });
-        } catch {
+        } catch (error) {
           worker.postMessage({
             kind: "evaluation",
             id: message.id,
-            error: true,
+            ...judgmentFailure(error),
           });
         } finally {
           evaluations.delete(message.id);
@@ -552,6 +579,13 @@ app
     async function execute(command: unknown): Promise<CommandResult> {
       const parsed = commandSchema.parse(command);
       await ready;
+      if (parsed.type === "madgrades-token") {
+        // Stored only in the OS-protected vault; the workspace, records, and logs never receive it.
+        if (parsed.token === null) await vault.deletePrefix("madgrades:");
+        else await vault.set("madgrades:token", parsed.token);
+        const result = await execute({ type: "snapshot" });
+        return { ...result, message: parsed.token === null ? "Madgrades token removed from this device." : "Madgrades token saved on this device." };
+      }
       if (parsed.type === "purge") {
         sync?.abort();
         cancelPlanning();
@@ -609,7 +643,7 @@ app
       return consentGateAllows(channel, consentRecords);
     }
     const consentRefused =
-      "Finish the setup step before Magic Canvas connects to UW.";
+      "Finish the setup step before My Magic UW connects to UW.";
     // end owner: T06
     // owner: T40. Onboarding detection (apps/desktop/src/onboarding.ts): the installed CLIs,
     // their own auth status, and the engine choice (Claude Code → Codex → a stored key → Ollama).
@@ -815,7 +849,7 @@ app
             worker.postMessage({ kind: "local-cancel", id });
             reject(
               new Error(
-                "Local AI timed out. Your saved coursework is still available.",
+                "The request timed out. Your saved coursework is still available.",
               ),
             );
           },
@@ -1146,7 +1180,7 @@ app
           scaleFactor: 2,
         }),
       );
-      tray.setToolTip("Magic Canvas");
+      tray.setToolTip("My Magic UW");
       tray.setContextMenu(
         Menu.buildFromTemplate(
           trayMenu.map(({ action, label }) => ({
@@ -1338,7 +1372,7 @@ app
       minWidth: 880,
       minHeight: 620,
       show: !headless,
-      title: "Magic Canvas",
+      title: "My Magic UW",
       backgroundColor: "#fbfbfa",
       webPreferences: {
         preload: join(root, "preload.cjs"),
@@ -1468,6 +1502,26 @@ app
           `(async()=>{const p=await window.magic.execute({type:"work-set",id:${JSON.stringify(essay.id)}});return window.magic.startWork(${JSON.stringify(essay.id)},p.workSet.previewHash,[p.workSet.items[0].resourceId])})()`,
         ]) if (await window.webContents.executeJavaScript(invalidLaunch).then(() => true, () => false))
           throw new Error("Start work accepted an unreviewed destination or unfailed retry");
+        const studyResource = imported.snapshot.resources.find(
+          (resource: { kind: string }) => resource.kind === "assignment",
+        );
+        if (!studyResource) throw new Error("Missing study anchor");
+        const studySessions = await window.webContents.executeJavaScript(
+          `window.magic.execute(${JSON.stringify({ type: "learning", request: {
+            op: "study.sessions", resourceId: studyResource.id,
+          } })})`,
+        );
+        if (studySessions.learning?.status !== "ok" ||
+            studySessions.learning.data?.sessions?.length !== 0)
+          throw new Error("Canonical study session bridge failed");
+        const unpreparedStudy = await window.webContents.executeJavaScript(
+          `window.magic.execute(${JSON.stringify({ type: "learning", request: {
+            op: "study.plan", resourceId: studyResource.id,
+            operationId: "smoke-unprepared", minutes: 10, difficulty: "normal",
+          } })})`,
+        );
+        if (unpreparedStudy.learning?.status !== "unavailable")
+          throw new Error("Unprepared study must remain explicitly unavailable");
         const planningStamp = new Date().toISOString();
         const planningScope = { kind: "terms", key: "synthetic-smoke" };
         const planningFixture = {
@@ -1503,7 +1557,7 @@ app
         const body = await window.webContents.executeJavaScript(
           "document.body.innerText",
         );
-        if (!body.includes("Magic Canvas"))
+        if (!body.includes("My Magic UW"))
           throw new Error("Renderer did not load");
         // owner: T80. An app-owned client profile exists before the purge (prepare writes
         // only app files; a missing client still gets its folder).
@@ -1540,7 +1594,7 @@ app
   })
   .catch(() => {
     console.error(
-      "Magic Canvas could not start. Check the local runtime and gateway configuration.",
+      "My Magic UW could not start. Check the local runtime and gateway configuration.",
     );
     app.exit(1);
   });

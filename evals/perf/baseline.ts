@@ -35,6 +35,70 @@ function fileSize(path: string) {
 }
 const log = (line: string) => process.stderr.write(`[perf] ${line}\n`);
 
+// ------------------------------------------------- 1a. First full Canvas sync, live-shaped (T17)
+/**
+ * The shape of the live account the first sync was measured on (2026-09-26 trial log: 54
+ * module-item lists across 6 courses, 5 of 6 Pages lists hidden), scaled to the fixture's
+ * 5 courses: 9 modules per course and 4 of 5 Pages lists hidden.
+ */
+export const LIVE_SHAPE = { modulesPerCourse: 9, hiddenPages: [102, 103, 104, 105] };
+/** The latency model: each replayed response is held this long, so concurrency shows. */
+export const LATENCY_MS = 150;
+const FIRST_SYNC_RUNS = 3;
+export async function canvasFirstSync() {
+  const recording = await recordSyntheticCanvas(LIVE_SHAPE);
+  const once = async (latencyMs: number, hostConcurrency?: number) => {
+    const { directory, store } = tempStore("first-sync");
+    try {
+      return await replaySync(
+        store,
+        recording,
+        hour(0),
+        hostConcurrency ? { hostConcurrency, metadataConcurrency: hostConcurrency } : {},
+        { latencyMs },
+      );
+    } finally {
+      store.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  };
+  await once(0); // warm-up: module JIT and schema compilation
+  const paced: Awaited<ReturnType<typeof once>>[] = [];
+  for (let run = 0; run < FIRST_SYNC_RUNS; run++) paced.push(await once(LATENCY_MS));
+  const instant = await once(0);
+  // The per-host limit is configurable (default 6); what a wider limit would buy on this model.
+  const sweep: Record<string, number> = {};
+  for (const limit of [8, 10]) {
+    const runs: number[] = [];
+    for (let run = 0; run < FIRST_SYNC_RUNS; run++) runs.push((await once(LATENCY_MS, limit)).wallMs);
+    sweep[limit] = Number(runs.sort((a, b) => a - b)[Math.floor(runs.length / 2)]!.toFixed(1));
+  }
+  const last = paced[paced.length - 1]!;
+  return {
+    transport: "replay",
+    shape: LIVE_SHAPE,
+    recording: { source: recording.source, responses: recording.entries.length },
+    requests: scalar("requests", last.requests, FIRST_SYNC_RUNS),
+    bytes: scalar("bytes", last.bytes, FIRST_SYNC_RUNS),
+    misses: scalar("requests", last.misses, FIRST_SYNC_RUNS, { notes: "should be 0" }),
+    maxInFlight: scalar("requests", last.maxInFlight, FIRST_SYNC_RUNS),
+    wallMs: distribution("ms", paced.map((r) => r.wallMs), {
+      notes: `product pacing on (jitter fixed at its mean), latency model ${LATENCY_MS} ms per request, one warm-up discarded`,
+    }),
+    wallMsNoLatency: scalar("ms", Number(instant.wallMs.toFixed(1)), 1, {
+      notes: "the same sync with no latency model: pacing sleeps + CPU only; cannot show concurrency",
+    }),
+    wallMsAtHostLimit: Object.fromEntries(
+      Object.entries(sweep).map(([limit, ms]) => [
+        limit,
+        scalar("ms", ms, FIRST_SYNC_RUNS, {
+          notes: `median wall at per-host limit ${limit}, latency model ${LATENCY_MS} ms`,
+        }),
+      ]),
+    ),
+  };
+}
+
 // ---------------------------------------------------------------- 1. Canvas sync (replay)
 async function canvasSync(recording: Recording) {
   const full: number[] = [],
@@ -381,6 +445,8 @@ export async function runBaseline() {
   const recording = await recordSyntheticCanvas();
   log(`recorded ${recording.entries.length} responses; replaying sync`);
   const sync = await canvasSync(recording);
+  log("first full sync, live-shaped, latency model");
+  const firstSync = await canvasFirstSync();
   const bySize: Record<string, SizeResult> = {};
   for (const size of SIZES) {
     log(`size ${size}: ingest, size, query, snapshot`);
@@ -396,6 +462,7 @@ export async function runBaseline() {
     "needs timing hooks in apps/desktop/src/main.ts (the MAGIC_SMOKE branch of scripts/desktop-smoke.ts reports only pass/fail; it emits no launch, first-paint, worker-ready, migrated or per-command timestamps)";
   const metrics = {
     canvasSync: sync,
+    canvasFirstSync: firstSync,
     ingestThroughput: pick("ingest"),
     dbSize: pick("dbSize"),
     dbBytesPer1000: pick("dbBytesPer1000"),

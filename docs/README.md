@@ -2,11 +2,11 @@
 
 For Ben and three teammates. Updated September 26, 2026.
 
-This section gets everyone informed about what Magic Canvas is and where the thinking stands. It is not a build guide, ownership plan, or first-demo proposal. Treat the concept as established; resolve remaining choices without repeatedly reopening the thesis.
+This section gets everyone informed about what My Magic UW is and where the thinking stands. It is not a build guide, ownership plan, or first-demo proposal. Treat the concept as established; resolve remaining choices without repeatedly reopening the thesis.
 
 ## The short version
 
-**The future of learning, tailored to you.** Magic Canvas already knows your classes, brings the right materials together, opens what you need, and helps you practice for your professor's expectations. Students should spend their attention learning instead of managing school.
+**The future of learning, tailored to you.** My Magic UW already knows your classes, brings the right materials together, opens what you need, and helps you practice for your professor's expectations. Students should spend their attention learning instead of managing school.
 
 Least user effort is the central taste principle. Fit existing apps and study habits. Feel calm and capable, with interaction beyond a chatbot.
 
@@ -28,8 +28,9 @@ We are entering Applied AI & Automation, DoIT's Badgers Building for Badgers, an
 | [Design system](../DESIGN.md) / [handoff](design-handoff.md) | Small entry point: visual anchor, semantic tokens, behavior contracts, platform handoffs and scoped audit workflow |
 | [Marketing materials](../marketing/README.md)          | Website page directions, wizard logo pack, and team photos (design exports, not the built site)          |
 | [Home and visual direction](home-design-direction.md) | Current flagship Home, near-approved layout/type, remaining local refinements and reference transfers |
-| [Magic Canvas direction](magic-canvas-direction.md) | Course backend lane: the whole product, frontend surfaces, open-source academic data platform plus paid product, roadmap (open decisions marked) |
+| [My Magic UW direction](magic-canvas-direction.md) | Course backend lane: the whole product, frontend surfaces, open-source academic data platform plus paid product, roadmap (open decisions marked) |
 | [Course backend architecture](course-backend-architecture.md) | Course backend lane: system map, integration with main, what changed and why, implementation status and what is left |
+| [Course-aware learning sessions](learning-sessions.md) | Assignment learning surface adapted to the shared backend; explicit integration dependencies and verification limits |
 | [Product](product.md)                                 | Vision, student experience, learning loop, interface ideas, visual taste                                 |
 | [Organizing concepts](product-directions.md)          | Earlier organizing alternatives; current Home decisions supersede their unresolved entry/navigation status |
 | [Reference-driven design](reference-driven-design.md) | Reference roles, architecture analogies, images, demo inspection, and product verification               |
@@ -38,6 +39,7 @@ We are entering Applied AI & Automation, DoIT's Badgers Building for Badgers, an
 | [AI and privacy](ai-and-privacy.md)                   | Paid AI direction, existing local adapter, sign-in, and data disclosures                                |
 | [Technical direction](architecture.md)                | Access, connectors, records, deadlines, Jev, models, stack proposals                                     |
 | [Pipeline details](pipeline-details.md)               | Actual endpoints and limits; proposed reconnect, scrubbing, citation checks, and link thresholds         |
+| [Sync resilience handoff](sync-resilience-review.md) | In-progress shared acquisition, linked-file capture, durable access observations, interfaces and remaining verification |
 | [Course ingestion](ingestion-upgrade.md)              | Expanded sources, refresh, local materials, privacy, and verified limits                                 |
 | [Course intelligence](course-intelligence.md)          | Versioned course claims, source-bound policy interpretation, optional local extraction, and evidence limits |
 | [Planning integration](planning-upgrade.md)           | My UW adapters, source reconciliation, privacy, live evidence, and remaining work                         |

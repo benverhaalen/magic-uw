@@ -153,6 +153,8 @@ export interface FsrsCardState {
 export interface LearningCard {
   id: string;
   itemId: string;
+  /** Pinned source item version; absent for concept-only tracks. */
+  itemVersion?: number;
   courseRef: CourseRef;
   conceptId: string;
   fsrs: FsrsCardState;
@@ -253,6 +255,8 @@ export interface LearningArtifact {
   removedCount: number;
   status: "ready" | "stale" | "partial" | "failed";
   generator: unknown;
+  pack?: string;
+  packVersion?: string;
   createdAt: string;
   sources: { resourceId: string; contentHash: string }[];
 }
@@ -348,6 +352,9 @@ export interface LearningStore {
   putCoverage(rows: CoverageRow[]): void;
   decideCoverage(key: { assessmentId: string; conceptId: string }, status: CoverageStatus): void;
   // Sessions and state
+  session(id: string): LearningSession | null;
+  /** Atomically replace the session and optionally append scored evidence after revision CAS. */
+  commitSession(session: LearningSession, expectedRevision: number | null, attempt?: LearningAttempt): boolean;
   putSession(session: LearningSession): void;
   sessions(courseRef: CourseRef | null): LearningSession[];
   conceptState(courseRef: CourseRef): ConceptStateRow[];

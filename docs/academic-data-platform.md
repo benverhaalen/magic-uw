@@ -1,4 +1,4 @@
-# Magic Canvas: the course backend and an open academic data platform
+# My Magic UW: the course backend and an open academic data platform
 
 **Status:** as of 2026-09-26 late, branch `feat/course-backend` at `33b1827`. The whole suite passes 540/540 there (Windows 11). Every part below carries a status label: *researched*, *proposed*, *built*, *tested in isolation* (merged with passing tests; the running app doesn't call it yet) or *integrated* (wired into the running app's path). The labels are defined in [architecture §1](course-backend-architecture.md#1-summary).
 **Canonical homes:** the build status per piece is [architecture §2](course-backend-architecture.md#2-where-we-are); the measurements, tests and live trial are in [the build record](course-backend-build-record.md); the product surfaces and pricing are in [the product direction](magic-canvas-direction.md). This document links to them rather than repeating them.
@@ -8,7 +8,7 @@
 **A local-first, agent-first academic database that assembles a student's whole course world automatically.** The student signs in to UW once. Code inventories every place each course keeps content, reads what the student's own sign-in can already read, and stores it in one SQLite file on the student's computer: materials split into passages with exact offsets, assessments with their stated scope, links between them, and the access state of every course space. Code checks every quote, ID and date. The student's own AI client (Claude Code or Codex, in a profile the app owns) is called only where language has to be read or written, one checked call at a time. Study itself runs on code at zero model tokens.
 
 It is two things at once:
-- **The backend of the Magic Canvas desktop app.** Every Magic Canvas feature reads from it.
+- **The backend of the My Magic UW desktop app.** Every My Magic UW feature reads from it.
 - **A platform other developers can build on.** The code is MIT. The packages are TypeScript over `node:sqlite`, and the store, retrieval, job drain, runner, prompt packs and learning engines can be used in-process today.
 
 **What's been shown on a real account** (the operator's, 2026-09-26; counts only, [build record §6](course-backend-build-record.md#6-live-trial-results)): sign-in to connected in 16.5 s including typing; a first read of 6 current courses in 125 requests, 65 s and 3.3 MB; zero AI or Jev requests during sync. A parallel sync targeting ≤10 s is being built; that target is not met yet.

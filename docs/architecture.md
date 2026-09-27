@@ -1,5 +1,9 @@
 # Technical direction
 
+## Sync resilience integration in progress
+
+A local extension of this backend shares validated acquisition results across capture, inventory and freshness; resolves typed references through the existing document pipeline; and persists access observations independently of saved evidence. Learning keeps migration v8 and this extension uses v9. Product code is not yet published. See the [canonical handoff](sync-resilience-review.md#implementation-handoff--september-26-2026) for the implemented interfaces and evidence.
+
 ## The app's backend
 
 The course backend described in [course backend architecture](course-backend-architecture.md) is the app's backend: one local SQLite store (schema v7) with passages, the course map, course spaces and learning tables; passage retrieval; scoped queries; the job drain; the runner for the student's own AI client; prompt packs; and the learning engines. Status as of 2026-09-26 late (branch `feat/course-backend` at `33b1827`, 540/540 tests): storage, sync, consent, sign-in and onboarding are integrated; retrieval, the drain, the runner, packs and the learning engines are tested in isolation; the open platform contract (D42) is proposed. The canonical status per piece is [its §2](course-backend-architecture.md#2-where-we-are); the developer view and the scorecard are in [academic data platform](academic-data-platform.md). The sections below are the earlier direction and remain as written.
@@ -128,3 +132,11 @@ The utility worker persists normalized captures and computes comparisons. Shared
 ## Course intelligence compiler
 
 Local captures now materialize versioned account/course profiles in SQLite schema 5, including structured grading/assessment facts and source-bound policy/topic passages. The ordinary `store.ingest` path performs deterministic compilation; desktop background work can optionally select additional semantic passages with the installed local model. It does not wait on or send data to hosted AI. The compiler preserves immutable evidence versions and dynamic source health separately, and the local tutor consumes the resulting effective policy. See [compiler contracts, reference transfers and limits](course-intelligence.md). This is not a grade predictor, exam blueprint, or complete syllabus interpreter.
+
+## Learning session surface
+
+The [canonical learning-session integration](learning-sessions.md) uses the existing learning `execute` channel, N25 router, Nate's deterministic grading/progression/session engines and N24 SQL adapter on the workspace connection. Typed projections expose saved rounds, drafts, actual checks and versioned evidence without answer keys. Revision-checked transactions write the session and any scored attempt together; undecided answers remain unscored history. The earlier parallel IPC, session service and direct Ollama activity pack are retired.
+
+Storage-owned schema 8 aligns existing learning records with the engines: numeric units, selected option IDs, coverage decision authorship and scoped/pinned cards, including concept tracks without fake items. It preserves the canonical v6/v7 schemas and introduces no second course database. The worker constructs account/course context and rechecks eligibility, exact source versions, freshness and policy before prepared practice.
+
+Practice consumes an existing checked pool and makes no student-model calls. Empty pools are unavailable. Explicit model-generated explanations belong to T42/shared packs and remain unconnected; this is not a demonstrated production tutor. See the session document for current operations, reference transfers, tests and remaining integration checks.

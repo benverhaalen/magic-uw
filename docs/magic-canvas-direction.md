@@ -1,4 +1,4 @@
-# Magic Canvas: product direction
+# My Magic UW: product direction
 
 **Status:** direction as of 2026-09-26 late. It describes what we're building and where it's going, and labels what exists. **One live trial has run on a real student account** (sign-in and the first Canvas read; [build record §6](course-backend-build-record.md#6-live-trial-results)); nothing else is demonstrated yet.
 **Companion:** [course backend architecture](course-backend-architecture.md) holds the technical facts: processes, storage, channels, measurements, and [where the build stands](course-backend-architecture.md#2-where-we-are). The full specification is the [course-backend spec](plans/2026-09-26-course-backend/spec.md). The visual design follows the team's [DESIGN.md](../DESIGN.md); every surface below adopts it, and none of this document is a visual design.
@@ -7,7 +7,7 @@
 
 ## 1. In one paragraph
 
-Magic Canvas is a desktop study app for UW–Madison students. The student signs in once. Code collects every course from the sources their own UW sign-in can already read, and stores it on their computer. Each course becomes a notebook that's already organised: every assessment carries what it covers, with the instructor's own words quoted, and the materials for it. Study material (flashcards, quizzes sectioned by module, guides) is written by the student's own AI in one checked call, and every quote and date is checked by code. Studying itself costs no model tokens. **AI writes, code decides.**
+My Magic UW is a desktop study app for UW–Madison students. The student signs in once. Code collects every course from the sources their own UW sign-in can already read, and stores it on their computer. Each course becomes a notebook that's already organised: every assessment carries what it covers, with the instructor's own words quoted, and the materials for it. Study material (flashcards, quizzes sectioned by module, guides) is written by the student's own AI in one checked call, and every quote and date is checked by code. Studying itself costs no model tokens. **AI writes, code decides.**
 
 ## 2. What the student gets, end to end
 
