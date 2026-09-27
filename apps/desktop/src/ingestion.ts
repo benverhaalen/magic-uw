@@ -1752,7 +1752,10 @@ export function createIngestion(
    * lists only, so onboarding can show the courses and the student can choose. Background
    * reads hold until the student starts the sync (the next manual run).
    */
-  let awaitingCourseChoice = false;
+  const holdForChoice = (value: boolean) => {
+    const settings = store.ingestionSettings();
+    if (settings.awaitingCourseChoice !== value) store.setIngestionSettings({ ...settings, awaitingCourseChoice: value });
+  };
   async function discover(signal = new AbortController().signal) {
     const s = store.ingestionSettings();
     for await (const batch of canvasConnector({
@@ -1767,7 +1770,7 @@ export function createIngestion(
     }).pull(signal))
       save(batch);
     retireNamelessCourses();
-    awaitingCourseChoice = true;
+    holdForChoice(true);
   }
   // owner: T33. One Canvas read: every included course (full), or only the given ones (warm).
   async function canvasRead(
@@ -1896,8 +1899,8 @@ export function createIngestion(
   ): ReturnType<typeof coordinator.tick> {
     if (reconnectBarrier) return reconnectBarrier.then(() => tick(trigger));
     // fix/current-courses-only: while the student chooses courses, only their own start reads.
-    if (awaitingCourseChoice && trigger === "background") return Promise.resolve(undefined);
-    if (trigger === "manual") awaitingCourseChoice = false;
+    if (trigger === "background" && store.ingestionSettings().awaitingCourseChoice) return Promise.resolve(undefined);
+    if (trigger === "manual") holdForChoice(false);
     const generation = sessionGeneration;
     if (
       trigger === "manual" &&

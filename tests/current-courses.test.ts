@@ -196,3 +196,36 @@ test("discovery reads only the course lists; background waits for the student; t
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("the onboarding hold survives a restart: a new worker reads nothing until the student starts the sync", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "magic-current-courses-hold-"));
+  const store = createStore(join(directory, "db.sqlite"));
+  const mock = canvas();
+  let time = new Date(2026, 8, 27, 12);
+  const make = () =>
+    createIngestion(store, {
+      directory,
+      now: () => time,
+      canvasFetch: mock.fetch,
+      client: { isCanvas: () => false, async get() { throw new Error("offline"); }, async text() { throw new Error("offline"); }, async feed() { throw new Error("offline"); } } as never,
+      secrets: async () => ({}),
+    });
+  let ingestion = make();
+  try {
+    await ingestion.discover();
+    assert.equal(store.ingestionSettings().awaitingCourseChoice, true);
+    await ingestion.stop();
+    ingestion = make(); // the app restarted mid-onboarding
+    time = new Date(time.getTime() + 60_000);
+    const before = mock.calls.length;
+    assert.equal(await ingestion.tick("background"), undefined);
+    assert.equal(mock.calls.length, before, "no read before the student confirms");
+    await ingestion.tick("manual"); // "Start syncing"
+    assert.equal(store.ingestionSettings().awaitingCourseChoice, false);
+    assert.ok(mock.contentReads().length > 0);
+  } finally {
+    await ingestion.stop();
+    store.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

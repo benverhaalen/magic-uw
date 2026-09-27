@@ -893,6 +893,11 @@ export const ingestionSettingsSchema = z
     crawlMaxPages: z.number().int().min(1).max(1000).default(300),
     maxFileBytes: z.number().int().min(1024).max(104857600).default(104857600),
     selectedTerm: z.string().max(300).nullable().default(null),
+    /**
+     * fix/current-courses-only. Set by onboarding's course discovery, cleared by "Start syncing"
+     * (the next manual sync): background reads wait, across restarts, until the student confirms.
+     */
+    awaitingCourseChoice: z.boolean().default(false),
   })
   .strict();
 export type IngestionSettings = z.infer<typeof ingestionSettingsSchema>;
