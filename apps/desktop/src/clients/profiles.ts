@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import type { ClientId, ClientStatus } from "@magic/contracts";
@@ -265,6 +265,19 @@ export async function readClientSettings(userData: string): Promise<ClientSettin
   }
 }
 
+/**
+ * owner: reconfigure. "Re-run setup" and "Reset My Magic UW": removes the AI client setup the app
+ * keeps, so setup detects everything fresh: the chosen client, each client's connection mode, the
+ * separate sign-in profiles and instant-mode working folders. The student's own client installs,
+ * their own sign-ins and settings, the Gemini key, courses and notes are not touched.
+ */
+export async function resetClientSetup(userData: string): Promise<void> {
+  await Promise.all([
+    rm(settingsPath(userData), { force: true }),
+    rm(join(userData, "client-modes.json"), { force: true }),
+    rm(join(userData, "clients"), { recursive: true, force: true }),
+  ]);
+}
 /** Persists the pick next to session-settings.json. The runner reads it in a follow-up. */
 export async function chooseClient(id: ClientId, userData: string): Promise<void> {
   const settings = { ...(await readClientSettings(userData)), chosen: clientIdSchema.parse(id) };

@@ -1974,3 +1974,35 @@ select {
   border-left: 3px dotted;
   border-color: #4a6fd6;
 }
+/* owner: data-ai. Data & AI: Your AI cards in one row, plain status rows, the locked planning row,
+   and the separated Start fresh zone. Tokens only; the existing settings markup does the rest. */
+.your-ai-choices { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); max-width: 710px; }
+.mode-choice.your-ai-card { flex-direction: column; gap: 10px; max-width: none; padding: 14px; }
+.your-ai-card > label { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.your-ai-card > label > span { display: flex; flex-direction: column; gap: 4px; }
+.your-ai-card > label strong { font-size: var(--magic-type-control); font-weight: 500; }
+.your-ai-card > label > span > span { font-size: var(--magic-type-meta); color: var(--magic-ink-muted-strong); line-height: 1.5; }
+.your-ai-status[data-tone="ok"] { color: var(--magic-ink); }
+.your-ai-status[data-tone="problem"] { color: var(--magic-color-status-attention-ink); }
+.your-ai-card > .subtle-button { align-self: flex-start; }
+.your-ai-advanced .setting-toggle { padding-bottom: 0; }
+.data-ai-rows { display: grid; margin-top: 12px; max-width: 630px; }
+.data-ai-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 12px 0; border-bottom: 1px solid var(--magic-line-quiet); }
+.data-ai-row:last-child { border-bottom: 0; }
+.data-ai-row-text { display: flex; flex-direction: column; gap: 3px; }
+.data-ai-row-text strong { font-size: var(--magic-type-control); font-weight: 500; }
+.data-ai-row-text span { font-size: var(--magic-type-meta); color: var(--magic-ink-muted-strong); }
+.data-ai-row-end { display: flex; gap: 8px; flex-shrink: 0; }
+.data-ai-locked { cursor: default; }
+.data-ai-locked svg { color: var(--magic-ink-muted-strong); flex-shrink: 0; }
+.data-ai-share-actions { margin: 4px 0 8px; }
+.data-ai-delete { margin-top: 18px; }
+.start-fresh { margin-top: 40px; border-top: 1px solid var(--magic-line-quiet); padding-top: 32px; }
+.start-fresh > h2 { display: flex; align-items: center; gap: 8px; }
+.data-ai-list { margin: 0 0 12px; padding-left: 18px; line-height: 1.55; }
+/* owner: reconfigure. The confirmations before setup starts over (ported from feat/floating-chat). */
+.reconfigure-dialog { max-width: 480px; padding: 22px 24px 18px; border: 1px solid var(--magic-line-quiet); border-radius: var(--magic-radius-overlay); background: var(--magic-surface-raised); color: var(--magic-ink); box-shadow: var(--magic-shadow-overlay); }
+.reconfigure-dialog::backdrop { background: var(--magic-fill-backdrop); }
+.reconfigure-dialog h2 { margin: 0 0 10px; font: 500 var(--magic-type-section)/1.3 var(--magic-font-editorial); }
+.reconfigure-dialog p { margin: 0 0 8px; line-height: 1.55; }
+.reconfigure-actions { justify-content: flex-end; margin-top: 16px; }

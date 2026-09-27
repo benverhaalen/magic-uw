@@ -12,9 +12,10 @@ import { ChatPane, chatCourse, chatScopeForPage, chatPromptError, startChat, con
 import { resetChats } from "./chat/store";
 import { EvidenceInfo } from "../../../../packages/ui/src/evidence-info";
 import { requirePlanSave } from "./today-plan-save";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type {
   AppNotification,
+  ClientId,
   Command,
   CommandResult,
   ContextManifest,
@@ -32,13 +33,18 @@ import { CoursesIndex } from "./courses/CoursesIndex";
 import { compactCourseTerm } from "./courses/course-index-view";
 import { buildCourseCards, buildCoursePage, courseKey } from "../../../../packages/domain/src/course-page";
 import { LocalAiPanel } from "./LocalAiPanel";
+import { YourAiChoice } from "./ai-choice/YourAiChoice"; // owner: data-ai
+import { SharingChoice } from "./ai-choice/SharingChoice"; // owner: data-ai
+import { JEV_COPY, PLANNING_ROW, SHARE_ROWS, jevOn, jevPatch, shareNothingPatch, shareOn, sharePatch, startFresh } from "./data-ai/model"; // owner: data-ai
+import { ConnectedAccounts, LocalData, StartFresh, VoiceInput } from "./data-ai/sections"; // owner: data-ai
+import { resetForReconfigure } from "./reconfigure/reset"; // owner: reconfigure
 import { LearningPanel } from "./LearningPanel";
-import { ProviderGuidance } from "./ProviderGuidance";
 import { IngestionControls, McpConnections } from "./IngestionControls";
 // owner: T06
 import { ConsentSetup, hasUwConsent, missingConsents } from "./consent/ConsentSetup";
 // owner: T81
 import { Onboarding, needsFirstRunSetup } from "./onboarding";
+import type { StepId } from "./onboarding/model"; // owner: reconfigure
 import { signInMessage } from "./sign-in";
 import { CalendarPage } from "./CalendarPage";
 import { canonicalHomeResources } from "./home/projection";
@@ -342,6 +348,8 @@ export function App() {
   // owner: T06. Consent wiring: no UW contact until the setup checkbox is agreed; a Data & AI
   // change that would start sharing with a recipient without an agreement waits for one.
   const [consentPending, setConsentPending] = useState<PrivacyPreferences | null>(null);
+  // owner: reconfigure. Set by "Re-run setup" (step 1) or a client's "Sign in" (the Your AI step).
+  const [setupAt, setSetupAt] = useState<StepId | null>(null);
   const privacyReturnFocus = useRef<string | null>(null);
   const consentReturnToPrivacy = useRef(false);
   useLayoutEffect(() => {
@@ -516,9 +524,10 @@ export function App() {
   });
   // owner: T81. First run, or setup still incomplete: the onboarding flow replaces the shell
   // (and T06's in-Home consent entry) until the student opens the workspace.
-  if (snapshot && needsFirstRunSetup(snapshot))
+  if (snapshot && (setupAt || needsFirstRunSetup(snapshot)))
     return (
       <Onboarding
+        startAt={setupAt ?? undefined /* owner: reconfigure */}
         snapshot={snapshot}
         busy={busy}
         error={error}
@@ -530,6 +539,7 @@ export function App() {
         openExternal={open}
         onLoadSample={() => run({ type: "fixture" })}
         onFinish={() => {
+          setSetupAt(null); // owner: reconfigure
           setView("today");
           void refresh();
         }}
@@ -672,10 +682,13 @@ export function App() {
             run={run}
             open={open}
             onConsent={openConsent /* owner: T06 */}
-            onSources={() => {
-              privacyReturnFocus.current = "privacy-connected-sources";
-              setView("sources");
+            onSignIn={() => signIn()}
+            onClientSignIn={() => setSetupAt("client") /* owner: data-ai: setup's Your AI step signs the client in */}
+            onReconfigure={async () => {
+              await resetForReconfigure({ clients: window.magic.clients, privacy: snapshot.privacy, run });
+              setSetupAt("consent");
             }}
+            onReset={() => startFresh({ clients: window.magic.clients, run }) /* owner: data-ai */}
           />
         )}
       <ItemSpaceHost />{/* owner: study-prep */}
@@ -1381,30 +1394,33 @@ function Sources({
   );
 }
 
+// owner: data-ai. Data & AI, redesigned as one calm column: Your AI, What you share, Before sharing,
+// Shared labels, Connected accounts, Voice input, Your data on this computer, and Start fresh. Every
+// control writes the same preference the earlier page wrote; consent is still checked per request.
 function Privacy({
   snapshot,
   busy,
   run,
   open,
   onConsent,
-  onSources,
+  onSignIn,
+  onClientSignIn,
+  onReconfigure,
+  onReset,
 }: {
   snapshot: Snapshot;
   busy: boolean;
   run: Run;
   open: (url: string) => void;
   onConsent: (pending?: PrivacyPreferences | null) => void;
-  onSources: () => void;
+  onSignIn: () => unknown;
+  onClientSignIn: (id: ClientId) => void;
+  onReconfigure: () => Promise<void>;
+  onReset: () => Promise<void>;
 }) {
   const [deleteText, setDeleteText] = useState("");
   const [showDelete, setShowDelete] = useState(false);
   const value = snapshot.privacy;
-  const jumpTo = (event: MouseEvent<HTMLAnchorElement>, id: string) => {
-    event.preventDefault();
-    const section = document.getElementById(id);
-    section?.scrollIntoView({ block: "start" });
-    section?.querySelector("h2")?.focus({ preventScroll: true });
-  };
   // owner: T06: a change that would start sharing with a recipient lacking an agreement
   // opens that agreement first; it is saved only after the student agrees.
   const update = (patch: Partial<PrivacyPreferences>) => {
@@ -1426,275 +1442,141 @@ function Privacy({
       setShowDelete(false);
     }
   };
+  const anyShared = SHARE_ROWS.some((row) => shareOn(value, row));
+  const receipts = snapshot.receipts
+    .slice()
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 30);
+  const deleteControl = (
+    <div className="data-ai-delete">
+      {!showDelete ? (
+        <button className="button danger-button" data-focus-key="privacy-delete" disabled={busy} onClick={() => setShowDelete(true)}>
+          Delete local data…
+        </button>
+      ) : (
+        <div className="delete-confirm">
+          <label className="field-label" htmlFor="delete-confirm">
+            Type DELETE LOCAL DATA to confirm
+          </label>
+          <input id="delete-confirm" autoComplete="off" spellCheck={false} value={deleteText} onChange={(event) => setDeleteText(event.target.value)} />
+          <div className="inline-actions">
+            <button className="button danger-button" disabled={busy || deleteText !== "DELETE LOCAL DATA"} onClick={() => void erase()}>
+              Permanently delete
+            </button>
+            <button className="button" disabled={busy} onClick={() => { setShowDelete(false); setDeleteText(""); }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      <p className="small muted">
+        Removes saved coursework, your choices and agreements, sign-ins saved in this app, downloaded
+        files and connections for AI agents from this computer. Nothing at UW is deleted.
+      </p>
+    </div>
+  );
   return (
     <div className="settings-page privacy-page">
       <header className="privacy-intro">
         <p className="eyebrow">Your information</p>
         <h1>Data & AI</h1>
-        <p className="privacy-intro-copy">Coursework and activity are saved on this device. You choose what context AI tools can use or receive. School and calendar connections are managed separately.</p>
-        <nav className="privacy-jump-links" aria-label="Data and AI sections">
-          <a className="magic-fb-pill" href="#privacy-cloud" onClick={(event) => jumpTo(event, "privacy-cloud")}>Cloud access</a>
-          <a className="magic-fb-pill" href="#privacy-information" onClick={(event) => jumpTo(event, "privacy-information")}>Information</a>
-          <a className="magic-fb-pill" href="#privacy-tools" onClick={(event) => jumpTo(event, "privacy-tools")}>AI tools</a>
-          <a className="magic-fb-pill" href="#privacy-activity" onClick={(event) => jumpTo(event, "privacy-activity")}>Activity and deletion</a>
-        </nav>
-        <p className="privacy-save-note" role="status" aria-live="polite">{value.mode === "local_only" ? "Cloud AI sharing is off." : "Selective cloud access is on."}</p>
+        <p className="privacy-intro-copy">Your courses are saved on this computer. Here you choose which AI helps you, what it may see, and when you're asked first.</p>
       </header>
-      <section className="settings-section" id="privacy-cloud">
-        <h2 tabIndex={-1}>Cloud access</h2>
-        <p>Choose whether AI context can leave this device. School and calendar connections are managed separately.</p>
-        <div className="privacy-source-action"><button type="button" className="magic-fb-pill" data-focus-key="privacy-connected-sources" onClick={onSources}>Connected sources</button></div>
-        <fieldset className="mode-choices" disabled={busy}>
-          <legend className="visually-hidden">Cloud access choice</legend>
-          <label
-            className={
-              value.mode === "local_only"
-                ? "mode-choice selected-mode"
-                : "mode-choice"
-            }
-          >
-            <input
-              type="radio"
-              name="cloud-mode"
-              data-focus-key="privacy-mode-local"
-              checked={value.mode === "local_only"}
-              onChange={() => void update({ mode: "local_only" })}
-            />
-            <span>
-              <strong>Keep AI context local</strong>
-              <span>
-                Block context from being sent to all hosted AI, including Jev.
-              </span>
-            </span>
-          </label>
-          <label
-            className={
-              value.mode === "selective_cloud"
-                ? "mode-choice selected-mode"
-                : "mode-choice"
-            }
-          >
-            <input
-              type="radio"
-              name="cloud-mode"
-              data-focus-key="privacy-mode-selective"
-              checked={value.mode === "selective_cloud"}
-              onChange={() => void update({ mode: "selective_cloud" })}
-            />
-            <span>
-              <strong>Choose what can be shared</strong>
-              <span>
-                Allow only the services and categories you turn on below.
-              </span>
-            </span>
-          </label>
-        </fieldset>
+      <section className="settings-section" id="your-ai" data-place-anchor="privacy-models">
+        <h2 tabIndex={-1}>Your AI</h2>
+        <p>Choose who answers your questions and makes study material. You can change it any time.</p>
+        <YourAiChoice privacy={value} busy={busy} onChange={(patch) => update(patch)} onSignIn={onClientSignIn} openExternal={open} />
+      </section>
+      <section className="settings-section" id="privacy-information">
+        <h2 tabIndex={-1}>What you share</h2>
+        <p>Turn on what your AI may see. Nothing is sent until you ask for something.</p>
+        {SHARE_ROWS.map((row) => (
+          <SettingToggle
+            key={row.id}
+            label={row.label}
+            focusKey={`privacy-share-${row.id}`}
+            description={row.line}
+            checked={shareOn(value, row)}
+            disabled={busy}
+            onChange={(checked) => void update(sharePatch(value, row, checked))}
+          />
+        ))}
+        <div className="setting-toggle data-ai-locked" aria-label={`${PLANNING_ROW.label}: never shared`}>
+          <span>
+            <strong>{PLANNING_ROW.label}</strong>
+            <span>{PLANNING_ROW.line}</span>
+          </span>
+          <MagicGlyph name="lock" size={16} aria-hidden="true" />
+        </div>
+        {anyShared ? (
+          <div className="inline-actions data-ai-share-actions">
+            <button type="button" className="subtle-button" data-focus-key="privacy-share-nothing" disabled={busy} onClick={() => void update(shareNothingPatch())}>
+              Share nothing
+            </button>
+          </div>
+        ) : null}
+        <details className="privacy-local-details" id="privacy-activity">
+          <summary>See exactly what was sent</summary>
+          <p>Each send is recorded with where it went and how much, without keeping a second copy of the text.</p>
+          {receipts.length ? (
+            <ul className="receipt-list">
+              {receipts.map((receipt) => (
+                <li key={receipt.id}>
+                  <div>
+                    <strong>{recipientLabels[receipt.recipient as Recipient] ?? receipt.recipient}</strong>
+                    <span className="badge">{receipt.status === "sent" ? "Send attempted" : receipt.status}</span>
+                  </div>
+                  <p>{receipt.purpose}</p>
+                  <span className="small muted">
+                    {formatDate(receipt.createdAt, true)} · {receipt.characters.toLocaleString()} characters ·{" "}
+                    {receipt.categories.join(", ") || "No categories"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="no-activity">Nothing has been sent.</div>
+          )}
+        </details>
         <p className="small muted">
-          Local data settings control AI sharing. Refreshing Canvas still
-          contacts UW, and opening an original source contacts that website.
+          Turning something off stops future sends; it can't recall what was already sent. Your UW
+          password and sign-in cookies are never sent.
         </p>
-        <details className="privacy-local-details"><summary>What stays on this device</summary><p>Course records, source history, completion state, and practice records are stored locally. UW sign-in sessions stay in the app’s local browser. Degree audits, holds, course history, and planning records also stay local; this build does not send them to hosted AI or expose them through coursework MCP connections.</p></details>
+      </section>
+      <section className="settings-section" id="privacy-before-sharing">
+        <h2 tabIndex={-1}>Before sharing</h2>
+        <p>Choose when you see exactly what would be sent, before it goes.</p>
+        <SharingChoice privacy={value} disabled={busy} onChange={(patch) => void update(patch)} />
         {/* owner: T06 */}
         <button className="subtle-button" data-focus-key="privacy-agreements" disabled={busy} onClick={() => onConsent(null)}>
           Review agreements
         </button>
       </section>
-      <section className="settings-section" id="privacy-information">
-        <h2 tabIndex={-1}>Information AI can use</h2>
-        <p>These permissions apply to future AI requests. Turn them off at any time.</p>
-        <SettingToggle
-          label="Course text"
-          focusKey="privacy-course-text"
-          description="Relevant course name, item title, instructions, and policy evidence. Preview the exact selection from an item before sending."
-          checked={value.shareCourseText}
-          disabled={busy || value.mode === "local_only"}
-          onChange={(checked) => void update({ shareCourseText: checked })}
-        />
-        <SettingToggle
-          label="Your work"
-          focusKey="privacy-student-work"
-          description="Allow student-authored material, including connected GitLab content, when a feature or MCP connection requests it."
-          checked={value.shareStudentWork}
-          disabled={busy || value.mode === "local_only"}
-          onChange={(checked) => void update({ shareStudentWork: checked })}
-        />
-        <SettingToggle
-          label="Grades"
-          focusKey="privacy-grades"
-          description="Scores and grading status. Stored locally; sharing is off by default."
-          checked={!!value.shareGrades}
-          disabled={busy || value.mode === "local_only"}
-          onChange={(checked) => void update({ shareGrades: checked })}
-        />
-        <SettingToggle
-          label="Grader comments"
-          focusKey="privacy-comments"
-          description="Feedback that can help explain mistakes. Keeping comments locally does not enable cloud sharing."
-          checked={!!value.shareComments}
-          disabled={busy || value.mode === "local_only"}
-          onChange={(checked) => void update({ shareComments: checked })}
-        />
-        <SettingToggle
-          label="Course communications"
-          focusKey="privacy-communications"
-          description="Selected announcements and messages, and the subject and Outlook preview of email. With Jev on, these help sort Notifications; the sender is described only by role, such as advisor. These may contain personal information."
-          checked={!!value.shareCommunications}
-          disabled={busy || value.mode === "local_only"}
-          onChange={(checked) => void update({ shareCommunications: checked })}
-        />
-        <p className="small muted">
-          UW sign-in credentials, login cookies, and the shared Jev key are not
-          part of model context. Turning off access prevents future sends; it
-          cannot recall data already sent.
-        </p>
-      </section>
-      <section className="settings-section" id="privacy-tools" data-place-anchor="privacy-models">
-        <h2 tabIndex={-1}>AI tools</h2>
-        <p>Select which tools may use the information you allowed above.</p>
+      <section className="settings-section" id="privacy-labels">
+        <h2 tabIndex={-1}>{JEV_COPY.heading}</h2>
+        <p>{JEV_COPY.sentence}</p>
         <SettingToggle
           focusKey="privacy-jev"
-          label="Jev judgments"
-          description="Classifies course material with TypeSafe, and can raise new announcements and email in Notifications when Course communications is also on. Permitted context goes to TypeSafe directly from this app, which contains our shared key, or through our gateway when one is set up. We pay for usage."
-          checked={value.jevEnabled}
-          disabled={busy || value.mode === "local_only"}
-          onChange={(checked) => void update({ jevEnabled: checked })}
+          label={JEV_COPY.toggle}
+          description={snapshot.gatewayConfigured ? JEV_COPY.available : JEV_COPY.unavailable}
+          checked={jevOn(value)}
+          disabled={busy || (!snapshot.gatewayConfigured && !jevOn(value))}
+          onChange={(checked) => void update(jevPatch(value, checked))}
         />
-        <p className="setting-note">
-          {snapshot.gatewayConfigured
-            ? "Jev is available in this build."
-            : "Jev isn't set up in this build; code rules still sort Notifications."}
-        </p>
-        <div className="provider-setting">
-          <label className="field-label" htmlFor="provider">
-            Preferred AI
-          </label>
-          <select
-            id="provider"
-            data-focus-key="privacy-provider"
-            disabled={busy || value.mode === "local_only"}
-            value={value.hostedProvider}
-            onChange={(event) =>
-              void update({
-                hostedProvider: event.target
-                  .value as PrivacyPreferences["hostedProvider"],
-              })
-            }
-          >
-            <option value="none">Local model</option>
-            <option value="chatgpt">ChatGPT</option>
-            <option value="claude">Claude</option>
-            <option value="codex">Codex</option>{/* owner: client-detection: the client a student can pick in onboarding */}
-            <option value="gemini">Gemini</option>
-          </select>
-          <p className="small muted">
-            This is a data preference, not an account connection. Hosted account
-            handoff and automatic model installation are not available in this
-            build. Installed local models can be used below.
-          </p>
-        </div>
       </section>
-      <LocalAiPanel privacyKey={JSON.stringify(value)} />
-      <ProviderGuidance open={open} disabled={busy} />
-      <McpConnections snapshot={snapshot} busy={busy} run={run} />
-      <section className="settings-section" id="privacy-activity">
-        <h2 tabIndex={-1}>AI sharing activity</h2>
-        <p className="muted">
-          Receipts record the destination and amount of context, without storing
-          a second copy of the sent text.
-        </p>
-        {snapshot.receipts.length ? (
-          <ul className="receipt-list">
-            {snapshot.receipts
-              .slice()
-              .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-              .slice(0, 30)
-              .map((receipt) => (
-                <li key={receipt.id}>
-                  <div>
-                    <strong>
-                      {recipientLabels[receipt.recipient as Recipient] ??
-                        receipt.recipient}
-                    </strong>
-                    <span className="badge">
-                      {receipt.status === "sent"
-                        ? "Send attempted"
-                        : receipt.status}
-                    </span>
-                  </div>
-                  <p>{receipt.purpose}</p>
-                  <span className="small muted">
-                    {formatDate(receipt.createdAt, true)} ·{" "}
-                    {receipt.characters.toLocaleString()} characters ·{" "}
-                    {receipt.categories.join(", ") || "No categories"}
-                  </span>
-                </li>
-              ))}
-          </ul>
-        ) : (
-          <div className="no-activity">No recorded AI data activity.</div>
-        )}
-      </section>
+      <ConnectedAccounts snapshot={snapshot} busy={busy} run={run} onSignIn={onSignIn}
+        mcp={<McpConnections snapshot={snapshot} busy={busy} run={run} />} />
       <AccountSection /> {/* owner: accounts */}
-      <section className="settings-section danger-section">
-        <h2>Delete local data</h2>
-        <p>
-          Remove saved coursework, source history, judgments, links, and
-          learning activity from this workspace. This does not delete anything
-          from UW or from a hosted provider.
-        </p>
-        {!showDelete ? (
-          <button
-            className="button danger-button"
-            disabled={busy}
-            onClick={() => setShowDelete(true)}
-          >
-            Delete local data…
-          </button>
-        ) : (
-          <div className="delete-confirm">
-            <label className="field-label" htmlFor="delete-confirm">
-              Type DELETE LOCAL DATA to confirm
-            </label>
-            <input
-              id="delete-confirm"
-              autoComplete="off"
-              spellCheck={false}
-              value={deleteText}
-              onChange={(event) => setDeleteText(event.target.value)}
-            />
-            <div className="inline-actions">
-              <button
-                className="button danger-button"
-                disabled={busy || deleteText !== "DELETE LOCAL DATA"}
-                onClick={() => void erase()}
-              >
-                Permanently delete
-              </button>
-              <button
-                className="button"
-                disabled={busy}
-                onClick={() => {
-                  setShowDelete(false);
-                  setDeleteText("");
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-        <p className="small muted">
-          Deleting local data also clears app-owned UW sessions, a saved sign-in,
-          calendar feed secrets, downloaded documents, and exported MCP connections. It does
-          not delete UW records.
-        </p>
-      </section>
+      <VoiceInput />
+      <LocalData busy={busy} deleteControl={deleteControl} />
+      <StartFresh disabled={busy} onReset={onReset} onReconfigure={onReconfigure} />
       <p className="small muted settings-affiliation">
         My Magic UW is an independent student project. It is not affiliated with, sponsored by or endorsed by the University of Wisconsin–Madison.
       </p>
     </div>
   );
 }
+// end owner: data-ai
 
 // owner: T05c. "Keep me signed in" (P1-D1, on by default). Main owns the setting; the
 // toggle hides where the bridge has no keepSignedIn (the browser preview).

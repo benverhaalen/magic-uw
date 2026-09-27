@@ -1,7 +1,7 @@
 import type { ClientHealth, ClientId, ClientMode, ClientStatus, ConsentRecord } from "@magic/contracts";
 import { z } from "zod"; // owner: client-health
 import { checkHealth, createApiKeyStore, type HealthDeps } from "./health"; // owner: client-health
-import { writeClientMode } from "./instant"; // owner: client-health
+import { clearInstantCaches, writeClientMode } from "./instant"; // owner: client-health
 import { hasCurrentConsent } from "@magic/domain";
 import {
   authStatus,
@@ -12,6 +12,7 @@ import {
   isProfileReady,
   prepareProfile,
   profileEnv,
+  resetClientSetup,
   type ClientsDeps,
 } from "./profiles";
 import { createTerminalHost, type TerminalHostDeps } from "./terminal-host";
@@ -44,6 +45,12 @@ export function createClients(deps: TerminalHostDeps) {
     },
     authStatus: async (value: unknown): Promise<ClientStatus> => authStatus(parseId(value), deps),
     choose: async (value: unknown): Promise<void> => chooseClient(parseId(value), deps.userData),
+    /** owner: reconfigure. Ends client sessions, then removes the app's client setup (see resetClientSetup). */
+    async reset(): Promise<void> {
+      terminal.closeAll();
+      await resetClientSetup(deps.userData);
+      clearInstantCaches();
+    },
     /** For the runner wiring (follow-up): the chosen client's profile environment. */
     profileEnv: (id: ClientId) => profileEnv(id, deps),
     terminal,
