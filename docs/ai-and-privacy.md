@@ -2,23 +2,29 @@
 
 Accepted direction and implementation notes, checked September 26, 2026. Provider guidance was checked against live official sources on that date. This is a team reference, not a published privacy policy or a claim that we changed anyone's account settings.
 
-## Four choices, two sign-ins at most
+## Paid AI direction and current implementation
 
-ChatGPT, Claude, Gemini, or a local model. The goal remains access with any account from those three hosted providers. Only UW and the selected hosted AI should require sign-in. Local AI needs only UW; there is no separate Magic Canvas or Jev account.
+Ben accepted Nathaniel's $5 one-time app license plus the student's own paid AI plan or key. Intended routes are Claude Code, Codex, Gemini CLI with a paid key, and OpenRouter. Prefer existing supported client sign-in; guide setup when absent. UW, provider setup, and license activation are the intended prerequisites without a separate Magic Canvas or Jev user account. This supersedes the any-account/local-default launch requirement; see [the recorded resolution](decisions.md#pricing-and-ai-access-resolution--september-26). No payment flow or new provider adapter is implemented by this decision.
 
 **Built:** local inference adapter and desktop controls; a separately enabled Jev gateway; local stdio MCP tools with per-client course/category grants, credential export, and revocation; privacy preferences and sharing receipts. **Not built:** embedded ChatGPT, Claude, or Gemini account connections or subscription-backed inference. Selecting a hosted provider records a preference and enables its permitted data boundary; it does not connect an account. A compatible external MCP client can read explicitly granted evidence. Compatibility with every provider, account type, and tier is unverified. The gateway is implemented but not deployed. Local inference has adapter tests but has not been demonstrated with an installed runtime and real model on this machine.
 
-Subscriptions do not automatically authorize API use by our app. Verify each authorized connection method, tier, administrator restriction, and usage limit. Do not silently substitute a developer API key requirement or describe our hosted key as the student's subscription.
+Subscriptions do not automatically authorize API use by our app. Verify each authorized connection method, tier, administrator restriction, and usage limit. Disclose the paid API-key requirement on the intended Gemini/OpenRouter routes; never describe our hosted key as the student's subscription.
 
 ## Principles that must reach the implementation
 
-- Local processing is the default. Cloud assistance is a feature-specific choice, with its recipient, purpose, and selected context visible before enabling it.
+- Local storage and hosted-sharing-off remain the privacy defaults. The paid AI launch direction requires explicit provider consent; payment or account connection alone does not grant data access. Show the recipient, purpose, and selected context.
 - Send the minimum useful context. Credentials, cookies, tokens, and unrelated data never belong in model context. Omitting identity fields does not anonymize free text.
 - Training, history, memory, retention, human review, and security processing are separate controls. Turning one off does not turn the others off.
 - Our settings control our requests. Provider settings are changed at the provider; never imply they were inspected or changed without evidence.
 - A local language model with hosted Jev enabled is a mixed configuration. Fully local AI processing disables hosted Jev and other content uploads. Reading UW sources and downloading models are separate network activities.
 - Revocation stops future requests and cancels work where possible; it cannot retrieve data already sent. Local deletion does not delete provider records or backups.
 - Show the account type and applicable policy. Personal and university-managed accounts can have different protections and administrator access.
+
+## Accepted disclosure flow — implementation pending
+
+Obtain consent once per provider, with recipient, purpose, data categories, applicable provider settings, and revocation explained. Each request shows its selected sources/context without another blocking confirmation and creates an inspectable receipt. The first request sharing a new sensitive category (such as student work, grades, comments, or communications) requires a blocking preview; **always preview** requires one every time. Changed recipients need their own consent. Code still checks course/category grants and current privacy settings on every request. Receipts must describe the payload actually sent, not a different preview.
+
+This is Ben's accepted correction; provider onboarding, sensitive-category first-use tracking, and always-preview controls are not yet implemented. Existing flags/MCP grants and receipts provide only part of it. Choosing a paid route does not enable sharing automatically or expose planning records.
 
 ## What the current app shares
 
@@ -46,11 +52,11 @@ The coursework database and downloads are permission restricted but not app encr
 
 The integrated route uses [llmfit](https://github.com/AlexsJones/llmfit) for hardware recommendations and selects a compatible **already installed** Ollama model. The adapter checks installed tag, quantization, memory fit, and context instead of guessing a fallback. Missing tools or suitable weights produce an unavailable state, never hosted inference.
 
-Automatic installation/downloads are not implemented. The intended experience remains automatic selection, with download size and storage explained before approval and no model-hub account. Hardware fit estimates do not establish tutoring quality. The selector's MIT license does not license model weights: the install shortlist needs separate license and learning-task evaluation. No model was downloaded for this scaffold.
+Automatic installation/downloads are not implemented and are no longer a launch requirement under the paid-AI direction. If pursued later, explain download size and storage before approval and avoid another model-hub account. Hardware fit estimates do not establish tutoring quality. The selector's MIT license does not license model weights: the install shortlist needs separate license and learning-task evaluation. No model was downloaded for this scaffold.
 
 ## Provider settings students can use
 
-These instructions apply in the provider's interface, not through Magic Canvas. Recheck at connection time; account type and interface can change. Feedback can authorize additional processing even after opting out of training.
+These instructions apply in the provider's interface, not through Magic Canvas. They describe the existing chat/MCP guidance; do not assume chat-app controls govern a CLI, API key, or OpenRouter intermediary. Route-specific disclosures for the new paid-AI adapters still need verification. Recheck at connection time; account type and interface can change. Feedback can authorize additional processing even after opting out of training.
 
 ### ChatGPT
 
@@ -79,7 +85,7 @@ Personal-account activity instructions do not override school administration. Go
 
 ## Jev ownership and provider policy
 
-One owner-paid key serves the team and users through the gateway. Put `TYPESAFE_API_KEY` only in the ignored gateway environment file or deployment secret store; never in a desktop bundle, client environment variable, Markdown, or Git. Devices enroll with opaque bearer credentials stored using OS-backed encryption, without another user sign-in.
+The current gateway uses one owner-paid key. The accepted product direction keeps it for Claude/Codex/Gemini users and adds a separate, unimplemented OpenRouter path where the student pays for Jev through their own OpenRouter key. No OpenRouter key handling or judgment egress exists in the current app. Its future route must disclose OpenRouter and the actual inference recipient, protect the student key locally, and preserve the same consent/minimization gates. Put `TYPESAFE_API_KEY` only in the ignored gateway environment file or deployment secret store; never in a desktop bundle, client environment variable, Markdown, or Git. Devices enroll with opaque bearer credentials stored using OS-backed encryption, without another user sign-in.
 
 The gateway accepts one fixed task, validates bounded input, applies device/global request and concurrency limits, and reserves a persistent daily budget before calling TypeSafe. Failed attempts consume the budget. Anonymous enrollment does not verify identity; global caps bound spending but do not prevent every abuse pattern. Deployment and a live key-backed request remain unverified.
 

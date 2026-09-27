@@ -34,9 +34,9 @@ The preview has no UW session, gateway, file dialog, or external-window launch. 
 
 Tests with fake HTTP responses establish behavior for those cases. They do not establish live UW access, model accuracy, provider billing, or Windows compatibility. Current evidence and remaining checks belong in [implementation status](implementation-status.md).
 
-## One shared Jev key
+## Current gateway: one shared Jev key
 
-Only the gateway operator supplies the upstream key. Ben can put it in the ignored server file without sending it in chat:
+The accepted OpenRouter route will use the student’s own key and bill; it is not implemented. The following setup describes the existing company-funded gateway for the other paid-provider routes. Only the gateway operator supplies its upstream key. Ben can put it in the ignored server file without sending it in chat:
 
 ```sh
 test -f apps/gateway/.env || cp apps/gateway/.env.example apps/gateway/.env

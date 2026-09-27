@@ -30,7 +30,7 @@ Infer the audience, real content, tasks, and constraints before selecting a visu
 
 Generate materially different candidates when the solution space matters. Set criteria before scoring. Keep feasibility, expected value, uncertainty, and downside separate; calculate known values exactly. Do not treat model scores as calibrated outcome probabilities or multiply correlated judgments as though independent. Test the strongest opposing explanation.
 
-Use concrete alternatives for consequential taste decisions, holding unrelated properties stable. Allow rejection, combination, or a new proposal. Resolve conflicts between references before composing the direction, then inspect the rendered artifact and complete journey. Technical checks support product judgment; they do not replace it. The [current organizing concepts](product-directions.md) remain separate proposals until Ben reacts.
+Use concrete alternatives for consequential taste decisions, holding unrelated properties stable. Allow rejection, combination, or a new proposal. Resolve conflicts between references before composing the direction, then inspect the rendered artifact and complete journey. Technical checks support product judgment; they do not replace it. The [earlier organizing concepts](product-directions.md) remain exploration history; use [Home and visual direction](home-design-direction.md) for accepted structure and still-open visual choices.
 
 ## Delegation, context, and cost
 

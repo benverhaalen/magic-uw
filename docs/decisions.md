@@ -14,7 +14,7 @@ A context register, not an implementation backlog. No ownership is assigned.
 | Working method          | Reference-driven design across research, architecture, interface, implementation, and verification; inspect and test the transferred mechanism                               |
 | Current technical focus | Data access, local records, provenance, linking, and freshness                                                                                                               |
 | Computation             | Code for exact facts; Jev for typed judgments; language models for prose and deeper reasoning                                                                                |
-| Jev billing             | One Magic Canvas–owned key; we pay. Students need no Jev account or key. Keep the credential server-side behind our proxy                                                    |
+| Jev billing             | Company gateway pays for Claude/Codex/Gemini; OpenRouter users pay through their own key. Our TypeSafe key stays server-side. OpenRouter route is not built |
 | Identity scrubbing      | Before hosted processing, remove student identities and unnecessary personal identifiers; retain relevant instructor/author names. Policy accepted; scrubber not implemented |
 | School actions          | Read only: no submitting, enrolling, or posting                                                                                                                              |
 | Learning policy         | Course policy first; coach when vague or silent                                                                                                                              |
@@ -25,17 +25,17 @@ A context register, not an implementation backlog. No ownership is assigned.
 ## Resolved product decisions — September 26
 
 - **Privacy:** course data and UW sessions live locally. Selected context may be sent to Jev and the hosted AI the student chooses. Clearly disclose the recipient, data categories, purpose, and applicable usage/retention settings. Offer guidance for disabling optional provider data uses; do not imply that disabling training disables all retention.
-- **Four AI options only for now:** ChatGPT, Claude, Gemini, and a local model. Supporting any account with the three named providers is the intended requirement, including avoiding an assumed paid-plan prerequisite. Provider-specific feasibility and connection methods are not yet verified.
-- **Minimal sign-in:** UW plus the chosen hosted LLM account. No separate Magic Canvas, Jev, model-hub, or infrastructure account should be required. With local AI, only UW sign-in is needed. User-completed Duo and later session renewal remain part of UW authentication.
-- **Local AI is a built-in default alternative:** if the student does not choose a hosted AI, automatically identify a suitable open-source model for their system and handle the selection without making them research hardware or quantization. Exact selector/runtime/model is open. Fully local processing must also disable or replace hosted Jev; merely choosing a local language model does not do that.
+- **Paid AI and app license:** Ben accepted Nathaniel's direction later on September 26: a $5 one-time app license, with the student paying for their own supported AI plan or API key. This supersedes the earlier any-account/no-paid-plan requirement and local AI as the launch default alternative. See [the recorded resolution](#pricing-and-ai-access-resolution--september-26).
+- **Minimal setup:** reuse supported installed provider clients through their own sign-in where permitted; otherwise guide setup. UW sign-in, a supported provider plan/key, and license activation are the intended prerequisites. No extra Magic Canvas or Jev user account is intended. User-completed Duo and later session renewal remain part of UW authentication.
+- **Existing local AI:** retain the installed-model adapter and local privacy controls as implemented capabilities; they do not establish a free-account launch offering. Managed model installation is deferred. Fully local processing must disable or replace hosted Jev.
 - **Desktop first:** Mac and Windows are the product focus. The website provides information, working downloads, and GitHub links. iOS is later if time permits.
-- **Jev billing:** one team-owned key, our bill, server-side proxy. No student Jev setup.
+- **Jev billing:** Claude/Codex/Gemini use our funded gateway and its server-side key. OpenRouter users pay for Jev through their own OpenRouter key; no separate TypeSafe account is intended. This exception is accepted direction, not an implemented route.
 
-These are accepted directions. Account compatibility, hardware suitability, and data-control behavior must still be verified before being described as working capabilities.
+These are accepted directions. Account compatibility, hardware suitability, licensing/payment behavior, and data controls must still be verified before being described as working capabilities.
 
 ## Product choices that can remain open
 
-Home and navigation are now settled at the structural level: briefing-first Home with Upcoming, Study & Learn, quiet Today rail, and a collapsible Home/Courses sidebar. See [Home and visual direction](home-design-direction.md) for the full current contract and the new flagship demo objective. Earlier organizing concepts are retained as exploration history.
+Home and navigation are now settled at the structural level: briefing-first Home with Upcoming, Study & Learn, quiet Today rail, and a collapsible Home/Courses/My UW sidebar. See [Home and visual direction](home-design-direction.md) for the full current contract and the new flagship demo objective. Earlier organizing concepts are retained as exploration history.
 
 Still open: exact card color/interaction treatment, detailed course and work surfaces, floating pill/voice activation, provenance detail presentation, degree audit's role, and personalization from observed behavior versus explicit preference. The local visual prototype does not establish integrated capability.
 
@@ -101,3 +101,16 @@ Named objects within briefing prose should be visibly clickable and lead to cont
 - All planning remains local and outside Jev, model context, and MCP. App-owned onboarding still needs live verification; the private developer transport does not satisfy it.
 
 See [planning integration](planning-upgrade.md) for implementation evidence and remaining scope.
+
+
+## Pricing and AI access resolution — September 26
+
+Ben resolved the pricing/provider disagreement with: "nathaniels is the way" (this project conversation, recorded September 26; original message timestamp unavailable). The question explicitly contrasted Nathaniel's paid-AI/$5 direction with the earlier any-account/local alternative. Nathaniel's original proposal is preserved in [business model](https://github.com/benverhaalen/magic-uw/blob/5bf86f7be3eac8e85fa5ccb2a0e925a721ca24f3/docs/notes/business-model.md) and [agent runtime](https://github.com/benverhaalen/magic-uw/blob/5bf86f7be3eac8e85fa5ccb2a0e925a721ca24f3/docs/notes/agent-runtime.md).
+
+- A **$5 one-time app license** covers the service and company-funded Jev; it does not include the student's language-model usage. Payment provider and license activation are unimplemented. This decision does not change the repository's MIT license.
+- Intended paid routes are **Claude Code with a supported paid Claude plan, Codex with a supported paid ChatGPT plan, Gemini CLI with a paid API key, and OpenRouter with the student's key**. Installed-client detection, isolation, authorized authentication, current terms, data destinations, and actual inference must be verified per route. These names describe intended integration paths, not working adapters or legal conclusions.
+- Keep school data local and hosted sharing off until consent. Buying the app or connecting a paid provider is not permission to upload every record. Planning remains outside AI/MCP context under its existing boundary.
+- **Jev exception accepted:** Ben chose "Adopt Nathaniel’s exception": OpenRouter users pay for Jev through their own OpenRouter key. Claude/Codex/Gemini users use the company-funded gateway. Our TypeSafe key stays server-side; a student's OpenRouter key must stay in protected local credential storage and never enter model context, logs, or Git. The actual OpenRouter judgment adapter and billing route remain unverified.
+- **Disclosure flow accepted:** Ben chose "Adopt this flow (Recommended)": consent once per provider, visible selected context and a receipt per request, with a blocking preview for the first sharing of a new sensitive category or when the student enables **always preview**. Keep the exact outgoing payload inspectable. Code must enforce course/category grants and revocation on every request; ongoing consent does not permit new categories or recipients. Disclosure timing does not relax data minimization or identity scrubbing.
+- These answers resolve commercial direction, paid-provider access, Jev billing, and disclosure timing. Other research-branch choices, including runtime permissions and storage/MCP architecture, still need scoped integration review; this is not a blanket branch merge.
+- Existing local-model code stays documented honestly. Automatic local model setup is no longer a launch requirement. No runtime, payment, or account settings were changed by this documentation correction.

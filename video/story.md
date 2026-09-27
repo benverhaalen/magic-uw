@@ -170,6 +170,8 @@ New structure, race kept as-is, everything after it rebuilt:
    team actually locks — right now there are two live, conflicting answers on `main` vs. this
    branch.
 
+**Later September 26 correction to item 10:** Ben resolved the pricing/provider conflict with "nathaniels is the way." The accepted direction is now a $5 one-time app license plus the student's own paid AI plan/key; see [the canonical decision](../docs/decisions.md#pricing-and-ai-access-resolution--september-26). The script can continue omitting price. This correction does not approve the revised story, imply working checkout/provider adapters, or update Sean's separate local working copy.
+
 ## Narrative arc (rewritten 2026-09-26 — race confirmed, rest is proposal per tip #3)
 
 Open cold on a timed side-by-side race proving the core pitch — everything scattered across

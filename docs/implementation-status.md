@@ -2,6 +2,8 @@
 
 Updated September 26, 2026. This describes the code and observed checks, not completion of the broader [product](product.md). The [ingestion](ingestion-upgrade.md) and [planning](planning-upgrade.md) handoffs cover scopes, bounds, evidence, and primary references.
 
+The later September 26 [pricing/provider decision](decisions.md#pricing-and-ai-access-resolution--september-26) adopts a $5 one-time license and the student's paid AI plan/key. This is product direction only: no checkout, license enforcement, paid CLI inference adapters, or OpenRouter route has been added. The existing local adapter and hosted-sharing-off default remain the actual implementation. Accepted OpenRouter-funded Jev and provider-consent/context-receipt/first-sensitive-preview behavior are also pending; current privacy flags and MCP grants do not implement the full new flow.
+
 ## What exists
 
 | Area                        | Implemented behavior                                                                                                                                                                      | Current limit                                                                                                                      |

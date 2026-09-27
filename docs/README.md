@@ -12,9 +12,9 @@ Least user effort is the central taste principle. Fit existing apps and study ha
 
 Reference-driven design is our working method: assign each reference a job, inspect its actual mechanism, transfer the useful part, and verify the resulting student journey. We use architecture analogies beyond education and current tools beyond familiar defaults. Ben should see consequential ambiguity, clutter, complexity, or excessive token/tool cost before we commit to it. See [agent work principles](agent-work-principles.md) and the repo's [agent instructions](../AGENTS.md).
 
-The technical direction starts with local course data: connectors capture sources, code handles exact facts, Jev makes typed judgments, and a language model writes and reasons with relevant context. **Magic Canvas owns one Jev key and pays for usage. Students do not supply a Jev key.**
+The technical direction starts with local course data: connectors capture sources, code handles exact facts, Jev makes typed judgments, and a language model writes and reasons with relevant context. **Our gateway pays for Jev on the Claude/Codex/Gemini routes; OpenRouter users will pay through their own OpenRouter key. Our TypeSafe key stays server-side.** The OpenRouter path is accepted direction, not yet implemented.
 
-The four AI choices are ChatGPT, Claude, Gemini, and an automatically selected local model. Only UW and the chosen hosted AI should require sign-in. Desktop comes first; the website is for information/downloads/GitHub; iOS is later if time permits.
+Ben accepted Nathaniel’s $5 one-time license plus bring-your-own-paid-AI direction. Intended routes are Claude Code, Codex, Gemini CLI with a paid key, and OpenRouter; verified adapters and payment setup remain unfinished. See [the resolution](decisions.md#pricing-and-ai-access-resolution--september-26). Desktop comes first; the website is for information/downloads/GitHub; iOS is later if time permits.
 
 Trust is part of the product: course AI policy first, no submitting/enrolling/posting or explicit completion commands to school systems, sources and freshness, reversible links, and honest uncertainty. Reading may register views or satisfy must-view requirements; this accepted effect is disclosed. Local storage and hosted processing must be described separately.
 
@@ -29,7 +29,7 @@ We are entering Applied AI & Automation, DoIT's Badgers Building for Badgers, an
 | [Organizing concepts](product-directions.md)          | Earlier organizing alternatives; current Home decisions supersede their unresolved entry/navigation status |
 | [Reference-driven design](reference-driven-design.md) | Reference roles, architecture analogies, images, demo inspection, and product verification               |
 | [Agent work principles](agent-work-principles.md)     | Intent, discovery, expert methods, delegation, context/cost, and complete delivery                       |
-| [AI and privacy](ai-and-privacy.md)                   | Four AI options, automatic local selection, sign-in, and data disclosures                                |
+| [AI and privacy](ai-and-privacy.md)                   | Paid AI direction, existing local adapter, sign-in, and data disclosures                                |
 | [Technical direction](architecture.md)                | Access, connectors, records, deadlines, Jev, models, stack proposals                                     |
 | [Pipeline details](pipeline-details.md)               | Actual endpoints and limits; proposed reconnect, scrubbing, citation checks, and link thresholds         |
 | [Course ingestion](ingestion-upgrade.md)              | Expanded sources, refresh, local materials, privacy, and verified limits                                 |

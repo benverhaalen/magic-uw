@@ -35,13 +35,13 @@ The event audience will likely skew technical. The product story should still ma
 
 ## AI choice, sign-in, and data transparency — decided
 
-Focus on four options: ChatGPT, Claude, Gemini, and a local model. The intended experience supports any account with the named hosted providers; exact account/plan compatibility and connection methods remain technical unknowns, not solved integrations.
+The accepted launch direction is a $5 one-time app license plus the student's own paid AI plan or key. Intended routes are Claude Code, Codex, Gemini CLI with a paid key, and OpenRouter. The license covers the service and company-funded Jev, not language-model usage. Exact account/plan compatibility and authorized connection methods still need verification. See [the pricing and AI resolution](decisions.md#pricing-and-ai-access-resolution--september-26).
 
-The only required sign-ins should be UW and, when chosen, the hosted AI account. No extra Magic Canvas or Jev account. Local AI should require no model-service account: automatically pick a suitable open-source model for the student's system as the default alternative to hosted AI.
+Minimize setup by detecting supported installed clients and using their own authentication flows where permitted; otherwise guide the student through setup. UW sign-in, provider setup, and license activation are the intended prerequisites, without an extra Magic Canvas or Jev user account. The existing local-model adapter remains available in the development foundation; automatic local-model setup is no longer a launch requirement.
 
-Explain what each hosted service receives and can use: selected course excerpts, prompts, conversation context, drafts or answers when relevant, and necessary metadata. Show the actual categories for each feature rather than implying every request sends everything. Never send UW passwords, cookies, or session tokens to an AI provider. Give clear, current provider-specific guidance for reducing optional data usage and explain which controls belong to Magic Canvas versus the provider.
+Explain what each hosted service receives and can use: selected course excerpts, prompts, conversation context, drafts or answers when relevant, and necessary metadata. Show the actual categories for each feature rather than implying every request sends everything. Obtain consent per provider, show context and receipts per request, and require a blocking preview for a newly shared sensitive category or an enabled always-preview preference. Keep the exact payload inspectable and enforce grants on every request. Never send UW passwords, cookies, or session tokens to an AI provider. Give clear, current provider-specific guidance for reducing optional data usage and explain which controls belong to Magic Canvas versus the provider.
 
-Local storage is the default. Hosted Jev is separately disclosed and paid for by Magic Canvas. A local language model with hosted Jev is not a fully local processing mode; a fully local mode must replace or disable hosted judgments too. See [AI and privacy requirements](ai-and-privacy.md).
+Local storage is the default. Hosted Jev is separately disclosed: Magic Canvas pays through its gateway for Claude/Codex/Gemini routes; the accepted OpenRouter route uses the student’s key and bill, with implementation still pending. A local language model with hosted Jev is not a fully local processing mode; a fully local mode must replace or disable hosted judgments too. See [AI and privacy requirements](ai-and-privacy.md).
 
 ## Surfaces and interaction direction
 

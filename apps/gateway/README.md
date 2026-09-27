@@ -2,11 +2,13 @@
 
 A small HTTP proxy in front of TypeSafe's Jev so the desktop app (and
 teammates) never see the TypeSafe API key. One key, owned by Magic Canvas,
-pays for every request. Students and teammates call this gateway's URL with
+pays for every request handled by this gateway. Students and teammates call this gateway's URL with
 an anonymous device token instead.
 
 Status: implemented and unit/integration tested (`tests/gateway.test.ts`).
 Not deployed. A team-wide endpoint still needs a hosting destination, TLS, and persistent storage.
+
+The accepted OpenRouter route will bill Jev through the student's own OpenRouter key instead; that adapter is not implemented here. Claude/Codex/Gemini routes retain this company-funded gateway. See [the product decision](../../docs/decisions.md#pricing-and-ai-access-resolution--september-26).
 
 ## Where the key lives
 
