@@ -19,6 +19,17 @@ export interface GoogleExportPanelProps {
 }
 const POLL_MS = 3000, POLL_LIMIT = 200;
 
+/**
+ * Why items were left out of the file. Date conflicts are still left out, but for now they're counted
+ * with the other items that lack one confirmed due date instead of being named separately.
+ */
+export function omittedSummary(omitted: ReturnType<typeof previewGoogleExport>['omitted']): string[] {
+  return [
+    [omitted.dateReview + omitted.conflict, 'without one confirmed due date'], [omitted.typeUnknown, 'whose Canvas type wasn’t captured'],
+    [omitted.clockChange, 'at a daylight-saving clock change'], [omitted.scheduleUnverified, 'from unconfirmed class schedules'], [omitted.cancelled, 'cancelled'],
+  ].filter(([count]) => Number(count) > 0).map(([count, why]) => `${count} ${why}`);
+}
+
 /** What the student reads for one file; never stronger than the observed state. */
 export function fileStatus(file: CalendarImportFile): string {
   const where = file.destination ? ` Google shows “${file.destination}” under Add to calendar.` : '';
@@ -111,10 +122,7 @@ export function GoogleExportPanel({ resources, planning, timeZone, now, courseLa
   }, []);
 
   const counts = preview?.value?.counts, omitted = preview?.value?.omitted;
-  const leftOut = omitted ? [
-    [omitted.dateReview, 'without one confirmed due date'], [omitted.conflict, 'with disagreeing dates'], [omitted.typeUnknown, 'whose Canvas type wasn’t captured'],
-    [omitted.clockChange, 'at a daylight-saving clock change'], [omitted.scheduleUnverified, 'from unconfirmed class schedules'], [omitted.cancelled, 'cancelled'],
-  ].filter(([count]) => Number(count) > 0).map(([count, why]) => `${count} ${why}`) : [];
+  const leftOut = omitted ? omittedSummary(omitted) : [];
   const total = counts ? counts.lectures + counts.assignments + counts.exams : 0;
   const locked = !!session || !!pending || flow.current.stopped;
   return <section id="calendar-export-panel" className="mc-calendar-export" aria-labelledby="calendar-export-heading" onKeyDown={event => { if (event.key === 'Escape' && !pending) { event.preventDefault(); onClose(); } }}>
