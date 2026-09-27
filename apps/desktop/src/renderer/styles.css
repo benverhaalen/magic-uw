@@ -1637,7 +1637,7 @@ select {
   height: 100%;
 }
 .rail-slot:hover,
-.rail-slot:focus-within {
+.rail-slot:has(:focus-visible) {
   z-index: 4;
 }
 .rail-tools {
@@ -1654,8 +1654,10 @@ select {
   border-radius: 7px;
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
 }
+/* Keyboard focus only: a mouse click leaves focus on the block, and :focus-within kept the bar
+   stuck open after the pointer left. Clicked blocks show their choices in the details card. */
 .rail-slot:hover .rail-tools,
-.rail-slot:focus-within .rail-tools {
+.rail-slot:has(:focus-visible) .rail-tools {
   display: flex;
 }
 .rail-tools:empty {
@@ -1686,6 +1688,63 @@ select {
   outline: 2px solid #4a6fd6;
   outline-offset: 0;
 }
+/* Details of the block the student clicked, in place of the Next up card. */
+.rail-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 11px 11px;
+  margin-bottom: 18px;
+  border-radius: 7px;
+  background: #fff;
+  border: 1px solid #ecece6;
+}
+.rail-detail.suggestion { border-left: 3px dashed #d6c9a6; }
+.rail-detail.suggestion.planned { border-left-style: solid; border-left-color: #dcd6c8; }
+.rail-detail.suggestion.exam { border-left-color: #e2bdb4; }
+.rail-detail.suggestion.prep { border-left-color: #c6d2ee; }
+.rail-detail.event { border-left: 3px solid #4a6fd6; }
+.rail-detail .rail-heading { margin: 0; align-items: center; }
+.rail-detail-close {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  font-size: 11px;
+  color: #73736b;
+  cursor: pointer;
+}
+.rail-detail-close:hover { background: #f1f0eb; }
+.rail-detail-close:focus-visible { outline: 2px solid #4a6fd6; outline-offset: 0; }
+.rail-detail-title {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: inherit;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.rail-detail-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  font-size: 11.5px;
+}
+.rail-detail-row {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: 8px;
+}
+.rail-detail-row dt { color: #8a897f; }
+.rail-detail-row dd { margin: 0; overflow-wrap: anywhere; }
+.rail-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+.rail-block.event.focused { box-shadow: 0 0 0 2px #4a6fd6; }
 .rail-block.suggestion.planned {
   background: #fff;
   border-style: solid;
