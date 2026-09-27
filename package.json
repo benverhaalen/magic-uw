@@ -16,7 +16,6 @@
     "fixture": "tsx scripts/inspect-fixture.ts",
     "preview": "tsx scripts/preview.ts",
     "test:desktop": "pnpm build && tsx scripts/desktop-smoke.ts",
-    "magic:acceptance": "tsx scripts/acceptance.ts",
     "magic:perf": "tsx evals/perf/run.ts"
   },
   "devDependencies": {
@@ -35,6 +34,8 @@
     "@modelcontextprotocol/server": "2.1.0",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/xterm": "6.0.0",
+    "docx": "9.7.2",
+    "mammoth": "1.13.0",
     "node-pty": "1.1.0",
     "pdfjs-dist": "6.3.289",
     "react": "19.3.0",

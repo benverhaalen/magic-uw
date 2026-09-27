@@ -4,12 +4,15 @@ import {
   existsSync,
   mkdirSync,
   readdirSync,
+  readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { backup, DatabaseSync, type StatementSync } from "node:sqlite";
-import { planningMigration, planningRepository } from "./planning";
+import { planningMigration, planningRepository, type PlanningRepository } from "./planning";
+import { PLANNING_V12 } from "./planning-v12"; // owner: planning-perf
 import { textHash } from "../../retrieval/src/index";
 import { COURSE_CORE_SCHEMA, COURSE_SPACE_OBSERVATION_MIGRATION, courseCoreRepository } from "./course-core";
 import { createPassageIndex, scopeToken } from "./passages";
@@ -17,6 +20,8 @@ import { graphRepository, migrateGraph } from "./graph";
 import { LEARNING_SCHEMA } from "./learning";
 import { LEARNING_V8 } from "./learning-v8";
 import { createSqlLearningStore, type SqlLearningStore } from "../../learning/src/sql-store";
+import { NOTES_V11 } from "./notes-v11"; // owner: notes
+import { createSqlNotesStore, type SqlNotesStore } from "../../notes/src/sql-store"; // owner: notes
 import { decodePayload, encodePayload } from "./payload";
 import {
   LIFE_COURSE_ID,
@@ -77,13 +82,24 @@ import {
   type Store,
 } from "@magic/contracts";
 
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 13;
 const MAX_ATTEMPTS = 3;
 /** The latest pre-migration backup, beside the database (one kept; purge deletes it). */
 export function migrationBackupPath(path: string): string {
   return `${resolve(path)}.pre-v${SCHEMA_VERSION}.bak`;
 }
 const BACKUP_PATTERN = /\.pre-v\d+\.bak$/;
+// owner: platform-fix. The read-only reader (the MCP course bank) never writes the database: its
+// receipts go to this append-only log beside it, which the writer imports on its next open.
+/** The reader's receipt log, one JSON receipt per line, in the app's data folder beside the database. */
+export function readerReceiptLogPath(path: string): string {
+  return `${resolve(path)}.reader-receipts.jsonl`;
+}
+/** The reader refuses a database it cannot read as this version; only the app migrates. */
+export class ReaderSchemaError extends Error {}
+/** Receipts keep 90 days of detail; older ones roll up into per-day counts (preferences 'receiptCounts'). */
+export const RECEIPT_DETAIL_DAYS = 90;
+// end owner: platform-fix
 /** A failed migration. The single transaction rolled back, so the original file is intact. */
 export class MigrationError extends Error {
   constructor(
@@ -173,19 +189,49 @@ function payloadTextHash(payload: unknown): string {
   return textHash(String(item.title ?? ""), String(item.text ?? ""));
 }
 
+// owner: platform-fix
+export interface ReceiptCount {
+  day: string;
+  recipient: string;
+  purpose: string;
+  status: string;
+  receipts: number;
+  characters: number;
+}
+export type LocalStore = Store &
+  CourseCoreStore &
+  GraphStore &
+  PlanningRepository & {
+    learning: SqlLearningStore;
+    notes: SqlNotesStore;
+    /** Imports the reader's receipt log into receipts (the writer only); returns how many were read. */
+    importReaderReceipts(): number;
+    /** Per-day receipt counts for receipts older than the detail window. */
+    receiptCounts(): ReceiptCount[];
+  };
+// end owner: platform-fix
+
 /** One local writer. Network requests and model inference must happen outside its transactions. */
 export function createStore(
   path: string,
-  options: { now?: () => Date } = {},
-): Store & CourseCoreStore & GraphStore & { learning: SqlLearningStore } {
+  options: { now?: () => Date; readOnly?: boolean } = {},
+): LocalStore {
   const clock = options.now ?? (() => new Date());
   const file = path !== ":memory:";
-  if (file) mkdirSync(dirname(resolve(path)), { recursive: true, mode: 0o700 });
-  const db = new DatabaseSync(path);
-  if (file) chmodSync(path, 0o600);
+  // owner: platform-fix. readOnly: the reader process. It opens the file read-only, never creates,
+  // chmods, migrates, backs up (VACUUM INTO) or rebuilds anything; a write fails in SQLite itself.
+  const readOnly = options.readOnly === true;
+  if (readOnly && (!file || !existsSync(path)))
+    throw new ReaderSchemaError("There is no local database to read yet. Open My Magic UW once first.");
+  if (file && !readOnly) mkdirSync(dirname(resolve(path)), { recursive: true, mode: 0o700 });
+  const db = new DatabaseSync(path, readOnly ? { readOnly: true } : {});
+  if (file && !readOnly) chmodSync(path, 0o600);
   db.exec(
-    "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000; PRAGMA secure_delete = ON;",
+    readOnly
+      ? "PRAGMA busy_timeout = 5000; PRAGMA query_only = ON;"
+      : "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000; PRAGMA secure_delete = ON;",
   );
+  // end owner: platform-fix
   db.function("magic_text_hash", { deterministic: true }, payloadTextHash);
   const readVersion = () =>
     Number(db.prepare("PRAGMA user_version").get()!.user_version);
@@ -193,9 +239,17 @@ export function createStore(
   if (schemaVersion > SCHEMA_VERSION) {
     db.close();
     throw new Error(
-      "This database was created by a newer Magic Canvas version.",
+      "This database was created by a newer My Magic UW version.",
     );
   }
+  // owner: platform-fix
+  if (readOnly && schemaVersion < SCHEMA_VERSION) {
+    db.close();
+    throw new ReaderSchemaError(
+      "The local database needs updating before the course bank can read it. Open My Magic UW once, then try again.",
+    );
+  }
+  // end owner: platform-fix
   // O2: one prepared statement per SQL text for the life of the connection.
   const statements = new Map<string, StatementSync>();
   function prepare(sql: string): StatementSync {
@@ -357,6 +411,18 @@ export function createStore(
       db.exec("PRAGMA user_version = 10;");
     },
   ]);
+  // v11 "notes": session notes (packages/notes); additive tables only (IF NOT EXISTS). Runs after v10 (the course graph).
+  steps.push([11, () => db.exec(NOTES_V11 + "PRAGMA user_version = 11;")]);
+  // owner: planning-perf. v12: planning index and capture pruning; idempotent (IF NOT EXISTS).
+  steps.push([12, () => db.exec(PLANNING_V12 + "PRAGMA user_version = 12;")]);
+  // owner: platform-fix. v13 (additive, idempotent; reserved for this branch, applied after main's
+  // v12): the receipts index for the retention sweep. The per-day counts that outlive 90 days of
+  // detail live in preferences ('receiptCounts'), like consents and the day plan: no new table.
+  steps.push([
+    13,
+    () => db.exec("CREATE INDEX IF NOT EXISTS receipts_created ON receipts(created_at); PRAGMA user_version = 13;"),
+  ]);
+  // end owner: platform-fix
   const migrationBackup = file ? migrationBackupPath(path) : null;
   const passageIndex = createPassageIndex(db, prepare);
   const courseScope = (accountScope: string, courseId: string) =>
@@ -401,7 +467,7 @@ export function createStore(
     try {
       from = readVersion(); // another process may have migrated since the first read
       if (from > SCHEMA_VERSION)
-        throw new Error("This database was created by a newer Magic Canvas version.");
+        throw new Error("This database was created by a newer My Magic UW version.");
       for (const [version, step] of steps) if (version > from) step();
       if (db.prepare("PRAGMA foreign_key_check").all().length)
         throw new Error("The migration left foreign-key violations.");
@@ -417,8 +483,8 @@ export function createStore(
       );
     }
   }
-  migrate();
-  const planning = planningRepository(db);
+  if (!readOnly) migrate();
+  const planning = planningRepository(db, prepare); // owner: planning-perf: cached statements
   // owner: T06. Consent storage helpers.
   function readConsents(): ConsentRecord[] {
     const row = db
@@ -640,7 +706,7 @@ export function createStore(
     return true;
   }
   // Existing databases are materialized locally at open; no model or network request.
-  for (const row of prepare("SELECT DISTINCT account_scope,course_id FROM sources WHERE course_id <> ?")
+  if (!readOnly) for (const row of prepare("SELECT DISTINCT account_scope,course_id FROM sources WHERE course_id <> ?")
     .all(LIFE_COURSE_ID))
     rebuildIntelligence(
       String(row.account_scope),
@@ -704,6 +770,7 @@ export function createStore(
   });
   const learning = createSqlLearningStore(prepare, transaction, () => clock().toISOString());
   const graph = graphRepository(prepare, { transaction, timestamp });
+  const notes = createSqlNotesStore(prepare, transaction, () => clock().toISOString()); // owner: notes
   let closed = false;
   // Keep two weeks of day-plan history, measured from the newest saved day.
   const DAY_PLAN_KEEP_DAYS = 14;
@@ -741,8 +808,117 @@ export function createStore(
       "INSERT INTO preferences VALUES ('dayPlan', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
     ).run(JSON.stringify(kept));
   }
-  return {
+  // owner: platform-fix. Receipts: the one validated insert, the 90-day roll-up, the reader's log.
+  function addReceiptRow(value: EgressReceipt) {
+    assertText(value.id, "receipt ID");
+    assertText(value.recipient, "receipt recipient");
+    assertText(value.purpose, "receipt purpose", 2000);
+    if (
+      // owner: T06: preview_required records a held request; nothing was sent.
+      !["blocked", "sent", "failed", "preview_required"].includes(value.status) ||
+      !Number.isSafeInteger(value.characters) ||
+      value.characters < 0 ||
+      !Array.isArray(value.categories) ||
+      !value.categories.every((item) => typeof item === "string") ||
+      !Array.isArray(value.resourceIds) ||
+      !value.resourceIds.every((item) => typeof item === "string")
+    )
+      throw new Error("Invalid egress receipt.");
+    // This also rejects receipts from operations that were in flight when the user purged the store.
+    if (value.resourceIds.some((id) => !liveResource(id))) return;
+    prepare(
+      `INSERT INTO receipts VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO NOTHING`,
+    ).run(
+      value.id,
+      value.recipient,
+      value.purpose,
+      JSON.stringify(value.categories),
+      JSON.stringify(value.resourceIds),
+      value.characters,
+      value.status,
+      timestamp(value.createdAt),
+    );
+  }
+  const atomically = <T>(work: () => T): T => (db.isTransaction ? work() : transaction(work));
+  let rolledUpAt = 0;
+  function readReceiptCounts(): ReceiptCount[] {
+    const row = prepare("SELECT value FROM preferences WHERE key = 'receiptCounts'").get();
+    try {
+      const value: unknown = row ? JSON.parse(String(row.value)) : [];
+      return Array.isArray(value) ? (value as ReceiptCount[]) : [];
+    } catch {
+      return [];
+    }
+  }
+  /** Receipts past the detail window become per-day counts (indexed on created_at, so cheap). */
+  function rollUpReceipts() {
+    if (readOnly) return;
+    rolledUpAt = clock().getTime();
+    const cutoff = new Date(rolledUpAt - RECEIPT_DETAIL_DAYS * 86_400_000).toISOString();
+    atomically(() => {
+      const expired = prepare(
+        `SELECT substr(created_at, 1, 10) AS day, recipient, purpose, status, COUNT(*) AS receipts,
+           SUM(characters) AS characters FROM receipts WHERE created_at < ? GROUP BY 1, 2, 3, 4`,
+      ).all(cutoff) as Row[];
+      if (!expired.length) return;
+      const counts = new Map(readReceiptCounts().map((c) => [`${c.day}|${c.recipient}|${c.purpose}|${c.status}`, c]));
+      for (const r of expired) {
+        const key = `${r.day}|${r.recipient}|${r.purpose}|${r.status}`;
+        const prior = counts.get(key);
+        counts.set(key, {
+          day: String(r.day),
+          recipient: String(r.recipient),
+          purpose: String(r.purpose),
+          status: String(r.status),
+          receipts: (prior?.receipts ?? 0) + Number(r.receipts),
+          characters: (prior?.characters ?? 0) + Number(r.characters),
+        });
+      }
+      const sorted = [...counts.values()].sort(
+        (a, b) =>
+          a.day.localeCompare(b.day) ||
+          a.recipient.localeCompare(b.recipient) ||
+          a.purpose.localeCompare(b.purpose) ||
+          a.status.localeCompare(b.status),
+      );
+      prepare(
+        "INSERT INTO preferences VALUES ('receiptCounts', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      ).run(JSON.stringify(sorted));
+      prepare("DELETE FROM receipts WHERE created_at < ?").run(cutoff);
+    });
+  }
+  /** The reader appends; the writer renames the log aside, imports it in one transaction, deletes it. */
+  function importReaderReceipts(): number {
+    if (readOnly || !file) return 0;
+    const log = readerReceiptLogPath(path);
+    const pending = `${log}.importing`;
+    try {
+      if (!existsSync(pending) && existsSync(log)) renameSync(log, pending);
+    } catch {
+      return 0; // the reader holds it this instant: the next open or tick imports it
+    }
+    if (!existsSync(pending)) return 0;
+    const lines = readFileSync(pending, "utf8").split("\n");
+    let imported = 0;
+    atomically(() => {
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          addReceiptRow(JSON.parse(line) as EgressReceipt);
+          imported++;
+        } catch {
+          // A torn or malformed line is skipped; it can only lose a record, never widen one.
+        }
+      }
+    });
+    rmSync(pending, { force: true });
+    return imported;
+  }
+  // end owner: platform-fix
+  const api: LocalStore = {
     learning,
+    notes, // owner: notes
     courseIntelligence() {
       return prepare(
           "SELECT payload FROM course_intelligence p WHERE version=(SELECT MAX(version) FROM course_intelligence WHERE id=p.id) ORDER BY id",
@@ -936,13 +1112,8 @@ export function createStore(
           Number(complete),
           JSON.stringify(details),
         );
-        prepare("INSERT INTO source_observations VALUES (?,?,?,?,?)").run(
-          source.id,
-          observedAt,
-          status,
-          Number(complete),
-          count,
-        );
+        // owner: platform-fix. source_observations and observations are no longer written: nothing
+        // reads them (sources, resources and field_observations carry the latest state).
         let seq = Number(
           prepare("SELECT value FROM counters WHERE name = 'change_seq'").get()
             ?.value ?? 0,
@@ -1055,11 +1226,6 @@ export function createStore(
             prepare(
               "INSERT INTO resource_versions (resource_id,version,content_hash,payload,captured_at,text_hash) VALUES (?,?,?,?,?,?)",
             ).run(id, version, hash, encodePayload(item), capturedAt, itemTextHash);
-          prepare("INSERT INTO observations VALUES (?,?,?,0)").run(
-            id,
-            observedAt,
-            version,
-          );
           // Latest observation per field only (D4); history was never read.
           for (const field of observedFields(observation))
             prepare(
@@ -1192,11 +1358,6 @@ export function createStore(
               prepare(
                 "UPDATE resources SET deleted=1,observed_at=? WHERE id=?",
               ).run(observedAt, id);
-              prepare("INSERT INTO observations VALUES (?,?,?,1)").run(
-                id,
-                observedAt,
-                row.version,
-              );
               passageIndex.remove(id);
               prepare(
                 `UPDATE jobs SET status='failed',error='Resource deleted.',lease_until=NULL,lease_token=NULL WHERE resource_id=? AND status IN ('pending','running')`,
@@ -1869,35 +2030,9 @@ export function createStore(
       }));
     },
     addReceipt(value) {
-      assertText(value.id, "receipt ID");
-      assertText(value.recipient, "receipt recipient");
-      assertText(value.purpose, "receipt purpose", 2000);
-      if (
-        // owner: T06: preview_required records a held request; nothing was sent.
-        !["blocked", "sent", "failed", "preview_required"].includes(value.status) ||
-        !Number.isSafeInteger(value.characters) ||
-        value.characters < 0 ||
-        !Array.isArray(value.categories) ||
-        !value.categories.every((item) => typeof item === "string") ||
-        !Array.isArray(value.resourceIds) ||
-        !value.resourceIds.every((item) => typeof item === "string")
-      )
-        throw new Error("Invalid egress receipt.");
-      // This also rejects receipts from operations that were in flight when the user purged the store.
-      if (value.resourceIds.some((id) => !liveResource(id))) return;
-      prepare(
-        `INSERT INTO receipts VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO NOTHING`,
-      ).run(
-        value.id,
-        value.recipient,
-        value.purpose,
-        JSON.stringify(value.categories),
-        JSON.stringify(value.resourceIds),
-        value.characters,
-        value.status,
-        timestamp(value.createdAt),
-      );
+      addReceiptRow(value);
+      // owner: platform-fix. At most one retention sweep a day while the app stays open.
+      if (clock().getTime() - rolledUpAt > 86_400_000) rollUpReceipts();
     },
     receipts() {
       return (
@@ -1915,15 +2050,29 @@ export function createStore(
       }));
     },
     purge() {
-      transaction(() => {
-        // Every FTS index first, then every table in sqlite_schema, children before parents, so no
-        // cascade walks a child table per parent row. Nothing is listed by hand (P2 synthesis C3).
-        for (const fts of ftsTables())
-          db.exec(`INSERT INTO "${fts}"("${fts}") VALUES ('delete-all')`);
-        for (const table of purgeOrder()) db.exec(`DELETE FROM "${table}"`);
-        if (prepare("SELECT 1 FROM sqlite_schema WHERE name = 'sqlite_sequence'").get())
-          db.exec("DELETE FROM sqlite_sequence");
-      });
+      // owner: platform-fix. Foreign keys off for the purge (the pragma is a no-op inside a
+      // transaction, so it is set around it): every table empties whole, and no per-row FK check
+      // or cascade runs. secure_delete stays on; the VACUUM below rewrites the file regardless.
+      db.exec("PRAGMA foreign_keys = OFF");
+      try {
+        transaction(() => {
+          // Every FTS index first, then every table in sqlite_schema, children before parents. Nothing
+          // is listed by hand (P2 synthesis C3).
+          for (const fts of ftsTables())
+            db.exec(`INSERT INTO "${fts}"("${fts}") VALUES ('delete-all')`);
+          for (const table of purgeOrder()) db.exec(`DELETE FROM "${table}"`);
+          if (prepare("SELECT 1 FROM sqlite_schema WHERE name = 'sqlite_sequence'").get())
+            db.exec("DELETE FROM sqlite_sequence");
+        });
+      } finally {
+        db.exec("PRAGMA foreign_keys = ON");
+      }
+      // The reader's receipt log names resources too: it goes with them.
+      if (file) {
+        const log = readerReceiptLogPath(path);
+        for (const f of [log, `${log}.importing`]) rmSync(f, { force: true });
+      }
+      // end owner: platform-fix
       passageIndex.invalidate();
       // Compact the SQLite files. A reader holding a snapshot keeps its pages until it ends.
       db.exec(
@@ -2001,5 +2150,14 @@ export function createStore(
         ).all(course.accountScope, course.courseId) as Row[]
       ).map((row) => ({ ...readResource(row), scope: String(row.source_scope) }));
     },
+    // owner: platform-fix
+    importReaderReceipts,
+    receiptCounts: readReceiptCounts,
+    // end owner: platform-fix
   };
+  // owner: platform-fix. The writer takes in what the reader logged while it was away. (The retention
+  // sweep runs with the next receipt, never at open, so opening or migrating keeps every row.)
+  if (!readOnly) importReaderReceipts();
+  return api;
+  // end owner: platform-fix
 }
