@@ -25,7 +25,7 @@
   outline-offset: 2px;
 }
 .course-card-name {
-  font: 400 var(--magic-type-work-title)/1.4 var(--magic-font-editorial);
+  font: 500 var(--magic-type-work-title)/1.4 var(--magic-font-editorial);
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
@@ -71,7 +71,7 @@
   border-top: 1px solid var(--border);
 }
 .course-section h2 {
-  font: 400 var(--magic-type-section)/1.4 var(--magic-font-editorial);
+  font: 500 var(--magic-type-section)/1.4 var(--magic-font-editorial);
   margin: 0 0 12px;
   display: flex;
   align-items: center;
@@ -196,6 +196,6 @@
 }
 
 .desktop-courses .page-heading { padding: 0 0 20px; }
-.desktop-courses h1 { font:400 26px/1.35 var(--magic-font-editorial); }
+.desktop-courses h1 { font:500 26px/1.35 var(--magic-font-editorial); }
 .desktop-course-list button.active { background: var(--magic-fill-shell-selected); }
 @media(max-width:650px) { .course-fact { grid-template-columns: 1fr; gap: 6px; } }

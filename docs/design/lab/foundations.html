@@ -26,9 +26,9 @@
   </section>
 
   <section aria-labelledby="type-title">
-    <div class="section-heading"><h2 id="type-title">02 / Two voices, one hierarchy</h2><p>Cooper Light BT supplies editorial emphasis. Geist carries reading and operation.</p></div>
+    <div class="section-heading"><h2 id="type-title">02 / Two voices, one hierarchy</h2><p>Lora Medium supplies editorial emphasis. Geist carries reading and operation.</p></div>
     <div class="type-grid">
-      <article class="type-sample"><p class="sample-label">COOPER LIGHT BT · 400</p><div class="editorial-stack"><span class="wordmark">Magic Canvas</span><h3>Upcoming</h3><p class="work-title">Research outline</p><p class="study-title">Hear trees and graphs explained</p></div><p class="spec-note">Identity 19px · section 21px · work 19px · study 18px.<br>Compact emphasis; normal letter spacing.</p></article>
+      <article class="type-sample"><p class="sample-label">LORA MEDIUM · 500</p><div class="editorial-stack"><span class="wordmark">Magic Canvas</span><h3>Upcoming</h3><p class="work-title">Research outline</p><p class="study-title">Hear trees and graphs explained</p></div><p class="spec-note">Identity 19px · section 21px · work 19px · study 18px.<br>Compact emphasis; normal letter spacing.</p></article>
       <article class="type-sample"><p class="sample-label">GEIST · 400 / 500</p><p class="reading-sample"><strong>CS 220’s next lecture</strong> has three assigned readings. Review testing, APIs and debugging before tomorrow’s class.</p><div class="metadata-sample"><span>CS 220 · Assigned readings</span><span>Tomorrow · 1 PM</span></div><div class="operation-sample"><span>Review assigned readings</span><i data-icon="arrow-right"></i></div><p class="spec-note">Prose 16px / 1.72 · operation 13px · metadata 11–12px.<br>Selective weight establishes the next level.</p></article>
     </div>
   </section>
@@ -55,8 +55,9 @@
 </main>
 <script>
 (async()=>{
-  const exact = await window.magicFontsReady;
-  document.getElementById('font-state').textContent=exact?'Exact local Cooper Light BT + Geist loaded':'Fallback fonts — visual match not verified';
+  const fonts = await window.magicFontsReady;
+  const exact = fonts.exact;
+  document.getElementById('font-state').textContent=window.magicFontLabel(fonts);
   document.documentElement.dataset.fonts=exact?'exact':'fallback';
   const icons=[...document.querySelectorAll('[data-icon]')];
   await Promise.all(icons.map(async(el)=>{try{const response=await fetch(`vendor/${el.dataset.icon}.svg`);if(!response.ok)throw Error('Missing icon');const doc=new DOMParser().parseFromString(await response.text(),'image/svg+xml');const svg=doc.documentElement;svg.removeAttribute('width');svg.removeAttribute('height');svg.setAttribute('class','glyph');svg.setAttribute('aria-hidden','true');el.replaceWith(svg)}catch{el.textContent='';el.setAttribute('data-icon-error','true')}}));

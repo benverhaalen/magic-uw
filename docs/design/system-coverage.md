@@ -33,6 +33,6 @@ The original Home is a visual anchor, not a full behavior test. Document review 
 
 D27 accepts the foundation sheet's palette/type pairing for further component refinement. It does not approve every candidate boundary or prove complete screens. Start with the [foundation gallery](lab/foundations.html), then the [working component lab](lab/index.html). Local font configuration is documented in [validation](validation-v3.md); fallback is not a font match.
 
-Shared semantic CSS values now have actual consumers, including general command roles aliased by the earlier review names. A root browser check changed the shared command fill temporarily: six gallery consumers changed and restored together. Exact Cooper/Geist loads were inspected. This demonstrates those consumers, not every future framework.
+Shared semantic CSS values now have actual consumers, including general command roles aliased by the earlier review names. A root browser check changed the shared command fill temporarily: six gallery consumers changed and restored together. Exact Cooper/Geist loads were inspected (before the September 27 Lora Medium change). This demonstrates those consumers, not every future framework.
 
 The rejected generated action/overlay images remain rejected. Their guessed fonts/icons and missing context exposed transfer failures; none replace the Home baseline. Current component tests are isolated and synthetic. Home, Calendar, website and real Electron integration retain the limits above.

@@ -12,11 +12,9 @@ function read(key, fallback = "") {
 function save(key, value) {
   localStorage.setItem(storePrefix + key, value);
 }
-window.magicFontsReady.then((loaded) => {
-  $("font-state").textContent = loaded
-    ? "exact local fonts loaded"
-    : "fallback fonts · not a visual match";
-  document.documentElement.dataset.fonts = loaded ? "exact" : "fallback";
+window.magicFontsReady.then((state) => {
+  $("font-state").textContent = window.magicFontLabel(state);
+  document.documentElement.dataset.fonts = state.exact ? "exact" : "fallback";
 });
 // Course identity is supplied once from the object, never its row position.
 const courses = {

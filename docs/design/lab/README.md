@@ -4,9 +4,9 @@ An isolated HTML/CSS/JS specimen, not production Home or a Calendar page. Synthe
 
 Serve this repository using a normal static server and open `docs/design/lab/index.html`. It imports `../tokens.css`; do not copy this stylesheet into a second theme. JavaScript here is a small fixture controller, not domain/data plumbing or a React component package.
 
-## Private local fonts
+## Fonts
 
-Without configuration the lab labels its font fallback honestly. On localhost, pass `?fontBase=/work/fonts/` when that served directory contains the supplied `cooperl.ttf` and `Geist-Variable.woff2`. Alternatively set `window.MAGIC_LOCAL_FONT_BASE` before loading `local-fonts.js`. The loader rejects cross-origin paths and non-localhost hosts. No font binary or embedded font data is included. Production distribution requires separate permission/configuration. `document.documentElement.dataset.fonts` reports `exact` only after both FontFaces load.
+`local-fonts.js` loads Lora Medium (500) by default from the repository's `packages/ui/assets/fonts` (SIL OFL), so serve the repository root. Geist stays private: on localhost, pass `?fontBase=/work/fonts/` when that served directory contains `Geist-Variable.woff2`, or set `window.MAGIC_LOCAL_FONT_BASE` before loading `local-fonts.js`. The Geist path rejects cross-origin and non-localhost hosts. The status label names which faces loaded, and `document.documentElement.dataset.fonts` reports `exact` only after both Lora and Geist load.
 
 ## Reusable roles and structure
 

@@ -6,7 +6,7 @@ Start with [DESIGN.md](../../DESIGN.md), then load only the recipe relevant to t
 
 1. State the audience, useful result, normal entry and return path. Identify facts, source versions and operations the application really supports.
 2. Read the matching [recipe](component-recipes.md) and [behavior contract](component-contracts.md). For generated copy or information hierarchy, use [content design](content-design.md).
-3. Import [shared tokens](tokens.css). Inspect the matching implementation in [the lab](lab/index.html) and its [markup/state API](lab/README.md). Supply permitted Cooper Light BT and Geist assets; preserve Lucide geometry and license. Do not copy the documentation navigation into a product page.
+3. Import [shared tokens](tokens.css). Inspect the matching implementation in [the lab](lab/index.html) and its [markup/state API](lab/README.md). Use the bundled Lora Medium and its OFL from `packages/ui/assets/fonts` (declared in `packages/ui/src/fonts.css`) and supply permitted Geist; preserve Lucide geometry and license. Do not copy the documentation navigation into a product page.
 4. Implement in the target framework using its native component, routing and state mechanisms. Lab JavaScript is synthetic fixture logic, not application data plumbing. Keep domain adapters and page layout separate from reusable visual roles.
 5. Verify the actual journey, including a relevant failure, reversal and return. Compare the rendered component to the Home language and current sheet. A new pattern needs evidence before it becomes a shared rule.
 

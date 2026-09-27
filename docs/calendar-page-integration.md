@@ -29,7 +29,7 @@ Find study time is the only proposal entry. Date navigation does not create prop
 
 - Typecheck/build passed in the isolated desktop checkout with the separately reviewed course-extraction startup prerequisite.
 - Eleven scoped tests cover month/year boundaries, leap days, 23/25-hour local dates, exclusive all-day ends, overnight spans, missing end, source-timezone conversion, repeated clock hour, source duplication/conflicting dates/account isolation, accepted-block identity, and proposal range.
-- A hidden Electron host composed this actual page with the current desktop shell, exact privately supplied Cooper Light and Geist, and an isolated backup of the student's real captured Canvas database. Renderer → preload → worker → SQLite snapshot and acceptance worked with no renderer exceptions.
+- A hidden Electron host composed this actual page with the current desktop shell, exact privately supplied Cooper Light and Geist (before the September 27 Lora Medium change), and an isolated backup of the student's real captured Canvas database. Renderer → preload → worker → SQLite snapshot and acceptance worked with no renderer exceptions.
 - That host demonstrated source-detail callback → return focus/scroll, expanded-day return focus, accepted-study inspection return focus, accepted block after restart, removal → Undo after a second restart, and injected save rejection with no write followed by successful retry.
 - The test host's resource detail was deliberately minimal. Full production ResourceDetail / normal sidebar entry, original-source opening, and whole-app Back integration still require the driver's integrated native check. Private screenshots/coursework/font files are not committed.
 

@@ -26,7 +26,7 @@ Wizard mascot logo pack (v0.1, working name "Magic Canvas").
 - Beard Cream `#f7efdc`
 - Nose Peach `#ee9f7c`
 
-Wordmark: Fredoka SemiBold. Clear space: one eye-width on every side. Minimum: full mark 48px tall; below that use the head/favicon.
+Wordmark: Lora Medium (500; bundled in `packages/ui/assets/fonts`, replaced Fredoka SemiBold on September 27). Clear space: one eye-width on every side. Minimum: full mark 48px tall; below that use the head/favicon.
 
 ## Animation
 

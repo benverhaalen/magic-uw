@@ -7,7 +7,7 @@ Recorded September 26, 2026 from Ben's Magic Canvas design conversation. The ini
 | D01 accepted composition | “the thing we made earlier is like 95% of what id want that static home page to look like essentially.” | Preserve the explicit Home hierarchy and use its feel as strong taste evidence. Exact geometry and known flaws remain subject to system calibration (D23). 95% is a preference judgment. The synthetic reference substitutes private copy only; it is not a newly approved screen. |
 | D02 accepted purpose | “recall the goal of the home too. this is our flagship for the hackathon. this is what is supposed to win us over every other team doing a study tool” | Judge the complete evidence-to-work journey. Generic chat/cards or visual novelty alone do not prove that advantage. |
 | D03 accepted rebuild, interpretation explicit | “i want clean room of where things are and such.” | Future builders receive image/behavior contracts, not the exploratory mock HTML/CSS. Reuse the existing app's safe platform plumbing. Preserve explicit layout decisions, but do not freeze incidental geometry or criticized details. D23 clarifies system calibration before product reconstruction; this is not a legal clean-room claim. |
-| D04 accepted type and icons | “cooper light is just a placeholder for now its just for the ui mocks dont worry about licensing yet ill worry about finding the exact fonts i want”; “lucide has the best icons personally.” | Latest supplied Cooper Light BT supersedes Forrest. Use Geist for readability; its tracking is flexible. Exact private fonts support local mocks, with production distribution unresolved. Lucide is the selected family; small glyphs still need adequate interactive targets. |
+| D04 accepted type and icons | “cooper light is just a placeholder for now its just for the ui mocks dont worry about licensing yet ill worry about finding the exact fonts i want”; “lucide has the best icons personally.” | Latest supplied Cooper Light BT superseded Forrest; Lora Medium superseded Cooper on September 27 (see [Editorial face](#editorial-face--recorded-september-27-2026-original-message-timestamp-unknown)). Use Geist for readability; its tracking is flexible. Lora Medium and its OFL are now bundled; Geist remains privately supplied. Lucide is the selected family; small glyphs still need adequate interactive targets. |
 | D05 accepted serif scope | “you can use slightly more serif than those like the briefing and the upcoming and stuff can be serif.”; “also make the "Home" at the top in cooper.” | Serif is not restricted to headings by an external skill. Identity, page title and selective section/action text may use it; prolonged prose and small control text must remain readable. |
 | D06 accepted structure / newer exception | “Yes, one left sidebar and one open pane”; “also id probably anchor the day calendar view to the bottom right and then the today tasks on the top right” | One navigation sidebar; Home's right Today rail is a later explicit exception. It is time context, not another navigation column. |
 | D07 accepted latest navigation | “on the side with the Home and Courses, My UW, and Calendar should be things too.” | Add these destinations to the design contract. Calendar's accepted week/month scope is in D17; historical screenshots omit later entries. |
@@ -30,7 +30,7 @@ If two people disagree, tell the affected people what conflicts, with their actu
 
 ## Transferable taste hypotheses — not global rules
 
-Ben repeatedly favors familiar navigation with distinctive, controlled identity; meaningful hierarchy over decoration; useful context already assembled; readable compactness; consistent details across nested surfaces; and continuity through interruptions. For a new project, test these hypotheses against its audience and task. Cooper, ember, this sidebar and the student Home layout remain project-specific choices.
+Ben repeatedly favors familiar navigation with distinctive, controlled identity; meaningful hierarchy over decoration; useful context already assembled; readable compactness; consistent details across nested surfaces; and continuity through interruptions. For a new project, test these hypotheses against its audience and task. The editorial serif (now Lora Medium), ember, this sidebar and the student Home layout remain project-specific choices.
 
 **Past reviewer failure:** a compressed handoff over-restricted serif use; an Opus critique called a permitted treatment a violation. The corrected review withdrew it after seeing exact quotes. Therefore consequential judge packets include controlling excerpts and their scope. Quote accuracy and task fidelity are review requirements alongside visual craft.
 
@@ -136,7 +136,7 @@ Ben, active build conversation, relayed verbatim by the driver:
 
 > “Use My Magic UW”
 
-The visible product name is **My Magic UW**, preserving Cooper and no logo. Internal application identity and user-data paths remain stable.
+The visible product name is **My Magic UW**, preserving the editorial wordmark face (Cooper when recorded; Lora Medium after the font decision below) and no logo. Internal application identity and user-data paths remain stable.
 
 > “you know when a component has like a vertical line on the left side. never do that. also use more color like the original picture”
 
@@ -158,3 +158,11 @@ Corrections change governing DESIGN, affected content/component contracts and ac
 > “also think of edge cases, like if its saturday or something and there is no events on the calendar that day, should it show the calendar? i dont think so. i think it should have a small message instead. also never use any em dashes in the ui ever. continue to hand off to separate agents to have them critique the current state against the ref home photo that everything is based off of”
 
 Home’s empty timed schedule uses a compact honest message. Deadlines and all-day entries remain; partial/stale/missing coverage is distinguished, and full Calendar week/month grids remain. No authored UI em dashes. Preserve raw source evidence and audit its separate display handling. Independent critiques compare actual runtime captures with the original Home anchor; they do not substitute for source correctness or live interaction tests.
+
+### Editorial face — recorded September 27, 2026 (original message timestamp unknown)
+
+Ben supplied `Lora-Medium.ttf` with its OFL, relayed verbatim by the driver:
+
+> “replace the cooper font with this font across everything in the app including website and everything mentioning cooper and then push the changes”
+
+**Decision:** supplied, unmodified Lora Medium at its true weight 500 replaces Cooper Light BT in the same editorial roles: wordmark, page title and selective section, work and study titles. It also replaces the marketing drafts' display faces. Geist, sizes, geometry, color, icons and branding are unchanged. The binary and OFL live in `packages/ui/assets/fonts`; bundling follows the OFL (unmodified, copyright and license retained). This supersedes D04's private-font arrangement for the editorial face; D04 and D05 quotes remain the record of serif scope. Screenshots, receipts and the Home reference JPEG made before this change show Cooper; they remain composition and color evidence, not Lora evidence. Recapture before claiming Lora wrapping or fit.

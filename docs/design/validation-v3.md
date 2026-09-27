@@ -6,12 +6,12 @@
 
 ## Reproduce
 
-Serve the repository through a local static server and open `docs/design/lab/foundations.html` or `index.html`. Add `?fontBase=<same-origin-local-font-directory>/` with separately permitted `cooperl.ttf` and `Geist-Variable.woff2`. No fonts are bundled. The loader permits local same-origin use only and reports fallback; fallback does not validate visual identity. Production needs its own permitted asset delivery. All coursework and saves here are synthetic/local fixtures.
+Serve the repository through a local static server and open `docs/design/lab/foundations.html` or `index.html`. Lora Medium loads from `packages/ui/assets/fonts` by default. Add `?fontBase=<same-origin-local-font-directory>/` with a separately permitted `Geist-Variable.woff2`. The Geist path permits local same-origin use only; the loader reports which faces loaded, and fallback does not validate visual identity. All coursework and saves here are synthetic/local fixtures.
 
 ## Evidence inspected by the integrator
 
 - Original Home compared against the component screenshot. Typography, icons and shared shell correction were checked; inconsistent time wrapping, oversized detached actions and local palette overrides were sent for repair.
-- Both exact font faces loaded in a separate browser session in the lab and foundation gallery.
+- Both exact font faces (then Cooper Light BT and Geist) loaded in a separate browser session in the lab and foundation gallery.
 - Six gallery command-fill consumers all changed when the shared token changed, then all restored when removed. This checks a real dependency, not just token declarations.
 - Dialog opened; Adjust time focused its date field; Escape closed and returned to the trigger. After the final repair, the integrator verified invalid end-time validation, Escape dismissal, and reopening: the draft remained, stale errors and aria-invalid cleared, and initial focus returned to the explanatory title.
 - A note survived a simulated save failure with its exact text. Retry produced success and the inspected localStorage value.

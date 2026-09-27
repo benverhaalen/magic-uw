@@ -5,12 +5,14 @@
  * v3 calibrates shell stops against the original Home pixels; still a candidate.
  * This is not a fully approved universal theme. Candidate border/tag values
  * preserve the current reference while local refinements remain open.
- * No font files are provided: "Cooper Light" names the mock's private
- * Cooper Light BT face alias. Fallbacks are usable, not accepted matches.
+ * Editorial face: supplied Lora Medium at its true weight 500, bundled with
+ * its OFL in packages/ui/assets/fonts and declared in packages/ui/src/fonts.css
+ * (September 27; replaced the former private editorial face). Geist is not
+ * bundled. Fallbacks are usable, not accepted matches.
  * Map/import in a later implementation task; keep one-off geometry local.
  */
 :root {
-  --magic-font-editorial: "Cooper Light", Georgia, serif;
+  --magic-font-editorial: "Lora", Georgia, serif;
   --magic-font-interface: Geist, system-ui, sans-serif;
   --magic-tracking: normal;
   --magic-type-identity: 1.1875rem;

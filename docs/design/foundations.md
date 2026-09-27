@@ -4,7 +4,7 @@ Version 3. Magic's established Home is the language reference; these rules prese
 
 ## Concrete identity gate
 
-The language consists of concrete assets and construction as well as relationships. Desktop calibration starts at the reference's 1440 × 900 view with its observed 234px sidebar, compact 55px top region, 13px workspace corners and narrow outer wrap. Load actual Cooper Light BT/Geist and use real Lucide glyphs, with the observed 1.65 stroke seed. Reproduce the layered ember gradient and continuous ivory workspace through the shared tokens. These measurements are comparison anchors; changed viewport/content requires deliberate adaptation, not an arbitrary replacement shell.
+The language consists of concrete assets and construction as well as relationships. Desktop calibration starts at the reference's 1440 × 900 view with its observed 234px sidebar, compact 55px top region, 13px workspace corners and narrow outer wrap. Load the bundled Lora Medium (500) and supplied Geist and use real Lucide glyphs, with the observed 1.65 stroke seed. Reproduce the layered ember gradient and continuous ivory workspace through the shared tokens. These measurements are comparison anchors; changed viewport/content requires deliberate adaptation, not an arbitrary replacement shell.
 
 Before presenting a new desktop family, compare its enclosing frame to Home: font shapes and rhythm, glyph family/optical weight, sidebar proportions and selected state, wrap thickness and workspace curves. An overlay on a generic warm frame is insufficient. Do not tune new components around fallback metrics or count generated lettering/icons as exact assets. A rejected imitation cannot become the new baseline. Website composition remains separate, but still needs the actual permitted identity assets and a demonstrated visual transfer.
 
@@ -12,11 +12,11 @@ Before presenting a new desktop family, compare its enclosing frame to Home: fon
 
 | Role | Magic application | Adaptation rule |
 | --- | --- | --- |
-| Identity / editorial emphasis | Supplied Cooper Light BT for identity, the desktop page title and selected editorial/action text | Retain its contrast with Geist. Home explicitly permits serif in Briefing and Upcoming; this is not a requirement to make all prose serif. |
+| Identity / editorial emphasis | Supplied Lora Medium at weight 500 (`packages/ui/assets/fonts`, OFL; replaced Cooper Light BT September 27) for identity, the desktop page title and selected editorial/action text | Retain its contrast with Geist. Home explicitly permits serif in Briefing and Upcoming; this is not a requirement to make all prose serif. |
 | Reading / operation | Geist for sustained reading, controls and metadata | Preserve readable size, normal tracking and clear hierarchy under long content and enlarged text. |
 | Grouping | Close label/value or action groups; more space between different jobs | Repeat spacing when its meaning repeats. Start new geometry from a small scale such as 4/8/12/16/24/32px; do not round accepted relationships to satisfy a scale. |
 
-Use the actual fonts before judging wrapping and balance. Fallbacks can exercise behavior but cannot validate the visual match. Private font binaries stay outside Git; production distribution remains unresolved. Position, spacing, weight and selective color establish hierarchy before a larger heading does. A website may need a larger editorial scale than the app; compare the same type relationship, not identical point sizes. Never shrink type to preserve a convenient row height.
+Use the actual fonts before judging wrapping and balance. Fallbacks can exercise behavior but cannot validate the visual match. Lora Medium and its OFL are tracked in `packages/ui/assets/fonts`; the Geist binary stays outside Git and its production distribution remains unresolved. Position, spacing, weight and selective color establish hierarchy before a larger heading does. A website may need a larger editorial scale than the app; compare the same type relationship, not identical point sizes. Never shrink type to preserve a convenient row height.
 
 For image-to-code, record type size/weight/line-height relationships, text-to-action spacing, surface/ink pairs and boundary purposes before building. Compare an actual render at a known viewport; name the discrepancy and revise its cause. This adapts [Taste's extraction mechanism](../../.agents/skills/magic-design/references/source-adapters.md), not its compulsory generation quotas or landing-page defaults.
 

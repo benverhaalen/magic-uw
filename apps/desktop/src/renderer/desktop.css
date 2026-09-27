@@ -1,5 +1,4 @@
 /* Desktop adapter: geometry is local; shared semantic values come from @magic/ui. */
-@font-face { font-family: 'Cooper Light'; src: url('../private-fonts/cooperl.ttf') format('truetype'); font-weight: 400; font-display: swap; }
 @font-face { font-family: Geist; src: url('../private-fonts/Geist-Variable.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
 :root { font-family: var(--magic-font-interface); font-size: 16px; color: var(--magic-ink); --border: var(--magic-line-quiet); --muted: var(--magic-ink-muted); --surface: var(--magic-surface-quiet); }
 .desktop-shell { --sidebar-width: 234px; display: grid; grid-template: 55px minmax(0,1fr) / var(--sidebar-width) minmax(0,1fr); height: 100dvh; padding: 0 10px 10px 0; background: var(--magic-fill-shell); overflow: hidden; }
@@ -8,10 +7,10 @@
 .desktop-history { display: flex; gap: 2px; }
 .desktop-chrome button { -webkit-app-region: no-drag; width: 32px; height: 32px; border: 0; border-radius: 5px; background: transparent; display: grid; place-items: center; color: inherit; }
 .desktop-chrome button:hover:not(:disabled) { background: var(--magic-fill-shell-hover); }
-.desktop-page-title { position: absolute; left: 50%; transform: translateX(-50%); max-width: 40%; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; font: 400 var(--magic-type-page-title)/1.2 var(--magic-font-editorial); pointer-events: none; }
+.desktop-page-title { position: absolute; left: 50%; transform: translateX(-50%); max-width: 40%; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; font: 500 var(--magic-type-page-title)/1.2 var(--magic-font-editorial); pointer-events: none; }
 .desktop-state { margin-left: auto; font-size: 11px; opacity: .9; }
 .desktop-sidebar { min-height: 0; display: flex; flex-direction: column; color: var(--magic-ink-on-shell); padding: 12px 12px 4px; }
-.desktop-brand { font: 400 var(--magic-type-identity)/1.4 var(--magic-font-editorial); padding: 0 8px 20px; white-space: normal; overflow-wrap: anywhere; }
+.desktop-brand { font: 500 var(--magic-type-identity)/1.4 var(--magic-font-editorial); padding: 0 8px 20px; white-space: normal; overflow-wrap: anywhere; }
 .desktop-sidebar nav { overflow-y: auto; min-height: 0; scrollbar-width: thin; }
 .desktop-nav-row { display: flex; align-items: center; position: relative; }
 .desktop-nav { width: 100%; display: flex; gap: 11px; align-items: center; border: 0; border-radius: 6px; padding: 10px 9px; background: transparent; font-size: 13px; text-align: left; color: inherit; }
@@ -32,7 +31,7 @@
 .is-collapsed .desktop-nav { justify-content: center; padding: 12px 8px; }
 .desktop-sidebar button:focus-visible,.desktop-chrome button:focus-visible { outline-color: var(--magic-focus-on-shell); }
 .desktop-workspace { background: var(--magic-surface-workspace); border-radius: var(--magic-radius-workspace); min-width: 0; min-height: 0; overflow: auto; scrollbar-gutter: stable; }
-.desktop-workspace h1,.desktop-workspace h2 { font-family: var(--magic-font-editorial); font-weight: 400; letter-spacing: normal; }
+.desktop-workspace h1,.desktop-workspace h2 { font-family: var(--magic-font-editorial); font-weight: 500; letter-spacing: normal; }
 .desktop-workspace h1 { font-size: 26px; }
 .desktop-workspace h2 { font-size: var(--magic-type-section); }
 .desktop-workspace button:focus-visible,.desktop-workspace a:focus-visible { outline: 2px solid var(--magic-focus); outline-offset: 3px; }
@@ -67,7 +66,7 @@
 .tone-coral { background: var(--magic-fill-identity-coral); color: var(--magic-ink-identity-coral); }
 .home-work-meta { font-size: 10px; line-height: 1.4; margin-bottom: 3px; font-weight: 600; }
 .home-work-meta span { margin-left: 9px; font-weight: 400; }
-.home-work-row h3 { font: 400 var(--magic-type-work-title)/1.25 var(--magic-font-editorial); margin: 0; overflow-wrap: anywhere; }
+.home-work-row h3 { font: 500 var(--magic-type-work-title)/1.25 var(--magic-font-editorial); margin: 0; overflow-wrap: anywhere; }
 .home-work-due { text-align: right; display: grid; gap: 4px; font-size: 11px; flex-shrink: 0; }
 .home-work-due strong { font-size: 12px; font-weight: 550; }
 .home-work-row>svg { width: 14px; flex: 0 0 14px; }
@@ -76,7 +75,7 @@
 .home-study-action { padding: 15px; border-radius: var(--magic-radius-card); background: var(--magic-fill-study); color: var(--magic-ink-study); text-decoration: none; min-height: 130px; }
 .home-study-action:nth-child(even) { background: var(--magic-fill-study-secondary); }
 .home-study-action>span { font-size: 10px; }
-.home-study-action h3 { font: 400 var(--magic-type-study-title)/1.3 var(--magic-font-editorial); margin: 17px 0 8px; }
+.home-study-action h3 { font: 500 var(--magic-type-study-title)/1.3 var(--magic-font-editorial); margin: 17px 0 8px; }
 .home-study-action p { font-size: 11px; margin: 0 0 9px; }
 .home-study-action>div { display: flex; justify-content: space-between; gap: 12px; font-size: 10px; }
 .home-empty { font-size: 14px; color: var(--magic-ink-muted-strong); line-height: 1.65; margin: 0; }
@@ -108,7 +107,7 @@
 .desktop-workspace .resource-detail .facts dt { font-size: 11px; color: var(--magic-ink-muted); }
 .desktop-workspace .resource-detail .facts dd { font-size: 13px; margin: 4px 0 0; }
 .desktop-workspace .resource-detail .detail-section { border: 0; margin: 28px 0; padding: 0; }
-.desktop-workspace .resource-detail .detail-section h3 { font: 400 var(--magic-type-section)/1.3 var(--magic-font-editorial); margin-bottom: 15px; }
+.desktop-workspace .resource-detail .detail-section h3 { font: 500 var(--magic-type-section)/1.3 var(--magic-font-editorial); margin-bottom: 15px; }
 .desktop-workspace .resource-detail .source-text { font-size: 16px; line-height: 1.72; max-width: 850px; }
 .desktop-workspace .resource-detail .source-url { overflow-wrap: anywhere; font-size: 11px; margin-top: 12px; }
 .desktop-workspace .resource-detail .link-evidence { padding: 14px 0; border-bottom: 1px solid var(--magic-line-quiet); font-size: 13px; }

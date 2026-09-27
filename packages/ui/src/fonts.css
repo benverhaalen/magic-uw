@@ -1,0 +1,10 @@
+/* The one editorial face: supplied, unmodified Lora Medium (SIL OFL 1.1, see
+   ../assets/fonts/Lora-OFL.txt). Bundlers resolve this relative URL; static
+   hosts must ship the same file and license beside their stylesheet. */
+@font-face {
+  font-family: "Lora";
+  src: url("../assets/fonts/Lora-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}

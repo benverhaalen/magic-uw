@@ -1,5 +1,6 @@
-/* One canonical token source. Font binaries are supplied by the host, never bundled here. */
+/* One canonical token source plus the bundled Lora Medium editorial face. Geist stays host-supplied. */
 @import '../../../docs/design/tokens.css';
+@import './fonts.css';
 .magic-ui-action, .magic-ui-confirmation, .magic-ui-popover, .magic-ui-link, .magic-ui-disclosure {
   font-family: var(--magic-font-interface); color: var(--magic-ink); box-sizing: border-box;
 }
