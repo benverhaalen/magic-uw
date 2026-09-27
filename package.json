@@ -17,6 +17,8 @@
     "fixture": "tsx scripts/inspect-fixture.ts",
     "preview": "tsx scripts/preview.ts",
     "test:desktop": "pnpm build && tsx scripts/desktop-smoke.ts",
+    "test:e2e": "tsx scripts/build.ts && tsx --test --test-reporter=spec tests/e2e/*.e2e.ts",
+    "test:e2e:real": "tsx scripts/build.ts && tsx --test --test-reporter=spec tests/e2e/real/real-clients.real.ts",
     "magic:perf": "tsx evals/perf/run.ts",
     "eval:items": "tsx evals/items/run.ts"
   },
@@ -26,6 +28,7 @@
     "@types/react-dom": "19.3.0",
     "electron": "44.4.5",
     "esbuild": "0.27.0",
+    "playwright": "1.63.0",
     "tsx": "4.20.6",
     "typescript": "5.9.3",
     "vite": "8.3.1"
