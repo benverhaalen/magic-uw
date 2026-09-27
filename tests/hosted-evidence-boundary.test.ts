@@ -51,3 +51,19 @@ test('same course ID in another account cannot retain or scrub names in this acc
  assert.equal(scrubText('Jo Park and Alex Smith',rosterFor(store,'c','a')).text,'[STUDENT_1] and Alex Smith');
  store.close();
 });
+
+
+test('MCP search ranks using the same account-scoped projection it returns', async () => {
+  const store = createStore(':memory:');
+  const token = 'synthetic-search-token';
+  store.setConsent!({action:'grant',recipient:'claude',disclosureVersion:'setup-2026-09-26'}, '2026-09-26T12:00:00Z');
+  store.setPrivacy({...defaultPrivacy, mode:'selective_cloud', hostedProvider:'claude', shareCourseText:true});
+  store.setMcpGrant({id:'search',label:'synthetic',recipient:'claude',enabled:true,courses:[{accountScope:'a',courseId:'c'}],categories:['course_text'],tokenHash:createHash('sha256').update(token).digest('hex')});
+  store.ingest({source:{id:'a-material',label:'Material',kind:'canvas',accountScope:'a',courseId:'c',scope:'pages'},observedAt:'2026-09-26T12:00:00Z',status:'ok',complete:true,resources:[{externalId:'x',kind:'material',courseId:'c',courseName:'Course',title:'Method',text:'Alex Smith method describes the procedure.',url:'https://example.org/method',deadlines:[],policy:{mode:'unknown',evidence:''}}]});
+  store.recordAutoIdentity({accountScope:'b',courseId:'c',authors:['Alex Smith']});
+  const service = createMcpService(store,'search',token);
+  try {
+    const result = service.call('search',{query:'Alex'});
+    assert.match(JSON.stringify(result), /Alex Smith method/);
+  } finally { await service.server.close(); store.close(); }
+});

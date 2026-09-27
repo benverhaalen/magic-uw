@@ -302,8 +302,8 @@ export function createMcpService(
           score: terms.reduce(
             (n, t) =>
               n +
-              (out(r.title, r.courseId).toLowerCase().includes(t) ? 4 : 0) +
-              (out(r.text, r.courseId).toLowerCase().includes(t) ? 1 : 0),
+              (out(r.title, r.courseId, sourceMap.get(r.sourceId)?.accountScope).toLowerCase().includes(t) ? 4 : 0) +
+              (out(r.text, r.courseId, sourceMap.get(r.sourceId)?.accountScope).toLowerCase().includes(t) ? 1 : 0),
             0,
           ),
         }));
