@@ -31,6 +31,29 @@ import { buildSession } from "./session";
 import { gradeChoice, gradeNumeric, gradeTyped } from "./grade";
 import { conceptState } from "./knowledge/state";
 import { mistakesQueue } from "./mistakes";
+// owner: study-backend. Course practice ops (additive): cards, rounds, quizzes, topic states.
+import type { Grade as FsrsGrade } from "ts-fsrs";
+import type { ConceptModel } from "./knowledge/state";
+import type { Concept, LearningCard, LearningReview as LearningReviewRow } from "./store";
+import { ROUND_SIZES } from "./learn";
+import { newCard, review as reviewCard, undo as undoCard } from "./fsrs";
+import { STATE_LABEL, type ConceptStateName } from "./types";
+import {
+  EMPTY_POOL_MESSAGE,
+  type FlashcardReviewRow,
+  type FlashcardSessionView,
+  type FlashcardView,
+  type ModuleView,
+  type OpenPracticeSession,
+  type PracticePathData,
+  type PracticeResults,
+  type PracticeSection,
+  type PracticeSessionMeta,
+  type TopicChip,
+  type TopicResult,
+  type TopicStateView,
+} from "./router-types";
+// end owner: study-backend
 
 export interface StudyResource {
   id: string;
@@ -106,7 +129,42 @@ interface SessionState {
   sources: StudySource[];
   operations: Record<string, string>;
   blocks: { kind: string; reason: string; itemIds: string[] }[];
+  // owner: study-backend. Present only on course practice sessions (practice.target learn/test).
+  anchorIds?: string[];
+  mode?: "learn" | "test";
+  topicIds?: string[];
+  startStates?: Record<string, ConceptStateName>;
+  sections?: PracticeSection[];
 }
+/** owner: study-backend. A flashcard session: a queue of due cards reviewed with FSRS. */
+interface CardSessionState {
+  schema: "practice-cards-1";
+  anchorIds: string[];
+  accountScope: string;
+  courseId: string;
+  contextHash: string;
+  revision: number;
+  updatedAt: string;
+  topicIds: string[];
+  queue: { cardId: string; itemId: string }[];
+  reviewed: FlashcardReviewRow[];
+  operations: Record<string, string>;
+}
+function cardState(session: LearningSession): CardSessionState | null {
+  const p = session.plan as Partial<CardSessionState> | null;
+  return p?.schema === "practice-cards-1" && Array.isArray(p.queue) && Array.isArray(p.anchorIds)
+    ? (p as CardSessionState)
+    : null;
+}
+const CARD_KINDS = new Set(["card", "typed", "cloze", "numeric"]);
+const STATE_RANK: Record<ConceptStateName, number> = { not_seen: 0, iffy: 1, getting_there: 2, solid: 3 };
+const primaryConcept = (x: StoredItem) =>
+  x.tags.find((t) => t.primary)?.conceptId ?? x.tags[0]?.conceptId ?? "";
+const endOfLocalDay = (d: Date) => {
+  const e = new Date(d);
+  e.setHours(23, 59, 59, 999);
+  return e.toISOString();
+};
 function state(session: LearningSession): SessionState | null {
   const p = session.plan as Partial<SessionState> | null;
   return p?.schema === "study-session-1" &&
@@ -130,10 +188,11 @@ function eligible(
   item: StoredItem,
   c: StudyContext,
   courseRef: string,
+  allowCards = false,
 ): boolean {
   return (
     item.item.courseRef === courseRef &&
-    item.item.kind !== "card" &&
+    (allowCards || item.item.kind !== "card") &&
     item.item.status === "active" &&
     item.sources.length > 0 &&
     requiredChecks.every((name) =>
@@ -199,7 +258,9 @@ export function createLearningRouter(
   function scoped(session: LearningSession) {
     const p = state(session);
     if (!p || !deps) return null;
-    const c = deps.resolveContext(p.resourceId);
+    const c = p.anchorIds
+      ? courseContext(p.anchorIds)
+      : deps.resolveContext(p.resourceId);
     if (
       !c ||
       c.accountScope !== p.accountScope ||
@@ -294,6 +355,424 @@ export function createLearningRouter(
       plan: p.blocks,
     };
   }
+  // owner: study-backend. Course practice helpers. Every value comes from the store and code;
+  // nothing here reaches a runner, a pack or a provider (0 tokens).
+  /** The course scope: each anchor is authorized by the trusted resolver; all must share one course. */
+  function courseContext(anchorIds: string[]): StudyContext | null {
+    const anchors = [...new Set(anchorIds)].sort();
+    const all: StudyContext[] = [];
+    for (const a of anchors) {
+      const c = deps!.resolveContext(a);
+      if (!c) return null;
+      all.push(c);
+    }
+    const first = all[0];
+    if (
+      !first ||
+      all.some(
+        (c) =>
+          c.accountScope !== first.accountScope || c.courseId !== first.courseId,
+      )
+    )
+      return null;
+    const worst =
+      all.find((c) => c.availability === "blocked") ??
+      all.find((c) => c.availability === "stale") ??
+      first;
+    const resources = new Map<string, StudyResource>();
+    for (const c of all)
+      for (const r of c.resources) {
+        const prev = resources.get(r.id);
+        // Two anchors disagreeing on a source's version make it ineligible, never silently one of them.
+        resources.set(
+          r.id,
+          prev && prev.contentHash !== r.contentHash
+            ? { ...prev, eligible: false }
+            : (prev ?? r),
+        );
+      }
+    return {
+      resourceId: first.resourceId,
+      accountScope: first.accountScope,
+      courseId: first.courseId,
+      inputHash: canonical(all.map((c) => c.inputHash)),
+      contextHash: canonical(all.map((c) => c.contextHash ?? c.inputHash)),
+      ...(first.label ? { label: first.label } : {}),
+      availability: worst.availability,
+      reason:
+        worst.availability === "current"
+          ? "Practice uses checked course material. This is not a grade prediction."
+          : worst.reason,
+      resources: [...resources.values()],
+    };
+  }
+  function practiceScope(
+    courseId: string,
+    anchorIds: string[] | undefined,
+  ): { c: StudyContext; ref: string; anchors: string[] } | string {
+    if (!anchorIds?.length)
+      return "Open a course to practice: its resources anchor the practice scope.";
+    const anchors = [...new Set(anchorIds)].sort();
+    const c = courseContext(anchors);
+    if (!c) return "Course context is unavailable.";
+    if (c.courseId !== courseId) return "Course context does not match.";
+    return { c, ref: `${c.accountScope}:${c.courseId}`, anchors };
+  }
+  function courseMap(ref: string) {
+    const active = deps!.store
+      .concepts(ref)
+      .filter((x) => x.status === "active");
+    const byId = new Map(active.map((x) => [x.id, x]));
+    const order = (a: Concept, b: Concept) =>
+      a.position - b.position || (a.id < b.id ? -1 : 1);
+    const moduleOf = (x: Concept): Concept | null => {
+      let cur = x.parentId ? byId.get(x.parentId) : undefined;
+      for (let hops = 0; cur && hops < 20; hops++) {
+        if (cur.kind === "unit") return cur;
+        cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+      }
+      return null;
+    };
+    const modules = active.filter((x) => x.kind === "unit").sort(order);
+    const modulePos = new Map(modules.map((m, i) => [m.id, i]));
+    const topics = active
+      .filter((x) => x.kind === "concept")
+      .sort(
+        (a, b) =>
+          (modulePos.get(moduleOf(a)?.id ?? "") ?? modules.length) -
+            (modulePos.get(moduleOf(b)?.id ?? "") ?? modules.length) ||
+          order(a, b),
+      );
+    const topicIndex = new Map(topics.map((t, i) => [t.id, i]));
+    const label = (x: Concept) => x.studentLabel ?? x.label;
+    return { active, byId, modules, topics, topicIndex, moduleOf, label };
+  }
+  type CourseMap = ReturnType<typeof courseMap>;
+  /** The chosen topics: `topicIds` plus every topic under `moduleIds`. Null means the whole course. */
+  function chosenTopics(
+    map: CourseMap,
+    topicIds: string[] | undefined,
+    moduleIds: string[] | undefined,
+  ): Set<string> | null | "unknown" {
+    if (!topicIds?.length && !moduleIds?.length) return null;
+    const known = new Set(map.topics.map((t) => t.id));
+    const modules = new Set(moduleIds ?? []);
+    if (
+      (topicIds ?? []).some((t) => !known.has(t)) ||
+      [...modules].some((m) => !map.modules.some((x) => x.id === m))
+    )
+      return "unknown";
+    return new Set([
+      ...(topicIds ?? []),
+      ...map.topics
+        .filter((t) => modules.has(map.moduleOf(t)?.id ?? ""))
+        .map((t) => t.id),
+    ]);
+  }
+  function topicModels(ref: string, concepts: Concept[]) {
+    const store = deps!.store;
+    const evidence = store.evidence(ref),
+      allItems = store.items({ courseRef: ref }),
+      cards = store.cards({ courseRef: ref });
+    const models = conceptState(
+      {
+        ...evidence,
+        items: new Map(
+          allItems.map((x) => [
+            itemKey(x.item.id, x.item.version),
+            {
+              bPrior: x.item.bPrior,
+              options: x.item.options?.length ?? 0,
+              status: x.item.status,
+            },
+          ]),
+        ),
+        cards: new Map(
+          cards.map((x) => [
+            x.id,
+            { conceptId: x.conceptId, isConceptTrack: x.isConceptTrack },
+          ]),
+        ),
+      },
+      concepts,
+      undefined,
+      time(),
+    );
+    return new Map<string, ConceptModel>(models.map((m) => [m.conceptId, m]));
+  }
+  /** Latest eligible card-capable versions: card items, and recall items whose key is the back. */
+  function cardPool(c: StudyContext, ref: string) {
+    const latest = new Map<string, StoredItem>();
+    for (const item of deps!.store.items({ courseRef: ref }))
+      if (
+        !latest.has(item.item.id) ||
+        latest.get(item.item.id)!.item.version < item.item.version
+      )
+        latest.set(item.item.id, item);
+    return [...latest.values()].filter(
+      (x) => CARD_KINDS.has(x.item.kind) && eligible(x, c, ref, true),
+    );
+  }
+  function cardOf(ref: string, itemId: string): LearningCard | null {
+    return (
+      deps!.store
+        .cards({ courseRef: ref, itemId })
+        .find((k) => !k.isConceptTrack) ?? null
+    );
+  }
+  function cardEntries(c: StudyContext, ref: string, topics: Set<string> | null) {
+    const cutoff = endOfLocalDay(time());
+    return cardPool(c, ref)
+      .filter((x) => !topics || topics.has(primaryConcept(x)))
+      .map((x) => {
+        const card = cardOf(ref, x.item.id);
+        return { x, card, due: !card || card.fsrs.due <= cutoff };
+      });
+  }
+  function chips(map: CourseMap, x: StoredItem): TopicChip[] {
+    return x.tags.flatMap((t) => {
+      const concept = map.byId.get(t.conceptId);
+      return concept
+        ? [{ conceptId: concept.id, label: map.label(concept), primary: t.primary }]
+        : [];
+    });
+  }
+  function topicViews(
+    map: CourseMap,
+    models: Map<string, ConceptModel>,
+    practiceItems: StoredItem[],
+    topics: Set<string> | null,
+  ): TopicStateView[] {
+    const perTopic = new Map<string, Set<string>>();
+    for (const x of practiceItems) {
+      const t = primaryConcept(x);
+      perTopic.set(t, (perTopic.get(t) ?? new Set()).add(x.item.id));
+    }
+    return map.topics
+      .filter((t) => !topics || topics.has(t.id))
+      .map((t) => {
+        const m = models.get(t.id),
+          mod = map.moduleOf(t),
+          state: ConceptStateName = m?.band ?? "not_seen";
+        return {
+          conceptId: t.id,
+          label: map.label(t),
+          moduleId: mod?.id ?? null,
+          moduleLabel: mod ? map.label(mod) : null,
+          state,
+          stateLabel: STATE_LABEL[state],
+          reasons: (m?.reasons ?? []).map((r) => ({
+            text: r.text,
+            clearsWhen: r.clearsWhen,
+          })),
+          counts: {
+            answers: m?.counts.answers ?? 0,
+            correct: m?.counts.correct ?? 0,
+            cardReviews: m?.counts.cardReviews ?? 0,
+            selfRatings: m?.counts.selfRatings ?? 0,
+          },
+          practiceItems: perTopic.get(t.id)?.size ?? 0,
+        };
+      });
+  }
+  const mastered = (topics: TopicStateView[]) => ({
+    count: topics.filter((t) => t.state === "solid").length,
+    of: topics.length,
+  });
+  function flashFace(
+    map: CourseMap,
+    x: StoredItem,
+    cardId: string,
+    card: LearningCard | null,
+  ): FlashcardView {
+    const item = x.item;
+    return {
+      cardId,
+      itemId: item.id,
+      itemVersion: item.version,
+      front: item.stem,
+      back:
+        item.kind === "numeric"
+          ? `${item.key}${item.unit ? ` ${item.unit}` : ""}`
+          : String(item.key),
+      topics: chips(map, x),
+      citations: x.sources.map((s) => ({
+        resourceId: s.resourceId,
+        contentHash: s.contentHash,
+        start: s.start,
+        end: s.end,
+        quote: s.quote,
+      })),
+      isNew: !card || card.fsrs.reps === 0,
+    };
+  }
+  function flashView(
+    session: LearningSession,
+    f: CardSessionState,
+    c: StudyContext,
+  ): FlashcardSessionView {
+    const ref = session.courseRef!,
+      map = courseMap(ref);
+    const head = f.queue[0];
+    const x = head && cardPool(c, ref).find((p) => p.item.id === head.itemId);
+    const changed =
+      (c.contextHash ?? c.inputHash) !== f.contextHash || (!!head && !x);
+    const availability =
+      c.availability !== "current" ? c.availability : changed ? "stale" : "current";
+    const topics = f.topicIds.length ? new Set(f.topicIds) : null;
+    return {
+      id: session.id,
+      courseId: f.courseId,
+      revision: f.revision,
+      availability,
+      reason:
+        c.availability !== "current"
+          ? c.reason
+          : changed
+            ? "Course sources or checked cards changed. Start a new session; your reviews are saved."
+            : "Cards are scheduled locally with FSRS. This is not a grade prediction.",
+      status: f.queue.length ? "active" : "complete",
+      ...(head && x && availability === "current"
+        ? { current: flashFace(map, x, head.cardId, cardOf(ref, head.itemId)) }
+        : {}),
+      remaining: f.queue.length,
+      dueToday: cardEntries(c, ref, topics).filter((e) => e.due).length,
+      reviewed: f.reviewed,
+      topicIds: f.topicIds,
+    };
+  }
+  function practiceMeta(p: SessionState, ref: string): PracticeSessionMeta {
+    const map = courseMap(ref);
+    const items = new Map(
+      deps!.store
+        .items({ courseRef: ref })
+        .map((x) => [itemKey(x.item.id, x.item.version), x]),
+    );
+    const topicsByItem: Record<string, TopicChip[]> = {};
+    for (const f of p.round.families)
+      for (const v of [f.recognition, f.recall]) {
+        const x = v && items.get(itemKey(v.id, v.version));
+        if (x) topicsByItem[itemKey(v.id, v.version)] = chips(map, x);
+      }
+    return {
+      mode: p.mode ?? "learn",
+      topicIds: p.topicIds ?? [],
+      sections: p.sections ?? [],
+      topicsByItem,
+    };
+  }
+  /** Saved-session ops keep their `{ session }` shape; a course practice session adds its meta. */
+  function withMeta(
+    view: StudySessionView,
+    p: SessionState,
+    session: LearningSession,
+  ) {
+    return p.anchorIds
+      ? { session: view, practice: practiceMeta(p, session.courseRef!) }
+      : { session: view };
+  }
+  function practiceResults(
+    session: LearningSession,
+    p: SessionState,
+  ): PracticeResults {
+    const ref = session.courseRef!,
+      map = courseMap(ref),
+      models = topicModels(ref, map.active);
+    const items = new Map(
+      deps!.store
+        .items({ courseRef: ref })
+        .map((x) => [itemKey(x.item.id, x.item.version), x]),
+    );
+    const tally = new Map<string, { answered: number; correct: number }>();
+    const touched = new Set<string>(Object.keys(p.startStates ?? {}));
+    for (const f of p.round.families)
+      for (const v of [f.recognition, f.recall]) {
+        const x = v && items.get(itemKey(v.id, v.version));
+        if (x) touched.add(primaryConcept(x));
+      }
+    let answered = 0,
+      correct = 0,
+      unscored = 0,
+      skipped = 0;
+    for (const e of p.events) {
+      if (e.kind === "skip") skipped++;
+      if (e.kind !== "answer") continue;
+      if (e.outcome === "undecided") {
+        unscored++;
+        continue;
+      }
+      const x = items.get(itemKey(e.itemId, e.itemVersion));
+      const t = x ? primaryConcept(x) : "";
+      const row = tally.get(t) ?? { answered: 0, correct: 0 };
+      row.answered++;
+      answered++;
+      if (e.outcome === "correct") {
+        row.correct++;
+        correct++;
+      }
+      tally.set(t, row);
+      if (t) touched.add(t);
+    }
+    const topics: TopicResult[] = map.topics
+      .filter((t) => touched.has(t.id))
+      .map((t) => {
+        const before = p.startStates?.[t.id] ?? null,
+          after: ConceptStateName = models.get(t.id)?.band ?? "not_seen";
+        const delta =
+          before === null ? 0 : STATE_RANK[after] - STATE_RANK[before];
+        const mod = map.moduleOf(t);
+        return {
+          conceptId: t.id,
+          label: map.label(t),
+          moduleLabel: mod ? map.label(mod) : null,
+          before,
+          after,
+          afterLabel: STATE_LABEL[after],
+          direction:
+            before === null || before === "not_seen"
+              ? after === "not_seen"
+                ? "same"
+                : "new"
+              : delta > 0
+                ? "up"
+                : delta < 0
+                  ? "down"
+                  : "same",
+          answered: tally.get(t.id)?.answered ?? 0,
+          correct: tally.get(t.id)?.correct ?? 0,
+        };
+      });
+    const need = (r: TopicResult) =>
+      r.after === "iffy" ? 0 : r.after === "getting_there" ? 1 : r.answered > r.correct ? 2 : 3;
+    const studyNext = topics
+      .filter((r) => r.after !== "solid" && need(r) < 3)
+      .sort((a, b) => need(a) - need(b) || b.answered - b.correct - (a.answered - a.correct))
+      .slice(0, 3)
+      .map((r) => ({
+        conceptId: r.conceptId,
+        label: r.label,
+        state: r.after,
+        reason:
+          models.get(r.conceptId)?.reasons[0]?.text ??
+          (r.answered > r.correct
+            ? `You missed ${r.answered - r.correct} of ${r.answered} here.`
+            : "Not settled yet."),
+      }));
+    return {
+      sessionId: session.id,
+      mode: p.mode ?? "learn",
+      complete: !p.current,
+      answered,
+      correct,
+      unscored,
+      skipped,
+      topics,
+      studyNext,
+    };
+  }
+  const sessionOperations = (s: LearningSession) =>
+    state(s)?.operations ?? cardState(s)?.operations ?? null;
+  // end owner: study-backend
   return {
     async handle(raw, signal) {
       const parsed = learningRequestSchema.safeParse(raw);
@@ -313,7 +792,7 @@ export function createLearningRouter(
             .sessions(`${c.accountScope}:${c.courseId}`)
             .flatMap((s) => {
               const v = scoped(s);
-              return v && v.p.resourceId === request.resourceId
+              return v && v.p.resourceId === request.resourceId && !v.p.anchorIds
                 ? [projection(s, v.p, v.c)]
                 : [];
             });
@@ -484,6 +963,487 @@ export function createLearningRouter(
             return fail(op, "Study session changed. Reload it.");
           return { op, status: "ok", data: { session: projection(s, p, c) } };
         }
+        // owner: study-backend. Course practice ops. Without `anchorIds` they keep their earlier answer.
+        if (op === "practice.path" && request.anchorIds) {
+          const scope = practiceScope(request.courseId, request.anchorIds);
+          if (typeof scope === "string") return fail(op, scope);
+          const { c, ref } = scope,
+            map = courseMap(ref),
+            models = topicModels(ref, map.active);
+          const questions = currentPool(c, ref),
+            cards = cardEntries(c, ref, null);
+          const practiceItems = [
+            ...questions,
+            ...cards.map((e) => e.x).filter((x) => x.item.kind === "card"),
+          ];
+          const topics = topicViews(map, models, practiceItems, null);
+          const count = (xs: StoredItem[], ids: Set<string>) =>
+            xs.filter((x) => ids.has(primaryConcept(x))).length;
+          const modules: ModuleView[] = map.modules.map((m) => {
+            const topicIds = map.topics
+              .filter((t) => map.moduleOf(t)?.id === m.id)
+              .map((t) => t.id);
+            const ids = new Set(topicIds);
+            return {
+              moduleId: m.id,
+              label: map.label(m),
+              position: m.position,
+              topicIds,
+              questions: count(questions, ids),
+              cards: count(
+                cards.map((e) => e.x),
+                ids,
+              ),
+            };
+          });
+          const openSessions: OpenPracticeSession[] = store
+            .sessions(ref)
+            .flatMap((s): OpenPracticeSession[] => {
+              if (s.endedAt) return [];
+              const p = state(s),
+                f = cardState(s);
+              if (p?.anchorIds)
+                return [
+                  {
+                    sessionId: s.id,
+                    mode: p.mode ?? "learn",
+                    goal: p.goal,
+                    updatedAt: p.updatedAt,
+                  },
+                ];
+              if (f)
+                return [
+                  {
+                    sessionId: s.id,
+                    mode: "flashcards",
+                    goal: "Flashcards",
+                    updatedAt: f.updatedAt,
+                  },
+                ];
+              return [];
+            })
+            .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
+            .slice(0, 5);
+          const ready = questions.length + cards.length > 0;
+          const data: PracticePathData = {
+            courseId: c.courseId,
+            availability: c.availability,
+            reason: c.reason,
+            ready,
+            questions: questions.length,
+            cards: {
+              total: cards.length,
+              dueToday: cards.filter((e) => e.due).length,
+            },
+            modules,
+            unsectionedTopicIds: map.topics
+              .filter((t) => !map.moduleOf(t))
+              .map((t) => t.id),
+            topics,
+            mastered: mastered(topics),
+            openSessions,
+          };
+          return ready
+            ? { op, status: "ok", data }
+            : { op, status: "unavailable", message: EMPTY_POOL_MESSAGE, data };
+        }
+        if (op === "knowledge.state" && request.anchorIds) {
+          const scope = practiceScope(request.courseId, request.anchorIds);
+          if (typeof scope === "string") return fail(op, scope);
+          const { c, ref } = scope,
+            map = courseMap(ref);
+          const topicSet = chosenTopics(map, request.topicIds, request.moduleIds);
+          if (topicSet === "unknown")
+            return fail(op, "Those topics aren't in this course's map.");
+          const practiceItems = [
+            ...currentPool(c, ref),
+            ...cardPool(c, ref).filter((x) => x.item.kind === "card"),
+          ];
+          const topics = topicViews(
+            map,
+            topicModels(ref, map.active),
+            practiceItems,
+            topicSet,
+          );
+          return {
+            op,
+            status: "ok",
+            data: { courseId: c.courseId, topics, mastered: mastered(topics) },
+          };
+        }
+        if (op === "practice.target" && request.anchorIds) {
+          if (
+            request.assessmentId ||
+            request.description ||
+            (request.filter && request.filter !== "all") ||
+            request.mode === "write"
+          )
+            return fail(
+              op,
+              "Assessment, described, filtered and Write sessions aren't connected yet.",
+              "not_built",
+            );
+          const scope = practiceScope(request.courseId, request.anchorIds);
+          if (typeof scope === "string") return fail(op, scope);
+          const { c, ref, anchors } = scope;
+          if (!request.operationId)
+            return fail(op, "An operation ID is required to start practice.");
+          const fingerprint = canonical(request);
+          const prior = store.sessions(ref).find((s) => {
+            const ops = sessionOperations(s);
+            return !!ops && Object.hasOwn(ops, request.operationId!);
+          });
+          if (prior) {
+            const ops = sessionOperations(prior)!;
+            if (ops[request.operationId] !== fingerprint)
+              return fail(
+                op,
+                "Operation ID was already used for a different request.",
+                "failed",
+              );
+            const f = cardState(prior),
+              p = state(prior);
+            if (f) return { op, status: "ok", data: { flashcards: flashView(prior, f, c) } };
+            if (p) return { op, status: "ok", data: withMeta(projection(prior, p, c), p, prior) };
+          }
+          if (c.availability !== "current") return fail(op, c.reason);
+          store.course(c.accountScope, c.courseId, c.label);
+          const map = courseMap(ref);
+          const topicSet = chosenTopics(map, request.topicIds, request.moduleIds);
+          if (topicSet === "unknown")
+            return fail(op, "Those topics aren't in this course's map.");
+          const pool = currentPool(c, ref);
+          const nothingPrepared = !pool.length && !cardPool(c, ref).length;
+          if (nothingPrepared) return fail(op, EMPTY_POOL_MESSAGE);
+          const at = time().toISOString();
+          const sessionId = crypto.randomUUID();
+          if (request.mode === "flashcards") {
+            const entries = cardEntries(c, ref, topicSet);
+            if (!entries.length)
+              return fail(op, "No checked cards cover the chosen topics yet.");
+            const due = entries
+              .filter((e) => e.due)
+              .sort(
+                (a, b) =>
+                  (a.card ? 0 : 1) - (b.card ? 0 : 1) ||
+                  (a.card?.fsrs.due ?? "").localeCompare(b.card?.fsrs.due ?? "") ||
+                  (map.topicIndex.get(primaryConcept(a.x)) ?? 0) -
+                    (map.topicIndex.get(primaryConcept(b.x)) ?? 0) ||
+                  (a.x.item.id < b.x.item.id ? -1 : 1),
+              )
+              .slice(0, request.count);
+            if (!due.length) {
+              const next = entries
+                .map((e) => e.card?.fsrs.due ?? "")
+                .filter(Boolean)
+                .sort()[0];
+              return fail(
+                op,
+                `Nothing is due today.${next ? ` The next card is due ${next.slice(0, 10)}.` : ""}`,
+              );
+            }
+            const f: CardSessionState = {
+              schema: "practice-cards-1",
+              anchorIds: anchors,
+              accountScope: c.accountScope,
+              courseId: c.courseId,
+              contextHash: c.contextHash ?? c.inputHash,
+              revision: 0,
+              updatedAt: at,
+              topicIds: topicSet ? [...topicSet] : [],
+              queue: due.map((e) => ({
+                cardId: e.card?.id ?? `card:${ref}:${e.x.item.id}`,
+                itemId: e.x.item.id,
+              })),
+              reviewed: [],
+              operations: { [request.operationId]: fingerprint },
+            };
+            const s: LearningSession = {
+              id: sessionId,
+              courseRef: ref,
+              kind: "flashcards",
+              plan: f,
+              minutes: Math.max(1, Math.ceil(due.length / 2)),
+              difficulty: request.difficulty ?? "normal",
+              startedAt: at,
+              endedAt: null,
+            };
+            if (signal.aborted) return fail(op, "Study request cancelled.");
+            if (!store.commitSession(s, null))
+              return fail(op, "Study session changed. Reload it.");
+            return { op, status: "ok", data: { flashcards: flashView(s, f, c) } };
+          }
+          const mode = request.mode;
+          const inScope = pool.filter(
+            (x) => !topicSet || topicSet.has(primaryConcept(x)),
+          );
+          if (!inScope.length)
+            return fail(
+              op,
+              pool.length
+                ? "No checked questions cover the chosen topics yet."
+                : "No checked questions are ready yet; this course has cards only.",
+            );
+          const models = topicModels(ref, map.active);
+          const topicIdx = (x: StoredItem) =>
+            map.topicIndex.get(primaryConcept(x)) ?? map.topics.length;
+          const byId = (a: StoredItem, b: StoredItem) =>
+            a.item.id < b.item.id ? -1 : a.item.id > b.item.id ? 1 : 0;
+          let families: LearnFamily[];
+          if (mode === "learn") {
+            // Iffy first, then Getting there, then Not seen yet, then Mastered; module order within.
+            const need: Record<ConceptStateName, number> = {
+              iffy: 0,
+              getting_there: 1,
+              not_seen: 2,
+              solid: 3,
+            };
+            const ordered = [...inScope].sort(
+              (a, b) =>
+                need[models.get(primaryConcept(a))?.band ?? "not_seen"] -
+                  need[models.get(primaryConcept(b))?.band ?? "not_seen"] ||
+                topicIdx(a) - topicIdx(b) ||
+                byId(a, b),
+            );
+            const size =
+              [...ROUND_SIZES].reverse().find((n) => n <= request.count) ??
+              ROUND_SIZES[0];
+            families = familyPool(
+              inScope,
+              ordered.map((x) => x.item.id),
+            ).slice(0, size);
+          } else {
+            // A quiz sectioned by module: sections in module order, questions spread across them.
+            const bySection = new Map<string, StoredItem[]>();
+            for (const x of [...inScope].sort((a, b) => topicIdx(a) - topicIdx(b) || byId(a, b))) {
+              const topic = map.byId.get(primaryConcept(x));
+              const key = (topic && map.moduleOf(topic)?.id) ?? "";
+              bySection.set(key, [...(bySection.get(key) ?? []), x]);
+            }
+            const lanes = [...bySection.values()].map((xs) =>
+              familyPool(
+                xs,
+                xs.map((x) => x.item.id),
+              ),
+            );
+            const picked = lanes.map(() => [] as LearnFamily[]);
+            for (let n = 0, i = 0; n < request.count; i++) {
+              if (lanes.every((l, k) => picked[k]!.length >= l.length)) break;
+              const k = i % lanes.length;
+              const next = lanes[k]![picked[k]!.length];
+              if (next) {
+                picked[k]!.push(next);
+                n++;
+              }
+            }
+            families = picked.flat();
+          }
+          const round = createLearnRound(families, { size: families.length });
+          const current = nextQuestion(round);
+          if (!current)
+            return fail(op, "No checked practice matches this course's concept map yet.");
+          const variants = round.families.flatMap((f) =>
+            [f.recognition, f.recall].filter((v) => v !== undefined),
+          );
+          const storedOf = (id: string) => inScope.find((x) => x.item.id === id);
+          const sections: PracticeSection[] = [];
+          for (const f of round.families) {
+            const first = f.recognition ?? f.recall;
+            const topic = first && map.byId.get(primaryConcept(storedOf(first.id)!));
+            const mod = topic ? map.moduleOf(topic) : null;
+            const key = mod?.id ?? null;
+            let section = sections.find((s) => s.moduleId === key);
+            if (!section) {
+              section = {
+                moduleId: key,
+                label: mod ? map.label(mod) : "Other topics",
+                itemIds: [],
+              };
+              sections.push(section);
+            }
+            for (const v of [f.recognition, f.recall])
+              if (v) section.itemIds.push(v.id);
+          }
+          const startStates: Record<string, ConceptStateName> = {};
+          for (const v of variants)
+            for (const t of storedOf(v.id)?.tags ?? [])
+              startStates[t.conceptId] = models.get(t.conceptId)?.band ?? "not_seen";
+          const topicNames = topicSet
+            ? map.topics.filter((t) => topicSet.has(t.id)).map(map.label)
+            : [];
+          const goal =
+            mode === "test"
+              ? `Quiz: ${sections.map((s) => s.label).join(", ")}`
+              : topicNames.length
+                ? `Learn round: ${topicNames.slice(0, 3).join(", ")}${topicNames.length > 3 ? ` and ${topicNames.length - 3} more` : ""}`
+                : "Learn round";
+          const p: SessionState = {
+            schema: "study-session-1",
+            resourceId: c.resourceId,
+            accountScope: c.accountScope,
+            courseId: c.courseId,
+            inputHash: c.inputHash,
+            contextHash: c.contextHash ?? c.inputHash,
+            revision: 0,
+            goal,
+            draft: "",
+            updatedAt: at,
+            round,
+            current,
+            answered: false,
+            assistance: "none",
+            events: [],
+            sources: c.resources
+              .filter((r) =>
+                inScope.some(
+                  (item) =>
+                    round.families.some((f) => f.familyId === item.item.familyId) &&
+                    item.sources.some((source) => source.resourceId === r.id),
+                ),
+              )
+              .map((r) => ({
+                resourceId: r.id,
+                contentHash: r.contentHash,
+                title: r.title,
+                url: r.url,
+                observedAt: r.observedAt,
+              })),
+            operations: { [request.operationId]: fingerprint },
+            blocks: [
+              {
+                kind: mode,
+                reason:
+                  mode === "test"
+                    ? "A quiz sectioned by module; each question once."
+                    : "A Learn round: a missed question comes back after two others.",
+                itemIds: variants.map((v) => v.id),
+              },
+            ],
+            anchorIds: anchors,
+            mode,
+            topicIds: topicSet ? [...topicSet] : [],
+            startStates,
+            sections,
+          };
+          const s: LearningSession = {
+            id: sessionId,
+            courseRef: ref,
+            kind: mode,
+            plan: p,
+            minutes: Math.max(1, variants.length),
+            difficulty: request.difficulty ?? "normal",
+            startedAt: at,
+            endedAt: null,
+          };
+          if (signal.aborted) return fail(op, "Study request cancelled.");
+          if (!store.commitSession(s, null))
+            return fail(op, "Study session changed. Reload it.");
+          return { op, status: "ok", data: withMeta(projection(s, p, c), p, s) };
+        }
+        if (op === "study.review" || op === "study.undoReview") {
+          if (
+            !request.sessionId ||
+            request.revision === undefined ||
+            !request.operationId
+          )
+            return fail(op, "Open a flashcard session to review cards.");
+          const session = store.session(request.sessionId);
+          const f = session && cardState(session);
+          if (!session || !f) return fail(op, "Flashcard session is unavailable.");
+          const c = courseContext(f.anchorIds);
+          const ref = session.courseRef!;
+          if (
+            !c ||
+            c.accountScope !== f.accountScope ||
+            c.courseId !== f.courseId ||
+            ref !== `${c.accountScope}:${c.courseId}`
+          )
+            return fail(op, "Flashcard session is unavailable for this course and account.");
+          const fingerprint = canonical(request);
+          if (Object.hasOwn(f.operations, request.operationId))
+            return f.operations[request.operationId] === fingerprint
+              ? { op, status: "ok", data: { flashcards: flashView(session, f, c) } }
+              : fail(op, "Operation ID was already used for a different request.", "failed");
+          if (request.revision !== f.revision)
+            return fail(op, "Flashcard session changed. Reload it before continuing.");
+          const view = flashView(session, f, c);
+          if (view.availability !== "current") return fail(op, view.reason);
+          const next = structuredClone(f);
+          const now = time();
+          const meta = {
+            id: crypto.randomUUID(),
+            reviewMs: request.op === "study.review" ? request.reviewMs : 0,
+            localDay: localDay(now),
+          };
+          let written: { card: LearningCard; review: LearningReviewRow };
+          if (request.op === "study.review") {
+            const head = next.queue[0];
+            if (!head || head.cardId !== request.cardId)
+              return fail(op, "That card isn't the current card. Reload the session.");
+            const x = cardPool(c, ref).find((p) => p.item.id === head.itemId);
+            if (!x) return fail(op, "This card's source or checks changed. Start a new session.");
+            const base =
+              cardOf(ref, head.itemId) ??
+              newCard(
+                {
+                  id: head.cardId,
+                  itemId: x.item.id,
+                  courseRef: ref,
+                  conceptId: primaryConcept(x),
+                },
+                now,
+              );
+            // ts-fsrs's Grade is its Rating enum without Manual: Again 1 · Hard 2 · Good 3 · Easy 4.
+            written = reviewCard(
+              { ...base, itemVersion: x.item.version },
+              request.rating as unknown as FsrsGrade,
+              now,
+              meta,
+            );
+            next.queue.shift();
+            next.reviewed.push({
+              cardId: base.id,
+              reviewId: written.review.id,
+              rating: request.rating,
+              undone: false,
+            });
+          } else {
+            const reviewId = request.reviewId;
+            const row = next.reviewed.find((r) => r.reviewId === reviewId && !r.undone);
+            if (!row) return fail(op, "That review can't be undone in this session.");
+            const card = store.cards({ courseRef: ref }).find((k) => k.id === row.cardId);
+            const logged = store.evidence(ref).reviews.find((r) => r.id === reviewId);
+            if (!card || !logged)
+              return fail(op, "That review is no longer available to undo.");
+            written = undoCard(card, logged, now, meta);
+            row.undone = true;
+            next.queue.unshift({ cardId: card.id, itemId: card.itemId });
+          }
+          next.revision++;
+          next.updatedAt = now.toISOString();
+          next.operations = { ...next.operations, [request.operationId]: fingerprint };
+          const updated: LearningSession = {
+            ...session,
+            plan: next,
+            endedAt: next.queue.length ? null : now.toISOString(),
+          };
+          if (signal.aborted) return fail(op, "Study request cancelled.");
+          // The worker handles one request at a time and every call below is synchronous, so the
+          // revision checked above still holds; the review log is append-only and undoable.
+          store.putCard(written.card);
+          store.addReview(written.review);
+          if (!store.commitSession(updated, request.revision))
+            return fail(op, "Flashcard session changed. Reload it before continuing.");
+          return { op, status: "ok", data: { flashcards: flashView(updated, next, c) } };
+        }
+        if (op === "study.submit") {
+          const session = store.session(request.sessionId);
+          const scope = session && scoped(session);
+          if (!session || !scope || !scope.p.anchorIds)
+            return fail(op, "Results are available for course practice sessions.");
+          return { op, status: "ok", data: { results: practiceResults(session, scope.p) } };
+        }
+        // end owner: study-backend
         if (
           op !== "study.session" &&
           op !== "study.resume" &&
@@ -495,6 +1455,20 @@ export function createLearningRouter(
           return fail(op, "This study feature isn't built yet.", "not_built");
         const session = store.session(request.sessionId);
         if (!session) return fail(op, "Study session is unavailable.");
+        // owner: study-backend. A flashcard session reads through study.session / study.resume.
+        const cards = cardState(session);
+        if (cards && (op === "study.session" || op === "study.resume")) {
+          const c = courseContext(cards.anchorIds);
+          if (
+            !c ||
+            c.accountScope !== cards.accountScope ||
+            c.courseId !== cards.courseId ||
+            session.courseRef !== `${c.accountScope}:${c.courseId}`
+          )
+            return fail(op, "Flashcard session is unavailable for this course and account.");
+          return { op, status: "ok", data: { flashcards: flashView(session, cards, c) } };
+        }
+        // end owner: study-backend
         const scope = scoped(session);
         if (!scope)
           return fail(
@@ -505,13 +1479,13 @@ export function createLearningRouter(
           p = structuredClone(scope.p),
           view = projection(session, p, c);
         if (op === "study.session" || op === "study.resume")
-          return { op, status: "ok", data: { session: view } };
+          return { op, status: "ok", data: withMeta(view, p, session) };
         if (!request.operationId || request.revision === undefined)
           return fail(op, "A session revision and operation ID are required.");
         const fingerprint = canonical(request);
         if (Object.hasOwn(p.operations, request.operationId))
           return p.operations[request.operationId] === fingerprint
-            ? { op, status: "ok", data: { session: view } }
+            ? { op, status: "ok", data: withMeta(view, p, session) }
             : fail(
                 op,
                 "Operation ID was already used for a different request.",
@@ -650,6 +1624,12 @@ export function createLearningRouter(
                   ? "right"
                   : "wrong",
             ).state;
+            // owner: study-backend. A quiz serves each question once: no Learn-style return.
+            if (p.mode === "test")
+              p.round = {
+                ...p.round,
+                stage: { ...p.round.stage, [q.familyId]: 2 },
+              };
             if (score !== null) {
               const evidence = store.evidence(session.courseRef!);
               attempt = {
@@ -680,9 +1660,12 @@ export function createLearningRouter(
                 confidence: request.confidence,
                 createdAt: at,
                 format: q.format,
-                mode: p.blocks.some((b) => b.kind === "diagnostic")
-                  ? "diagnostic"
-                  : "learn",
+                mode:
+                  p.mode === "test"
+                    ? "test"
+                    : p.blocks.some((b) => b.kind === "diagnostic")
+                      ? "diagnostic"
+                      : "learn",
                 response,
                 score,
                 gradingMethod: "code",
@@ -712,7 +1695,7 @@ export function createLearningRouter(
         return {
           op,
           status: "ok",
-          data: { session: projection(updated, p, c) },
+          data: withMeta(projection(updated, p, c), p, updated),
         };
       } catch {
         return fail(
