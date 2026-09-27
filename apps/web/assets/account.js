@@ -5,6 +5,9 @@ const config = window.MAGIC_CONFIG ?? {};
 const page = new URL(location.href);
 const wantsToBuy = page.searchParams.get("buy") === "1";
 const justPaid = page.searchParams.get("paid") === "1";
+// Read before Supabase consumes them: how a sign-in link landed here, if it did.
+const linkError = page.searchParams.get("error_code") ?? new URLSearchParams(location.hash.slice(1)).get("error_code");
+const cameFromLink = page.searchParams.has("code");
 
 const $ = (selector) => document.querySelector(selector);
 const views = [...document.querySelectorAll("[data-view]")];
@@ -72,8 +75,18 @@ async function start() {
     location.href = checkout.href;
   });
 
+  let explained = false;
   async function render(session) {
     current = session?.user ?? null;
+    if (!explained) {
+      explained = true;
+      // A link that didn't sign in would otherwise just show the form again with no reason.
+      if (!current && linkError) say("That sign-in link has expired or was already used. Email security scanners sometimes open links before you do. Enter your email for a new one.");
+      else if (!current && cameFromLink) say("Sign-in links only work in the browser you requested them from. Enter your email here for a new link, then open it in this browser.");
+      const clean = new URL(location.href);
+      ["code", "error", "error_code", "error_description"].forEach((key) => clean.searchParams.delete(key));
+      history.replaceState(null, "", clean.pathname + clean.search);
+    }
     if (!current) {
       show("signed-out");
       return;

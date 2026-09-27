@@ -54,6 +54,7 @@ Keys go into Vercel and your local environment, never into Git or chat.
 
 ## Known limits and open decisions
 
+- **Sign-in links are unreliable; codes are the fix.** First live test, September 27 (Supabase auth logs): a wisc.edu link was used up about 5 seconds after sending, from an address that wasn't Aidan's, so his own clicks got "expired". This is probably the university's email security scanner opening links (an inference, not confirmed). Separately, a Gmail link was verified by Supabase but never completed, because it was opened in a different browser than the one that requested it (the PKCE check needs the same browser). The page now explains both failures. The fix is the 6-digit code in the email: scanners don't type codes, and codes work in any browser. That needs custom SMTP so both the **Confirm signup** email (sent to new accounts) and the **Magic Link** email can include `{{ .Token }}`.
 - No download exists yet, so a real purchase is effectively a pre-order; the account page says so. Keep Lemon Squeezy in test mode until the team decides to sell.
 - The app shows status only. Deciding what an unpaid install can do, and enforcing it, is a separate decision.
 - Price conflict ($10 site and product vs $5 recorded) needs Ben and Aidan to agree.
