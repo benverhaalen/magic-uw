@@ -14,6 +14,8 @@ import { createReadApi } from "@magic/agent-api";
 import { createModelRunner, type BackendCall } from "../packages/runner/src/index";
 import { createPackHandler } from "../packages/core/src/pack-handler";
 import { buildPrompt, memoryArtifactStore, packCatalogue } from "../packages/packs/core/src/index";
+import { quizPack } from "../packages/packs/items/src/index";
+import { cardsPack } from "../packages/packs/cards/src/index";
 import { BRIEF_POLICY_POINTER, BRIEF_PREAMBLE, briefHoldsPolicy, briefPath, createCourseBriefs, renderCourseBrief } from "../packages/core/src/course-facts/brief";
 
 const at = "2026-09-26T12:00:00.000Z";
@@ -132,9 +134,9 @@ test("packs send the brief first, byte-identical across packs; purge removes the
   // The prefix is the brief, then the pack catalogue; the request names its pack.
   const system = calls[0]!.systemPrompt;
   assert.ok(system.indexOf("## Pack catalogue") > system.indexOf("<!-- course-brief.v1"));
-  for (const id of ["cards@v1", "quiz@v1", "guide@v1", "intent-ask@v1"]) assert.ok(system.includes(`### ${id}`), id);
-  assert.ok(calls.some((c) => c.input.includes("## Task\nPack cards@v1: follow its instructions in the pack catalogue.")));
-  assert.ok(calls.some((c) => c.input.includes("## Task\nPack quiz@v1:")));
+  for (const id of [`cards@${cardsPack.version}`, `quiz@${quizPack.version}`, "guide@v1", "intent-ask@v1"]) assert.ok(system.includes(`### ${id}`), id);
+  assert.ok(calls.some((c) => c.input.includes(`## Task\nPack cards@${cardsPack.version}: follow its instructions in the pack catalogue.`)));
+  assert.ok(calls.some((c) => c.input.includes(`## Task\nPack quiz@${quizPack.version}:`)));
   assert.ok(existsSync(briefPath(x.dir, course)));
   briefs.purge();
   assert.ok(!existsSync(join(x.dir, "courses")));
