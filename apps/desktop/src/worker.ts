@@ -63,11 +63,18 @@ async function generationRunner(): Promise<ModelRunner | null> {
 }
 const generation = createPackHandler({ store, runner: generationRunner });
 // end owner: generation
+// owner: course-facts. The `course.facts` drain job: code selects each course's syllabus, then the
+// student's own client (the generation runner above: isolated profile, tools off, the background
+// budget) finds the course facts through the egress path, once per syllabus change. No client, or
+// fully local mode: the local (Ollama) extractor. It replaces core's Ollama-only course pass.
+import { createCourseFactsJob } from "../../../packages/core/src/course-facts/index";
+const courseJobs = pipelineJobRegistry();
+courseJobs.register(createCourseFactsJob({ runner: generationRunner, local: createLocalCourseExtractor() }));
+// end owner: course-facts
 const core = createCore(store, {
   fixture: captureBatchSchema.parse(fixture),
-  courseExtractor: createLocalCourseExtractor(),
   planningPublicClient: publicClients.core, // owner: T06
-  jobs: pipelineJobRegistry(), // owner: pipeline: passages, links and facts, the course pass
+  jobs: courseJobs, // owner: pipeline: passages, links and facts, the course pass; course-facts adds course.facts
   madgrades: { read: (request, signal) => hostRead("madgrades-read", { request }, signal) },
   planningHttp: { read: (request, signal) => hostRead("planning-public-read", { request }, signal) },
   seams: { learning: createLearningRouter({
