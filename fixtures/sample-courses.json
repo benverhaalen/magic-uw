@@ -1131,7 +1131,7 @@
         "assignmentGroupId": "cs300-g-proj",
         "title": "Project 2: Hash Table Dictionary",
         "url": "https://example.org/cs300/assignments/cs300-p2",
-        "text": "Project 2 builds a dictionary backed by your own hash table.\nSubmit your implementation in HashTableMap.java and a one-page report on how the load factor changed your lookup times.\nInclude your JUnit test code for put, get, remove and resizing.\nUse the P2 starter guide: HashTableMap for the interface you must implement.",
+        "text": "Project 2 builds a dictionary backed by your own hash table.\nSubmit a working prototype of your HashTableMap class and a one-page report on how the load factor changed your lookup times.\nInclude your JUnit tests for put, get, remove and resizing.\nUse the P2 starter guide: HashTableMap for the interface you must implement.",
         "dueAt": "2026-10-02T04:59:00Z",
         "submissionTypes": [
           "online_upload"

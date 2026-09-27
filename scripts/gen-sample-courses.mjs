@@ -192,8 +192,8 @@ const cs = course({
     assignment("cs300-lab4", "Lab 4: Iterators", "Lab 4 practises the Iterator interface. Implement an iterator for your linked list and submit LinkedListIterator.java.", ["2026-09-30"], 10, { submissionTypes: ["online_upload"] });
     assignment("cs300-p2", "Project 2: Hash Table Dictionary", [
       "Project 2 builds a dictionary backed by your own hash table.",
-      "Submit your implementation in HashTableMap.java and a one-page report on how the load factor changed your lookup times.",
-      "Include your JUnit test code for put, get, remove and resizing.",
+      "Submit a working prototype of your HashTableMap class and a one-page report on how the load factor changed your lookup times.",
+      "Include your JUnit tests for put, get, remove and resizing.",
       "Use the P2 starter guide: HashTableMap for the interface you must implement.",
     ].join("\n"), ["2026-10-01"], 50, {
       submissionTypes: ["online_upload"],
