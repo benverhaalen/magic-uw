@@ -157,7 +157,7 @@ It drives every path above with recording fakes and asserts four things:
 
 ## Accounts and payments
 
-An optional My Magic UW account (built, not yet live) sends the student's **email address** to our Supabase project to sign in, and records whether that account bought the app: the Lemon Squeezy order id, customer id, variant, amount, currency, date, test-mode flag and paid/refunded status. No coursework, course names, grades, UW identifiers or anything read from UW goes there. Lemon Squeezy, as merchant of record, holds the buyer's name, address and payment details; our webhook ignores them. Having an account or paying grants no data access and does not change hosted-sharing consent. Details: [accounts and payments](accounts-and-payments.md).
+An optional My Magic UW account (sign-in live on the website; subscriptions not yet live) sends the student's **email address** to our Supabase project to sign in, and records the account's $5-a-month subscription: the Lemon Squeezy subscription id, customer id, variant, status, renewal and end dates, and test-mode flag. No coursework, course names, grades, UW identifiers or anything read from UW goes there. Lemon Squeezy, as merchant of record, holds the subscriber's name, address and payment details; our webhook ignores them. Having an account or subscribing grants no data access and does not change hosted-sharing consent. Details: [accounts and payments](accounts-and-payments.md).
 
 ## Local model selection
 

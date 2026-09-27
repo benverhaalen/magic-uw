@@ -105,7 +105,7 @@ See [planning integration](planning-upgrade.md) for implementation evidence and 
 
 ## 2026-09-27 — Price: $5 a month
 
-The operator set the price at **$5 a month** (September 27, 2026, relayed through the backend lane's coordinator). It replaces both the $5 one-time licence below and the $10 one-time price on the website draft, and it closes the open website-price conflict. What the price covers (the hosted Jev service and the app; never the student's own model usage) is unchanged. The website (`apps/web/pricing`, `apps/web/account`) and the Lemon Squeezy product still say $10 one-time until they are updated.
+The operator set the price at **$5 a month** (September 27, 2026, relayed through the backend lane's coordinator). It replaces both the $5 one-time licence below and the $10 one-time price on the website draft, and it closes the open website-price conflict. What the price covers (the hosted Jev service and the app; never the student's own model usage) is unchanged. The website (Pricing, FAQ, account page), the payment webhook, the account schema and the desktop Account section were switched to a monthly subscription on September 27 (branch `subscription-pricing`); the Lemon Squeezy product is created as a $5 monthly subscription.
 
 ## Pricing and AI access resolution — September 26
 

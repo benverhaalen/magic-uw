@@ -1,9 +1,9 @@
-// owner: accounts. The student's My Magic UW account and whether it has bought the app.
+// owner: accounts. The student's My Magic UW account and its $5-a-month subscription.
 // Sign-in is an emailed 6-digit code (Supabase email OTP); the refresh token lives in the
 // encrypted vault and the short-lived access token only in memory, never in the renderer.
 // This module reports status only: nothing in the app is locked by it yet.
 // See docs/accounts-and-payments.md.
-import type { AccountPurchase, AccountStatus } from "@magic/contracts";
+import type { AccountStatus, AccountSubscription } from "@magic/contracts";
 
 export interface AccountConfig {
   /** Supabase project URL, e.g. https://abc.supabase.co. Absent: accounts are off. */
@@ -20,7 +20,7 @@ interface Vault {
   deletePrefix(prefix: string): Promise<void>;
 }
 
-/** A paid status keeps counting for this long without reaching the server (offline grace). */
+/** A confirmed subscription keeps counting for this long without reaching the server (offline grace). */
 export const OFFLINE_GRACE_MS = 14 * 24 * 60 * 60 * 1000;
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,63}$/;
 const CODE = /^\d{6,10}$/;
@@ -88,20 +88,46 @@ export function createAccount(
     await deps.vault.deletePrefix("account:");
   }
 
-  function purchaseOf(row: { status?: unknown; test_mode?: unknown } | undefined): AccountPurchase {
-    if (!row) return "not-bought";
-    if (row.status === "refunded") return "refunded";
-    if (row.status === "paid") return row.test_mode ? "test-only" : "paid";
-    return "not-bought";
+  interface Known {
+    subscription: AccountSubscription;
+    entitled: boolean;
+    until?: string;
   }
 
-  async function cached(): Promise<{ purchase: AccountPurchase; checkedAt: number } | null> {
+  // entitled comes from the subscription_access view, where the access rule lives; this only
+  // names the state for the Account section.
+  function subscriptionOf(
+    row: { status?: unknown; test_mode?: unknown; renews_at?: unknown; ends_at?: unknown; entitled?: unknown } | undefined,
+  ): Known {
+    if (!row) return { subscription: "not-subscribed", entitled: false };
+    const entitled = row.entitled === true;
+    const date = (v: unknown) => (typeof v === "string" ? v : undefined);
+    if (row.test_mode) return { subscription: "test-only", entitled: false };
+    if (entitled && row.status === "past_due") return { subscription: "past-due", entitled, until: date(row.renews_at) };
+    if (entitled && row.status === "cancelled") return { subscription: "cancelling", entitled, until: date(row.ends_at) };
+    if (entitled) return { subscription: "active", entitled, until: date(row.renews_at) };
+    if (row.status === "paused") return { subscription: "paused", entitled: false };
+    if (row.status === "unpaid") return { subscription: "on-hold", entitled: false };
+    return { subscription: "ended", entitled: false };
+  }
+
+  async function cached(): Promise<(Known & { checkedAt: number }) | null> {
     try {
       const value = JSON.parse((await deps.vault.get(KEY.cache)) ?? "null");
-      return value && typeof value.checkedAt === "number" && typeof value.purchase === "string" ? value : null;
+      return value && typeof value.checkedAt === "number" && typeof value.subscription === "string" ? value : null;
     } catch {
       return null;
     }
+  }
+
+  /** Offline: the last confirmed answer, for a while, and never past a cancelled month's end. */
+  function fromCache(last: (Known & { checkedAt: number }) | null): Known {
+    if (!last) return { subscription: "unknown", entitled: false };
+    if (!last.entitled) return last;
+    if (last.subscription === "cancelling" && last.until && Date.parse(last.until) <= now())
+      return { subscription: "ended", entitled: false };
+    if (now() - last.checkedAt >= OFFLINE_GRACE_MS) return { subscription: "unknown", entitled: false };
+    return last;
   }
 
   return {
@@ -120,22 +146,19 @@ export function createAccount(
       try {
         const token = await accessToken();
         if (!token) return { state: "signed-out" };
-        const rows = (await call("/rest/v1/entitlements?select=status,test_mode", { token })) as unknown;
-        const purchase = purchaseOf(Array.isArray(rows) ? rows[0] : undefined);
+        const rows = (await call("/rest/v1/subscription_access?select=status,test_mode,renews_at,ends_at,entitled", { token })) as unknown;
+        const known = subscriptionOf(Array.isArray(rows) ? rows[0] : undefined);
         const checkedAt = now();
-        await deps.vault.set(KEY.cache, JSON.stringify({ purchase, checkedAt }));
-        return { state: "signed-in", email: email ?? "", purchase, entitled: purchase === "paid", checkedAt: new Date(checkedAt).toISOString(), offline: false };
+        await deps.vault.set(KEY.cache, JSON.stringify({ ...known, checkedAt }));
+        return { state: "signed-in", email: email ?? "", ...known, checkedAt: new Date(checkedAt).toISOString(), offline: false };
       } catch (error) {
         if (error instanceof AuthRejected) return { state: "signed-out" };
         // Offline or the server is down: fall back to the last confirmed answer, for a while.
         const last = await cached();
-        const withinGrace = last ? now() - last.checkedAt < OFFLINE_GRACE_MS : false;
-        const purchase: AccountPurchase = !last ? "unknown" : last.purchase === "paid" && !withinGrace ? "unknown" : last.purchase;
         return {
           state: "signed-in",
           email: email ?? "",
-          purchase,
-          entitled: purchase === "paid",
+          ...fromCache(last),
           checkedAt: last ? new Date(last.checkedAt).toISOString() : undefined,
           offline: true,
         };

@@ -1,4 +1,4 @@
-// Lemon Squeezy → Supabase: records whether an account has paid for the app.
+// Lemon Squeezy → Supabase: mirrors each account's $5-a-month subscription.
 // Deployed by Vercel as POST /api/lemon-webhook. Self-contained (no relative imports, no
 // packages) so it runs without an install step. See docs/accounts-and-payments.md.
 //
@@ -14,10 +14,21 @@ export interface WebhookEnv {
 }
 
 type Fetch = typeof fetch;
-type Outcome = "applied" | "unlinked" | "ignored" | "duplicate";
+type Outcome = "applied" | "unlinked" | "ignored" | "stale" | "duplicate";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const HANDLED = new Set(["order_created", "order_refunded"]);
+// Every event that carries the subscription's full current state. Payment events carry
+// invoices instead; the status change they cause also arrives as subscription_updated.
+const HANDLED = new Set([
+  "subscription_created",
+  "subscription_updated",
+  "subscription_cancelled",
+  "subscription_resumed",
+  "subscription_expired",
+  "subscription_paused",
+  "subscription_unpaused",
+]);
+const STATUSES = new Set(["on_trial", "active", "past_due", "paused", "unpaid", "cancelled", "expired"]);
 
 /** Lemon Squeezy signs the raw body with HMAC-SHA256 and sends the hex digest in X-Signature. */
 export function verifySignature(rawBody: string, signature: string | null, secret: string): boolean {
@@ -32,41 +43,52 @@ export function verifySignature(rawBody: string, signature: string | null, secre
   return given.length === expected.length && timingSafeEqual(given, expected);
 }
 
-export interface OrderEvent {
+/**
+ * Whether a subscription gives the app right now. Same rule as the subscription_access view in
+ * supabase/migrations/20260927160000_monthly_subscription.sql: a failed renewal keeps access
+ * while Lemon Squeezy retries, and a cancelled subscription runs to the end of its paid month.
+ */
+export function grantsAccess(sub: { status: string; testMode: boolean; endsAt: string | null }, now: number): boolean {
+  if (sub.testMode) return false;
+  if (sub.status === "on_trial" || sub.status === "active" || sub.status === "past_due") return true;
+  return sub.status === "cancelled" && sub.endsAt !== null && Date.parse(sub.endsAt) > now;
+}
+
+export interface SubscriptionEvent {
   eventName: string;
-  orderId: string;
+  subscriptionId: string;
   userId: string | null;
   testMode: boolean;
   status: string;
   customerId: string | null;
   variantId: string | null;
-  totalCents: number | null;
-  currency: string | null;
-  createdAt: string | null;
+  renewsAt: string | null;
+  endsAt: string | null;
+  updatedAt: string | null;
 }
 
-/** Reads only the fields we store; names, emails and addresses in the order are ignored. */
-export function parseOrderEvent(body: unknown): OrderEvent | null {
+/** Reads only the fields we store; the subscriber's name, email and card are ignored. */
+export function parseSubscriptionEvent(body: unknown): SubscriptionEvent | null {
   if (!body || typeof body !== "object") return null;
   const { meta, data } = body as { meta?: Record<string, unknown>; data?: Record<string, unknown> };
   const eventName = typeof meta?.event_name === "string" ? meta.event_name : "";
-  if (!data || data.type !== "orders" || (typeof data.id !== "string" && typeof data.id !== "number")) return null;
+  if (!data || data.type !== "subscriptions" || (typeof data.id !== "string" && typeof data.id !== "number")) return null;
   const attrs = (data.attributes ?? {}) as Record<string, unknown>;
   const custom = (meta?.custom_data ?? {}) as Record<string, unknown>;
-  const item = (attrs.first_order_item ?? {}) as Record<string, unknown>;
   const userId = typeof custom.user_id === "string" && UUID.test(custom.user_id) ? custom.user_id.toLowerCase() : null;
   const str = (v: unknown) => (typeof v === "string" || typeof v === "number" ? String(v) : null);
+  const time = (v: unknown) => (typeof v === "string" && !Number.isNaN(Date.parse(v)) ? v : null);
   return {
     eventName,
-    orderId: String(data.id),
+    subscriptionId: String(data.id),
     userId,
     testMode: Boolean(meta?.test_mode ?? attrs.test_mode),
     status: typeof attrs.status === "string" ? attrs.status : "",
     customerId: str(attrs.customer_id),
-    variantId: str(item.variant_id),
-    totalCents: typeof attrs.total === "number" && attrs.total >= 0 ? Math.round(attrs.total) : null,
-    currency: typeof attrs.currency === "string" ? attrs.currency : null,
-    createdAt: typeof attrs.created_at === "string" ? attrs.created_at : null,
+    variantId: str(attrs.variant_id),
+    renewsAt: time(attrs.renews_at),
+    endsAt: time(attrs.ends_at),
+    updatedAt: time(attrs.updated_at),
   };
 }
 
@@ -89,22 +111,15 @@ function rest(env: Required<Pick<WebhookEnv, "SUPABASE_URL" | "SUPABASE_SERVICE_
   }
   return {
     entitlementFor: async (userId: string) =>
-      ((await call(`/entitlements?user_id=eq.${userId}&select=status,test_mode,lemon_order_id`)) as {
-        status: string;
-        test_mode: boolean;
-        lemon_order_id: string;
-      }[])[0] ?? null,
+      ((await call(
+        `/entitlements?user_id=eq.${userId}&select=lemon_subscription_id,status,test_mode,ends_at,lemon_updated_at`,
+      )) as { lemon_subscription_id: string; status: string; test_mode: boolean; ends_at: string | null; lemon_updated_at: string }[])[0] ??
+      null,
     upsertEntitlement: (row: Record<string, unknown>) =>
       call(`/entitlements?on_conflict=user_id`, {
         method: "POST",
         body: JSON.stringify(row),
         prefer: "resolution=merge-duplicates,return=minimal",
-      }),
-    markRefunded: (orderId: string) =>
-      call(`/entitlements?lemon_order_id=eq.${encodeURIComponent(orderId)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: "refunded", updated_at: new Date().toISOString() }),
-        prefer: "return=minimal",
       }),
     seen: async (id: string) =>
       ((await call(`/lemon_events?id=eq.${encodeURIComponent(id)}&select=id`)) as unknown[]).length > 0,
@@ -117,37 +132,44 @@ function rest(env: Required<Pick<WebhookEnv, "SUPABASE_URL" | "SUPABASE_SERVICE_
   };
 }
 
-/** Applies one verified event. Idempotent: a retried delivery changes nothing twice. */
-export async function applyEvent(event: OrderEvent, env: WebhookEnv, fetchImpl: Fetch): Promise<Outcome> {
+/**
+ * Applies one verified event. The row always holds the subscription's latest known state, so a
+ * retried or out-of-order delivery can't move it backwards. When an account has two
+ * subscriptions (a new one after the old ended, or a test beside a real one), the one that gives
+ * access wins, then the more recently updated.
+ */
+export async function applyEvent(event: SubscriptionEvent, env: WebhookEnv, fetchImpl: Fetch, now = Date.now()): Promise<Outcome> {
   const db = rest(env as Required<Pick<WebhookEnv, "SUPABASE_URL" | "SUPABASE_SERVICE_ROLE_KEY">>, fetchImpl);
-  const id = `${event.eventName}:${event.orderId}`;
+  const id = `${event.eventName}:${event.subscriptionId}:${event.updatedAt ?? ""}`;
   if (await db.seen(id)) return "duplicate";
   let outcome: Outcome;
-  if (!HANDLED.has(event.eventName)) outcome = "ignored";
+  if (!HANDLED.has(event.eventName) || !STATUSES.has(event.status) || !event.updatedAt) outcome = "ignored";
   else if (env.LEMONSQUEEZY_VARIANT_ID && event.variantId && event.variantId !== env.LEMONSQUEEZY_VARIANT_ID)
     outcome = "ignored";
-  else if (event.eventName === "order_refunded") {
-    await db.markRefunded(event.orderId);
-    outcome = "applied";
-  } else if (!event.userId) outcome = "unlinked";
-  else if (event.status !== "paid") outcome = "ignored";
+  else if (!event.userId) outcome = "unlinked";
   else {
     const current = await db.entitlementFor(event.userId);
-    const refundedAlready = current?.lemon_order_id === event.orderId && current.status === "refunded";
-    const wouldDowngrade = current && current.status === "paid" && !current.test_mode && event.testMode;
-    if (refundedAlready || wouldDowngrade) outcome = "ignored";
+    const newer = !current || Date.parse(event.updatedAt) >= Date.parse(current.lemon_updated_at);
+    let keep = false;
+    if (current && current.lemon_subscription_id === event.subscriptionId) keep = !newer;
+    else if (current) {
+      const incoming = grantsAccess(event, now);
+      const existing = grantsAccess({ status: current.status, testMode: current.test_mode, endsAt: current.ends_at }, now);
+      keep = existing && !incoming ? true : existing === incoming ? !newer : false;
+    }
+    if (keep) outcome = "stale";
     else {
       await db.upsertEntitlement({
         user_id: event.userId,
-        status: "paid",
+        lemon_subscription_id: event.subscriptionId,
+        status: event.status,
         test_mode: event.testMode,
-        lemon_order_id: event.orderId,
         lemon_customer_id: event.customerId,
         variant_id: event.variantId,
-        total_cents: event.totalCents,
-        currency: event.currency,
-        purchased_at: event.createdAt,
-        updated_at: new Date().toISOString(),
+        renews_at: event.renewsAt,
+        ends_at: event.endsAt,
+        lemon_updated_at: event.updatedAt,
+        updated_at: new Date(now).toISOString(),
       });
       outcome = "applied";
     }
@@ -155,7 +177,7 @@ export async function applyEvent(event: OrderEvent, env: WebhookEnv, fetchImpl: 
   await db.record({
     id,
     event_name: event.eventName || "unknown",
-    order_id: event.orderId,
+    lemon_id: event.subscriptionId,
     user_id: event.userId,
     test_mode: event.testMode,
     outcome,
@@ -181,7 +203,7 @@ export async function handleWebhook(request: Request, env: WebhookEnv, fetchImpl
   } catch {
     return json(400, { error: "bad_json" });
   }
-  const event = parseOrderEvent(body);
+  const event = parseSubscriptionEvent(body);
   if (!event) return json(200, { outcome: "ignored" });
   try {
     return json(200, { outcome: await applyEvent(event, env, fetchImpl) });

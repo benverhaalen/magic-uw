@@ -158,53 +158,64 @@ async function start() {
 
 let isCurrent = () => true;
 
-async function renderStatus(supabase, retriesLeft, run) {
-  const buy = $('[data-action="buy"]');
-  const { data, error } = await supabase.from("entitlements").select("status,test_mode,purchased_at").maybeSingle();
-  if (!isCurrent(run)) return; // a newer sign-in state has taken over
-  if (error) {
-    bind("status", "We couldn't check your purchase right now.");
-    bind("status-note", "Refresh in a moment. Nothing about your purchase has changed.");
-    buy.hidden = true;
-    return;
+// Lemon Squeezy's customer portal on the same store, where subscribers cancel, resume or update
+// their card (docs.lemonsqueezy.com/help/online-store/customer-portal).
+const portalUrl = (() => {
+  try {
+    return config.checkoutUrl ? new URL("/billing", config.checkoutUrl).href : null;
+  } catch {
+    return null;
   }
-  const paid = data?.status === "paid" && !data.test_mode;
-  if (!paid && retriesLeft > 0) {
+})();
+const longDate = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { dateStyle: "long" }) : null);
+
+async function renderStatus(supabase, retriesLeft, run) {
+  const subscribe = $('[data-action="buy"]');
+  const manage = $('[data-action="manage"]');
+  // entitled is computed by the database view, the one place the access rule lives.
+  const { data, error } = await supabase
+    .from("subscription_access")
+    .select("status,test_mode,renews_at,ends_at,entitled")
+    .maybeSingle();
+  if (!isCurrent(run)) return; // a newer sign-in state has taken over
+  const state = (status, note, { canSubscribe = false, canManage = false } = {}) => {
+    bind("status", status);
+    bind("status-note", note);
+    subscribe.hidden = !(canSubscribe && config.checkoutUrl);
+    manage.hidden = !(canManage && portalUrl);
+    if (portalUrl) manage.href = portalUrl;
+  };
+  if (error) return state("We couldn't check your subscription right now.", "Refresh in a moment. Nothing about your subscription has changed.");
+  const entitled = Boolean(data?.entitled);
+  if (!entitled && retriesLeft > 0) {
     // Returning from checkout: the payment notice can take a few seconds to arrive.
-    bind("status", "Confirming your payment…");
-    bind("status-note", "This usually takes a few seconds.");
-    buy.hidden = true;
+    state("Confirming your subscription…", "This usually takes a few seconds.");
     setTimeout(() => renderStatus(supabase, retriesLeft - 1, run), 3000);
     return;
   }
-  if (!paid && justPaid) {
-    bind("status", "We haven't received the payment notice yet.");
-    bind("status-note", "Refresh in a minute. If it still doesn't show, email the team with your order receipt.");
-    buy.hidden = true;
-    return;
+  if (!entitled && justPaid)
+    return state("We haven't received the payment notice yet.", "Refresh in a minute. If it still doesn't show, email the team with your receipt.");
+  const waiting = "The app isn't ready to download yet. The download will appear here as soon as it is, and the app will recognise this account.";
+  if (entitled && data.status === "past_due")
+    return state("Your last payment didn't go through.", "Update your card to keep your subscription. You keep access while the payment is retried.", { canManage: true });
+  if (entitled && data.status === "cancelled")
+    return state(`Cancelled. You have access until ${longDate(data.ends_at)}.`, "You can resume anytime before then.", { canManage: true });
+  if (entitled) {
+    const renews = longDate(data.renews_at);
+    return state("Subscribed. Thank you!", `${renews ? `Renews on ${renews} for $5. ` : ""}${waiting}`, { canManage: true });
   }
-  if (paid) {
-    const when = data.purchased_at ? new Date(data.purchased_at).toLocaleDateString(undefined, { dateStyle: "long" }) : null;
-    bind("status", when ? `Bought on ${when}. Thank you!` : "Bought. Thank you!");
-    bind("status-note", "The app isn't ready to download yet. The download will appear here as soon as it is, and the app will recognise this account.");
-    buy.hidden = true;
-  } else if (data?.status === "paid" && data.test_mode) {
-    bind("status", "Test purchase only.");
-    bind("status-note", "This was a Lemon Squeezy test-mode order, so it doesn't count as buying the app.");
-    buy.hidden = !config.checkoutUrl;
-  } else if (data?.status === "refunded") {
-    bind("status", "Refunded.");
-    bind("status-note", "Your payment was refunded, so the app is no longer bought on this account.");
-    buy.hidden = !config.checkoutUrl;
-  } else {
-    bind("status", "Not bought yet.");
-    bind(
-      "status-note",
-      config.checkoutUrl
-        ? "A one-time $10 purchase. The app isn't ready to download yet; your purchase is saved to this account and the download will appear here when it is."
-        : "Buying isn't open yet.",
-    );
-    buy.hidden = !config.checkoutUrl;
-    if (wantsToBuy && !buy.hidden) buy.focus();
-  }
+  if (data?.test_mode)
+    return state("Test subscription only.", "This is a Lemon Squeezy test-mode subscription, so it doesn't count.", { canSubscribe: true });
+  if (data?.status === "paused") return state("Your subscription is paused.", "Resume it to use the app again.", { canManage: true });
+  if (data?.status === "unpaid")
+    return state("Your subscription is on hold.", "The renewal payments didn't go through. Update your card to resume it.", { canManage: true });
+  if (data) return state("Your subscription has ended.", "Subscribe again anytime.", { canSubscribe: true });
+  state(
+    "Not subscribed yet.",
+    config.checkoutUrl
+      ? "$5 a month, cancel anytime. The app isn't ready to download yet; your subscription is saved to this account and the download will appear here when it is."
+      : "Subscriptions aren't open yet.",
+    { canSubscribe: true },
+  );
+  if (wantsToBuy && !subscribe.hidden) subscribe.focus();
 }

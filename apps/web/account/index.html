@@ -54,10 +54,13 @@
             <div data-view="signed-in" hidden>
               <p class="lede">Signed in as <b data-bind="email"></b>.</p>
               <div class="status-card">
-                <div class="eyebrow">App purchase</div>
+                <div class="eyebrow">Subscription</div>
                 <p class="status-line" data-bind="status">Checking…</p>
                 <p class="note" data-bind="status-note"></p>
-                <button class="btn btn-blue" type="button" data-action="buy" hidden>Buy for $10</button>
+                <div class="btn-row" style="gap: 10px">
+                  <button class="btn btn-blue" type="button" data-action="buy" hidden>Subscribe for $5 a month</button>
+                  <a class="btn-outline" data-action="manage" hidden>Manage subscription</a>
+                </div>
               </div>
               <button class="btn btn-white" type="button" data-action="sign-out">Sign out</button>
             </div>
