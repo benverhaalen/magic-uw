@@ -51,7 +51,7 @@ test("template strings and JSX text are scanned; comments and imports aren't", (
 test("calm, specific copy passes, including the mastery bar's own label", () => {
   for (const ok of [
     "Mastered 7 of 12 topics for Midterm 2",
-    "Based on your answers in Magic Canvas, not a grade prediction.",
+    "Based on your answers in My Magic UW, not a grade prediction.",
     "Right on 2 of 4 answers without help.",
     "Fading: last reviewed 20 days ago.",
     "Due Friday at 11:59 pm",

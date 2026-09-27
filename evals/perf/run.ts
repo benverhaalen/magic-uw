@@ -11,9 +11,11 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { canvasFirstSync, runBaseline } from "./baseline";
 import { renderMarkdown } from "./report";
+import { documentStage } from "./documents"; // owner: acquisition
 
 /** `canvas`: only the first full Canvas sync (T17), for quick before/after runs. */
-const SUITES = ["baseline", "canvas"] as const;
+/** `documents` (owner: acquisition): the course-file stage, earlier loop against the app's. */
+const SUITES = ["baseline", "canvas", "documents"] as const;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 function parseSuite(argv: string[]): string | undefined {
@@ -67,7 +69,9 @@ async function main() {
   const { metrics, recording } =
     suite === "canvas"
       ? { metrics: { canvasFirstSync: await canvasFirstSync() }, recording: undefined }
-      : await runBaseline();
+      : suite === "documents"
+        ? { metrics: { documentStage: await documentStage() }, recording: undefined }
+        : await runBaseline();
   const report = {
     schema: "magic-perf/1",
     suite,

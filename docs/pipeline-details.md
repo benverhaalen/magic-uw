@@ -6,6 +6,29 @@ Checked September 26, 2026 against current code and the official sources linked 
 
 The integrated sync resilience implementation adds shared module reads, bounded direct page/file revalidation and durable item-access observations. These changes are in main; the [implementation handoff](sync-resilience-review.md#implementation-handoff--september-26-2026) is the canonical interface, budget and verification record.
 
+## Course-file acquisition (September 27)
+
+Built and tested on synthetic data (tests `fix-acq-*`, perf suite `documents`); not yet run against live UW Canvas. The sync resilience discovery above (`canvas-references.ts`: module File items, in-body `/files/:id` links, Files-list rows, due-soon propagation) decides *which* files; this section is *how* they are fetched and kept.
+
+- **Download path.** In the desktop app (`ACQUISITION_APP` in `apps/desktop/src/ingestion.ts`) a file's bytes come from `GET /courses/:cid/files/:id/download?download_frd=1` in the student's Canvas session. Main follows the redirects itself (`canvas-file-download.ts`) to the Canvas origin, the account's files domain (`*.canvas-user-content.com`), inst-fs (`inst-fs-<region>-<env>.inscloudgate.net`) or legacy S3 (`instructure-uploads.s3.amazonaws.com`). The canvas-lms source lines are cited in `network.ts` beside `canvasFileHost`. Only the Canvas hop carries cookies. The earlier cookie-less download of the API's signed URL stopped at inst-fs (`secret_origin_blocked`), which matches all 248 live reads ending incomplete. Downloads share the sync's request scheduler (6 per host), and extraction runs in 2–3 `worker_threads` (`extract-pool.ts`).
+- **Causes.** Every failed or partial read records its cause as the diagnostic code: `redirect_blocked`, `secret_origin_blocked`, `http_<status>`, `too_large`, `extract_failed.<pdf|office|text>`, `needs_ocr`, `unsupported_type`, `reference_only`, `locked` or `needs_sign_in`. Any host goes in `path: ["host", <hostname>]`; a URL, query or file name never does. The trial log (`MAGIC_TRIAL_LOG`) gets one `document` event per file with host class, status, cause, bytes and time.
+- **Order and budget.** Syllabus files come first, then due-soon files, then the rest. Within each tier, text and Office files go before PDFs, smaller before larger. The first sync of an account gets 400 files / 300 s. Later syncs keep the 100 files / 120 s caps.
+- **Cheap skips.** A Files-list row whose `updated_at` and `size` match the stored document needs no metadata request and no download. An unchanged file reuses its stored text. Course-site documents keep their Last-Modified time and are re-asked with If-Modified-Since. The crawler's six-hour reuse window now reads a document's `fetchedAt` (it read only `observedAt`, so course-site PDFs re-downloaded on every crawl). A 4xx `robots.txt` means no rules (RFC 9309 §2.3.1.3).
+- **OCR.** A text-less PDF or an image is a complete read with document status `needs_ocr`, so it no longer keeps its source partial. A background job, never awaited by a sync, OCRs up to 30 pages per run with the OS engine: Windows.Media.Ocr (checked unpackaged on Windows 11) or Apple Vision (macOS, not yet run). The configured Tesseract adapter is the fallback. PDF pages render through pdfjs with `@napi-rs/canvas`.
+
+### What is stored and what is only referenced
+
+| Item | Kept on this device | Fetched or opened on demand |
+|---|---|---|
+| Readable course files (PDF, Office, text) | extracted text, per-page parts and anchors, passages with offsets, metadata, SHA-256 and size | the file itself; raw bytes are deleted once text is extracted (`retainBytes: "ocr-pending"`) |
+| Files waiting for OCR (`needs_ocr`) | metadata and hash, plus the bytes until the OCR job has run | text after OCR |
+| Video and audio files, Kaltura media | metadata and link (`reference_only`) | playback; captions are later work |
+| Files over the size cap (`maxFileBytes`) | metadata and link (`too_large`) | the file |
+| External tools (LTI) | metadata and link | the tool |
+| Historical-term courses | metadata only, unless the student opens them (policy; this change does not enforce it) | content |
+
+Not built yet: a size-capped LRU of recently opened files for instant re-open (nothing in the app opens a stored file today), moving file work into the job drain, and the `sync.status` query.
+
 ## Canvas: the implemented path
 
 The expanded [course-ingestion reference](ingestion-upgrade.md) is authoritative for current endpoints, metadata/download pools, bounds, source scopes, calendar feeds, retries, and material extraction. [Implementation status](implementation-status.md) distinguishes synthetic verification from live use.

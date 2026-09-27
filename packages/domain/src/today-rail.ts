@@ -31,7 +31,35 @@ export interface RailEvent {
   startOnly: boolean;
   location?: string;
   onlineMeeting?: "teams" | "zoom" | "webex" | "meet"; // T30: Graph meetings add zoom, webex, meet
+  /** The meeting's https join link, when the calendar supplies one. */
+  joinUrl?: string;
+  /** The student's answer to the invite. A declined meeting is shown but holds no time. */
+  response?: MeetingResponse;
 }
+export type MeetingResponse = "accepted" | "tentative" | "declined" | "pending" | "organizer";
+/** Maps a calendar's response value (Microsoft Graph wording) to the rail's. Unknown values stay unknown. */
+export function meetingResponse(raw: string | undefined): MeetingResponse | undefined {
+  switch (raw) {
+    case "accepted": return "accepted";
+    case "tentativelyAccepted": return "tentative";
+    case "declined": return "declined";
+    case "organizer": return "organizer";
+    case "none":
+    case "notResponded": return "pending";
+    default: return undefined;
+  }
+}
+/** A join link is offered only as a plain https URL with no embedded credentials. */
+function safeJoinUrl(raw: unknown): string | undefined {
+  if (typeof raw !== "string" || raw.length > 2000) return undefined;
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" && !url.username && !url.password ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+const holdsTime = (e: { response?: MeetingResponse }) => e.response !== "declined";
 export interface RailDue {
   id: string;
   title: string;
@@ -83,6 +111,7 @@ export function validatePlanEdit(
     return { ok: false, reason: "Pick a time within today.", overlaps: [] };
   if (e - s < 10) return { ok: false, reason: "A block needs at least 10 minutes.", overlaps: [] };
   const overlaps = events
+    .filter(holdsTime)
     .filter((ev) => s < (ev.endMin ?? ev.startMin + START_ONLY_MIN) && ev.startMin < e)
     .map((ev) => ev.title);
   return { ok: true, overlaps };
@@ -276,6 +305,8 @@ export function buildTodayRail(
       startOnly: !end,
       ...(cal?.location ? { location: cal.location } : {}),
       ...(cal?.onlineMeeting ? { onlineMeeting: cal.onlineMeeting } : {}),
+      ...(safeJoinUrl(cal?.joinUrl) ? { joinUrl: safeJoinUrl(cal?.joinUrl) } : {}),
+      ...(meetingResponse(cal?.responseStatus) ? { response: meetingResponse(cal?.responseStatus) } : {}),
     });
   }
   events.sort((a, b) => a.startMin - b.startMin);
@@ -297,7 +328,7 @@ export function buildTodayRail(
       b <= s || a >= e ? [[s, e] as [number, number]] : ([[s, a], [b, e]] as [number, number][]).filter(([x, y]) => y - x >= 15),
     );
   };
-  for (const e of events) reserve(e.startMin, (e.endMin ?? e.startMin + START_ONLY_MIN) + BREAK_MIN);
+  for (const e of events.filter(holdsTime)) reserve(e.startMin, (e.endMin ?? e.startMin + START_ONLY_MIN) + BREAK_MIN);
 
   // The student's decisions for today come first: accepted blocks hold their time.
   const todays = plan.filter((p) => p.date === today.date);
@@ -320,7 +351,7 @@ export function buildTodayRail(
   const described = new Map<string, { reason: string; factors: string[] }>();
   const prepped = new Set<string>();
   for (const e of events.filter(
-    (e) => !e.startOnly && CLASS_SESSION.test(e.title) && e.startMin - today.min >= PREP_MIN,
+    (e) => holdsTime(e) && !e.startOnly && CLASS_SESSION.test(e.title) && e.startMin - today.min >= PREP_MIN,
   )) {
     const event = eventResources.find((r) => r.id === e.id)!;
     const material = live
@@ -369,6 +400,7 @@ export function buildTodayRail(
   const busy: [number, number][] = [
     ...eventResources
       .filter((r) => r.calendar && !r.calendar.allDay && r.calendar.start.length > 10)
+      .filter((r) => meetingResponse(r.calendar!.responseStatus) !== "declined")
       .map((r): [number, number] => {
         const s = Date.parse(r.calendar!.start);
         return [s, r.calendar!.end ? Date.parse(r.calendar!.end) : s + START_ONLY_MIN * 60000];

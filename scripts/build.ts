@@ -21,6 +21,18 @@ await build({
   sourcemap: false,
   logLevel: "warning",
 });
+// owner: acquisition: the extraction thread (extract-pool.ts), beside the utility bundle.
+await build({
+  entryPoints: ["packages/connectors/src/extract-worker.ts"],
+  outfile: "apps/desktop/dist/extract-worker.cjs",
+  bundle: true,
+  platform: "node",
+  target: "node24",
+  format: "cjs",
+  external: ["electron", "pdfjs-dist/*"],
+  sourcemap: false,
+  logLevel: "warning",
+});
 await viteBuild({
   configFile: false,
   root: "apps/desktop",

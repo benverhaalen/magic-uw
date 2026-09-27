@@ -16,9 +16,9 @@ export function dueLabel(value: string | null) {
   return value ? new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(value)) : 'Due date not found';
 }
 function excerpt(text: string) { const clean = text.replace(/\s+/g, ' ').trim(); return clean.length > 240 ? `${clean.slice(0, clean.lastIndexOf(' ', 237))}…` : clean; }
-export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPlan, report }: {
+export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPlan, onJoin, report }: {
   snapshot: Snapshot; resources: ResourceView[]; onSelect: (id: string) => void; onCourses: () => void; onSources: () => void;
-  onPlan: (command: Command) => Promise<unknown>; report?: (resource: ResourceView) => ReactNode;
+  onPlan: (command: Command) => Promise<unknown>; onJoin?: (url: string) => void; report?: (resource: ResourceView) => ReactNode;
 }) {
   const refreshKey = preparedWorkRevision(snapshot);
   const work = projectWork(resources, new Date().toISOString(), Intl.DateTimeFormat().resolvedOptions().timeZone);
@@ -53,5 +53,5 @@ export function Home({ snapshot, resources, onSelect, onCourses, onSources, onPl
     <section className="home-study" aria-labelledby="study-title" data-place-anchor="study"><h2 id="study-title">Study &amp; Learn</h2><div className="home-study-grid">{study.map(({link,from,to}) => <a className="home-study-action" href={resourceHref(to.id)} key={link.id}><span>{to.courseName}</span><h3>Review {to.title}</h3><p>Linked to {from.title}</p><div><span>Open saved material</span><Glyph name="forward"/></div></a>)}</div>
       {!study.length && <p className="home-empty">No confirmed study materials are linked yet. Open a course item to inspect its related sources before choosing what to review.</p>}
     </section>
-  </div><div className="home-today"><div className="home-today-heading"><h2>Today</h2><span>{new Intl.DateTimeFormat(undefined,{weekday:'short',month:'short',day:'numeric'}).format(new Date())}</span></div><TodayRail compactEmpty onInspectSources={onSources} resources={resources} sources={snapshot.sources} plan={snapshot.dayPlan} changes={snapshot.changes} onSelect={onSelect} onPlan={onPlan}/></div></div>;
+  </div><div className="home-today"><div className="home-today-heading"><h2>Today</h2><span>{new Intl.DateTimeFormat(undefined,{weekday:'short',month:'short',day:'numeric'}).format(new Date())}</span></div><TodayRail compactEmpty onInspectSources={onSources} resources={resources} sources={snapshot.sources} plan={snapshot.dayPlan} changes={snapshot.changes} onSelect={onSelect} onPlan={onPlan} onJoin={onJoin}/></div></div>;
 }

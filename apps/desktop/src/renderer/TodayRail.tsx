@@ -16,6 +16,14 @@ import {
 } from "@magic/domain";
 
 const HOUR_PX = 44;
+const PROVIDER_LABEL = { teams: "Teams", zoom: "Zoom", webex: "Webex", meet: "Meet" } as const;
+const RESPONSE_LABEL = {
+  accepted: "Accepted",
+  tentative: "Tentative",
+  declined: "Declined",
+  pending: "Not answered",
+  organizer: "You're organizing",
+} as const;
 
 /** Saved capture coverage is not a promise that no unobserved event exists. */
 export function calendarCoverageNeedsCheck(sources: SourceHealth[], now: string): boolean {
@@ -64,6 +72,7 @@ export function TodayRail({
   onPlan,
   compactEmpty = false,
   onInspectSources,
+  onJoin,
 }: {
   compactEmpty?: boolean;
   onInspectSources?: () => void;
@@ -72,6 +81,8 @@ export function TodayRail({
   plan?: DayPlanEntry[];
   /** Recent source changes; due items note a moved date or updated instructions. */
   changes?: RailChange[];
+  /** Opens a meeting's https join link in the browser. Without it, no Join button is shown. */
+  onJoin?: (url: string) => void;
   onSelect: (id: string) => void;
   /** Saves a day-plan decision locally; resolves after the snapshot refreshes. */
   onPlan: (command: Command) => Promise<unknown>;
@@ -413,33 +424,52 @@ export function TodayRail({
           ))}
           {rail.events.map((e) => {
             const end = e.endMin ?? e.startMin + 30;
+            const range = e.endMin != null ? `${clock(e.startMin)}–${clock(e.endMin)}` : `${clock(e.startMin)}, start only`;
+            const status = e.response ? RESPONSE_LABEL[e.response] : null;
+            const provider = e.onlineMeeting ? PROVIDER_LABEL[e.onlineMeeting] : null;
+            const canJoin = Boolean(e.joinUrl && onJoin && e.response !== "declined");
             return (
-              <button
+              <div
                 key={e.id}
-                className={`rail-block event ${e.startOnly ? "start-only" : ""}`}
-                title={`${e.title} · ${e.endMin != null ? `${clock(e.startMin)}–${clock(e.endMin)}` : `${clock(e.startMin)}, start only`}${e.location ? ` · ${e.location}` : ""}`}
-                aria-label={`${e.title}, ${e.endMin != null ? `${clock(e.startMin)} to ${clock(e.endMin)}` : `${clock(e.startMin)}, start only`}. Open details`}
-                onClick={() => onSelect(e.id)}
+                className={`rail-event ${e.response ?? ""}`}
                 style={{ top: top(e.startMin) + 1, height: height(e.startMin, end), ...across(e.id) }}
               >
-                <b>
-                  {e.onlineMeeting === "teams" ? <span className="rail-teams">Teams</span> : null}
-                  {e.title}
-                </b>
-                {height(e.startMin, end) >= 36 ? (
-                  (lanes.get(e.id)?.lanes ?? 1) > 1 ? (
-                    // Sharing the row: the range would wrap and clip. Full times stay in the label.
-                    <span>{clock(e.startMin)}</span>
-                  ) : (
-                    <span>
-                      {e.endMin != null
-                        ? `${clock(e.startMin)}–${clock(e.endMin)}`
-                        : `${clock(e.startMin)} · start only`}
-                      {e.location && e.onlineMeeting !== "teams" ? ` · ${e.location}` : ""}
-                    </span>
-                  )
+                <button
+                  className={`rail-block event ${e.startOnly ? "start-only" : ""}`}
+                  title={`${e.title} · ${range}${e.location ? ` · ${e.location}` : ""}${status ? ` · ${status}` : ""}`}
+                  aria-label={`${e.title}, ${range}${status ? `, ${status}` : ""}. Open details`}
+                  onClick={() => onSelect(e.id)}
+                >
+                  <b>
+                    {provider ? <span className="rail-teams rail-provider">{provider}</span> : null}
+                    {e.title}
+                  </b>
+                  {height(e.startMin, end) >= 36 ? (
+                    (lanes.get(e.id)?.lanes ?? 1) > 1 ? (
+                      // Sharing the row: the range would wrap and clip. Full times stay in the label.
+                      <span>{clock(e.startMin)}</span>
+                    ) : (
+                      <span>
+                        {e.endMin != null
+                          ? `${clock(e.startMin)}–${clock(e.endMin)}`
+                          : `${clock(e.startMin)} · start only`}
+                        {e.location && !e.onlineMeeting ? ` · ${e.location}` : ""}
+                        {status && e.response !== "accepted" && e.response !== "organizer" ? ` · ${status}` : ""}
+                      </span>
+                    )
+                  ) : null}
+                </button>
+                {canJoin ? (
+                  <button
+                    className="rail-join"
+                    aria-label={`Join ${e.title}${provider ? ` on ${provider}` : ""}`}
+                    title={`Join${provider ? ` on ${provider}` : ""} in your browser`}
+                    onClick={() => onJoin!(e.joinUrl!)}
+                  >
+                    Join
+                  </button>
                 ) : null}
-              </button>
+              </div>
             );
           })}
           {visible.map((s) => {
