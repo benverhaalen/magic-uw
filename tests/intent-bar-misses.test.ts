@@ -151,3 +151,31 @@ test("\"what changed since yesterday\" answers in code from the change events: t
     await h.close();
   }
 });
+
+const answer = (sentences: { sourceId: string; quote: string }[]) => ({
+  output: { found: true, sentences: sentences.map((s) => ({ text: "From the course materials.", citations: [s] })) },
+});
+
+test("an exam question naming its course searches that course's passages and exam facts before \"Not in your materials\"", { timeout: 60_000 }, async () => {
+  const probe = await bar();
+  const syllabus = probe.pid("Syllabus");
+  await probe.close();
+  const h = await bar([answer([{ sourceId: syllabus, quote: EXAM }, { sourceId: syllabus, quote: COVERS }])]);
+  try {
+    const r = await h.run("when and where is the midterm in cs 400, and what's on it");
+    assert.equal(r.status, "answer", JSON.stringify(r));
+    assert.ok(r.status === "answer" && !r.notFound && r.citations.length === 2, JSON.stringify(r));
+    const sent = (await h.calls()).map((c) => c.stdin).join("\n");
+    assert.equal((await h.calls()).length, 1, "one checked call");
+    assert.ok(sent.includes(EXAM) && sent.includes(COVERS), "the syllabus passage with the date, room and coverage reached the model");
+    // The Canvas record, rendered by code in the student's time zone.
+    assert.ok(sent.includes("Midterm exam (Canvas assignment): due Thursday, October 15, 2026 at 9:15 PM CDT; 100 points; its assignment group is 30% of the grade."), sent);
+    assert.ok(!/Homework 1 \(Canvas/.test(sent), "only the asked-about assessment");
+    // Nothing on the topic: still "Not in your materials", with no call.
+    const miss = await h.run("who won the world series in cs 400");
+    assert.ok(miss.status === "answer" && miss.notFound, JSON.stringify(miss));
+    assert.equal((await h.calls()).length, 1, "the coverage gate still sends nothing");
+  } finally {
+    await h.close();
+  }
+});

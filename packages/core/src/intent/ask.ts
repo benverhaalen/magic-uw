@@ -33,6 +33,8 @@ export interface AskDeps {
   protection?: IntentProtection;
   /** owner: course-facts. The course prefix (brief + pack catalogue): used when the ask names one course. */
   coursePrefix?: CoursePrefixSource;
+  /** The student's time zone, for the dates in assessment facts. */
+  timeZone?: string;
 }
 
 const zero = () => ({ in: 0, cached: 0, out: 0 });
@@ -58,21 +60,102 @@ export function refersBack(question: string): boolean {
 /** The one earlier exchange an ask may carry, shortened: an answer past this is cut. */
 export const PREVIOUS_ANSWER_CHARS = 600;
 export type PreviousExchange = { question: string; answer: string };
+export interface AskOptions {
+  /** The one earlier exchange, when the question refers back to it (the router decides). */
+  previous?: PreviousExchange | null;
+  /** The words to search with: the question without the course it names ("in cs 400"), which no passage contains. */
+  searchText?: string;
+}
 
-export async function groundedAsk(deps: AskDeps, question: string, courses: ResolvedCourse[], signal: AbortSignal, previous: PreviousExchange | null = null): Promise<AskResult> {
+const ASSESSMENT_WORD = /\b(exams?|midterms?|finals?|quiz(?:zes)?|tests?)\b/i;
+const ASSESSMENT_TITLE = /\b(exam|midterm|final|quiz|test)\b/i;
+/** At most this many assessment facts go with an exam question. */
+export const ASSESSMENT_FACTS = 4;
+type Fact = { sourceId: string; text: string; resourceId: string; title: string; url: string };
+
+/**
+ * An exam question's assessment facts, for one course: what code already holds about its exams
+ * (the course map's assessments and stated scope, the course facts' assessment claims, and the
+ * Canvas assessment records with their dates, points and group weights). Canvas and map records
+ * are rendered by code as one line each; a claim contributes the syllabus passage behind its quote.
+ * Every fact is a passage the answer's quotes are checked against.
+ */
+export function assessmentFacts(store: IntentStore, course: ResolvedCourse, question: string, timeZone: string): { facts: Fact[]; pids: number[] } {
+  const word = ASSESSMENT_WORD.exec(question)?.[1]?.toLowerCase();
+  if (!word) return { facts: [], pids: [] };
+  const asked = word.startsWith("quiz") ? "quiz" : word.replace(/s$/, "");
+  // "the midterm" means the midterms; "an exam" or "a test" means any of them.
+  const matches = (title: string) => ASSESSMENT_TITLE.test(title) && (asked === "exam" || asked === "test" || new RegExp(`\\b${asked}`, "i").test(title));
+  const when = (iso: string) => {
+    const dated = /^\d{4}-\d{2}-\d{2}$/.test(iso);
+    return new Intl.DateTimeFormat("en-US", { timeZone: dated ? "UTC" : timeZone, weekday: "long", month: "long", day: "numeric", year: "numeric", ...(dated ? {} : { hour: "numeric", minute: "2-digit", timeZoneName: "short" }) }).format(new Date(dated ? `${iso}T00:00:00Z` : iso));
+  };
+  const facts: Fact[] = [];
+  const covered = new Set<string>();
+  const ref = { accountScope: course.accountScope, courseId: course.courseId };
+  for (const a of store.assessments(ref)) {
+    if (facts.length >= ASSESSMENT_FACTS || !matches(a.title)) continue;
+    const scope = store.assessmentScopes(a.id).find((x) => x.status !== "flagged");
+    const resourceId = a.resourceId ?? scope?.evidence?.resourceId;
+    const r = resourceId ? store.resource(resourceId) : undefined;
+    if (!r) continue;
+    const bits = [a.date ? `on ${when(a.date)}` : null, a.weight !== null ? `${a.weight}% of the grade` : null, a.format ? `format: ${a.format}` : null, scope ? `covers: ${scope.stated}` : null].filter(Boolean);
+    if (!bits.length) continue;
+    covered.add(r.id);
+    facts.push({ sourceId: `f${facts.length + 1}`, text: `${a.title} (the app's course map): ${bits.join("; ")}.`, resourceId: r.id, title: r.title, url: r.url });
+  }
+  const scopeOf = new Map(store.sources().map((x) => [x.id, x.accountScope]));
+  const live = store.resources().filter((r) => !r.deleted && r.courseId === course.courseId && scopeOf.get(r.sourceId) === course.accountScope);
+  for (const r of live) {
+    if (facts.length >= ASSESSMENT_FACTS || covered.has(r.id) || r.kind !== "assignment" || !matches(r.title)) continue;
+    const bits = [r.dueAt ? `due ${when(r.dueAt)}` : null, r.points ? `${r.points} points` : null, r.assignmentGroup?.weight != null ? `its assignment group is ${r.assignmentGroup.weight}% of the grade` : null].filter(Boolean);
+    if (!bits.length) continue;
+    facts.push({ sourceId: `f${facts.length + 1}`, text: `${r.title} (Canvas assignment): ${bits.join("; ")}.`, resourceId: r.id, title: r.title, url: r.url });
+  }
+  // The course facts' assessment claims: the passages that hold their quotes.
+  const profile = store.courseIntelligence().filter((p) => p.accountScope === course.accountScope && p.courseId === course.courseId).sort((x, y) => y.version - x.version)[0];
+  const pids = new Set<number>();
+  for (const claim of profile?.claims ?? []) {
+    if (claim.kind !== "assessment" || !matches(`${claim.label} ${String(claim.value ?? "")}`)) continue;
+    for (const e of claim.evidence) {
+      if (e.start === undefined || e.end === undefined) continue;
+      for (const p of store.passages(e.resourceId)) if (!p.redacted && p.start < e.end && p.end > e.start) pids.add(p.pid);
+    }
+  }
+  return { facts, pids: [...pids] };
+}
+
+export async function groundedAsk(deps: AskDeps, question: string, courses: ResolvedCourse[], signal: AbortSignal, options: AskOptions = {}): Promise<AskResult> {
   const { store } = deps;
+  const previous = options.previous ?? null;
   const none = (text: string, extra: Partial<AskResult> = {}): AskResult => ({ text, citations: [], notFound: true, dropped: 0, path: "none", tokens: zero(), ...extra });
   if (!courses.length) return none(NOT_IN_MATERIALS);
   // A question that refers back is searched with the question it refers to, so "why does it resize" finds its passages.
-  const query = previous ? `${previous.question} ${question}` : question;
+  const words = options.searchText?.trim() || question;
+  const query = previous ? `${previous.question} ${words}` : words;
   const found = store.searchPassages({ query, courses: courses.map((c) => ({ accountScope: c.accountScope, courseId: c.courseId })), k: 12 });
-  // The coverage gate: nothing in the materials supports the question, so no model call.
-  if (found.notFound || !found.hits.length) return none(NOT_IN_MATERIALS);
+  // A one-course exam question also reads what code holds about that course's exams.
+  const facts = courses.length === 1 ? assessmentFacts(store, courses[0]!, question, deps.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone) : { facts: [], pids: [] };
+  // The coverage gate: nothing in the materials or the exam facts supports the question, so no model call.
+  const searched = found.notFound ? [] : found.hits;
+  if (!searched.length && !facts.facts.length && !facts.pids.length) return none(NOT_IN_MATERIALS);
   const budget = deps.tokenBudget ?? ASK_TOKEN_BUDGET;
   const passages: Passage[] = [];
   const meta = new Map<string, { resourceId: string; title: string; url: string }>();
   let used = 0;
-  for (const h of found.hits) {
+  for (const f of facts.facts) {
+    passages.push({ sourceId: f.sourceId, text: f.text });
+    meta.set(f.sourceId, { resourceId: f.resourceId, title: f.title, url: f.url });
+    used += Math.ceil(f.text.length / 4);
+  }
+  const claimHits = facts.pids.flatMap((pid) => {
+    const p = store.passage(pid);
+    return p ? [{ pid, resourceId: p.passage.resourceId, title: p.title, url: p.url }] : [];
+  });
+  const seen = new Set<number>();
+  for (const h of [...claimHits, ...searched]) {
+    if (seen.has(h.pid)) continue;
+    seen.add(h.pid);
     if (passages.length >= ASK_MAX_PASSAGES) break;
     const p = store.passage(h.pid);
     if (!p || p.passage.redacted || !p.text.trim()) continue;

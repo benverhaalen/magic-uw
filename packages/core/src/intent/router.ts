@@ -23,7 +23,7 @@ import { groundedAsk, refersBack, type PreviousExchange } from "./ask";
 import { coursePrefixes, type CoursePrefixSource } from "../course-facts/prefix"; // owner: course-facts
 import { createCourseBriefs } from "../course-facts/brief";
 import { authorizer } from "./consent";
-import { buildIndex, createResolve, indexSignature, refreshTopics, type IntentIndex } from "./courses";
+import { buildIndex, createResolve, findCourseMentions, indexSignature, norm, refreshTopics, type IntentIndex } from "./courses";
 import { createRegistry, type ActionRegistry, type AnyAction } from "./registry";
 import { candidate, courseDisplay, normaliseUtterance, resolveCode, resolveSlots, type CodeOutcome } from "./resolve";
 import type { ActionContext, AskResult, IntentHost, IntentStore, ResolvedArgs, ResolvedCourse } from "./types";
@@ -188,7 +188,11 @@ export function createIntentRouter(deps: IntentRouterDeps) {
         const key = list.map((c) => c.ref).sort().join("\n");
         const last = exchanges.get(key);
         const previous = last && now().getTime() - last.at <= PREVIOUS_EXCHANGE_MS && refersBack(question) ? { question: last.question, answer: last.answer } : null;
-        const r = await groundedAsk({ store, runner: () => runnerP, artifacts, ledger, now, protection, coursePrefix /* owner: course-facts */ }, question, list, s, previous); // owner: privacy
+        // Retrieval searches without the course the question names ("in cs 400"): code already resolved it, and no passage contains it.
+        const said = norm(question);
+        const mentions = findCourseMentions(current(), said);
+        const searchText = mentions.length ? [...mentions].reverse().reduce((t, m) => `${t.slice(0, m.start)} ${t.slice(m.end)}`, said).replace(/\s+/g, " ").trim() : undefined;
+        const r = await groundedAsk({ store, runner: () => runnerP, artifacts, ledger, now, protection, timeZone, coursePrefix /* owner: course-facts */ }, question, list, s, { previous, ...(searchText ? { searchText } : {}) }); // owner: privacy
         if (!r.notFound && !r.unavailable) exchanges.set(key, { question, answer: r.text, at: now().getTime() });
         spent.tokens = add(spent.tokens, r.tokens);
         return r;
