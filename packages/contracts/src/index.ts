@@ -1952,9 +1952,18 @@ export interface AppBridge {
   cancelLocal?(): Promise<void>;
   exportMcp?(id: string): Promise<string>;
   keepSignedIn?(value?: boolean): Promise<boolean>;
+  /** T05e: Remember my sign-in's status, or forget it. The NetID and password never cross. */
+  rememberSignIn?(op: "status" | "forget"): Promise<RememberSignInStatus>;
   /** T80: the student's AI command-line clients, each in an app-owned profile. */
   clients?: ClientsBridge;
 }
+/**
+ * T05e (plan D39). `offered: false` in a build with the feature switched off (a UW licence).
+ * `available: false` when the OS offers no protected storage, with the reason shown.
+ */
+export type RememberSignInStatus =
+  | { offered: false }
+  | { offered: true; available: boolean; reason?: string; saved: boolean };
 /** T80. The AI command-line clients Magic Canvas can host in an app-owned profile. */
 export type ClientId = "claude" | "codex" | "gemini";
 /**
