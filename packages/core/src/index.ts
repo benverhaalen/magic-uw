@@ -34,7 +34,7 @@ import {
   createPublicClient,
   type PublicClient,
 } from "../../connectors/src/network";
-import { planningIdentityTable, summarizePlanningGrades } from "./planning-grades";
+import { madgradesUpToDate, planningIdentityTable, summarizePlanningGrades } from "./planning-grades"; // owner: planning-perf: madgradesUpToDate
 import { pullMadgradesGrades, type MadgradesTransport } from "../../connectors/src/madgrades";
 import { comparePlanning } from "./planning";
 import { applyConsent, egressFor } from "./egress"; // owner: T06
@@ -57,6 +57,7 @@ const judgedHash = (r: Resource) => textHash(r.title, r.text);
 const JEV_TEXT_CHARS = 2000;
 const JEV_POLICY_CHARS = 500;
 import type { QueryRequest, QueryResult } from "@magic/contracts";
+import type { NotesRequest, NotesResult } from "@magic/contracts"; // owner: notes
 import type {
   Correction,
   LearningRequest,
@@ -92,6 +93,11 @@ export interface CoreSeams {
     preview?(text: string, courseId?: string): IntentCommandResult;
   };
   // end owner: intent
+  // owner: notes. Session notes (packages/notes): scaffolds, edits, fill and two-way sync.
+  notes?: {
+    handle(request: NotesRequest, signal: AbortSignal): Promise<NotesResult>;
+  };
+  // end owner: notes
 }
 export type { JobRegistry } from "./jobs/registry";
 // end owner: T05b
@@ -669,7 +675,7 @@ export function createCore(store: Store, options: CoreOptions) {
     const command = commandSchema.parse(raw);
     let message: string | undefined, manifest: ContextManifest | undefined;
     // owner: T05b
-    let seamResult: Partial<Pick<CommandResult, "learning" | "map" | "pack" | "workspace" | "command">> = {};
+    let seamResult: Partial<Pick<CommandResult, "learning" | "map" | "pack" | "workspace" | "command" | "notes">> = {};
     // end owner: T05b
     switch (command.type) {
       case "snapshot":
@@ -810,7 +816,9 @@ export function createCore(store: Store, options: CoreOptions) {
         if (command.refresh) {
           if (!options.madgrades) throw new Error("Madgrades refresh is available through the desktop app.");
           const table = planningIdentityTable(store);
-          if (!table) refresh = { status: "unverified_crosslist", message: "Saved cross-list mappings disagree. Refresh subject and cross-list evidence before loading grades." };
+          // owner: planning-perf: the latest past term is already saved; no request is made.
+          if (madgradesUpToDate(store, command.courseKey)) refresh = { status: "saved", message: "Saved Madgrades evidence already covers the latest past term. Averages are not predictions." };
+          else if (!table) refresh = { status: "unverified_crosslist", message: "Saved cross-list mappings disagree. Refresh subject and cross-list evidence before loading grades." };
           else {
             const controller = new AbortController(), version = generation;
             planningReads.add(controller);
@@ -1023,6 +1031,17 @@ export function createCore(store: Store, options: CoreOptions) {
         break;
       }
       // end owner: intent
+      // owner: notes
+      case "notes": {
+        const notes = seams.notes;
+        seamResult = {
+          notes: notes
+            ? await seamCall((signal) => notes.handle(command.request, signal))
+            : { op: command.request.op, status: "not_built", message: "Notes aren't built yet." },
+        };
+        break;
+      }
+      // end owner: notes
       default: {
         // An unknown Command is a type error here (T05b).
         const unhandled: never = command;

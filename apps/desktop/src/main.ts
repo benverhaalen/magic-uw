@@ -27,6 +27,7 @@ import {
 } from "../../../packages/connectors/src/network";
 import { checkedSpaceProbeUrl } from "../../../packages/connectors/src/space-hosts"; // owner: T05b
 import { clearSignOutSecrets, createSecretVault } from "./secrets";
+import { createGoogleNotesAuth } from "./notes-google"; // owner: notes
 // owner: T30. Outlook through the app's own Microsoft sign-in (Graph); the token stays in main.
 import { createOutlook, readOutlookConfig } from "./outlook";
 import { electronAuthWindow } from "./outlook-window";
@@ -180,6 +181,13 @@ app
       encrypt: (value) => safeStorage.encryptString(value),
       decrypt: (value) => safeStorage.decryptString(Buffer.from(value)),
     });
+    // owner: notes. Google Docs sync: OAuth (PKCE, loopback) and the Drive proxy; the token stays here.
+    const notesGoogle = createGoogleNotesAuth({
+      clientId: process.env.MAGIC_GOOGLE_CLIENT_ID || undefined,
+      vault,
+      openExternal: (url) => shell.openExternal(url),
+    });
+    // end owner: notes
     // The Madgrades token stays in the main-process vault; the workspace sends only fixed request shapes.
     const madgradesHttp = new MadgradesHttp({
       fetch: (url, init) => fetch(url, init),
@@ -305,6 +313,23 @@ app
         sourceReads.get(message.id)?.abort();
         return;
       }
+      // owner: notes. The worker's Google Docs calls: status, the student's sign-in, and Drive requests.
+      if (message.kind === "notes-google") {
+        try {
+          const { op, request } = message.payload ?? {};
+          const result =
+            op === "status" ? await notesGoogle.status()
+            : op === "connect" ? await notesGoogle.connect()
+            : op === "disconnect" ? await notesGoogle.disconnect()
+            : op === "request" ? await notesGoogle.request(request)
+            : (() => { throw new Error("Unsupported notes operation"); })();
+          worker.postMessage({ kind: "source-response", id: message.id, result });
+        } catch {
+          worker.postMessage({ kind: "source-response", id: message.id, error: true });
+        }
+        return;
+      }
+      // end owner: notes
       if (message.kind === "source-secret") {
         try {
           const { operation, key, value } = message.payload;
@@ -423,12 +448,20 @@ app
         sourceReads.set(message.id, controller);
         planningReads.add(message.id);
         try {
-          if (!planningCall || planningClears > 0) throw new Error("Planning read cancelled");
+          // owner: planning-perf. A presence-gated scheduled refresh (worker cadence) runs without
+          // an open button call; the consent gate above still applies.
+          const scheduled = message.payload?.scheduled === true;
+          if ((!planningCall && !scheduled) || planningClears > 0) throw new Error("Planning read cancelled");
           // The native orchestration owns fixed reads, identity validation, and raw
-          // response projection. The worker cannot supply URLs or private identities.
+          // response projection. The worker cannot supply URLs or private identities; its
+          // stored-report and fresh-subject hints are schema-checked inside the sync.
+          // Soft deadline 70 s < main's 90 s timer ≤ the worker's 95 s: a slow sync keeps what arrived.
           const result = await syncUwPlanning({
             http: planningHttp, accountSeed: planningAccountScope, signal: controller.signal,
+            deadline: AbortSignal.timeout(70_000),
+            storedAudits: message.payload?.storedAudits, freshSubjects: message.payload?.freshSubjects,
           });
+          // end owner: planning-perf
           controller.signal.throwIfAborted();
           worker.postMessage({ kind: "source-response", id: message.id, result });
         } catch {

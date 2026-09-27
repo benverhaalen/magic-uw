@@ -1,6 +1,6 @@
 import type {
   PlanningComparison, Store, PlanningRecord, PlanningCatalogCourse, PlanningEnrollmentPackage,
-  StoredPlanningRecord, PlanningGradeDistribution,
+  StoredPlanningRecord, PlanningGradeDistribution, PlanningCapture, PlanningSourceHealth, PlanningSubject,
 } from "@magic/contracts";
 import {
   buildCourseIdentityTable, canonicalizeCourseKey, potentialAuditCoverage, evaluatePrerequisite,
@@ -14,14 +14,116 @@ function evidenceRecord<T extends StoredPlanningRecord>(row: T): Omit<T, "localI
   const { localId, sourceId, accountScope, contentHash, version, deleted, ...record } = row;
   return record;
 }
+// owner: planning-perf. Semester-scale freshness and cadence. UW planning data changes per term,
+// except enrollment during add/drop. An unknown add/drop window counts as add/drop (the
+// conservative, fresher side): no Registrar dates are stored yet.
+export const PLANNING_ADD_DROP_MS = 7 * DAY;
+export const PLANNING_TERM_MS = 120 * DAY;
+export type PlanningEvidenceKind = "enrollment" | "history" | "audit" | "catalog" | "public";
+export interface PlanningAddDropWindow { start: string; end: string }
+export function inAddDrop(now: string, window: PlanningAddDropWindow | null | undefined): boolean {
+  if (!window) return true;
+  const at = Date.parse(now), start = Date.parse(window.start), end = Date.parse(window.end);
+  if (![at, start, end].every(Number.isFinite) || start > end) return true;
+  return at >= start && at <= end;
+}
+/** How long evidence of one kind stays fresh. */
+export function planningHorizon(kind: PlanningEvidenceKind, now: string, addDrop?: PlanningAddDropWindow | null): number {
+  return kind === "enrollment" && inAddDrop(now, addDrop) ? PLANNING_ADD_DROP_MS : PLANNING_TERM_MS;
+}
+export function planningEvidenceKind(scopeKind: PlanningCapture["scope"]["kind"]): PlanningEvidenceKind {
+  return scopeKind === "enrollment_term" ? "enrollment" : scopeKind === "degree_plan" ? "history"
+    : scopeKind === "audit_program" ? "audit" : scopeKind === "catalog_term" ? "catalog" : "public";
+}
+/** The horizons comparePlanning applies. `legacy` is the previous one-day (audit seven-day) rule. */
+export type PlanningHorizons = (kind: PlanningEvidenceKind | "prerequisite") => number;
+export const legacyPlanningHorizons: PlanningHorizons = (kind) => kind === "audit" || kind === "prerequisite" ? 7 * DAY : DAY;
+export const semesterPlanningHorizons = (now: string, addDrop?: PlanningAddDropWindow | null): PlanningHorizons =>
+  (kind) => planningHorizon(kind === "prerequisite" ? "catalog" : kind, now, addDrop);
+
+const age = (now: string, stamp: string | null | undefined) => {
+  const value = stamp ? Date.parse(now) - Date.parse(stamp) : Number.NaN;
+  return Number.isFinite(value) && value >= 0 ? value : Number.POSITIVE_INFINITY;
+};
+/** A public source (terms, subjects) read successfully within one term needs no re-read. */
+export function publicSourceTermFresh(source: PlanningSourceHealth | undefined, now: string): boolean {
+  return Boolean(source && (source.status === "complete" || source.status === "partial") && age(now, source.observedAt) < PLANNING_TERM_MS);
+}
+/** The verified private sync (identity checked before and after), newest first. */
+function verifiedSyncs(store: Pick<Store, "planningSources">) {
+  return store.planningSources()
+    .filter((source) => source.source === "uw_enroll" && source.accountScope !== "public" && source.scope.kind === "student_record" && source.scope.key === "connection:student-info")
+    .sort((a, b) => b.observedAt.localeCompare(a.observedAt));
+}
+/**
+ * A scheduled refresh is due weekly during add/drop and once per term otherwise, only after the
+ * student has connected once, and at most once a day after an attempt.
+ */
+export function planningRefreshDue(store: Pick<Store, "planningSources">, now: string, addDrop?: PlanningAddDropWindow | null): boolean {
+  const syncs = verifiedSyncs(store);
+  const lastSuccess = syncs.map((source) => source.lastSuccessAt).filter((stamp): stamp is string => Boolean(stamp)).sort().at(-1);
+  if (!lastSuccess) return false;
+  if (age(now, syncs[0]?.observedAt) < DAY) return false;
+  return age(now, lastSuccess) >= (inAddDrop(now, addDrop) ? PLANNING_ADD_DROP_MS : PLANNING_TERM_MS);
+}
+export interface StoredAuditReport { accountScope: string; reportId: string }
+const reportIdOf = (url: string) => url.match(/\/api\/dars\/reports\/(\d{1,30})$/)?.[1] ?? null;
+/** Saved DARS reports stored with complete coverage; a saved report ID names one immutable run. */
+export function storedAuditReports(store: Pick<Store, "planningSources" | "planningRecords">): StoredAuditReport[] {
+  const audits = store.planningRecords().filter((row) => row.kind === "audit" && !row.deleted);
+  return store.planningSources().flatMap((source) => {
+    const reportId = reportIdOf(source.sourceUrl);
+    if (source.source !== "uw_dars" || source.scope.kind !== "audit_program" || source.accountScope === "public" || !reportId ||
+      source.status !== "complete" || source.completeness !== "complete") return [];
+    const rows = audits.filter((row) => row.sourceId === source.id);
+    return rows.length && rows.every((row) => row.kind === "audit" && row.coverage === "complete" && row.nodes.every((node) => node.coverage === "complete"))
+      ? [{ accountScope: source.accountScope, reportId }] : [];
+  }).slice(0, 1000);
+}
+/** A stored report the sync skipped, re-observed now: same records, a new observation, no download. */
+export function reconfirmedAuditCaptures(
+  store: Pick<Store, "planningSources" | "planningRecords">,
+  reconfirmed: ReadonlyArray<{ accountScope: string; scopeKey: string; reportId: string }>,
+  observedAt: string,
+): PlanningCapture[] {
+  if (!reconfirmed.length) return [];
+  const sources = store.planningSources(), records = store.planningRecords();
+  return reconfirmed.flatMap((item) => {
+    const source = sources.find((entry) => entry.source === "uw_dars" && entry.accountScope === item.accountScope &&
+      entry.scope.kind === "audit_program" && entry.scope.key === item.scopeKey && reportIdOf(entry.sourceUrl) === item.reportId &&
+      entry.status === "complete" && entry.completeness === "complete");
+    if (!source || Date.parse(observedAt) <= Date.parse(source.observedAt)) return [];
+    const rows = records.filter((row) => row.sourceId === source.id && !row.deleted);
+    if (!rows.length) return [];
+    return [{
+      schemaVersion: 1 as const, id: `saved-audit-reconfirmed-${item.scopeKey}-${observedAt}`, source: "uw_dars" as const,
+      accountScope: source.accountScope, scope: source.scope, sourceUrl: source.sourceUrl, observedAt,
+      status: "complete" as const, completeness: "complete" as const,
+      records: rows.map((row) => ({ ...evidenceRecord(row), provenance: { ...row.provenance, observedAt } }) as PlanningRecord),
+      diagnostics: [{ code: "saved_audit_reconfirmed", message: "The saved report listed by DARS is already stored with complete coverage; it was not downloaded again." }],
+    }];
+  });
+}
+/** Stored search subjects while both public search reads are term-fresh, else null (read them). */
+export function termFreshSearchSubjects(store: Pick<Store, "planningSources" | "planningRecords">, now: string): PlanningSubject[] | null {
+  const sources = store.planningSources().filter((source) => source.source === "uw_public" && source.accountScope === "public");
+  const terms = sources.find((source) => source.scope.kind === "terms" && source.scope.key === "public-search-terms");
+  const subjects = sources.find((source) => source.scope.kind === "subjects" && source.scope.key === "search-subjects-map:0000");
+  if (!subjects || subjects.status !== "complete" || !publicSourceTermFresh(terms, now) || !publicSourceTermFresh(subjects, now)) return null;
+  const rows = store.planningRecords().flatMap((row) => row.sourceId === subjects.id && !row.deleted && row.kind === "subject" ? [evidenceRecord(row) as PlanningSubject] : []);
+  return rows.length ? rows : null;
+}
+// end owner: planning-perf
+
 const publicKinds = new Set<PlanningRecord["kind"]>(["subject", "crosslist", "term", "catalog_course", "enrollment_package", "grade_distribution"]);
 
-export function comparePlanning(store: Store, termCode: string, style: "balanced" | "mornings" | "compact" | "lighter", now: string): PlanningComparison {
+export function comparePlanning(store: Store, termCode: string, style: "balanced" | "mornings" | "compact" | "lighter", now: string,
+  horizons: PlanningHorizons = semesterPlanningHorizons(now)): PlanningComparison {
   const result: PlanningComparison = { termCode, createdAt: now, warnings: [], candidates: [] };
   if (!/^1\d{2}[246]$/.test(termCode) || !Number.isFinite(Date.parse(now))) {
     result.warnings.push("The requested term or comparison time is invalid."); return result;
   }
-  const fresh = (stamp: string | null, maximumAge = DAY) => {
+  const fresh = (stamp: string | null, maximumAge: number) => {
     const age = stamp === null ? Number.NaN : Date.parse(now) - Date.parse(stamp);
     return Number.isFinite(age) && age >= 0 && age <= maximumAge;
   };
@@ -45,10 +147,12 @@ export function comparePlanning(store: Store, termCode: string, style: "balanced
   const sources = store.planningSources();
   const sourceMap = new Map(sources.map((source) => [source.id, source]));
   const health = sources.filter((source) => source.accountScope === account);
-  const completeSource = (source: typeof sources[number]) => source.status === "complete" && source.completeness === "complete" && fresh(source.observedAt);
+  const horizonOf = (source: typeof sources[number]) => horizons(planningEvidenceKind(source.scope.kind));
+  const completeSource = (source: typeof sources[number]) => source.status === "complete" && source.completeness === "complete" && fresh(source.observedAt, horizonOf(source));
   const freshRecord = (row: StoredPlanningRecord) => {
     const source = sourceMap.get(row.sourceId);
-    return Boolean(source && completeSource(source) && fresh(row.provenance.observedAt));
+    // Seat counts follow enrollment freshness whichever scope carried them.
+    return Boolean(source && completeSource(source) && fresh(row.provenance.observedAt, row.kind === "enrollment_package" ? horizons("enrollment") : horizonOf(source)));
   };
   // The current-enrollment feed contributes known current/dropped rows, but its
   // deliberately partial history scope does not describe a whole transcript.
@@ -56,7 +160,7 @@ export function comparePlanning(store: Store, termCode: string, style: "balanced
   const historyScopes = health.filter((source) => isFullHistory(source.scope));
   const freshHistory = history.filter((row) => {
     const source = sourceMap.get(row.sourceId);
-    return Boolean(source && ["complete", "partial"].includes(source.status) && fresh(source.observedAt) && fresh(row.provenance.observedAt));
+    return Boolean(source && ["complete", "partial"].includes(source.status) && fresh(source.observedAt, horizonOf(source)) && fresh(row.provenance.observedAt, horizonOf(source)));
   });
   const authoritativeHistory = history.filter((row) => isFullHistory(row.provenance.scope));
   const historyComplete = historyScopes.length > 0 && historyScopes.every(completeSource) && authoritativeHistory.every(freshRecord);
@@ -65,7 +169,7 @@ export function comparePlanning(store: Store, termCode: string, style: "balanced
   if (!historyComplete) result.warnings.push("Course history is incomplete or needs refresh; stale history cannot confirm prerequisites.");
   if (!enrollmentComplete) result.warnings.push("Enrollment for this term is incomplete or needs refresh; schedule fit is not confirmed.");
   if (!audits.length) result.warnings.push("No parsed degree audit is available. Catalog courses alone cannot establish requirement progress.");
-  if (audits.some((audit) => audit.coverage !== "complete" || !fresh(audit.generatedAt, 7 * DAY) || !freshRecord(audit))) result.warnings.push("Some audit evidence is incomplete or needs refresh. Requirement matches are provisional; check the latest official audit.");
+  if (audits.some((audit) => audit.coverage !== "complete" || !fresh(audit.generatedAt, horizons("audit")) || !freshRecord(audit))) result.warnings.push("Some audit evidence is incomplete or needs refresh. Requirement matches are provisional; check the latest official audit.");
   result.warnings.push("Each option is checked against saved enrollment individually. These options are not a conflict-free combined schedule; multiple requirement matches do not establish permission to double count.");
   const packages = ofKind("enrollment_package").filter((pkg) => pkg.termCode === termCode);
   const enrolled = packages.filter((pkg) => pkg.accountScope === account && pkg.enrollmentState === "enrolled" && pkg.provenance.scope.kind === "enrollment_term" && pkg.provenance.scope.key === termCode);
@@ -117,7 +221,7 @@ export function comparePlanning(store: Store, termCode: string, style: "balanced
     const courseLevelGrades = latestGrades.filter((grade) => grade.section === null);
     const previousGrade = courseLevelGrades.length === 1 ? courseLevelGrades[0] : latestGrades.length === 1 ? latestGrades[0] : null;
     if (!previousGrade && latestGrades.length > 1) ambiguousGrades = true;
-    const prerequisiteFresh = fresh(course.prerequisiteCheckedAt, 7 * DAY);
+    const prerequisiteFresh = fresh(course.prerequisiteCheckedAt, horizons("prerequisite"));
     if (course.prerequisite !== null && !prerequisiteFresh) stalePrerequisites = true;
     for (const pkg of available.length ? available : [null]) {
       if (style === "mornings" && pkg?.meetings.some((meeting) => meeting.kind === "class" && meeting.mode === "scheduled" && meeting.endMinute !== null && meeting.endMinute > 12 * 60)) continue;
