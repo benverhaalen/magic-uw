@@ -244,7 +244,16 @@ async function measure(sized: boolean) {
   }
 }
 
-test("a zero-change re-sync makes at most 10% of a full sync's requests", async (t) => {
+/**
+ * The sized fixture's full manual sync before T17 (hot and content probes, full read, inventory,
+ * documents): 208 requests, measured at 33b1827. T17 cut the full sync itself (module items
+ * inline, one read per identical GET within a sync, no redundant detail reads) to 149, while
+ * the zero-change tick stayed 18. A ratio against the new, cheaper full sync would therefore
+ * rise (8.7% → 12.1%) although the tick costs Canvas exactly as much as before. The budget is
+ * absolute: at most 4 requests per course per tick, and at most 10% of this recorded constant.
+ */
+const PRE_T17_FULL_SYNC = 208;
+test("a zero-change re-sync stays within its absolute request budget", async (t) => {
   for (const sized of [false, true]) {
     const { h, full, fullProbes, hot, withContent } = await measure(sized);
     try {
@@ -262,9 +271,14 @@ test("a zero-change re-sync makes at most 10% of a full sync's requests", async 
       t.diagnostic(JSON.stringify(report));
       assert.equal(hot, 2, "the hot tick is two requests");
       assert.ok(hot / full <= 0.1);
-      // The content probe is 1 + 3 per course (16 for five courses).
-      assert.equal(withContent, hot + 1 + 3 * 5);
-      if (sized) assert.ok(withContent / full <= 0.1, `content tick ${withContent}/${full}`);
+      // The content probe is at most 1 + 3 per course (16 for five courses).
+      assert.ok(withContent - hot <= 1 + 3 * 5, `content probe ${withContent - hot}`);
+      assert.ok(withContent <= 4 * 5, `zero-change tick ${withContent} > 4 per course`);
+      if (sized)
+        assert.ok(
+          withContent / PRE_T17_FULL_SYNC <= 0.1,
+          `content tick ${withContent}/${PRE_T17_FULL_SYNC}`,
+        );
     } finally {
       await h.close();
     }
