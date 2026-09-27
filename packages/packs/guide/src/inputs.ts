@@ -17,7 +17,7 @@ export type GuideStore = Store & CourseCoreStore & { learning: LearningStore };
 
 /** Passage tokens per call (the store's estimate). */
 export const GUIDE_PASSAGE_BUDGET = 8000;
-const MAX_PASSAGES = 32;
+const MAX_PASSAGES = 60;
 const PER_TOPIC = 2;
 const MAX_TOPICS = 24;
 const FACT_CHARS = 4800;
