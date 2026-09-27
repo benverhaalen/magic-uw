@@ -11,6 +11,7 @@ import { normaliseLabel } from "../../../learning/src/concepts";
 import { eligibleStudySource } from "../../../learning/src/router";
 import { findQuote } from "../../../retrieval/src/quotes";
 import { courseInclusion } from "../../../core/src/access";
+import { readOnce } from "../../../core/src/graph/read-once";
 import type { Resolve } from "./review";
 import type { GuideInput, GuideKind } from "./schema";
 
@@ -51,8 +52,10 @@ export const localDay = (value: string): string | null => {
 
 export function selectGuideInputs(store: GuideStore, kind: GuideKind, scope: PackScope, passageBudget = GUIDE_PASSAGE_BUDGET): SelectionResult {
   const sources = new Map(store.sources().map((s) => [s.id, s]));
-  const included = courseInclusion(store);
-  const inCourse = store.resources().filter((r) => !r.deleted && r.courseId === scope.courseId && sources.has(r.sourceId));
+  // Every resource is read once; inclusion is built from the same list.
+  const all = store.resources();
+  const included = courseInclusion(readOnce(store, all));
+  const inCourse = all.filter((r) => !r.deleted && r.courseId === scope.courseId && sources.has(r.sourceId));
   const accountScope = inCourse.map((r) => sources.get(r.sourceId)!.accountScope).sort()[0];
   if (!accountScope) return { ok: false, status: "empty", message: "There's no course material in this scope to study from yet.", courseRef: null };
   const courseRef = `${accountScope}:${scope.courseId}`;
