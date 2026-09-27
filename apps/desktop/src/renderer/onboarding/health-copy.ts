@@ -53,12 +53,6 @@ export const GEMINI_KEY_URL = "https://aistudio.google.com/apikey";
 const other = (id: ClientId) => (id === "claude" ? "Codex" : "Claude Code");
 const chat = (h: ClientHealth): NoticeAction[] => (h.id === "gemini" ? [] : [{ kind: "quick_chat" }]);
 
-export function modeLabel(h: Pick<ClientHealth, "mode" | "id">): string {
-  if (h.mode === "instant") return `Your own ${names[h.id].name}, as it is`;
-  if (h.mode === "api_key") return "Your API key";
-  return `A separate ${names[h.id].name} profile for this app`;
-}
-
 /** `chat`: whether Quick chat is offered where this notice shows; the words mention it only then. */
 export function healthCopy(h: ClientHealth, options: { chat?: boolean } = {}): HealthCopy {
   const { name, provider, plan } = names[h.id];
@@ -71,7 +65,7 @@ export function healthCopy(h: ClientHealth, options: { chat?: boolean } = {}): H
         cause:
           h.mode === "api_key"
             ? "Your key is saved on this computer, encrypted."
-            : `Signed in${h.plan ? ` with ${h.plan[0].toUpperCase()}${h.plan.slice(1)}` : ""}. ${modeLabel(h)}.`,
+            : `Signed in${h.plan ? ` with ${h.plan[0].toUpperCase()}${h.plan.slice(1)}` : ""}${h.mode === "isolated" ? " to the app's own profile" : ""}.`,
         next: "Nothing to do.",
         actions: [],
       };

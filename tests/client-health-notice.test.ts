@@ -90,7 +90,7 @@ test("signed out: the app says how to sign in on this computer and never signs i
 
 test("compact ok is one line; nothing renders a button without its handler", () => {
   const html = renderToStaticMarkup(createElement(ClientHealthNotice, { health: health("claude", "ok", "instant", { plan: "max" }), compact: true }));
-  assert.match(text(html), /Signed in with Max\. Your own Claude Code, as it is\./);
+  assert.match(text(html), /^ ?Signed in with Max\. ?$/);
   assert.doesNotMatch(html, /<button/);
   assert.doesNotMatch(renderToStaticMarkup(createElement(ClientHealthNotice, { health: health("codex", "not_installed") })), /<button/);
 });

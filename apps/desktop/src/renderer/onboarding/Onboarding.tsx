@@ -802,7 +802,7 @@ function ConnectClient({
           : id === "gemini"
             ? "Gemini's command-line sign-in can't be used by other apps, so My Magic UW uses your own API key."
             : mode === "instant"
-              ? `Checking your signed-in ${info.name}. Nothing is written to your settings.`
+              ? `My Magic UW uses the ${info.name} on this computer. Nothing is written to your settings.`
               : `${info.name}'s own sign-in runs below, in a session separate from your usual one.`}
       </p>
       {id === "gemini" && !ready ? (
