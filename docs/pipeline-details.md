@@ -4,7 +4,7 @@ Checked September 26, 2026 against current code and the official sources linked 
 
 ## Sync resilience integration in progress
 
-The local `codex/sync-resilience-integrated` implementation adds shared module reads, bounded direct page/file revalidation and durable item-access observations. These changes are not released on main; the [implementation handoff](sync-resilience-review.md#implementation-handoff--september-26-2026) is the canonical interface, budget and verification record.
+The local `codex/sync-resilience-final` implementation adds shared module reads, bounded direct page/file revalidation and durable item-access observations. These changes are not released on main; the [implementation handoff](sync-resilience-review.md#implementation-handoff--september-26-2026) is the canonical interface, budget and verification record.
 
 ## Canvas: the implemented path
 
