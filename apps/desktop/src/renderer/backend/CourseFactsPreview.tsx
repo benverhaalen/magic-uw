@@ -83,7 +83,18 @@ export function CourseFactsPreview({
           {profile.conflicts.length ? (
             <Partial status="conflict">{profile.conflicts.map((c) => `${kindLabels[c.kind]}: ${c.reason}`).join(" · ")}</Partial>
           ) : null}
-          {profile.unknowns.length ? <p className="small muted">Not found: {profile.unknowns.join(", ")}</p> : null}
+          {profile.unknowns.length ? (
+            <>
+              <h3>Not established by the saved sources</h3>
+              <ul className="backend-list">
+                {profile.unknowns.map((unknown) => (
+                  <li key={unknown} className="small muted">
+                    {unknown}
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
         </>
       )}
       <h3>Syllabus source</h3>
