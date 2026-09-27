@@ -7,6 +7,8 @@ import {
 } from "./planning";
 export * from "./planning";
 export * from "./course-intelligence";
+export * from "./notifications";
+import type { NotificationFeed, NotificationState } from "./notifications";
 // owner: T05b. The data builder's course core (schema v5) replaces the placeholder module.
 export * from "./course-core";
 // owner: notes
@@ -1054,6 +1056,11 @@ export interface Store {
   dayPlan(): DayPlanEntry[];
   setDayPlanEntry(value: DayPlanEntry): void;
   removeDayPlanEntry(key: string, date: string): void;
+  /** Read and dismissed notification ids (local preference; cleared by purge). */
+  notificationState?(): NotificationState;
+  setNotificationState?(value: NotificationState): void;
+  /** Each source's first read id; "new" changes recorded by it are the baseline, not news. */
+  baselineReadIds?(): string[];
   gitlabLinks(): GitlabLink[];
   /** Adds or refreshes one course's manual GitLab project link. */
   setGitlabLink(value: GitlabLink): void;
@@ -1138,6 +1145,7 @@ export interface Snapshot {
   mcpGrants?: McpGrant[];
   consents?: ConsentRecord[];
   dayPlan?: DayPlanEntry[];
+  notifications?: NotificationFeed;
   gitlabLinks?: GitlabLink[];
 }
 // owner: T05b. The integration seams: the learning channel (spec §8.1 of the learning spec,
@@ -1741,6 +1749,18 @@ export const commandSchema = z.discriminatedUnion("type", [
       date: z.iso.date(),
     })
     .strict(),
+  z
+    .object({
+      type: z.literal("notifications-read"),
+      ids: z.array(z.string().min(1).max(600)).max(500),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("notification-dismiss"),
+      id: z.string().min(1).max(600),
+    })
+    .strict(),
   z.object({ type: z.literal("fixture") }).strict(),
   // A student-supplied UW GitLab project for a course the connector could not discover.
   z
@@ -1890,7 +1910,8 @@ export interface AppBridge {
   /** owner: pipeline. Graph reads: an assignment's references, the agenda, a course's graph and coverage. */
   graph?<Q extends GraphQuery>(request: Q): Promise<GraphResult<Q>>;
   importFile(): Promise<CommandResult | null>;
-  signInUW?(service?: "canvas" | "gitlab" | "enroll" | "myuw"): Promise<void>;
+  /** owner: client-health (FDB-002). Resolves with how the window ended; `confirmed` is the only success. */
+  signInUW?(service?: SignInService): Promise<SignInOutcome>;
   syncPlanning?(): Promise<CommandResult>;
   syncCanvas?(): Promise<CommandResult>;
   signOutUW?(): Promise<void>;
@@ -1928,8 +1949,12 @@ export interface AppBridge {
 }
 /** T80. The AI command-line clients Magic Canvas can host in an app-owned profile. */
 export type ClientId = "claude" | "codex" | "gemini";
-/** Sign-in only for now; an interactive session needs its own threat model first (T81). */
-export type TerminalPurpose = "signin";
+/**
+ * `signin`: the client's own sign-in. `chat` (owner: client-health, D50): the client started in
+ * the student's chosen mode with tools, MCP and user customisations off, so the student can
+ * check their own account (plan, usage) themselves. No course content is sent to it.
+ */
+export type TerminalPurpose = "signin" | "chat";
 export interface ClientStatus {
   id: ClientId;
   /** A binary was found. With `problem` set it exists but isn't usable. */
@@ -1952,6 +1977,18 @@ export interface ClientsBridge {
   prepare(id: ClientId): Promise<ClientStatus>;
   authStatus(id: ClientId): Promise<ClientStatus>;
   choose(id: ClientId): Promise<void>;
+  // owner: client-health (D50). Optional so an older main still satisfies the bridge.
+  /** Checks the client in the given mode (default: its saved mode), before offering or running it. */
+  health?(id: ClientId, mode?: ClientMode): Promise<ClientHealth>;
+  /** Saves how the app reaches this client. Refused for a mode the client can't use here. */
+  setMode?(id: ClientId, mode: ClientMode): Promise<ClientHealth>;
+  /** Gemini's only route (D36): the student's own key, stored with safeStorage. Presence only. */
+  geminiKey?: {
+    status(): Promise<ApiKeyStatus>;
+    save(key: string): Promise<ApiKeyStatus>;
+    remove(): Promise<ApiKeyStatus>;
+  };
+  // end owner: client-health
   terminal: {
     open(id: ClientId, purpose: TerminalPurpose): Promise<{ sessionId: string }>;
     write(sessionId: string, data: string): void;
@@ -1961,6 +1998,12 @@ export interface ClientsBridge {
     onExit(cb: (sessionId: string, code: number | null) => void): () => void;
   };
 }
+// owner: client-health (D50, FDB-002)
+export * from "./client-health";
+export * from "./sign-in";
+import type { ApiKeyStatus, ClientHealth, ClientMode } from "./client-health";
+import type { SignInOutcome, SignInService } from "./sign-in";
+// end owner: client-health
 export type StoredPlanningRecord = PlanningRecord & {
   localId: string;
   sourceId: string;
