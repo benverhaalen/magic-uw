@@ -317,6 +317,25 @@ export function createNotesService(deps: NotesServiceDeps) {
   const courseMarks = new Map<string, string>();
   type ReconcileStore = NotesWorkspaceStore &
     Partial<{ sourceResources(sourceId: string): Resource[]; courseDigest(course: CourseRef): string; courseDerivedHash(course: CourseRef): string | undefined; deriveBatch<T>(run: () => T): T }>;
+  /**
+   * A sessions port that reads each course's sessions once per start date, up to `to`, and answers
+   * a narrower range by filtering it: a session's ordinal (every session since the term began) no
+   * longer rescans the calendar for each session. The same answer: sessions are per-day records
+   * filtered by date, sorted by date then start.
+   */
+  function windowedSessions(inner: typeof port, to: string): typeof port {
+    const lists = new Map<string, NoteSession[]>();
+    return {
+      course: inner.course,
+      sessions(courseId, range) {
+        if (range.to > to) return inner.sessions(courseId, range);
+        const key = `${courseId}\u0000${range.from}`;
+        let all = lists.get(key);
+        if (!all) lists.set(key, (all = inner.sessions(courseId, { from: range.from, to })));
+        return all.filter((x) => x.date <= range.to);
+      },
+    };
+  }
   /** A read-through view whose `resources()` is the given list (in `resources()` order). */
   function narrowView(list: Resource[]): NotesWorkspaceStore {
     return memoStore({ ...store, resources: (search?: string) => (search === undefined ? list : store.resources(search)) });
@@ -418,8 +437,19 @@ export function createNotesService(deps: NotesServiceDeps) {
         }
       }
       const v = narrowView(list);
-      const reads: Reads = { v, p: createSessionsAdapter(() => v), cache: new Map() };
+      const reads: Reads = { v, p: windowedSessions(createSessionsAdapter(() => v), window.to), cache: new Map() };
       const sessions = reads.p.sessions(course.courseId, window).filter((x) => x.type !== "other");
+      if (elapsed() >= budgetMs) {
+        await breathe();
+        if (options.signal?.aborted) return stopped();
+      }
+      if (sessions.length) {
+        contextFor(course, reads); // the course's inputs, in their own stretch (only when a session needs them)
+        if (elapsed() >= budgetMs) {
+          await breathe();
+          if (options.signal?.aborted) return stopped();
+        }
+      }
       const listed = new Set(sessions.map((x) => x.id));
       for (const session of sessions) {
         stats.sessions++;

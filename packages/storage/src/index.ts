@@ -2221,14 +2221,25 @@ export function createStore(
     ...derive,
     deriveBatch<T>(operation: () => T): T {
       if (batching) throw new Error("A derivation batch is already open.");
-      return transaction(() => {
-        batching = true;
-        try {
-          return operation();
-        } finally {
-          batching = false;
-        }
-      });
+      // Derived rows are recomputed from what is stored, so their commit need not wait for the
+      // disk: in WAL mode synchronous=NORMAL never corrupts, and a crash can only drop the newest
+      // derived batches (their course marker with them), which the next run redoes. The next
+      // FULL commit (ingest, a student's edit) syncs these frames too. Measured: under disk
+      // contention a FULL commit's fsync held the thread for 50-170 ms.
+      const mode = Number(prepare("PRAGMA synchronous").get()!.synchronous);
+      if (mode > 1) db.exec("PRAGMA synchronous = NORMAL");
+      try {
+        return transaction(() => {
+          batching = true;
+          try {
+            return operation();
+          } finally {
+            batching = false;
+          }
+        });
+      } finally {
+        if (mode > 1) db.exec(`PRAGMA synchronous = ${mode}`);
+      }
     },
     job(id: string) {
       const row = prepare("SELECT * FROM jobs WHERE id = ?").get(id) as Row | undefined;
