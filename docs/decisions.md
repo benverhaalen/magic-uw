@@ -136,3 +136,20 @@ Implementation choices, in code at `packages/domain/src/today-rail.ts`:
 - **Storage:** decisions are one local `preferences` entry (`dayPlan`), chosen over a new table to avoid changing the shared schema version during the event. Revisit with a dedicated table if the plan grows beyond a day view.
 
 Open for Ben: styling within the Home visual direction, whether the cap/cutoff should become settings, and multi-day planning.
+
+## 2026-09-27 — Notifications and Jev announcement triage
+
+Implemented on `feat/notifications` (Aidan's session). A bell in the top bar opens a notifications dropdown built from stored changes. Source: Aidan, this project conversation, September 26–27 (original timestamps unavailable). Exact requests:
+
+> lets think through all of our data sources and what new information should be flagged as important enough to warrant a notification … This should be in some way evaluated by our deterministic model.
+
+> we are going to implement jev to run through announcements … we trust that we can train the model to work so we want to follow through with this as a feature
+
+Decisions and their reasons:
+
+- **Code decides every level** (urgent, important, info) from typed changes, current Canvas state and source health. Rules and thresholds live in one file, `packages/domain/src/notifications.ts`. A source's first import is a baseline, never news.
+- **Jev triages new course messages only** (announcements and discussions), through a new `message.triage.v1` gateway question. It may only **raise** a message's level, never lower, hide or dismiss one. It never receives grades, comments, planning records, URLs or account identifiers. It runs only with selective cloud, Jev enabled, a Jev consent record, and permission to share communications and course text.
+- **Deviation from the proposed Jev rules:** [Jev usage](notes/jev-usage.md) proposes shadow mode and 20–30 labelled examples per question before enforcing. By Aidan's decision above, triage is enforced from the start, raise-only, with provisional uncalibrated thresholds (Choice top ≥ 0.70 with a 0.15 lead; yes ≥ 0.70). Consequence: early false alarms are possible; nothing can be hidden. Refit the thresholds on labelled announcements and record the evaluation before calling triage accurate.
+- **Grades show the score in the row** (“Research outline: 18/20”), by Aidan's choice over score-on-open. The grade is visible whenever the dropdown is open; it stays local.
+- **Email is out of this version.** Mail reading is Nathaniel's planned T30/T73; the rules accept messages from a future mail source without changing the interface.
+- **Placement:** mounted in the current top bar; Ben's Home layout owns the final position.

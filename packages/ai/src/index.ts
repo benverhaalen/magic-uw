@@ -1,5 +1,10 @@
 import { z } from "zod";
-import type { ContextManifest } from "@magic/contracts";
+import {
+  messageTriageResultSchema,
+  type ContextManifest,
+  type MessageTriageResult,
+  type MessageTriageState,
+} from "@magic/contracts";
 export { createLocalAi } from "./local";
 export { createLocalCourseExtractor } from "./course-extraction";
 const kinds = [
@@ -26,6 +31,11 @@ export interface JudgmentGateway {
     payload: ContextManifest["payload"],
     signal: AbortSignal,
   ): Promise<KindJudgment>;
+  /** Announcement/discussion importance (message.triage.v1). Absent when the gateway predates it. */
+  triage?(
+    state: MessageTriageState,
+    signal: AbortSignal,
+  ): Promise<MessageTriageResult>;
 }
 export interface DeviceCredentialStore {
   read(): Promise<string | null>;
@@ -80,32 +90,39 @@ export function gatewayClient(
       });
     return enrolling;
   }
+  /** One judgment POST with the device token; maps statuses to fixed, content-free messages. */
+  async function judge(
+    path: string,
+    state: unknown,
+    signal: AbortSignal,
+  ): Promise<unknown> {
+    const t = await token(signal);
+    signal.throwIfAborted();
+    const r = await fetcher(new URL(path, base), {
+      method: "POST",
+      redirect: "error",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${t}`,
+      },
+      body: JSON.stringify({ state }),
+      signal,
+    });
+    if (!r.ok)
+      throw new Error(
+        r.status === 429
+          ? "Judgment budget reached. Try later."
+          : r.status === 503
+            ? "The judgment gateway is not configured."
+            : "The judgment gateway could not complete this request.",
+      );
+    return await r.json();
+  }
   return {
     async evaluate(payload, signal) {
-      const t = await token(signal);
-      signal.throwIfAborted();
-      const r = await fetcher(
-        new URL("/v1/judgments/assignment.kind.v1", base),
-        {
-          method: "POST",
-          redirect: "error",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${t}`,
-          },
-          body: JSON.stringify({ state: payload }),
-          signal,
-        },
+      const result = judgmentResultSchema.parse(
+        await judge("/v1/judgments/assignment.kind.v1", payload, signal),
       );
-      if (!r.ok)
-        throw new Error(
-          r.status === 429
-            ? "Judgment budget reached. Try later."
-            : r.status === 503
-              ? "The judgment gateway is not configured."
-              : "The judgment gateway could not complete this request.",
-        );
-      const result = judgmentResultSchema.parse(await r.json());
       if (
         Object.keys(result.probabilities).length !== kinds.length ||
         kinds.some((k) => result.probabilities[k] === undefined) ||
@@ -114,6 +131,17 @@ export function gatewayClient(
         ) > 0.02
       )
         throw new Error("Invalid judgment distribution.");
+      return result;
+    },
+    async triage(state, signal) {
+      const result = messageTriageResultSchema.parse(
+        await judge("/v1/judgments/message.triage.v1", state, signal),
+      );
+      // Jev may only answer about tasks that were offered; an unknown key could otherwise
+      // raise a notification for a task this message was never compared against.
+      const offered = new Set(state.upcoming.map((item) => item.key));
+      if (Object.keys(result.affects).some((key) => !offered.has(key)))
+        throw new Error("Invalid message triage result.");
       return result;
     },
   };

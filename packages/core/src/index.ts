@@ -45,6 +45,7 @@ import {
 import { enqueueOnSave, type JobRegistry } from "./jobs/registry";
 import { defaultJobRegistry, runRegistered } from "./jobs/default-registry";
 import { resourceViews, runQuery } from "./queries"; // owner: T15
+import { createNotifications } from "./notifications";
 import type { QueryRequest } from "@magic/contracts";
 import type {
   Correction,
@@ -123,6 +124,14 @@ export function createCore(store: Store, options: CoreOptions) {
     active: AbortController | undefined,
     working: Promise<void> | undefined,
     closed = false;
+  const notifications = createNotifications(store, {
+    now,
+    timeZone:
+      options.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+    gateway: options.gateway,
+    generation: () => generation,
+    closed: () => closed,
+  });
   function profileFor(r: Resource): CourseIntelligence | undefined {
     const source = store.sources().find((s) => s.id === r.sourceId);
     return source
@@ -177,6 +186,7 @@ export function createCore(store: Store, options: CoreOptions) {
       // owner: T06: the renderer routes on these and main's consent gate mirrors them.
       consents: store.consents?.() ?? [],
       dayPlan: store.dayPlan(),
+      notifications: notifications.feed(),
     };
   }
   function context(
@@ -400,11 +410,10 @@ export function createCore(store: Store, options: CoreOptions) {
     }
   }
   async function drain() {
-    if (
-      closed ||
-      !options.gateway ||
-      !maySend(store.privacy(), "jev", ["course_text"]).allowed
-    )
+    if (closed || !options.gateway) return;
+    // Course messages have their own category gate (communications); see notifications.ts.
+    await notifications.triage();
+    if (closed || !maySend(store.privacy(), "jev", ["course_text"]).allowed)
       return;
     let job: Job | undefined;
     while (!closed && (job = store.lease(now(), 60000))) {
@@ -496,6 +505,7 @@ export function createCore(store: Store, options: CoreOptions) {
   function interrupt() {
     generation++;
     active?.abort();
+    notifications.abort();
     for (const read of planningReads) read.abort();
     for (const call of seamCalls) call.abort(); // owner: T05b
   }
@@ -838,6 +848,12 @@ export function createCore(store: Store, options: CoreOptions) {
       }
       case "day-plan-remove":
         store.removeDayPlanEntry(command.key, command.date);
+        break;
+      case "notifications-read":
+        notifications.read(command.ids);
+        break;
+      case "notification-dismiss":
+        notifications.dismiss(command.id);
         break;
       case "outlook-disconnect": {
         // Only the student's Outlook calendar; coursework and other feeds are never touched here.

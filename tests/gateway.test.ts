@@ -59,6 +59,10 @@ async function withGateway(
   const gateway = createGateway({
     dbPath: ":memory:",
     log: () => {},
+    // These tests exercise the assignment route; triage has its own suite.
+    triage: async () => {
+      throw new Error("triage is not exercised in this suite");
+    },
     ...options,
   });
   try {
@@ -387,6 +391,22 @@ test("the global daily budget is enforced atomically and durably across a restar
 
 test("createGateway fails closed when no API key or evaluate override is given", () => {
   assert.throws(() => createGateway({ dbPath: ":memory:" }));
+  // Each judgment needs a real credential or an explicit test override; one override
+  // never makes the other route start without a key.
+  assert.throws(
+    () => createGateway({ dbPath: ":memory:", evaluate: fakeEvaluate().fn }),
+    /triage/,
+  );
+  assert.throws(
+    () =>
+      createGateway({
+        dbPath: ":memory:",
+        triage: async () => {
+          throw new Error("unused");
+        },
+      }),
+    /evaluate/,
+  );
 });
 
 test("client enrollment with {} and empty assignment description are accepted", async () => {
