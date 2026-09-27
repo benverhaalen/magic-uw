@@ -27,7 +27,7 @@ Committed here:
 - `wizard/wiz-idle.png`, `wiz-wave.png`, `wiz-tap.png`, `wiz-fly.png` — 1920×1080 on `#00FF00`, identical scale.
   `wiz-green.png` is an empty green frame (poof clip). `sheet.png` shows all four poses.
 - `scripts/wizard_poses.py` — rebuilds the pose HTML from the repo SVG.
-- `scripts/product_screens.py` — rebuilds the five missing screens over a local Home screenshot.
+- `scripts/product_screens.py` — rebuilds the five missing screens over the Home screenshot (`home.png` = `references/home-current.webp` converted to PNG).
 
 Render any generated HTML with headless Chrome, for example:
 
@@ -35,10 +35,15 @@ Render any generated HTML with headless Chrome, for example:
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --hide-scrollbars --force-device-scale-factor=1 --allow-file-access-from-files --window-size=1920,1080 --screenshot=out.png file://$PWD/idle.html
 ```
 
-**Not committed (private course data):** the Home screenshot, the Frame 4 split screen, and the rendered
-screens built on them. They live locally in `~/Desktop/magic-video-assets/screens/` (1920×1080, cropped
-from 2000 px wide by removing the 57 px OS menu bar). The Frame 4 split screen shows a professor's name and a
-copyrighted PDF page; the earlier Piazza version showed a student's name and posts — blur before publishing.
+- `screens/` — the 1920×1080 frames for the edit, cropped from 2000 px wide by removing the 57 px OS menu
+  bar. Five were rendered by `product_screens.py` over the Home screenshot.
+- `references/` — the source screenshots: `home-current.webp` (Home used for the video),
+  `frame04-split-engl177.webp` (Frame 4) and `home-earlier.webp` (superseded Home).
+
+These contain real course content (announcements, a TA office location, a professor's name, a copyrighted PDF
+page). Aidan asked on September 27 to commit them anyway, overriding the AGENTS.md rule that keeps captures out
+of Git. The superseded Piazza split screen, which shows other students' names and posts, was left out. Blur
+names before publishing the video.
 
 Rendered screens: `frame02-03-06-09_home`, `frame04_split`, `frame07a_generating`, `frame07b_question`,
 `frame08_correct`, `frame10_listening`, `frame11_ai_policy`.

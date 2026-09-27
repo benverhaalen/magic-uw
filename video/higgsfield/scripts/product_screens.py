@@ -1,5 +1,5 @@
-"""Build the missing demo screens over a local, uncommitted Home screenshot (home.png, 2000x1182).
-home.png holds private course data: keep it and all rendered screens out of Git."""
+"""Build the missing demo screens over the Home screenshot (home.png, 2000x1182; convert
+../references/home-current.webp to PNG and place it beside the generated HTML)."""
 import pathlib
 F=str(pathlib.Path(__file__).resolve().parents[3] / "packages/ui/assets/fonts")
 CSS=f"""
