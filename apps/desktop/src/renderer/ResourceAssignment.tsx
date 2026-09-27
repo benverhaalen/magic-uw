@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { ResourceView, Snapshot } from '@magic/contracts';
-import { Disclosure } from '../../../../packages/ui/src';
+import { Action, Disclosure } from '../../../../packages/ui/src';
+import { Glyph } from './DesktopShell';
 import { preparedWorkRevision } from './StartWork';
 import { PreparedWork } from './prepared-work/PreparedWork';
 import { EvidenceInfo } from '../../../../packages/ui/src/evidence-info';
@@ -13,20 +14,34 @@ const formats: Record<string, string> = {
   external_tool: 'External tool', online_quiz: 'Online quiz', discussion_topic: 'Discussion',
   on_paper: 'On paper', none: 'No Canvas submission', not_graded: 'Not graded',
 };
+/** Below this, TaskWorkspace asks the source investigator for linked course context. */
+const SPARSE_INSTRUCTIONS = 200;
+
+/** What the saved capture holds, stated plainly. Never implies instructions that weren't captured. */
+export function instructionsState(resource: Pick<ResourceView, 'text'>, investigates: boolean) {
+  const text = (resource.text ?? '').trim();
+  if (!text) return { text: null, note: 'No instructions were saved from the assignment page. Open it to check what it asks for.' };
+  return { text: resource.text, note: text.length < SPARSE_INSTRUCTIONS
+    ? `This is everything the saved assignment page says.${investigates ? ' Linked course sources Magic finds for it appear in the task setup above.' : ''}` : null };
+}
 
 /** Exact captured requirements and rubric. No generated synopsis or inferred submission format. */
 export function ResourceAssignment({ resource, snapshot, policy, provenance, onSetup, onNotice, onOpenOriginal }: {
   resource: ResourceView; snapshot: Snapshot; policy: ReactNode; provenance: ReactNode; onSetup: () => void; onNotice: (text: string) => void; onOpenOriginal: () => void;
 }) {
   const submissionTypes = [...new Set(resource.submissionTypes ?? [])];
+  const instructions = instructionsState(resource, Boolean(window.magic?.investigateAssignment));
   return <div className="resource-assignment">
 <TaskWorkspace resource={resource} snapshot={snapshot} refreshKey={preparedWorkRevision(snapshot)} onSetup={onSetup} onFailure={reportWorkspaceFailure} />
     <div className="resource-assignment__reading">
-      {resource.text && <section className="detail-section resource-assignment__instructions" aria-labelledby="assignment-instructions">
-        <h3 id="assignment-instructions">Instructions</h3>
-        {resource.text ? <p className="source-text">{resource.text}</p>
-          : <p className="muted">This capture has no instructions. Open the assignment to check its requirements.</p>}
-      </section>}
+      <section className="detail-section resource-assignment__instructions" aria-labelledby="assignment-instructions">
+        <div className="resource-assignment__instructions-head">
+          <h3 id="assignment-instructions">Instructions</h3>
+          <Action tone="quiet" onClick={onOpenOriginal}>Open original <Glyph name="external" /></Action>
+        </div>
+        {instructions.text && <p className="source-text">{instructions.text}</p>}
+        {instructions.note && <p className="muted small">{instructions.note}</p>}
+      </section>
       {provenance}
     </div>
     <aside className="resource-assignment__work" aria-label="Assignment work and requirements">

@@ -40,6 +40,6 @@ export function useDesktopVoice<T>(accountIdentity: string, capture: () => {orig
   return()=>{live=false;microphone.dispose();if(controller.current===microphone)controller.current=null;};
  },[accountIdentity]);
  // Error vs unavailable mapping lives in launcher-voice.ts: a failed session stays retryable.
- const voice={...launcherVoice(available,view,{onStart:()=>{setFeedback('');setTranscript('');setPartial(null);void controller.current?.start();},onStop:()=>{setFeedback('Stopped.');setPartial(null);void controller.current?.stop();}}),transcript:visibleTranscript(transcript,partial?.text??''),transcriptVolatile:!!partial?.text,streamingSpeech};
+ const voice={...launcherVoice(available,view,{onStart:()=>{setFeedback('');setTranscript('');setPartial(null);let context:VoiceRequestContext|undefined;try{context=handlers.current.capture().context;}catch{context=undefined;}void controller.current?.start(context);},onStop:()=>{setFeedback('Stopped.');setPartial(null);void controller.current?.stop();}}),transcript:visibleTranscript(transcript,partial?.text??''),transcriptVolatile:!!partial?.text,streamingSpeech};
  return {voice:!available&&missing?{...voice,reason:missing}:voice, feedback};
 }

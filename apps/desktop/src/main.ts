@@ -1,5 +1,5 @@
 import { installDesktopVoice } from './voice/desktop-host';
-import { createInteractiveDispatch, createVoiceTrialDispatch } from './voice/intent-dispatch';
+import { createInteractiveDispatch, createVoiceTrialDispatch, INTERACTIVE_ACTIONS } from './voice/intent-dispatch';
 import type { VoiceContext, VoiceRequestContext } from './voice/types';
 // owner: voice-plan
 import { createVoicePlanHost } from './voice/plan-protocol';
@@ -85,6 +85,7 @@ import {
   writeSessionSettings,
   type TrayAction,
 } from "./keep-signed-in";
+import { bringSignInForward } from "./sign-in-foreground"; // owner: onboarding-recovery
 // end owner: T05c
 // owner: T05e. Remember my sign-in (plan D39).
 import {
@@ -116,6 +117,8 @@ import { consentRecordSchema, type ConsentRecord } from "@magic/contracts"; // o
 import { launchWorkSet, materializeCopy, selectWorkRetry } from "../../../packages/core/src/work-set";
 import { startEmbeddedJev } from "./embedded-jev"; // owner: embedded-jev
 import { createTaskWindows, helperRunner, taskContextFrom } from "./task-windows/controller"; // owner: task-workspace
+import { createCalendarImport } from "./calendar-import/controller"; // owner: calendar-import
+import { sourceInvestigationOps } from "./source-investigation-ops"; // owner: source-investigator
 import {
   commandSchema,
   captureBatchSchema,
@@ -986,7 +989,13 @@ app
     const refreshVoiceAgent = () => worker.postMessage({ kind: "voice-agent-refresh" });
     const voiceAgentHooks = {
       status: () => voiceAgent,
-      activate: () => { if (!["ready", "starting", "per_request"].includes(voiceAgent.state)) worker.postMessage({ kind: "voice-agent-warm" }); },
+      // A click with the open page always asks: the worker warms that page's planner session (or reuses it) and,
+      // with a course open, the router's ask session, without a second launch. Without a page, only a retry.
+      activate: (context?: VoiceRequestContext) => {
+        if (context && voiceAuthority.allowed) worker.postMessage({ kind: "voice-agent-warm", context });
+        else if (!["ready", "starting", "per_request"].includes(voiceAgent.state)) worker.postMessage({ kind: "voice-agent-warm" });
+      },
+      release: () => worker.postMessage({ kind: "voice-agent-release" }),
     };
     // end owner: voice-plan
     const stopInteractive = () => {
@@ -1291,6 +1300,14 @@ app
     });
     // end owner: client-health
     const dispatchInteractive = createInteractiveDispatch(execute);
+    // owner: voice-plan. Whether the command bar's code resolver alone places a spoken request (the
+    // `intent.preview` query: 0 tokens, never the model, no snapshot); only then does voice take the
+    // interactive dispatch before the planner.
+    const voiceCodeRoute = async (text: string, context: VoiceRequestContext) => {
+      const found = await workerQuery({ view: 'intent.preview', text: text.slice(0, 500), ...(context.courseId ? { courseId: context.courseId } : {}) });
+      const action = found?.view === 'intent.preview' && found.preview?.status === 'preview' ? found.preview.action : null;
+      return typeof action === 'string' && INTERACTIVE_ACTIONS.includes(action);
+    };
     ipcMain.handle("magic:intent-run", async (event, request: unknown) => {
       validateSender(event);
       const r = request as { operationId?: unknown; text?: unknown; context?: unknown };
@@ -1307,26 +1324,23 @@ app
       if (typeof operationId === 'string') interactiveCalls.get(operationId)?.abort();
     });
     // A student opens one assignment; the worker owns evidence, grants and the provider call.
-    const sourceInvestigations = new Map<string, { id: string; cancel: () => void }>();
+    // Registered before the workspace is ready, so an early Stop means nothing is sent to the worker.
+    const sourceInvestigations = sourceInvestigationOps({
+      ready, newId: randomUUID,
+      send: (id, assignmentId, call) => { calls.set(id, call); worker.postMessage({kind:"source-investigate",id,assignmentId}); },
+      cancel: id => { calls.delete(id); worker.postMessage({kind:"cancel-command",id}); },
+    });
     ipcMain.handle("magic:source-investigate", async (event, request: unknown) => {
       validateSender(event);
       const r = request as { operationId?: unknown; assignmentId?: unknown } | null;
       if (!r || typeof r.operationId !== "string" || !/^[a-zA-Z0-9_-]{1,100}$/.test(r.operationId) ||
         typeof r.assignmentId !== "string" || !r.assignmentId || r.assignmentId.length > 300 || sourceInvestigations.has(r.operationId))
         throw new Error("Invalid investigation request.");
-      await ready;
-      const id = randomUUID();
-      return new Promise((resolve, reject) => {
-        const cancel = () => { clearTimeout(timer); calls.delete(id); worker.postMessage({kind:"cancel-command",id}); reject(new Error("Investigation stopped.")); };
-        const timer = setTimeout(cancel, 90_000);
-        sourceInvestigations.set(r.operationId as string, {id,cancel});
-        calls.set(id, {timer, resolve: value => resolve(value), reject});
-        worker.postMessage({kind:"source-investigate",id,assignmentId:r.assignmentId});
-      }).finally(() => sourceInvestigations.delete(r.operationId as string));
+      return sourceInvestigations.run(r.operationId, r.assignmentId);
     });
     ipcMain.handle("magic:source-investigate-stop", (event, operationId: unknown) => {
       validateSender(event);
-      if (typeof operationId === "string") sourceInvestigations.get(operationId)?.cancel();
+      if (typeof operationId === "string") sourceInvestigations.stop(operationId);
     });
     ipcMain.handle("magic:execute", async (event, command) => {
       validateSender(event);
@@ -1342,6 +1356,7 @@ app
           void postGraphScopes(); // owner: T30
           clientsRuntime?.terminal.closeAll(); // owner: T80
           docWindows.closeAll(); // owner: doc-window: before persist:uw is cleared
+          await calendarImport.disposeAll(); // owner: calendar-import: prepared .ics files
           // owner: platform-fix. Both sessions lose their storage and their HTTP cache (sign-out
           // already cleared the cache; purge did not), and every app-owned folder goes.
           await purgeHostData({
@@ -1598,6 +1613,20 @@ app
       return taskWindows.handle(request);
     });
     // end owner: task-workspace
+    // owner: calendar-import. Private .ics files handed to Google's chooser in one observed window.
+    const calendarImport = createCalendarImport({
+      run: helperRunner(join(__dirname, "calendar-import-helper")),
+      headless,
+      tempRoot: app.getPath("temp"),
+      reveal: (path) => shell.showItemInFolder(path),
+      now: () => new Date(),
+    });
+    void calendarImport.sweep();
+    ipcMain.handle("magic:calendar-import", async (event, request) => {
+      validateSender(event);
+      return calendarImport.handle(request);
+    });
+    // end owner: calendar-import
     ipcMain.handle("magic:import", async (event) => {
       validateSender(event);
       if (headless)
@@ -1813,7 +1842,8 @@ app
             "Sign-in requires your interaction; headless mode will not open a window.",
           ),
         );
-      if (signInFlight.pending) signIn?.focus();
+      // The open UW window comes forward (restored if minimized); the request joins it, never a second one.
+      if (signInFlight.pending) bringSignInForward(signIn);
       return signInFlight.run(() => signInWindow(requestedService, automatic));
     }
     async function signInWindow(
@@ -2275,7 +2305,7 @@ app
     });
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", (event) => event.preventDefault());
-    desktopVoice = await installDesktopVoice({ window, rendererURL, headless, context: () => voiceAuthority, agent: voiceAgentHooks, streamingHelper: join(root, 'native-streaming-stt'), dispatch: createConnectedVoiceDispatch({ trial: createVoiceTrialDispatch(() => voiceSnapshot), capability: voiceCapability, plan: voicePlanHost.plan, ask: voiceAsk }) }); // owner: voice-plan
+    desktopVoice = await installDesktopVoice({ window, rendererURL, headless, context: () => voiceAuthority, agent: voiceAgentHooks, streamingHelper: join(root, 'native-streaming-stt'), dispatch: createConnectedVoiceDispatch({ trial: createVoiceTrialDispatch(() => voiceSnapshot), capability: voiceCapability, plan: voicePlanHost.plan, ask: voiceAsk, interactive: { code: voiceCodeRoute, run: dispatchInteractive } }) }); // owner: voice-plan
     window.webContents.session.setPermissionRequestHandler(
       (sender, permission, callback, details) => callback(desktopVoice?.allowsPermission(sender, permission, details) ?? false),
     );
@@ -2350,6 +2380,7 @@ app
       for (const c of evaluations.values()) c.abort();
       worker.postMessage({ kind: "shutdown" });
       void embeddedJev?.close().catch(() => {}); // owner: embedded-jev
+      void calendarImport.disposeAll().catch(() => {}); // owner: calendar-import
       setTimeout(() => {
         worker.kill();
         app.exit(Number(process.exitCode ?? 0));

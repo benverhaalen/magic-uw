@@ -1,5 +1,5 @@
 import { MicPcmTap } from './pcm-tap';
-import { sameVoiceToken, type VoiceAudio, type VoiceBridge, type VoiceEvent, type VoiceReason, type VoiceState, type VoiceToken, type VoiceTurn } from '../../voice/types';
+import { sameVoiceToken, type VoiceRequestContext, type VoiceAudio, type VoiceBridge, type VoiceEvent, type VoiceReason, type VoiceState, type VoiceToken, type VoiceTurn } from '../../voice/types';
 
 export interface MicrophoneView extends VoiceState { levels: number[]; capturing?: boolean; queuedTurns?: number; capturePaused?: boolean }
 export interface MicrophoneEnvironment {
@@ -51,12 +51,13 @@ export class VoiceMicrophone {
     });
   }
   private publish(view: MicrophoneView): void { this.view = view; this.changed(view); }
-  async start(): Promise<void> {
+  /** owner: voice-plan: `page` is the page open at the click; main warms the connected agent for it. */
+  async start(page?: VoiceRequestContext): Promise<void> {
     if (this.view.phase === 'starting' || this.token) return;
     const generation = ++this.generation;
     this.publish({ phase: 'starting', token: null, levels: [] });
     try {
-      const state = await this.bridge.start();
+      const state = await this.bridge.start(page);
       if (generation !== this.generation) return;
       if (!state.token || state.phase === 'unavailable' || state.phase === 'idle') { this.publish({ ...state, levels: [] }); return; }
       this.token = state.token;

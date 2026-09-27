@@ -140,9 +140,16 @@
 .home-briefing .magic-date-review > .magic-ui-action,
 .home-briefing .magic-prepared-action > .magic-ui-action { width:100%; min-height:var(--briefing-action-height); padding:10px 12px; font:var(--magic-font-interface-weight) var(--magic-type-control)/1.4 var(--magic-font-interface); gap:12px; align-items:center; justify-content:space-between; }
 .home-briefing .briefing-action .magic-ui-action > svg { flex:none; width:14px; height:14px; }
-/* Give each reading section a little more air while keeping the fine rules centered in the gaps. */
-.home-reading .home-upcoming { margin-top:8px; }
-.home-reading .home-study { margin-top:33px; }
-.home-upcoming::before,.home-study::before { top:-17px; }
+/* Section rhythm: one rule space from the last row's box to each gray rule and from the rule to the
+ * next heading. Brief rows keep a calm row gap; Upcoming tops the brief's trailing gap up to the
+ * rule space so the rule stays centered whichever row ends the brief. Today (.home-today) is untouched. */
+.home-reading { --home-rule-space:26px; --brief-row-gap:28px; }
+.home-reading .briefing-passage,
+.home-reading .home-briefing > .magic-handled-briefing:not([data-handled=true]),
+.home-reading .home-briefing > .home-provenance,
+.home-reading .home-briefing > .magic-handled-briefing[data-handled=true]:not(:has(~ .briefing-passage--quiet)) { margin-bottom:var(--brief-row-gap); }
+.home-reading .home-upcoming { margin-top:calc(2 * var(--home-rule-space) - var(--brief-row-gap)); }
+.home-reading .home-study,.home-reading .home-enrollment-holds { margin-top:calc(2 * var(--home-rule-space)); }
+.home-reading :is(.home-upcoming,.home-study,.home-enrollment-holds)::before { top:calc(-1 * var(--home-rule-space)); }
 @media(max-width:1170px) { .home-reading .briefing-passage { gap:16px; } }
 @media(max-width:650px) { .home-reading .briefing-passage { grid-template-columns:minmax(0,1fr); gap:12px; } .home-briefing .briefing-action { width:min(100%,240px); } }

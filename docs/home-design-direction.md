@@ -40,7 +40,7 @@ Keep source-shaped links right aligned near the claim. Labels describe the actio
 
 Ben wants named items in briefing prose, such as an assignment or a specific lecture, to be immediately identifiable as clickable. A link should resolve to the actual source object; do not make an uncertain title match look verified. Link the first useful mention, not every repeated course code. Preserve readable prose and avoid adding a sentence just to exhibit a link.
 
-Current treatment under review: blue underlined inline links, real hrefs, keyboard activation, and a visible focus ring. Underline supplies a non-color cue. Do not style static time tags like links. The exact treatment is a local mock, not an approved universal token system.
+Current Daily Brief treatment (September 27 user correction): blue inline entity links with a small northeast arrow and no underline. Preserve real hrefs, keyboard activation and a visible focus ring; the arrow supplies the persistent non-color cue. Course codes use filled multicolor pills with stable account/course mapping. Static time tags remain noninteractive. Older underlined prototypes below are historical evidence, superseded for Daily Brief by this correction. Other link families retain their own applicable contract.
 
 Routing rule proposed from the product goal and expert review:
 

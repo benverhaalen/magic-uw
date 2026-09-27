@@ -322,3 +322,27 @@ The shared Ask producer now validates retrieved source account/hash and effectiv
 Adoption evidence: production shared launcher, Geist/Karma and existing voice types are reused. Full build and 41 focused tests pass. A hidden Electron fixture sends public synthetic PCM through the production bridge/session/helper and renders the real launcher; seven checks pass, including final-only dispatch, partial rendering, Stop and stale-token rejection. No actual microphone, personal browser, provider request or Accessibility permission was exercised. Private receipts/screenshots remain outside Git. Human speech and speech-final → first observed action timing remain required for the complete demo.
 
 Production copied-profile Electron also starts Home with no renderer errors: six checks cover microphone disabled in headless mode, no streaming before a click, stale typed PCM rejection, malformed Float32 rejection, stale stream begin and idle Stop. The owned app closed cleanly; this does not exercise physical input.
+
+
+## Integrated review batch · September 27, 13:35 UTC
+
+Root remains the sole canonical integrator; Opus workers deliver bounded private patches. The current batch adds Google Calendar import preparation and cancellation, removes legacy local-model/practice/data-preview footers from item pages, keeps assignment instructions and event facts visible, and updates Daily Brief course pills, arrow links and section spacing. Passage-only Ask no longer includes assessment facts outside the selected retrieval scope. My UW Refresh now resumes through the existing app-owned UW sign-in window when a newly attempted read needs authentication. The Canvas pill evaluates relevant saved accounts rather than choosing the newest success; it says Up to Date only for complete fresh reads, not as a promise of a live session. The brand uses Karma cap-height alignment.
+
+Evidence: 69 targeted integration tests passed before the footer and UW additions; 35 focused tests and the full build passed after them. A private copied-profile headless Electron run rendered Home and the Calendar export panel without page errors and verified Courses day collapse, inert hidden contents and reopening. It did not import into Google, interact with UW sign-in or test a physical microphone. That older copied capture still exposes known duplicate coursework and old-course inclusion; screenshots are private and are not proof those data bugs are fixed. Google export first-entry selection needs the small default-state correction found in this rendered review.
+
+Google import prepares either one calendar file or separate lectures, assignments and exams/quizzes files. It opens the default browser, attempts verified file attachment when the native capability is available, and leaves the final Import click to the student. Cancellation guards asynchronous prepare/open/attach results. Native browser attachment and completed import are not yet demonstrated.
+
+Study work is still private: both the native composer binding and the trusted source/policy target must land together. A chat-looking page is insufficient when the normal composer still routes into general chat. Workspace work is now a priority: investigator findings must feed evidence-backed work/support destinations, then open instructions left and the primary work site right with additional supporting tabs. The saved CS639 capture lacks a verified GitLab destination, so retrieving that link remains part of the producing-path gap. No claim of completed browser placement is made.
+
+
+### Integration follow-through · September 27, 13:55 UTC
+
+Calendar export now defaults to the combined calendar and recreates its controller after React StrictMode effect cleanup. The regression runs a real headless React development mount: first entry prepares/opens, leaving cancels. All 23 targeted Calendar checks pass. Hidden copied-profile Electron confirms the selected default, enabled Open Google control and successful close/reopen, with no page errors. File attachment in the student's browser remains unverified.
+
+Item pages no longer show Ask locally, Data preview, Exact local context or the old local learning footer. The normal Home assignment entry was checked in hidden Electron. Lecture 7's saved source has zero description characters, which remains a retrieval gap, not a claim that instructions were recovered.
+
+Workspace source-check results now feed cited optional destinations. Direct assignment-linked external work pages can seed the right-hand choice, while course-wide links remain student choices. Twenty-one relevant target/investigation/cancellation tests pass. Additional-page tab placement and investigation assignment-hash propagation are active follow-ups; the complete two-window browser journey is not yet demonstrated.
+
+Voice now carries the open page into the connected-agent warmup and sends code-resolvable speech through the existing interactive dispatch. Twelve focused checks pass, including cancellation, consent, context and fake-CLI warmup. Synthetic latency measurements are not microphone or real-provider performance evidence.
+
+Ben's current AI decision: all reasoning through connected Claude Code or Codex, with local microphone transcription explicitly allowed. Removing other local-model inference and fallbacks is an active implementation task; this paragraph does not claim that routing is already enforced. Local storage and deterministic parsing remain local. Root integrates available feature slices while workers close documented gaps.

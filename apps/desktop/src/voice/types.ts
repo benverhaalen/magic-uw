@@ -19,7 +19,8 @@ export interface VoiceAudio { turn?: VoiceTurn; token: VoiceToken; bytes: ArrayB
 export type VoiceReceipt = { status: 'dispatched' | 'no-match' | 'silence' | 'stopped' | 'context-changed' | 'busy'; operationId?: string; /** owner: voice-plan: which recognizer produced the dispatched text */ transcription?: 'speech-transcriber' | 'local-whisper' };
 export interface VoiceBridge {
   capabilities(): Promise<VoiceCapabilities>;
-  start(): Promise<VoiceState>;
+  /** owner: voice-plan: `context` is the page open at the click (ids only), so the connected agent can warm for it. */
+  start(context?: VoiceRequestContext): Promise<VoiceState>;
   ready(token: VoiceToken): Promise<VoiceState>;
   stop(reason?: VoiceReason): Promise<VoiceState>;
   transcribe(audio: VoiceAudio): Promise<VoiceReceipt>;

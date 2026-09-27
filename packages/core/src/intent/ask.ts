@@ -166,9 +166,9 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
     ...(allowedPassages ? { passageIds: [...allowedPassages] } : {}), k: 12 });
   // A one-course exam question also reads what code holds about that course's exams.
   const allFacts = courses.length === 1 ? assessmentFacts(store, courses[0]!, question, deps.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone) : { facts: [], pids: [] };
-  const facts = allowed ? { facts: allFacts.facts.filter((f) => allowed.has(f.resourceId) && !allowedPassages),
+  const facts = allowed || allowedPassages ? { facts: allFacts.facts.filter((f) => (!allowed || allowed.has(f.resourceId)) && !allowedPassages),
     pids: allFacts.pids.filter((pid) => (!allowedPassages || allowedPassages.has(pid)) &&
-      allowed.has(store.passage(pid)?.passage.resourceId ?? "")) } : allFacts;
+      (!allowed || allowed.has(store.passage(pid)?.passage.resourceId ?? ""))) } : allFacts;
   // The coverage gate: nothing in the materials or the exam facts supports the question, so no model call.
   const searched = found.notFound ? [] : found.hits;
   if (!searched.length && !facts.facts.length && !facts.pids.length) return none(NOT_IN_MATERIALS);
@@ -234,7 +234,7 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
   if (!resources) return none("", { notFound: false, unavailable: UNCONFIRMED });
   // owner: course-facts. One course: the shared course prefix opens the prompt, as for packs and guides;
   // the brief's sources are sent too, so their categories are checked and receipted.
-  const prefix = !allowed && courses.length === 1 ? deps.coursePrefix?.(courses[0]!.ref) : undefined;
+  const prefix = !allowed && !allowedPassages && courses.length === 1 ? deps.coursePrefix?.(courses[0]!.ref) : undefined;
   const briefResources = (prefix?.resourceIds ?? []).flatMap((id) => store.resource(id) ?? []);
   const categories = [...new Set([...resources, ...briefResources].flatMap((r) => contentCategories(r)))].sort();
   const pack = { ...askPack, categories };

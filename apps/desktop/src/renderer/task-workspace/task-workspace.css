@@ -61,3 +61,11 @@
 .task-workspace__cited small { font-size:var(--magic-type-meta); color:var(--magic-ink-secondary); }
 .task-workspace__cited blockquote { margin:0; padding:0; white-space:pre-line; font-size:var(--magic-type-prose); line-height:1.5; color:var(--magic-ink-prose); }
 .task-workspace__cited p { margin:0; }
+
+/* Source investigation: inline numbered citations; version/span detail sits in the info toggletip. */
+.task-workspace__investigation:focus-visible { outline:2px solid var(--magic-focus); outline-offset:4px; border-radius:4px; }
+.task-workspace__investigation h4 { margin:0; font-size:var(--magic-type-prose); line-height:1.4; }
+.task-workspace__cite-ref { font-size:var(--magic-type-meta); color:var(--magic-ink-secondary); white-space:nowrap; }
+.task-workspace__citation { display:grid; gap:.2rem; }
+.task-workspace__citation small a { color:var(--magic-ink-action); text-underline-offset:2px; overflow-wrap:anywhere; }
+.task-workspace__citation small a:focus-visible { outline:2px solid var(--magic-focus); outline-offset:2px; border-radius:4px; }

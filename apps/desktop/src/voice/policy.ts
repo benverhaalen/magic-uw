@@ -2,6 +2,8 @@ import type { VoiceAudio, VoiceToken, VoiceTurn } from './types';
 import { intentCommandSchema } from '@magic/contracts';
 
 export const isToken = (value: unknown): value is VoiceToken => !!value && typeof value === 'object' && typeof (value as VoiceToken).sessionId === 'string' && (value as VoiceToken).sessionId.length < 100 && Number.isSafeInteger((value as VoiceToken).epoch);
+/** owner: voice-plan: the open page's ids only (course, item, note, view), as a command's context. */
+export const isRequestContext = (value: unknown): value is NonNullable<VoiceTurn['context']> => !!value && typeof value === 'object' && intentCommandSchema.shape.context.safeParse(value).success;
 export const isVoiceTurn = (turn: unknown): turn is VoiceTurn => !!turn && typeof turn === 'object' && typeof (turn as VoiceTurn).operationId === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test((turn as VoiceTurn).operationId) && intentCommandSchema.shape.context.safeParse((turn as VoiceTurn).context).success;
 /** owner: voice-plan: one streaming frame, mono 16 kHz Int16, at most 200 ms (the helper's limit). */
 export const isPcmFrame = (value: unknown): value is Int16Array => value instanceof Int16Array && value.length > 0 && value.length <= 3200;

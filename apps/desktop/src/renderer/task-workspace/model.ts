@@ -1,6 +1,7 @@
 import type { GitlabLink, ResourceView, Snapshot, TaskWindowOutcome, TaskWindowOutcomeState, TaskWindowPage, TaskWindowRef, TaskWindowRole, WorkSet } from "@magic/contracts";
 import { GITLAB_ORIGIN } from "../prepared-work/destination";
 import type { CourseTool } from "./page-view-adapter";
+import { clearInvestigations } from "./source-investigation";
 
 /**
  * A task workspace: the student's own tool choices for one saved assignment,
@@ -50,8 +51,12 @@ export interface TaskWorkspaceRecord {
   windows: TaskWindowRef[];
   last: LastOpen | null;
 }
-/** A page the student added to this task. */
-export interface StudentPage { url: string; title: string }
+/**
+ * A page the student added to this task, or chose from a source-check suggestion
+ * (`via`). Saving it makes it the student's choice, so Continue reopens it without
+ * rerunning the check.
+ */
+export interface StudentPage { url: string; title: string; via?: "source_check" }
 
 export interface KeyValueStore { getItem(key: string): string | null; setItem(key: string, value: string): void; removeItem(key: string): void }
 export function defaultStore(): KeyValueStore | null {
@@ -86,7 +91,8 @@ function parseRecord(value: unknown): TaskWorkspaceRecord | null {
   // Earlier setups saved course tools as URLs; they become own-window pages.
   const legacyTools = Array.isArray(c.tools) ? c.tools.filter((url): url is string => text(url) && httpsUrl(url) !== null).map(url => `tool:${url}`) : [];
   const support = [...new Set([...(Array.isArray(c.support) ? c.support.filter(key => text(key, 2100)) : []), ...legacyTools])].slice(0, 20);
-  const pages = Array.isArray(c.pages) ? c.pages.filter((p): p is StudentPage => !!p && text(p.url) && httpsUrl(p.url) !== null && typeof p.title === "string" && p.title.length <= 200).slice(0, 10) : [];
+  const pages = Array.isArray(c.pages) ? c.pages.filter((p): p is StudentPage => !!p && text(p.url) && httpsUrl(p.url) !== null && typeof p.title === "string" && p.title.length <= 200)
+    .map(p => ({ url: p.url, title: p.title, ...(p.via === "source_check" ? { via: "source_check" as const } : {}) })).slice(0, 10) : [];
   const work = text(c.work, 2100) ? c.work : null;
   const windows = Array.isArray(r.windows) ? r.windows.map(parseWindow).filter((w): w is TaskWindowRef => !!w).slice(0, 8) : [];
   const last = r.last && typeof r.last === "object" && text(r.last.at, 40) && Array.isArray(r.last.targets) ? {
@@ -130,6 +136,7 @@ export function forgetWorkspace(accountScope: string, resourceId: string, store 
 }
 /** Delete local data: every task setup goes with the coursework it described. */
 export function clearTaskWorkspaces(store = defaultStore()) {
+  clearInvestigations();
   try { store?.removeItem(STORAGE_KEY); } catch { /* nothing saved */ }
 }
 /** Drop setups whose assignment is no longer saved for that account (after Delete local data, sign-out or removal). */
@@ -180,8 +187,37 @@ export function gitlabView(choice: GitlabChoice, links: readonly GitlabLink[]): 
   return paths.length ? { kind: "suggested", links: paths } : { kind: "missing" };
 }
 
+/** Where an offered page came from. Only `confirmed` evidence may be pre-selected, and only an assignment link. */
+export type TargetSource =
+  /** Listed in the saved Canvas assignment itself. */
+  | "assignment_link"
+  /** Connected through an accepted supporting-evidence link. */
+  | "accepted_evidence"
+  /** A same-course page section matched by the assignment's title (provisional unless linked). */
+  | "course_section"
+  /** Cited by a finished source check; never confirmed as this assignment's work or submission place. */
+  | "source_check"
+  /** The GitLab project the student confirmed for this task. */
+  | "gitlab_choice"
+  | "course_tool"
+  | "student_page";
+/** An exact span a suggestion rests on: resource, version and character range. */
+export interface TargetCitation { resourceId: string; title: string; contentHash: string; version?: number; start: number; end: number; excerpt: string }
+export interface TargetEvidence {
+  source: TargetSource;
+  /** True for the assignment's own links, accepted evidence and the student's own choices. */
+  confirmed: boolean;
+  cite?: TargetCitation;
+  /** What a source check said about this page, with the kind of finding it reported. */
+  finding?: { kind: "instruction" | "reading" | "work_target" | "context"; text: string };
+}
 /** A page this task can open, with where it came from. */
-export interface Target { key: string; label: string; detail: string; url: string; origin: TaskWindowPage["origin"]; external?: boolean }
+export interface Target {
+  key: string; label: string; detail: string; url: string; origin: TaskWindowPage["origin"];
+  /** A confirmed assignment link off the assignment's own site: the only kind suggested for the right window. */
+  external?: boolean;
+  evidence: TargetEvidence;
+}
 /**
  * Everything that can be opened for this task right now, besides the instructions.
  * Materials come from the reviewed work set, including pages the assignment links
@@ -190,14 +226,20 @@ export interface Target { key: string; label: string; detail: string; url: strin
  */
 export function availableTargets(input: { set: WorkSet | null; gitlab: GitlabView; tools: readonly CourseTool[]; pages?: readonly StudentPage[] }): Target[] {
   const targets: Target[] = [];
+  const instructions = input.set?.items.find(item => item.role === "instructions");
+  const home = originOf(instructions?.target.kind === "web" ? instructions.target.url : "");
   for (const item of input.set?.items ?? []) {
     if (item.role === "instructions") continue;
-    const external = item.resourceId.startsWith(`${input.set!.assignmentId}:link:`);
+    const url = item.target.kind === "web" ? item.target.url : item.target.fallbackUrl;
+    const unsaved = item.resourceId.startsWith(`${input.set!.assignmentId}:link:`);
+    const linked = unsaved || item.provenance === "assignment_link";
+    // Saved or not, a page the assignment links outside its own site is where the work happens.
+    const external = linked && originOf(url) !== home;
     targets.push({
-      key: `item:${item.resourceId}`, label: item.title, origin: "work_set", external,
-      url: item.target.kind === "web" ? item.target.url : item.target.fallbackUrl,
-      detail: external ? `Linked in the assignment · ${hostOf(item.target.kind === "web" ? item.target.url : item.target.fallbackUrl)}`
-        : item.provenance === "assignment_link" ? "Course page linked in the assignment" : "Course page connected to this assignment",
+      key: `item:${item.resourceId}`, label: item.title, origin: "work_set", external, url,
+      evidence: { source: linked ? "assignment_link" : "accepted_evidence", confirmed: true },
+      detail: external ? `Linked in the assignment · ${hostOf(url)}`
+        : linked ? "Course page linked in the assignment" : "Course page connected to this assignment",
     });
   }
   // Pages cited by a provisional same-course section (the schedule and its readings) are
@@ -208,6 +250,8 @@ export function availableTargets(input: { set: WorkSet | null; gitlab: GitlabVie
       if (!/^https?:\/\//i.test(link.url) || targets.some(t => t.url === link.url)) continue;
       targets.push({
         key: `context:${link.url}`, label: link.text || hostOf(link.url), origin: "work_set", url: link.url,
+        evidence: { source: "course_section", confirmed: section.linkedToAssignment, cite: {
+          resourceId: section.resourceId, title: section.title, contentHash: section.contentHash, start: section.start, end: section.end, excerpt: clip(section.quote, 300) } },
         detail: `${section.provisional ? "Possibly related · " : ""}${link.url === section.url ? `Has a ${context!.anchor} section` : `Cited in the ${context!.anchor} section of ${section.title}`} · ${hostOf(link.url)}`,
       });
     }
@@ -215,12 +259,18 @@ export function availableTargets(input: { set: WorkSet | null; gitlab: GitlabVie
   if (input.gitlab.kind === "confirmed") targets.push({
     key: `gitlab:${input.gitlab.projectPath}`, label: `GitLab · ${input.gitlab.projectPath}`, origin: "gitlab",
     detail: "You chose this UW GitLab project for this task.", url: gitlabProjectUrl(input.gitlab.projectPath),
+    evidence: { source: "gitlab_choice", confirmed: true },
   });
-  for (const tool of input.tools) targets.push({ key: `tool:${tool.url}`, label: tool.name, detail: `${tool.host}. ${tool.reason}`, url: tool.url, origin: "student" });
-  for (const page of input.pages ?? []) if (!targets.some(t => t.url === page.url)) targets.push({ key: `page:${page.url}`, label: page.title || hostOf(page.url), detail: `You added this page · ${hostOf(page.url)}`, url: page.url, origin: "student" });
+  for (const tool of input.tools) targets.push({ key: `tool:${tool.url}`, label: tool.name, detail: `${tool.host}. ${tool.reason}`, url: tool.url, origin: "student", evidence: { source: "course_tool", confirmed: false } });
+  for (const page of input.pages ?? []) if (!targets.some(t => t.url === page.url)) targets.push({
+    key: `page:${page.url}`, label: page.title || hostOf(page.url), url: page.url, origin: "student", evidence: { source: "student_page", confirmed: true },
+    detail: page.via === "source_check" ? `You chose this from the source check · ${hostOf(page.url)}` : `You added this page · ${hostOf(page.url)}`,
+  });
   return targets;
 }
-const hostOf = (url: string) => { try { return new URL(url).host; } catch { return url; } };
+export const hostOf = (url: string) => { try { return new URL(url).host; } catch { return url; } };
+const originOf = (url: string) => { try { return new URL(url).origin; } catch { return ""; } };
+const clip = (value: string, max: number) => value.length <= max ? value : `${value.slice(0, max).replace(/\s+\S*$/, "")}…`;
 
 export interface Draft { work: string | null; support: string[]; pages: StudentPage[] }
 /**
@@ -230,7 +280,10 @@ export interface Draft { work: string | null; support: string[]; pages: StudentP
  */
 export function initialDraft(record: TaskWorkspaceRecord | null, targets: readonly Target[]): Draft {
   if (record) return { work: record.choices.work, support: [...record.choices.support], pages: [...record.choices.pages] };
-  const work = targets.find(t => t.external) ?? targets.find(t => t.origin === "gitlab");
+  // Only confirmed evidence is pre-selected: a course section, a source check or a course
+  // GitLab link never becomes the work page without the student choosing it.
+  const work = targets.find(t => t.external && t.evidence.source === "assignment_link" && t.evidence.confirmed)
+    ?? targets.find(t => t.evidence.source === "gitlab_choice");
   return { work: work?.key ?? null, support: [], pages: [] };
 }
 export function placementOf(draft: Draft, key: string): Placement {
@@ -241,6 +294,16 @@ export function place(draft: Draft, key: string, placement: Placement): Draft {
   // One right window: the page it replaces is no longer opened.
   if (placement === "right") return { ...draft, work: key, support };
   return { ...draft, work: draft.work === key ? null : draft.work, support: placement === "own" ? [...support, key] : support };
+}
+/**
+ * Places a page. A source-check suggestion the student places becomes one of their
+ * own pages (kept for Continue); set back to Don't open, it is dropped again.
+ */
+export function choose(draft: Draft, target: Pick<Target, "key" | "url" | "label" | "evidence">, placement: Placement): Draft {
+  const next = place(draft, target.key, placement);
+  if (target.evidence.source !== "source_check" && !(target.key.startsWith("page:") && draft.pages.some(p => p.url === target.url && p.via === "source_check"))) return next;
+  const others = next.pages.filter(p => p.url !== target.url);
+  return { ...next, pages: placement === "off" ? others : [...others, { url: target.url, title: target.label, via: "source_check" as const }].slice(0, 10) };
 }
 /** The windows to open, in role order, with the instructions always first on the left. */
 export function windowPages(resource: Pick<ResourceView, "url" | "title">, set: WorkSet | null, targets: readonly Target[], draft: Draft): TaskWindowPage[] {

@@ -2351,6 +2351,52 @@ export interface TaskWindowResult {
   outcomes: TaskWindowOutcome[];
 }
 // end owner: task-workspace
+// owner: calendar-import. A one-time Google Calendar import in the student's default browser.
+export type CalendarImportFamily = "combined" | "lectures" | "assignments" | "exams";
+/**
+ * waiting: not attached yet. preselected: the chooser received this exact file and Google's
+ * page showed its name. imported: Google's own "Imported N of N" was observed for this file.
+ * unknown: Magic acted but could not observe the result. refused: a safety check stopped it.
+ */
+export type CalendarImportFileState = "waiting" | "preselected" | "imported" | "unknown" | "refused" | "stopped";
+export interface CalendarImportFile {
+  key: string; family: CalendarImportFamily; calendarName: string; fileName: string; events: number;
+  state: CalendarImportFileState; detail?: string;
+  /** Google's "Add to calendar" choice as last read from the page; never chosen by Magic. */
+  destination?: string; imported?: number; total?: number;
+  /** For a stopped file: what Magic had observed or was doing when the student stopped. */
+  stoppedFrom?: "waiting" | "attaching" | "preselected" | "unknown";
+}
+export interface CalendarImportCapability {
+  browser: string | null;
+  /** Magic can ask this browser for a new window it can then identify. */
+  newWindow: boolean;
+  /** Needed to find Google's controls and hand the file to the browser's chooser. */
+  accessibility: boolean;
+  reason?: string;
+}
+export interface CalendarImportSession {
+  id: string; mode: "combined" | "split";
+  /** dispatched: the browser was asked; observed: Magic saw the new window; none: not opened yet. */
+  window: "none" | "dispatched" | "observed";
+  page?: "import" | "create" | "other";
+  files: CalendarImportFile[]; stopped: boolean;
+}
+export type CalendarImportRequest =
+  | { action: "status" }
+  | { action: "request-access" }
+  | { action: "prepare"; mode: "combined" | "split"; files: { family: CalendarImportFamily; calendarName: string; events: number; ics: string }[] }
+  | { action: "open" | "stop"; sessionId: string }
+  | { action: "attach" | "check" | "create-calendar" | "reveal"; sessionId: string; fileKey: string };
+export interface CalendarImportResult {
+  capability: CalendarImportCapability;
+  session: CalendarImportSession | null;
+  /** A plain explanation of what blocked or what the student does next. */
+  notice?: string;
+  /** Automation is blocked by permission or capability; the short manual path is allowed. */
+  manual?: boolean;
+}
+// end owner: calendar-import
 export type CommandResult = {
   personalWorkReceipt?: PersonalWorkState;
   workSet?: WorkSet;
@@ -2477,6 +2523,8 @@ export interface AppBridge {
   startWork?(id: string, previewHash: string, only?: string[]): Promise<WorkLaunchReceipt>;
   /** owner: task-workspace. Fresh, identified default-browser windows for one task. */
   taskWindows?(request: TaskWindowRequest): Promise<TaskWindowResult>;
+  /** owner: calendar-import. Google Calendar import through a browser window Magic opened and observed. */
+  calendarImport?(request: CalendarImportRequest): Promise<CalendarImportResult>;
   /** owner: pipeline. Graph reads: an assignment's references, the agenda, a course's graph and coverage. */
   graph?<Q extends GraphQuery>(request: Q): Promise<GraphResult<Q>>;
   importFile(): Promise<CommandResult | null>;

@@ -5,7 +5,7 @@ type Ipc = Pick<typeof ipcRenderer, 'invoke' | 'on' | 'removeListener'>;
 /** The renderer's voice bridge over the given IPC; Electron-free so its channels are testable. */
 export function createVoiceBridge(ipcRenderer: Ipc): VoiceBridge { return {
   capabilities: () => ipcRenderer.invoke('magic:voice-capabilities'),
-  start: () => ipcRenderer.invoke('magic:voice-start'),
+  start: context => ipcRenderer.invoke('magic:voice-start', context ?? null), // owner: voice-plan: + the open page
   ready: token => ipcRenderer.invoke('magic:voice-ready', token),
   stop: reason => ipcRenderer.invoke('magic:voice-stop', reason),
   transcribe: audio => ipcRenderer.invoke('magic:voice-transcribe', audio),

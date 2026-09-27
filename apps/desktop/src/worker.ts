@@ -199,6 +199,7 @@ import { createAgentWarmup } from "./voice/agent-warmup"; // owner: voice-plan
 import { maySend } from "../../../packages/domain/src/index"; // owner: voice-plan
 import { memoryArtifactStore, memoryLedgerStore } from "../../../packages/packs/core/src/index"; // owner: voice-plan
 import { createVoicePlanWorker } from "./voice/plan-protocol"; // owner: voice-plan
+import { intentCommandSchema } from "@magic/contracts"; // owner: voice-plan
 import { notesActions } from "../../../packages/notes/src/actions";
 import { notesRequestSchema } from "@magic/contracts";
 import { createModelRunner, createSessionPool, type SessionPool } from "../../../packages/runner/src/index";
@@ -277,6 +278,17 @@ const agentWarmup = createAgentWarmup({
   warmRequest: () => plannerWarmRequest(store, { route: "home" }, new Date()),
   onStatus: (agent) => port.postMessage({ kind: "voice-agent", agent }),
 });
+// A mic click with the page the student has open: the planner's session for that page (its exact first-call
+// prefix) and, with a course open, the router's own prewarm (classify, and that course's ask session) start
+// while the microphone does. Nothing is sent (0 tokens); only ids are taken from the renderer, and the course,
+// item and account come from the store. Codex has no pool here and stays per request.
+async function voiceFocus(raw: unknown): Promise<void> {
+  const parsed = intentCommandSchema.shape.context.safeParse(raw);
+  if (!parsed.success || !parsed.data) return;
+  const context = parsed.data;
+  const outcome = await agentWarmup.focus(plannerWarmRequest(store, plannerOrigin(store, context), new Date())).catch(() => "failed" as const);
+  if (context.courseId && (outcome === "warm" || outcome === "reused" || outcome === "per_request")) await intent.prewarm(context.courseId).catch(() => undefined);
+}
 const voicePlan = createVoicePlanWorker({
   post: (message) => port.postMessage(message),
   run: async (request, executor, signal) => {
@@ -720,7 +732,8 @@ const commandAborts = new Map<string, AbortController>();
 port.on("message", async ({ data }: { data: any }) => {
   if (voicePlan.handle(data)) return; // owner: voice-plan
   // owner: voice-plan: launch warm-up, a retry on voice activation, and teardown on a provider/account change.
-  if (data.kind === "voice-agent-warm") return void agentWarmup.start();
+  if (data.kind === "voice-agent-warm") return void (data.context ? voiceFocus(data.context) : agentWarmup.start());
+  if (data.kind === "voice-agent-release") return void agentWarmup.release();
   if (data.kind === "voice-agent-refresh") return void agentWarmup.refresh();
   if (data.kind === "cancel-command") { commandAborts.get(data.id)?.abort(); return; }
   if (data.kind === "source-investigate") {

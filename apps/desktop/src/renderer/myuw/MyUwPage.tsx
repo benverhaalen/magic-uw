@@ -6,6 +6,8 @@ import { Action, Disclosure } from "../../../../../packages/ui/src";
 import { Icon, type IconName } from "./Icon";
 import { GpaSection } from "./Gpa"; // owner: gpa
 import { myUwMemory, type PlanStyle } from "./memory";
+import type { RefreshProgress } from "./refresh-flow";
+import { RefreshStep } from "./RefreshStep";
 import {
   attentionDomId, courseDomId, offeringsLoaded, offeringsToLoad, projectMyUw, recordNeedsVerification, refreshOutcome, requirementDomId, requirementToneLabel,
   type AttentionItem, type AuditView, type BriefPart, type MyUwModel, type RequirementView, type Service, type SourceSummary,
@@ -22,7 +24,8 @@ export type MyUwProps = {
   run: (command: Command) => Promise<CommandResult | undefined>;
   open: (url: string) => void;
   signIn: (service: Service) => void;
-  refresh: () => Promise<CommandResult | undefined>;
+  /** Reads the planning sources, opening the app's UW window when a read needs sign-in (refresh-flow). */
+  refresh: (before: Record<string, string>, progress: (update: RefreshProgress) => void) => Promise<CommandResult | undefined>;
 };
 type ObjectRef = Extract<BriefPart, { target: string }>;
 type Target = ObjectRef["target"];
@@ -86,7 +89,7 @@ export function MyUwPage({ snapshot, busy, run, open, signIn, refresh }: MyUwPro
   const [openRequirements, setOpenRequirements] = useState(() => new Set(myUwMemory.openRequirements));
   const [pending, setPending] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState<{ pending: boolean; outcome: ReturnType<typeof refreshOutcome> | null; unconfirmed: boolean } | null>(null);
+  const [refreshing, setRefreshing] = useState<{ pending: boolean; outcome: ReturnType<typeof refreshOutcome> | null; unconfirmed: boolean; progress: RefreshProgress | null } | null>(null);
   const operation = useRef(false);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -137,12 +140,17 @@ export function MyUwPage({ snapshot, busy, run, open, signIn, refresh }: MyUwPro
     if (operation.current || busy) return;
     operation.current = true;
     const before = Object.fromEntries(model.sources.map((source) => [source.id, source.observedAt]));
-    setRefreshing({ pending: true, outcome: null, unconfirmed: false });
+    let last: RefreshProgress | null = null;
+    setRefreshing({ pending: true, outcome: null, unconfirmed: false, progress: null });
+    const progress = (update: RefreshProgress) => {
+      last = update;
+      if (mounted.current) setRefreshing((previous) => previous && { ...previous, progress: update });
+    };
     try {
-      const result = await refresh();
-      if (mounted.current) setRefreshing({ pending: false, outcome: result ? refreshOutcome(before, projectMyUw(result.snapshot).sources) : null, unconfirmed: !result });
+      const result = await refresh(before, progress);
+      if (mounted.current) setRefreshing({ pending: false, outcome: result ? refreshOutcome(before, projectMyUw(result.snapshot).sources) : null, unconfirmed: !result, progress: last });
     } catch {
-      if (mounted.current) setRefreshing({ pending: false, outcome: null, unconfirmed: true });
+      if (mounted.current) setRefreshing({ pending: false, outcome: null, unconfirmed: true, progress: last });
     } finally {
       operation.current = false;
     }
@@ -177,6 +185,7 @@ export function MyUwPage({ snapshot, busy, run, open, signIn, refresh }: MyUwPro
         {model.checkedAt ? <span>{problems.length ? `Checked ${stamp(model.checkedAt)} · ${problems.length} ${problems.length === 1 ? "source needs" : "sources need"} attention` : `Checked ${stamp(model.checkedAt)}`}</span> : <span>Nothing checked from UW yet</span>}
         {window.magic.syncPlanning && model.state !== "not_connected" ? <Action id="myuw-refresh" tone="quiet" disabled={busy} pending={refreshing?.pending} onClick={() => void startRefresh()}><Icon name="refresh" />{refreshing?.pending ? "Refreshing" : "Refresh"}</Action> : null}
         {problems.length ? <button type="button" className="myuw-quiet" onClick={() => go("sources")}>See sources</button> : null}
+        <RefreshStep step={refreshing?.progress ?? null} pending={Boolean(refreshing?.pending)} canSignIn={canSignIn} show={(service) => void window.magic.signInUW?.(service).catch(() => {})} />
         {outcome ? <span className="myuw-outcome">{outcome.checked === 0 ? "Refresh finished without new UW information. Saved records are unchanged." : `${outcome.current} of ${outcome.checked} sources updated${outcome.problems.length ? `; ${outcome.problems.map((source) => `${source.label} ${sourceStateLabel[source.state].toLowerCase()}`).join(", ")}` : ""}.`}</span> : null}
         {refreshing?.unconfirmed ? <span className="myuw-outcome">The refresh didn’t finish. Your saved records remain available; try again.</span> : null}
       </div> : null}

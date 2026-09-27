@@ -96,6 +96,7 @@ const bridge: AppBridge = {
   query: (request) => ipcRenderer.invoke("magic:query", request), // owner: T15
   startWork: (id, previewHash, only) => ipcRenderer.invoke("magic:start-work", id, previewHash, only),
   taskWindows: (request) => ipcRenderer.invoke("magic:task-windows", request), // owner: task-workspace
+  calendarImport: (request) => ipcRenderer.invoke("magic:calendar-import", request), // owner: calendar-import
   graph: (request) => ipcRenderer.invoke("magic:graph", request), // owner: pipeline
   importFile: () => ipcRenderer.invoke("magic:import"),
   signInUW: (service) => ipcRenderer.invoke("magic:signin", service),

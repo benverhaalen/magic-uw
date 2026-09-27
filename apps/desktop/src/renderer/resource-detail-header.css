@@ -27,6 +27,9 @@
 .resource-assignment { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 35%); gap: 40px; align-items: start; }
 .resource-assignment__reading, .resource-assignment__work { min-width: 0; }
 .desktop-workspace .resource-assignment .resource-assignment__instructions { margin-top: 0; }
+.resource-assignment__instructions-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.desktop-workspace .resource-detail .resource-assignment__instructions-head h3 { margin-bottom: 15px; }
+.resource-event__facts .magic-ui-action { margin-top: 4px; }
 .resource-assignment__work > .magic-start-work { margin-top: 0; }
 .resource-assignment__work .magic-start-work__destinations { font-size: 13px; gap: 12px; }
 .resource-assignment__work .magic-start-work small, .resource-assignment__work .magic-start-work__note { font-size: 12px; }

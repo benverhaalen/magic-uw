@@ -3,7 +3,9 @@
 // health-checked through the same instant/isolated run options every generation uses. For Claude, the
 // persistent session pool starts the planner's session with its exact first-call prefix (0 tokens), so
 // the first spoken request skips the CLI's start-up. Codex has no persistent transport here: it is checked
-// and reported as running per request, never as warm. Electron-free; the worker injects the parts.
+// and reported as running per request, never as warm. A mic click also warms the planner's session for the
+// page the student has open (`focus`), while the microphone starts; Stop ends it (`release`).
+// Electron-free; the worker injects the parts.
 import type { WarmRequest } from "../../../../packages/runner/src/index";
 
 /** What the student's connected agent is ready to do for voice, as the app actually observed it. */
@@ -57,6 +59,8 @@ export function createAgentWarmup(deps: AgentWarmupDeps) {
   let inflight: Promise<AgentReadiness> | null = null;
   let generation = 0;
   let current: { key: string; pool: WarmPool | null; request: WarmRequest } | null = null;
+  /** The lane a mic click warmed for the open page, while that voice session lasts. */
+  let focused: { request: WarmRequest; pool: WarmPool } | null = null;
   let closed = false;
   const set = (next: AgentReadiness, gen: number) => {
     if (gen !== generation || closed) return status;
@@ -108,9 +112,11 @@ export function createAgentWarmup(deps: AgentWarmupDeps) {
 
   /** Ends this lifecycle's voice sessions (the planner lanes it warmed). */
   async function teardown() {
-    const was = current;
+    const was = current, focus = focused;
     current = null;
+    focused = null;
     if (was?.pool) await was.pool.end(was.request).catch(() => undefined);
+    if (focus && (!was || laneKey(focus.request) !== laneKey(was.request))) await focus.pool.end(focus.request).catch(() => undefined);
   }
 
   return {
@@ -135,10 +141,53 @@ export function createAgentWarmup(deps: AgentWarmupDeps) {
       const pool = current?.pool;
       if (!pool || closed) return;
       await pool.end(used).catch(() => undefined);
+      // The mic session is still open on that page: its next utterance gets a fresh warm session too.
+      if (focused && laneKey(used) === laneKey(focused.request) && laneKey(used) !== laneKey(current!.request)) {
+        const again = focused;
+        await again.pool.warm(again.request).catch(() => false);
+        if (focused !== again) await again.pool.end(again.request).catch(() => undefined);
+        return;
+      }
       if (laneKey(used) !== laneKey(current!.request)) return;
       if (status.state === "ready") set({ state: "starting", client: "claude", at: iso() }, generation);
       inflight = null;
       await start();
+    },
+    /**
+     * A mic click: warm the planner's session for the page the student has open (the exact prefix its first
+     * call will send), without waiting on or touching the microphone. Home is the launch lane, so it's reused.
+     * Codex (no pool) stays per request. One focused lane at a time; a newer click or a provider, account or
+     * consent change (a new generation) ends an older one.
+     */
+    async focus(request: WarmRequest): Promise<"reused" | "warm" | "per_request" | "failed" | "skipped"> {
+      if (closed) return "skipped";
+      const gen = generation;
+      // The launch lifecycle decides the client, its consent and whether it has a pool; it is started only if
+      // it isn't already starting, ready or per request (the same rule as a voice activation).
+      if (inflight) await inflight;
+      else if (!["ready", "per_request", "starting"].includes(status.state)) await start();
+      if (gen !== generation || closed) return "skipped";
+      if (status.state === "per_request") return "per_request";
+      const pool = current?.pool;
+      if (!pool || status.state === "none" || status.state === "needs_permission") return "skipped";
+      if (laneKey(request) === laneKey(current!.request)) return "reused";
+      const was = focused;
+      if (was && laneKey(was.request) === laneKey(request) && was.request.systemPrompt === request.systemPrompt) return "reused";
+      focused = { request, pool };
+      if (was && laneKey(was.request) !== laneKey(request)) await was.pool.end(was.request).catch(() => undefined);
+      const live = await pool.warm(request).catch(() => false);
+      if (gen !== generation || closed || focused?.request !== request) {
+        // Stopped, replaced or fenced out while it started: nothing warmed for a stale page stays alive.
+        if (!focused || laneKey(focused.request) !== laneKey(request)) await pool.end(request).catch(() => undefined);
+        return "skipped";
+      }
+      return live ? "warm" : "failed";
+    },
+    /** Stop (or the voice session ended): the page's warm session goes; the launch session stays. */
+    async release(): Promise<void> {
+      const was = focused;
+      focused = null;
+      if (was && (!current || laneKey(was.request) !== laneKey(current.request))) await was.pool.end(was.request).catch(() => undefined);
     },
     async close() {
       closed = true;

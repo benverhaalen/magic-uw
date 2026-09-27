@@ -27,18 +27,18 @@ import type {
 import { createAssignmentTypeHues } from "../../../../packages/ui/src/deadline-emphasis";
 import { SourcesPage } from "./sources";
 import { MyUw } from "./MyUw";
+import { refreshPlanningWithSignIn } from "./myuw/refresh-flow";
+import { canvasPill, useOnline } from "./canvas-pill";
 import { CoursePageView } from "./courses/CoursePage";
 import { CourseAnalyticsPanel, CourseTabs, type CourseTab } from "./analytics/CourseTabs"; // owner: course-analytics
 import { CoursesIndex } from "./courses/CoursesIndex";
 import { compactCourseTerm } from "./courses/course-index-view";
 import { buildCourseCards, buildCoursePage, courseKey } from "../../../../packages/domain/src/course-page";
-import { LocalAiPanel } from "./LocalAiPanel";
 import { YourAiChoice } from "./ai-choice/YourAiChoice"; // owner: data-ai
 import { SharingChoice } from "./ai-choice/SharingChoice"; // owner: data-ai
 import { JEV_COPY, PLANNING_ROW, SHARE_ROWS, jevOn, jevPatch, shareNothingPatch, shareOn, sharePatch, startFresh } from "./data-ai/model"; // owner: data-ai
 import { ConnectedAccounts, LocalData, StartFresh, VoiceInput } from "./data-ai/sections"; // owner: data-ai
 import { resetForReconfigure } from "./reconfigure/reset"; // owner: reconfigure
-import { LearningPanel } from "./LearningPanel";
 import { IngestionControls, McpConnections } from "./IngestionControls";
 // owner: T06
 import { ConsentSetup, hasUwConsent, missingConsents } from "./consent/ConsentSetup";
@@ -97,6 +97,7 @@ function ShellFeedback({ error, notice, view, onDismiss }: { error: string; noti
 import { ResourceDetailHeader, ResourceProvenance } from "./ResourceDetailHeader";
 import { effectiveCoursePolicy } from "../../../../packages/domain/src/course-policy";
 import { ResourceAssignment } from "./ResourceAssignment";
+import { ResourceEvent } from "./ResourceEvent";
 import { clearTaskWorkspaces } from "./task-workspace/model";
 import { DeadlineReview } from "./DeadlineReview";
 
@@ -497,6 +498,9 @@ export function App() {
   const needsSignIn = unavailableSources.some(
     (source) => source.status === "needs_sign_in",
   );
+  // owner: onboarding-recovery. The white Canvas pill's state (canvas-pill.ts).
+  const online = useOnline();
+  const pill = snapshot ? canvasPill(snapshot, { now: new Date(), online, signInStage }) : null;
   const pageTitle = view === "chat" ? "Chat" : view === "resource" ? selected?.kind === "assignment" ? "Assignment" : selected?.kind === "material" ? "Saved material" : "Saved item" : view === "courses" && coursePage ? coursePage.code || coursePage.courseName : ({today:"Home", courses:"Courses", myuw:"My UW", calendar:"Calendar", sources:"Connected sources", privacy:"Data & AI", consent:"Agreements", study:"Study & Learn"} as Partial<Record<View,string>>)[view] ?? "Workspace";
   const captureChatOrigin = (): ChatOrigin => {
     const place = navigation.capturePlace();
@@ -552,10 +556,13 @@ export function App() {
       canBack={navigation.canBack} canForward={navigation.canForward} onBack={navigation.back} onForward={navigation.forward}
       onNavigate={setView} onCourse={key => navigation.navigate("courses", null, key)}
       status={<>
-        {snapshot?.sources.some(source => source.kind === "canvas" && source.status === "needs_sign_in") && window.magic.signInUW ?
-          <button className="desktop-source-action desktop-canvas-action" aria-label="Sign in to Canvas" aria-busy={signInStage !== "idle" || undefined} aria-disabled={busy || undefined} onClick={() => { if (!busy) void signIn(); }}>
-            <span>{signInStage === "signin" ? "Opening…" : signInStage === "checking" ? "Checking…" : "Sign in to"}</span><CanvasMark/>
-          </button> : needsSignIn ? <button className="desktop-source-action" onClick={() => setView("sources")}><Glyph name="settings"/><span>Review sign-in</span></button> : null}
+        {pill ?
+          <button className="desktop-source-action desktop-canvas-action" data-canvas-state={pill.state} aria-label={pill.description} title={pill.description} aria-busy={pill.action === null || undefined}
+            aria-disabled={(pill.action === "signin" && (busy || !window.magic.signInUW)) || pill.action === null || undefined}
+            onClick={() => { if (pill.action === "sources") setView("sources"); else if (pill.action === "signin" && !busy) void signIn(); }}>
+            <span>{pill.label}</span><CanvasMark/>
+          </button> : null}
+        {needsSignIn && pill?.state !== "expired" && !snapshot?.sources.some(source => source.kind === "canvas" && source.status === "needs_sign_in") ? <button className="desktop-source-action" onClick={() => setView("sources")}><Glyph name="settings"/><span>Review sign-in</span></button> : null}
         <ShellFeedback error={error} notice={notice} view={view} onDismiss={() => { setError(""); setNotice(""); }}/>
       </>}
       trailing={<NotificationsMenu feed={snapshot?.notifications} busy={busy} run={run} destinationOf={notificationTarget} onOpen={openNotification} onOpenSources={() => setView("sources")} onOpenPrivacy={() => navigation.navigate("privacy", null, null, undefined, snapshot?.privacy.mode === "local_only" ? undefined /* the mode choice at the top unlocks Jev */ : { focus: "privacy-jev", anchor: "privacy-models" })}/>}
@@ -624,7 +631,7 @@ export function App() {
             onSelect={navigation.openCalendarResource} formatCourseLabel={(id, fallback) => { const resource = resources.find(r => r.id === id); const account = resource && accountBySource.get(resource.sourceId); const card = resource && courseCards.find(c => c.key === courseKey(account ?? resource.sourceId, resource.courseId)); return card?.code ?? card?.courseName ?? fallback; }} onPlan={async command => { const result = await run(command); if (!result) throw new Error("Calendar change was not saved"); return result; }}/></section>
         ) : view === "myuw" ? (
           <MyUw snapshot={snapshot} busy={busy} run={run} open={open}
-            refresh={() => perform(async () => window.magic.syncPlanning?.())}
+            refresh={(before, progress) => perform(() => refreshPlanningWithSignIn(window.magic, before, progress))}
             signIn={(service) => uwConsented /* owner: T06 */ ? void perform(async () => { const outcome = await window.magic.signInUW?.(service); if (outcome?.status !== "confirmed") { setNotice(outcome ? signInMessage(outcome) : "Sign-in was not confirmed. Try again."); return; } return window.magic.syncPlanning?.(); }) : openConsent()} />
         ) : view === "courses" ? (
           <section className="desktop-courses">
@@ -878,8 +885,6 @@ function ResourceDetail({
   onSetup: () => void;
   onNotice: (text: string) => void;
 }) {
-  const [recipient, setRecipient] = useState<Recipient>("local");
-  const [manifest, setManifest] = useState<ContextManifest | null>(null);
   const initialVersion = useRef(resource.contentHash);
   const changedWhileReading = initialVersion.current !== resource.contentHash;
   const source = snapshot.sources.find(
@@ -888,8 +893,6 @@ function ResourceDetail({
   const courseProfile = source && snapshot.courseIntelligence?.find(profile =>
     profile.accountScope === source.accountScope && profile.courseId === resource.courseId);
   const effectivePolicy = effectiveCoursePolicy(courseProfile, resource, courseProfile?.freshness);
-  const policyResource = { ...resource, policy: { mode: effectivePolicy.mode, evidence: effectivePolicy.evidence } };
-  const policyRevision = JSON.stringify([effectivePolicy.inputHash, effectivePolicy.mode, effectivePolicy.conflict]);
   const links = snapshot.links.filter(
     (link) => link.fromId === resource.id || link.toId === resource.id,
   );
@@ -898,22 +901,6 @@ function ResourceDetail({
     const other = snapshot.resources.find(candidate => candidate.id === otherId);
     return Boolean(other && other.url === resource.url && other.title === resource.title);
   });
-  const preview = async () => {
-    const result = await run({ type: "context", id: resource.id, recipient });
-    setManifest(result?.manifest ?? null);
-  };
-  // A preview applies only to the exact resource version and privacy choices it was made for.
-  useEffect(() => {
-    setManifest(null);
-  }, [
-    resource.contentHash,
-    policyRevision,
-    snapshot.privacy.mode,
-    snapshot.privacy.jevEnabled,
-    snapshot.privacy.hostedProvider,
-    snapshot.privacy.shareCourseText,
-    snapshot.privacy.shareStudentWork,
-  ]);
   const policyDetails = (
 <Disclosure label={`Course AI policy · ${effectivePolicy.mode}`} placeKey={`resource-policy:${resource.id}`}>
         {effectivePolicy.conflict && <p className="attention-text">Saved policy sources disagree. The more restrictive policy applies.</p>}
@@ -939,7 +926,10 @@ function ResourceDetail({
         target?.scrollIntoView({ block: 'nearest' });
       }} /> : null} />
       {resource.kind === "assignment" ? <ResourceAssignment resource={resource} snapshot={snapshot} policy={policyDetails} onSetup={onSetup} onNotice={onNotice} onOpenOriginal={() => open(resource.url)}
-        provenance={<ResourceProvenance resource={resource} snapshot={snapshot} />} /> : <>
+        provenance={<ResourceProvenance resource={resource} snapshot={snapshot} />} /> : resource.kind === "event" ? <>
+        <ResourceEvent resource={resource} open={open} />
+        <ResourceProvenance resource={resource} snapshot={snapshot} />
+      </> : <>
         {resource.text ? <section className="detail-section">
           <h3>Source content</h3>
           <p className="source-text">{resource.text}</p>
@@ -1027,108 +1017,9 @@ function ResourceDetail({
           </p>
         )}
       </Disclosure></section>}
-      {resource.kind !== "assignment" && policyDetails}
-      <LearningPanel key={`${resource.id}:${source?.accountScope}:${resource.contentHash}:${JSON.stringify(snapshot.privacy)}`} resource={policyResource} accountScope={source?.accountScope} />
-      <LocalAiPanel
-        key={`${resource.contentHash}:${policyRevision}:${JSON.stringify(snapshot.privacy)}`}
-        resource={policyResource}
-        privacyKey={`${policyRevision}:${JSON.stringify(snapshot.privacy)}`}
-      />
-
-      <section className="detail-section">
-        <h3>Data preview</h3>
-        <p className="small muted">
-          Inspect the exact context prepared for a model. Previewing does not
-          send it.
-        </p>
-        <label className="field-label" htmlFor="recipient">
-          Recipient
-        </label>
-        <div className="inline-actions">
-          <select
-            id="recipient"
-            disabled={busy}
-            value={recipient}
-            onChange={(event) => {
-              setRecipient(event.target.value as Recipient);
-              setManifest(null);
-            }}
-          >
-            {Object.entries(recipientLabels).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <button
-            className="button"
-            disabled={busy}
-            onClick={() => void preview()}
-          >
-            Preview data
-          </button>
-        </div>
-        {manifest ? <Manifest manifest={manifest} /> : null}
-        <div className="classification-action">
-          <button
-            className="button"
-            disabled={
-              busy ||
-              !snapshot.gatewayConfigured ||
-              snapshot.privacy.mode !== "selective_cloud" ||
-              !snapshot.privacy.jevEnabled ||
-              !snapshot.privacy.shareCourseText
-            }
-            onClick={() => void run({ type: "enrich", id: resource.id })}
-          >
-            Classify with Jev
-          </button>
-          <p className="small muted">
-            {!snapshot.gatewayConfigured
-              ? "The shared Jev gateway is not configured."
-              : snapshot.privacy.mode !== "selective_cloud" ||
-                  !snapshot.privacy.jevEnabled ||
-                  !snapshot.privacy.shareCourseText
-                ? "Enable Jev and course text sharing in Data & AI to send this context."
-                : "Sends the permitted context to TypeSafe through the shared gateway."}
-          </p>
-        </div>
-      </section>
+      {/* A calendar entry has no AI policy of its own. Practice starts from Study, not this page. */}
+      {resource.kind !== "assignment" && resource.kind !== "event" && policyDetails}
     </section>
-  );
-}
-
-function Manifest({ manifest }: { manifest: ContextManifest }) {
-  return (
-    <div className="manifest">
-      <div className="manifest-status">
-        <strong>
-          {manifest.allowed
-            ? "Allowed by your settings"
-            : "Blocked by your settings"}
-        </strong>
-        <span>{manifest.characters.toLocaleString()} characters</span>
-      </div>
-      <p className="small">{manifest.reason}</p>
-      <dl className="manifest-facts">
-        <div>
-          <dt>Recipient</dt>
-          <dd>{recipientLabels[manifest.recipient]}</dd>
-        </div>
-        <div>
-          <dt>Purpose</dt>
-          <dd>{manifest.purpose}</dd>
-        </div>
-        <div>
-          <dt>Categories</dt>
-          <dd>{manifest.categories.join(", ") || "None"}</dd>
-        </div>
-      </dl>
-      <details>
-        <summary>Exact prepared payload</summary>
-        <pre>{JSON.stringify(manifest.payload, null, 2)}</pre>
-      </details>
-    </div>
   );
 }
 

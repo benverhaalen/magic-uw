@@ -98,7 +98,7 @@ Named objects within briefing prose should be visibly clickable and lead to cont
 - Preserve independent Canvas, student-history, DARS, and eventual transcript claims. Do not convert percentages into letters, audit applications into earned credits, or recorded grades into mastery/readiness.
 - Compare exact course/term identities only after fresh native account binding. Unknown/partial/stale evidence cannot establish eligibility, full degree coverage, or an all-clear state.
 - Existing saved audits may be read; the app never generates audits or changes enrollment. Transcript access remains research-only until a production adapter is validated.
-- All planning remains local and outside Jev, model context, and MCP. App-owned onboarding still needs live verification; the private developer transport does not satisfy it.
+- Planning remains local by default and outside Jev and MCP. The September 27 selected-context approval below permits a narrow connected-agent exception. App-owned onboarding still needs live verification; the private developer transport does not satisfy it.
 
 See [planning integration](planning-upgrade.md) for implementation evidence and remaining scope.
 
@@ -225,3 +225,10 @@ Not covered here, recorded for their owners: the Home list shows course-module c
 ### Integration qualification — September 27, 2026
 
 The designed Home/Calendar use the existing account-scoped schedule projection before the rail. That consumer retains canonical contributor identity, disputed claims, module/feed obligations, and personal planning dates. The upstream raw-resource projection is also integrated, with two corrections: missing or unknown source/account metadata does **not** establish shared assignment identity, and divergent due claims are retained when verified copies merge. Already projected rows are not merged again. This supersedes the no-source merge fallback above. It does not resolve the saved fourteen-versus-six count: exact quiz/assignment crosswalk and calendar-only source state still require a successful authenticated capture.
+
+
+## 2026-09-27 — Planning chat: preview and approve selected context
+
+Ben answered the explicit privacy question: **“Preview and approve selected planning context.”** Source: the in-thread question reply received September 27 (exact original time unavailable). This updates only the model-context boundary for the requested **Chat about my plan** journey.
+
+Before a connected Claude/Codex request, show the actual selected fields/excerpts, source/account scope and recipient. Send only the approved payload after an affirmative action; cancelling sends nothing. A changed payload or account requires a new preview. Full raw degree audits remain local, and this does not authorize automatic background planning upload, Jev access or MCP exposure. Preserve provenance and ordinary provider consent. The implementation worker is building this path; this decision is not evidence of a demonstrated request.

@@ -159,7 +159,9 @@
 @media (max-width: 800px) { .desktop-page-title { display: none; } .desktop-status { max-width: calc(100% - 240px); } }
 @media (max-width: 650px) { .desktop-status { max-width: calc(100% - 150px); } }
 
-.desktop-chrome .desktop-brand { display: block; transform: translateY(-2px); }
+/* Karma's deep descender (hhea 945/-548) leaves its capitals 0.141em above the line box's centre;
+   this puts the cap-height centre on the 32px chrome controls' centre at every size (visual only, no layout). */
+.desktop-chrome .desktop-brand { display: block; transform: translateY(0.141em); }
 .desktop-history { flex-shrink: 0; }
 .desktop-page-title { max-width: max(0px, calc(100vw - 920px)); }
 .desktop-feedback > details { flex: 1; min-width: 0; }

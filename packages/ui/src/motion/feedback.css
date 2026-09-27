@@ -3,7 +3,7 @@
  * change or a layout change. Text stays still. Press lands at once; hover and release ease out.
  * Families: pill (small semantic actions: "Show next 3", section actions, disclosures), card (one
  * whole clickable tile; sibling controls stay distinct), surface (icon/nav/segmented controls),
- * link (prose entity links: persistent underline, stable affordance), field (inputs) and status
+ * link (persistent underline by default; Daily Brief uses its persistent arrow contract), field (inputs) and status
  * (reserved action/status slot). Hosts use these classes or map existing selectors to the same
  * declarations with the --magic-fb-* values below. There is deliberately no global link/button reset.
  */

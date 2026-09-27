@@ -1,6 +1,6 @@
 import { MagicGlyph } from '../../../../packages/ui/src/glyph';
 import { projectScheduleResources, type ScheduleAlias } from './schedule-projection';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Command, DayPlanEntry, ResourceView, SourceHealth, Link, PlanningSnapshot, PersonalCalendarEvent } from '@magic/contracts';
 import { calendarCoverageDetail, projectCalendarCoverage, layoutLanes, localTime, planEntry, type RailSuggestion } from '@magic/domain';
 import { Action } from '../../../../packages/ui/src';
@@ -8,8 +8,9 @@ import { EvidenceInfo } from '../../../../packages/ui/src/evidence-info';
 import { monthVisibleItemCount } from './calendar/month-fit';
 import { enrollmentCalendarItems, enrollmentScheduleNote } from './calendar/enrollment';
 import { personalCalendarItems } from './calendar/personal';
+import { GoogleExportPanel } from './calendar/GoogleExportPanel';
 import '../../../../packages/ui/src/evidence-info.css';
-import { calendarItems, calendarItemLabel, clock, dayLabel, localMinuteInstant, localTime as calendarLocalTime, requestedSuggestions, shiftPeriod, visibleDates, type CalendarItem, type CalendarState } from './calendar/model';
+import { calendarItems, calendarItemLabel, clock, dayLabel, localMinuteInstant, localTime as calendarLocalTime, requestedSuggestions, shiftPeriod, visibleDates, type CalendarItem, type CalendarResource, type CalendarState } from './calendar/model';
 import './calendar/calendar.css';
 
 export type { CalendarState } from './calendar/model';
@@ -61,12 +62,14 @@ export function CalendarPage({ resources, sources, links = [], aliases = [], pla
   const [draft, setDraft] = useState<EventDraft | null>(null);
   const [meetingTrigger, setMeetingTrigger] = useState<string | null>(null);
   const [personalTrigger, setPersonalTrigger] = useState<string | null>(null);
+  const [exportOpen, setExportOpen] = useState(false), exportButton = useRef<HTMLButtonElement>(null);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => { if (fixedNow) return; const id = setInterval(() => setLiveNow(new Date().toISOString()), 60000); return () => clearInterval(id); }, [fixedNow]);
   const update = (next: CalendarState) => { currentRef.current = next; setInternal(next); onStateChange?.(next); };
   const navigate = (patch: Partial<CalendarState>) => { setDetailDate(null); setRequestDate(null); setSelectedPlan(null); setSelectedMeeting(null); setSelectedPersonal(null); setDraft(null); setError(null); setNotice(''); update({ ...currentRef.current, scrollTop: 0, detailDate: undefined, selectedPlanKey: undefined, ...patch }); };
   const scopedResources = useMemo(() => { const byId = new Map(sources.map(s => [s.id, s])); return projectScheduleResources(resources.map(r => ({ ...r, accountScope: byId.get(r.sourceId)?.accountScope, sourceScope: byId.get(r.sourceId)?.scope, sourceKind: byId.get(r.sourceId)?.kind })), links, aliases); }, [resources, sources, links, aliases]);
+  const exportCourseLabel = useCallback((r: CalendarResource) => formatCourseLabel(r.id, r.courseName), [formatCourseLabel]);
   const dates = useMemo(() => visibleDates(current.date, current.view), [current.date, current.view]);
   useLayoutEffect(() => {
     const grid = monthGrid.current;
@@ -100,6 +103,7 @@ export function CalendarPage({ resources, sources, links = [], aliases = [], pla
     // Long day lists begin at their heading; Back restores the exact item below.
     document.getElementById('calendar-day-heading')?.focus({ preventScroll: true });
   }, [detailDate]);
+  useLayoutEffect(() => { if (exportOpen) document.getElementById('calendar-export-heading')?.focus({ preventScroll: true }); }, [exportOpen]);
   useLayoutEffect(() => { if (selectedMeeting) document.getElementById('calendar-meeting-heading')?.focus({ preventScroll: true }); }, [selectedMeeting]);
   useLayoutEffect(() => { if (selectedPersonal) document.getElementById('calendar-personal-heading')?.focus({ preventScroll: true }); }, [selectedPersonal]);
   useLayoutEffect(() => { if (draft) document.getElementById('calendar-personal-title')?.focus({ preventScroll: true }); }, [draft?.id, Boolean(draft)]);
@@ -172,11 +176,14 @@ export function CalendarPage({ resources, sources, links = [], aliases = [], pla
       <div className="mc-calendar-arrows"><button className="mc-calendar-control" aria-label={`Previous ${current.view}`} onClick={() => navigate({ date: shiftPeriod(current.date, current.view, -1) })}><Chevron /></button><button className="mc-calendar-control" aria-label={`Next ${current.view}`} onClick={() => navigate({ date: shiftPeriod(current.date, current.view, 1) })}><Chevron next /></button></div>
       <div className="mc-calendar-view" aria-label="Calendar view">{(['week', 'month'] as const).map(view => <button key={view} aria-pressed={current.view === view} onClick={() => navigate({ view })}>{view === 'week' ? 'Week' : 'Month'}</button>)}</div>
       <button id="calendar-new-event" className="mc-calendar-control" onClick={() => editPersonal()}>New event</button>
+      <button ref={exportButton} className="mc-calendar-control" aria-expanded={exportOpen} aria-controls="calendar-export-panel" onClick={() => setExportOpen(open => !open)}>Add to Google</button>
       <button ref={requestButton} className="mc-calendar-find" onClick={() => { setDetailDate(null); setRequestDate(current.date); setSelectedPlan(null); setError(null); setNotice(''); }}>Find study time <span aria-hidden="true">→</span></button>
     </header>
     <div className="mc-calendar-meta"><span>{timeZone.replaceAll('_', ' ')}</span><span>{coverage.summary} <EvidenceInfo label="About calendar coverage">{calendarCoverageDetail(coverage, timeZone)}</EvidenceInfo></span></div>
     <div className="mc-calendar-filters" role="group" aria-label="Show calendar types">{([['class', 'Classes'], ['exam', 'Exams & quizzes'], ['deadline', 'Due work'], ['event', 'Other events'], ['study', 'Study time'], ['personal', 'Personal']] as const).map(([kind, label]) => <label key={kind}><input type="checkbox" checked={shown.includes(kind)} onChange={() => update({ ...currentRef.current, types: shown.includes(kind) ? shown.filter(value => value !== kind) : [...shown, kind] })}/>{label}</label>)}</div>
     {enrollmentScheduleNote(planning) && <p className="mc-calendar-schedule-note">{enrollmentScheduleNote(planning)}</p>}
+    {exportOpen && <GoogleExportPanel resources={scopedResources} planning={planning} timeZone={timeZone} now={now} courseLabel={exportCourseLabel} bridge={window.magic}
+      onClose={() => { setExportOpen(false); exportButton.current?.focus(); }} />}
     {detailDate && <div ref={dayPanel} id="calendar-day-panel" popover="auto" role="dialog" aria-labelledby="calendar-day-heading" className="mc-calendar-day-popover"
       onToggle={event => { if (!event.currentTarget.matches(':popover-open')) closeDay(false); }}
       onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeDay(); } }}

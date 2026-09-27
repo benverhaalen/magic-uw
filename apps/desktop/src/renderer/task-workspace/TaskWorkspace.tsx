@@ -5,12 +5,14 @@ import { EvidenceInfo } from "../../../../../packages/ui/src/evidence-info";
 import { Glyph } from "../DesktopShell";
 import { usePreparedWork } from "../prepared-work/usePreparedWork";
 import { readCourseTools, type CourseToolsState } from "./page-view-adapter";
+import { useSourceInvestigation, type InvestigationState } from "./source-investigation";
 import {
-  availableTargets, courseGitlabLinks, forgetWorkspace, gitlabPathFromUrl, gitlabView, httpsUrl, initialDraft, instructionsChanged,
-  lastOpenLine, linkReceipt, mergeWindows, missingChoices, place, placementOf, pruneWorkspaces, readWorkspace, recordFrom, saveWorkspace,
+  availableTargets, choose, courseGitlabLinks, forgetWorkspace, gitlabPathFromUrl, gitlabView, httpsUrl, initialDraft, instructionsChanged,
+  lastOpenLine, linkReceipt, mergeWindows, missingChoices, placementOf, pruneWorkspaces, readWorkspace, recordFrom, saveWorkspace,
   stageOf, STATE_LABEL, windowPages, windowReceipts, type Draft, type GitlabChoice, type GitlabView, type Placement, type Target,
   type TargetReceipt, type TaskWorkspaceRecord,
 } from "./model";
+import { targetWhy, withInvestigation } from "./investigation-targets";
 import "./task-workspace.css";
 
 type Props = {
@@ -55,25 +57,13 @@ function TaskWorkspaceInner({ resource, snapshot, refreshKey, onSetup, onFailure
   const [confirmClose, setConfirmClose] = useState(false);
   const [adding, setAdding] = useState(false);
   const [returned, setReturned] = useState(false);
-  const [investigation, setInvestigation] = useState<{ kind: "loading" | "ready" | "error" | "stopped"; value?: SourceInvestigationResult; message?: string }>({kind:"stopped"});
-  const investigationId = useRef<string | null>(null);
+  // Keyed by the exact evidence it reads, not `refreshKey`: prepared work refreshes on every snapshot revision; this paid read doesn't.
+  const investigation = useSourceInvestigation({ accountScope, resource, snapshot });
   const awaiting = useRef<"no" | "sent" | "left">("no");
   const seededDraft = useRef(!!record);
   const bridge = window.magic.taskWindows;
 
   useEffect(() => { pruneWorkspaces(snapshot); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    // The normal detail click triggers this only for sparse Canvas instructions.
-    if ((resource.text ?? "").trim().length >= 200 || !window.magic.investigateAssignment) return;
-    let current=true;
-    const operationId=crypto.randomUUID();
-    investigationId.current=operationId;
-    setInvestigation({kind:"loading"});
-    void window.magic.investigateAssignment({operationId,assignmentId:resource.id}).then(value=>{
-      if (current) setInvestigation({kind:"ready",value});
-    }).catch(cause=>{ if (current) setInvestigation({kind:"error",message:cleanError(cause)}); });
-    return () => { current=false; if (investigationId.current===operationId) { investigationId.current=null; void window.magic.stopAssignmentInvestigation?.(operationId); } };
-  }, [resource.id,resource.contentHash,refreshKey]);
   useEffect(() => {
     let current = true;
     void readCourseTools(resource.id, resource.contentHash).then(next => { if (current) setTools(next); });
@@ -104,7 +94,11 @@ function TaskWorkspaceInner({ resource, snapshot, refreshKey, onSetup, onFailure
   }, [snapshot.gitlabLinks]); // eslint-disable-line react-hooks/exhaustive-deps
   const courseTools = tools.kind === "ready" ? tools.tools : [];
   const gitlabNow = gitlabView(gitlab, links);
-  const targets = availableTargets({ set: work.set, gitlab: gitlabNow, tools: courseTools, pages: draft.pages });
+  // Source-check pages join as optional, cited suggestions; they never change the pre-selection.
+  const offered = withInvestigation(availableTargets({ set: work.set, gitlab: gitlabNow, tools: courseTools, pages: draft.pages }), {
+    result: investigation.state.kind === "ready" ? investigation.state.value : null, assignment: resource, accountScope, saved: snapshot,
+  });
+  const targets = offered.targets;
   // First open: the page the assignment links outside Canvas is suggested for the right window once known.
   useEffect(() => {
     if (seededDraft.current || work.prepare.kind === "loading") return;
@@ -209,11 +203,8 @@ function TaskWorkspaceInner({ resource, snapshot, refreshKey, onSetup, onFailure
 
     <InstructionsFact resource={resource} />
     {work.set?.context && <ContextFacts context={work.set.context} />}
-    {((resource.text ?? "").trim().length < 200) && <SourceInvestigationFacts state={investigation} onStop={() => {
-      if (investigationId.current) void window.magic.stopAssignmentInvestigation?.(investigationId.current);
-      investigationId.current=null;
-      setInvestigation({kind:"stopped"});
-    }} />}
+    <SourceInvestigationFacts state={investigation.state} onStop={investigation.stop} onRestart={investigation.restart}
+      lookup={id => snapshot.resources.find(r => r.id === id)} />
     <WindowsFact windows={windows} work={workTarget?.label ?? null} busy={busy === "access"} onAllow={() => void allowArrangement()} />
 
     {choosing ? <fieldset className="task-workspace__choices">
@@ -225,9 +216,10 @@ function TaskWorkspaceInner({ resource, snapshot, refreshKey, onSetup, onFailure
       {targets.map(target => {
         const tool = courseTools.find(t => `tool:${t.url}` === target.key);
         return <PlacementRow key={target.key} target={target} value={placementOf(draft, target.key)}
-          evidence={tool?.evidence ? `“${tool.evidence.quote}” from ${tool.evidence.source}` : undefined}
-          onChange={value => setDraft(d => place(d, target.key, value))} />;
+          evidence={tool?.evidence ? `“${tool.evidence.quote}” from ${tool.evidence.source}` : targetWhy(target)}
+          onChange={value => setDraft(d => choose(d, target, value))} />;
       })}
+      {offered.notes.map(note => <p key={note} className="task-workspace__row task-workspace__row--quiet">{note}</p>)}
       {!targets.length && <p className="task-workspace__row task-workspace__row--quiet">
         {work.prepare.kind === "loading" ? "Reading the assignment's linked pages…" : work.prepare.kind === "error" && work.prepare.problem.kind === "setup"
           ? <>Linked pages need the UW connection setup first. {onSetup && <button type="button" className="task-workspace__inline-action" onClick={onSetup}>Finish setup</button>}</>
@@ -369,27 +361,80 @@ function AddPageForm({ onAdd, onCancel }: { onAdd: (url: string, title: string) 
   </form>;
 }
 
-export function SourceInvestigationFacts({state,onStop}: {state:{kind:"loading"|"ready"|"error"|"stopped";value?:SourceInvestigationResult;message?:string};onStop:()=>void}) {
-  if (state.kind==="stopped") return null;
-  if (state.kind==="loading") return <section className="task-workspace__context" aria-label="Investigating assignment">
-    <p className="task-workspace__fact">Checking saved course sources for this assignment…</p>
-    <button type="button" className="task-workspace__inline-action" onClick={onStop}>Stop</button>
-  </section>;
-  if (state.kind==="error") return <p className="task-workspace__attention">Source investigation: {state.message}</p>;
-  const result=state.value;
-  if (!result) return null;
-  return <section className="task-workspace__context" aria-label="Source investigation">
+const FINDING_LABEL = { instruction: "Confirmed instruction", work_target: "Work target", reading: "Reading", context: "Course context" } as const;
+type Citation = SourceInvestigationResult["findings"][number]["citations"][number];
+/** The cited words: the saved local span when that exact version is still saved, else the excerpt the result carried. */
+function citedText(c: Citation, saved: ResourceView | undefined) {
+  const exact = saved && saved.contentHash === c.contentHash && saved.text && c.end <= saved.text.length ? saved.text.slice(c.start, c.end) : c.excerpt;
+  return clip(sourceQuoteText(exact), 400);
+}
+const hostName = (url: string | null) => { try { return url ? new URL(url).host : null; } catch { return null; } };
+
+/**
+ * What the source investigation found. A finding supported only by a section matched through
+ * the assignment's title is related course context, never a confirmed instruction. Each finding
+ * cites its quoted source inline and links it; saved version and character span sit behind the
+ * info toggletip. When Stop or a result replaces the focused control, focus moves to the region's
+ * next control (or the region), not the page start.
+ */
+export function SourceInvestigationFacts({ state, onStop, onRestart, lookup }: {
+  state: InvestigationState; onStop: () => void; onRestart: () => void; lookup?: (resourceId: string) => ResourceView | undefined;
+}) {
+  const region = useRef<HTMLElement>(null);
+  const control = useRef<HTMLButtonElement>(null);
+  const hadFocus = useRef(false);
+  // Read before this commit replaces the control: was it the focused element?
+  if (typeof document !== "undefined" && control.current && document.activeElement === control.current) hadFocus.current = true;
+  useEffect(() => {
+    if (!hadFocus.current) return;
+    hadFocus.current = false;
+    if (document.activeElement && document.activeElement !== document.body) return;
+    (control.current ?? region.current)?.focus();
+  }, [state.kind]);
+  if (state.kind === "idle") return null;
+  const body = state.kind === "loading" ? <>
+    <p className="task-workspace__fact" role="status">Checking saved course sources for this assignment…</p>
+    <div className="task-workspace__inline-actions"><button ref={control} type="button" className="task-workspace__inline-action" onClick={onStop}>Stop</button></div>
+  </> : state.kind === "stopped" ? <>
+    <p className="task-workspace__note" role="status">{state.changed ? "Stopped checking course sources. They've changed since; Magic checks again only when you ask." : "Stopped checking course sources. Magic checks again only when you ask."}</p>
+    <div className="task-workspace__inline-actions"><button ref={control} type="button" className="task-workspace__inline-action" onClick={onRestart}>Check course sources</button></div>
+  </> : state.kind === "error" ? <>
+    <p className="task-workspace__attention" role="status">Course sources couldn't be checked: {state.message}</p>
+    <div className="task-workspace__inline-actions"><button ref={control} type="button" className="task-workspace__inline-action" onClick={onRestart}>Try again</button></div>
+  </> : <ReadyInvestigation result={state.value} lookup={lookup} />;
+  return <section ref={region} tabIndex={-1} className="task-workspace__context task-workspace__investigation" aria-label="What the course sources say">{body}</section>;
+}
+
+function ReadyInvestigation({ result, lookup }: { result: SourceInvestigationResult; lookup?: (resourceId: string) => ResourceView | undefined }) {
+  let n = 0;
+  return <>
     <h4>What the course sources say</h4>
     <p className="task-workspace__fact">{result.summary}</p>
-    {result.findings.map((finding,index)=><figure className="task-workspace__cited" key={index}>
-      <figcaption><span className="task-workspace__label">{finding.citations.every(c=>c.provisional) ? "Possibly related course context" : finding.kind==="instruction" ? "Confirmed instruction" : finding.kind==="work_target" ? "Work target" : finding.kind==="reading" ? "Reading" : "Course context"}</span></figcaption>
-      <p>{finding.text}</p>
-      {finding.citations.map(c=><small key={`${c.resourceId}:${c.start}`}>
-        {httpsUrl(c.sourceUrl) ? <a href={httpsUrl(c.sourceUrl)!} target="_blank" rel="noreferrer">Saved source</a> : "Saved source"} · version {c.version} · characters {c.start}–{c.end}{c.provisional ? " · title match only" : ""}
-      </small>)}
-    </figure>)}
-    {result.unknowns.length>0 && <p className="task-workspace__fact">Still unclear: {result.unknowns.join(" ")}</p>}
-  </section>;
+    {result.findings.map((finding, index) => {
+      const related = finding.citations.length > 0 && finding.citations.every(c => c.provisional);
+      const cited = finding.citations.map(c => {
+        const saved = lookup?.(c.resourceId);
+        const url = httpsUrl(c.sourceUrl);
+        return { c, n: ++n, url, title: saved?.title?.trim() || hostName(url) || "Saved course source", text: citedText(c, saved) };
+      });
+      return <figure className="task-workspace__cited" key={index}>
+        <figcaption>
+          <span className="task-workspace__label">{related ? "Related course context" : FINDING_LABEL[finding.kind]}</span>
+          {related && <small>Found by the assignment's title on a course page that isn't linked to it, so it isn't confirmed as this assignment's instructions.</small>}
+        </figcaption>
+        <p>{finding.text}{cited.map(x => <span key={x.n} className="task-workspace__cite-ref"> [{x.n}]</span>)}</p>
+        {cited.map(x => <div className="task-workspace__citation" key={`${x.c.resourceId}:${x.c.start}:${x.n}`}>
+          {x.text && <blockquote cite={x.url ?? undefined}>{x.text}</blockquote>}
+          <small>
+            [{x.n}] {x.url ? <a href={x.url} target="_blank" rel="noreferrer">{x.title}</a> : x.title}
+            {x.c.provisional && !related && " · title match only"}
+            {" "}<EvidenceInfo label={`Source ${x.n} details`}>Saved version {x.c.version}, characters {x.c.start}–{x.c.end}{x.c.provisional ? ". Matched by the assignment's title, not linked to it." : "."}</EvidenceInfo>
+          </small>
+        </div>)}
+      </figure>;
+    })}
+    {result.unknowns.length > 0 && <p className="task-workspace__fact">Still unclear: {result.unknowns.join(" ")}</p>}
+  </>;
 }
 
 function InstructionsFact({ resource }: { resource: ResourceView }) {

@@ -7,6 +7,7 @@ import { projectCourseLabel } from '../../../../packages/domain/src/course-label
 import { Glyph } from './DesktopShell';
 import type { DeadlineReviewResource } from './DeadlineReview';
 import { SHOW_DATE_CONFLICT_UI } from './date-conflict-policy';
+import { eventPresentation } from './ResourceEvent';
 import './resource-detail-header.css';
 
 const sourceStates: Record<SourceHealth['status'], string> = {
@@ -38,10 +39,12 @@ export function resourceDetailPresentation(resource: ResourceView, snapshot: Sna
   const planning = (resource as DeadlineReviewResource).personalDeadline;
   const selected = planning?.needsReview ? null : planning?.selected;
   const action = resource.kind === 'assignment' ? 'Open assignment' : resource.kind === 'material' ? 'Open material' : 'Open original';
-  const showDeadline = resource.kind === 'assignment' || resource.deadline.conflict || Boolean(resource.deadline.dueAt);
+  // An event's time comes from its saved calendar entry; all-day entries carry no deadline claim.
+  const event = resource.kind === 'event' ? eventPresentation(resource) : null;
+  const showDeadline = !event?.when && (resource.kind === 'assignment' || resource.deadline.conflict || Boolean(resource.deadline.dueAt));
   const status = resource.submitted === true ? 'Submitted · reported by source' : resource.completed ? 'Marked complete locally'
     : resource.submitted === false ? 'Not submitted · reported by source' : 'Submission status unknown';
-  return { source, courseName, courseCode, title, freshness, action, showDeadline, status, selected };
+  return { source, courseName, courseCode, title, freshness, action, showDeadline, status, selected, event };
 }
 
 export function ResourceDetailHeader({ resource, snapshot, open, changedWhileReading, deadlineReview }: {
@@ -63,6 +66,8 @@ export function ResourceDetailHeader({ resource, snapshot, open, changedWhileRea
           : dateText(view.selected.value)]} />{SHOW_DATE_CONFLICT_UI && resource.deadline.conflict && <small className="resource-heading__source-conflict">Source dates disagree</small>}</> : resource.deadline.conflict ? SHOW_DATE_CONFLICT_UI ? <strong className="attention-text">Dates disagree</strong> : resource.deadline.planningAt ? <InlineTime dateTime={resource.deadline.planningAt} parts={[dateText(resource.deadline.planningAt)]}/> : 'Planning date unavailable' : resource.deadline.dueAt
           ? <InlineTime dateTime={resource.deadline.dueAt} parts={[dateText(resource.deadline.dueAt)]} /> : 'No confirmed due date'}
       </dd></div>}
+      {view.event?.when && <div><dt>When</dt><dd>{view.event.start ? <InlineTime dateTime={view.event.start} parts={[view.event.when]} /> : view.event.when}</dd></div>}
+      {view.event?.cancelled && <div><dt>Status</dt><dd>Cancelled · reported by calendar</dd></div>}
       {resource.kind === 'assignment' && resource.points !== null && <div><dt>Points</dt><dd>{resource.points}</dd></div>}
       {resource.kind === 'assignment' && <div><dt>Status</dt><dd>{view.status}</dd></div>}
       {resource.kind === 'material' && resource.moduleItem?.type && <div><dt>Format</dt><dd>{materialFormats[resource.moduleItem.type] ?? resource.moduleItem.type}</dd></div>}

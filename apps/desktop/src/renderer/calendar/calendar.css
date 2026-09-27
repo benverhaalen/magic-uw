@@ -160,3 +160,25 @@
 .mc-calendar-action-feedback > * { grid-area:1 / 1; min-width:0; }
 .mc-calendar-feedback-reserve { visibility:hidden; pointer-events:none; user-select:none; }
 .mc-calendar-action-feedback [role=alert] { color:var(--magic-ink-error); }
+/* owner: calendar-import */
+.mc-calendar-export { flex-shrink:0; max-height:min(52vh,460px); overflow:auto; margin-bottom:10px; padding:16px 18px; border:1px solid var(--magic-line-quiet); border-radius:var(--magic-radius-card); background:var(--magic-surface-quiet); }
+.mc-calendar-export h3 { margin:0; font:500 20px/1.2 var(--magic-font-editorial); }
+.mc-calendar-export p { margin:5px 0; font-size:12px; line-height:1.45; }
+.mc-calendar-export .mc-calendar-review-heading { align-items:flex-start; }
+.mc-calendar-export .mc-calendar-review-heading .mc-calendar-control { flex-shrink:0; }
+.mc-calendar-export-options { border:0; padding:0; margin:13px 0 0; display:flex; flex-wrap:wrap; align-items:center; gap:8px 22px; }
+.mc-calendar-export-options legend { font-size:12px; color:var(--magic-ink-muted); padding:0; margin-bottom:6px; }
+.mc-calendar-export-dates,.mc-calendar-export-actions { display:flex; align-items:center; flex-wrap:wrap; gap:10px 22px; margin-top:13px; }
+.mc-calendar-export-options label,.mc-calendar-export-dates label,.mc-calendar-export-field { display:flex; align-items:center; gap:7px; font-size:12px; }
+.mc-calendar-export-options input { accent-color:var(--magic-fill-action); margin:0; }
+.mc-calendar-export-dates input,.mc-calendar-export-field select { max-width:170px; padding:6px; border:1px solid var(--magic-line-quiet); border-radius:var(--magic-radius-control); background:var(--magic-surface-raised); }
+.mc-calendar-export-field { margin-top:12px; }
+.mc-calendar-export-count { margin-top:13px!important; color:var(--magic-ink); }
+.mc-calendar-export-note { color:var(--magic-ink-muted); font-size:12px; }
+.mc-calendar-export-actions { min-height:36px; }
+.mc-calendar-export-steps { margin-top:14px; padding-top:10px; border-top:1px solid var(--magic-line-quiet); }
+.mc-calendar-export-steps ol { margin:6px 0 0; padding-left:18px; display:grid; gap:10px; font-size:13px; }
+.mc-calendar-export-steps li span { color:var(--magic-ink-muted); font-size:12px; }
+.mc-calendar-export-steps li[data-state=imported] p { color:var(--magic-ink-link); }
+.mc-calendar-export [role=alert] { color:var(--magic-ink-error); }
+/* end owner: calendar-import */

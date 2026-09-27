@@ -1,9 +1,14 @@
-import { Fragment, useId, type ReactNode } from 'react';
+import { Fragment, useId, useMemo, type ReactNode } from 'react';
 import type { ResourceView, Snapshot } from '@magic/contracts';
 import { personalReportIssue, personalReportState, personalReportVersion } from '@magic/contracts';
 import { Action, EvidenceLink } from '../../../../../packages/ui/src';
 import { EvidenceInfo } from '../../../../../packages/ui/src/evidence-info';
 import { InlineEntity, InlineTime, sourceDates, type PresentationLabel } from '../../../../../packages/ui/src/inline-context';
+import { MagicGlyph } from '../../../../../packages/ui/src/glyph';
+import type { IdentityHue } from '../../../../../packages/ui/src/deadline-emphasis';
+import '../../../../../packages/ui/src/deadline-emphasis.css';
+import { courseKey, courseKeys } from '../../../../../packages/domain/src/course-page';
+import { courseIdentityHues } from '../courses/course-index-view';
 import { deadlineReportEvidence, HandledBriefing } from '../PersonalReport';
 import { PreparedWork } from '../prepared-work/PreparedWork';
 import { Glyph } from '../DesktopShell';
@@ -14,6 +19,38 @@ import './brief.css';
 
 export function ObjectLink({ resource, children }: { resource: ResourceView; children?: ReactNode }) {
   return <EvidenceLink source={{ resourceId: resource.id, version: resource.contentHash, href: resourceHref(resource.id), sourceLabel: resource.courseName, capturedAt: resource.observedAt }}>{children ?? resource.title}</EvidenceLink>;
+}
+
+/**
+ * Brief source link: the same EvidenceLink route, data and accessible name as ObjectLink, with a
+ * small north-east arrow as its non-color cue instead of an underline. The arrow is aria-hidden and
+ * travels with the last word, so it never starts a line alone.
+ */
+function SourceLink({ resource, text }: { resource: ResourceView; text: string }) {
+  const [head, tail] = arrowTail(text);
+  return <ObjectLink resource={resource}>{head}<span className="briefing-link-tail">{tail}<MagicGlyph name="upRight" size={12} className="briefing-link-arrow"/></span></ObjectLink>;
+}
+
+/** Splits link text so the arrow keeps the last word. A long final token (a URL or code) keeps only
+ * its last character, so the rest can still wrap inside a narrow line instead of overflowing. */
+export function arrowTail(text: string): [head: string, tail: string] {
+  const trimmed = text.trimEnd();
+  const word = /\S+$/.exec(trimmed)?.[0] ?? '';
+  const keep = word.length > 0 && word.length <= 18 ? word.length : /[\uDC00-\uDFFF]$/.test(trimmed) ? 2 : 1;
+  return [trimmed.slice(0, trimmed.length - keep), trimmed.slice(trimmed.length - keep)];
+}
+
+/**
+ * Course identity hue, shared with Courses: the key set the Courses work list hashes (admitted
+ * courses; without an admission, every captured course as the Courses index does), so one course
+ * keeps one hue on both surfaces. Keys are account scope + course id, never a name; a course
+ * outside the set renders neutral.
+ */
+export function briefCourseHues(snapshot: Pick<Snapshot, 'courseWorkAdmission' | 'sources'>, resources: ResourceView[]) {
+  const admitted = snapshot.courseWorkAdmission?.courses;
+  const hues = courseIdentityHues(admitted ? admitted.map(c => courseKey(c.accountScope, c.courseId)) : courseKeys({ resources, sources: snapshot.sources }));
+  const scope = new Map(snapshot.sources.map(s => [s.id, s.accountScope]));
+  return (r: Pick<ResourceView, 'sourceId' | 'courseId'>): IdentityHue | 'neutral' => hues.get(courseKey(scope.get(r.sourceId) ?? r.sourceId, r.courseId)) ?? 'neutral';
 }
 
 export interface BriefFormat {
@@ -37,7 +74,10 @@ export function DailyBrief({ brief, conflict, onReviewDate, snapshot, resources,
   reviewDates?: (resource: ResourceView) => ReactNode;
   onSelect: (id: string) => void; onOpenSource?: (url: string) => void; onSources: () => void; onPastDue: () => void;
 }) {
-  const { course, nameOf, day, time, whenInline } = format;
+  const { nameOf, day, time, whenInline } = format;
+  const hueOf = useMemo(() => briefCourseHues(snapshot, resources), [snapshot.courseWorkAdmission, snapshot.sources, resources]);
+  /** Course code as a filled pill in its identity hue; the text is unchanged, so color is never the only cue. */
+  const course = (r: ResourceView, lead = false) => <span className={lead ? 'briefing-course briefing-course--lead' : 'briefing-course'} data-magic-hue={hueOf(r)}>{format.course(r)}</span>;
   const conflictPlanning = conflict && schedulePlanning(conflict, timeZone);
   const chosenDate = conflictPlanning?.personal ? conflict?.personalDeadline?.selected : null;
   // Reporting must use exactly the core's contributor set, not a display-only union.
@@ -66,7 +106,7 @@ export function DailyBrief({ brief, conflict, onReviewDate, snapshot, resources,
     if (!note && !provenance) return null;
     return <> <EvidenceInfo label={label}>{provenance}{provenance && note && ' '}{note}</EvidenceInfo></>;
   };
-  const named = (r: ResourceView) => { const label = nameOf(r); return <InlineEntity name={label}><ObjectLink resource={r}>{label.label}</ObjectLink></InlineEntity>; };
+  const named = (r: ResourceView) => { const label = nameOf(r); return <InlineEntity name={label}><SourceLink resource={r} text={label.label}/></InlineEntity>; };
   const run = (action: BriefAction, url?: string) => () => {
     if (action.kind === 'past-due') onPastDue();
     else if (action.kind === 'open-quiz' && url && onOpenSource) onOpenSource(url);
@@ -78,13 +118,13 @@ export function DailyBrief({ brief, conflict, onReviewDate, snapshot, resources,
       case 'project': {
         const planning = schedulePlanning(entry.resource, timeZone);
         return <div className="briefing-passage" key={entry.id} data-brief-item="project">
-          <p>{course(entry.resource)} {named(entry.resource)} {planning && !planning.conflict ? <> {planning.personal ? 'has your planning date on' : 'is due'} {new Intl.DateTimeFormat(undefined, { weekday: 'long', timeZone: 'UTC' }).format(new Date(`${planning.date}T12:00:00Z`))}</> : ' is coming up'}. The instructions require a {entry.parts[0]} and a {entry.parts[1]}.{info('About this project', entry.action)}</p>
+          <p>{course(entry.resource, true)} {named(entry.resource)} {planning && !planning.conflict ? <> {planning.personal ? 'has your planning date on' : 'is due'} {new Intl.DateTimeFormat(undefined, { weekday: 'long', timeZone: 'UTC' }).format(new Date(`${planning.date}T12:00:00Z`))}</> : ' is coming up'}. The instructions require a {entry.parts[0]} and a {entry.parts[1]}.{info('About this project', entry.action)}</p>
           <div className="briefing-action"><BriefActionControl action={entry.action} onClick={run(entry.action)}/></div>
         </div>;
       }
       case 'lecture-prep':
         return <div className="briefing-passage" key={entry.id} data-brief-item="lecture-prep">
-          <p>Your saved enrollment lists a {entry.classKind} tomorrow for {course(entry.lecture)}. {named(entry.lecture)} says to read <ObjectLink resource={entry.material}>{entry.material.title}</ObjectLink> before class.{info('Where this comes from', entry.action, <>From the saved event description: <q data-evidence-version={entry.relation.evidence.contentHash} data-evidence-start={entry.relation.evidence.start} data-evidence-end={entry.relation.evidence.end}>{entry.relation.evidence.text}</q></>)}</p>
+          <p>Your saved enrollment lists a {entry.classKind} tomorrow for {course(entry.lecture)}. {named(entry.lecture)} says to read <SourceLink resource={entry.material} text={entry.material.title}/> before class.{info('Where this comes from', entry.action, <>From the saved event description: <q data-evidence-version={entry.relation.evidence.contentHash} data-evidence-start={entry.relation.evidence.start} data-evidence-end={entry.relation.evidence.end}>{entry.relation.evidence.text}</q></>)}</p>
           <div className="briefing-action"><BriefActionControl action={entry.action} onClick={run(entry.action)}/></div>
         </div>;
       case 'date-conflict': {
@@ -103,7 +143,7 @@ export function DailyBrief({ brief, conflict, onReviewDate, snapshot, resources,
         const { assignment, quiz, reference } = entry.prerequisite;
         const due = !quiz.deadline.conflict ? quiz.deadline.dueAt : null;
         return <div className="briefing-passage" key={entry.id} data-brief-item={entry.kind}>
-          <p>{course(assignment)} <span title={quiz.title}><ObjectLink resource={quiz}>{reference}</ObjectLink></span> comes before the reading and questions in {named(assignment)}.{due && <> The quiz is due <InlineTime dateTime={due} parts={[whenInline(due), time(due)]} after="."/></>}{info('About this quiz', entry.action)}</p>
+          <p>{course(assignment, true)} <span title={quiz.title}><SourceLink resource={quiz} text={reference}/></span> comes before the reading and questions in {named(assignment)}.{due && <> The quiz is due <InlineTime dateTime={due} parts={[whenInline(due), time(due)]} after="."/></>}{info('About this quiz', entry.action)}</p>
           <div className="briefing-action"><BriefActionControl action={entry.action} onClick={run(entry.action, quiz.url)}/></div>
         </div>;
       }
@@ -112,7 +152,7 @@ export function DailyBrief({ brief, conflict, onReviewDate, snapshot, resources,
         const tag = dueTag(entry.context);
         const { relation } = entry;
         return <div className="briefing-passage" key={entry.id} data-brief-item={entry.kind} data-relation={relation.modality}>
-          <p>{course(entry.context)} {named(entry.context)}{tag ?? '.'} Its instructions say {RELATION_LEAD[relation.modality]} {relation.verb} {shown.map((m, i) => <Fragment key={m.id}>{i > 0 && (i === shown.length - 1 && !more ? ' and ' : ', ')}<ObjectLink resource={m}>{m.title}</ObjectLink></Fragment>)}{more > 0 && <> and {more} more</>}.
+          <p>{course(entry.context, true)} {named(entry.context)}{tag ?? '.'} Its instructions say {RELATION_LEAD[relation.modality]} {relation.verb} {shown.map((m, i) => <Fragment key={m.id}>{i > 0 && (i === shown.length - 1 && !more ? ' and ' : ', ')}<SourceLink resource={m} text={m.title}/></Fragment>)}{more > 0 && <> and {more} more</>}.
             {info('Where this comes from', entry.action, <>From the saved instructions: <q data-evidence-start={relation.evidence.start} data-evidence-end={relation.evidence.end} data-evidence-version={relation.evidence.contentHash}>{relation.evidence.text}</q></>)}</p>
           <div className="briefing-action"><BriefActionControl action={entry.action} onClick={run(entry.action)}/></div>
         </div>;
@@ -123,7 +163,7 @@ export function DailyBrief({ brief, conflict, onReviewDate, snapshot, resources,
         const excerpt = briefExcerpt(p.span.text);
         const clipped = excerpt !== p.span.text;
         return <div className="briefing-passage" key={entry.id} data-brief-item={entry.kind}>
-          <p>{course(p.resource)} {named(p.resource)}{tag ?? ':'} <q>{excerpt}</q>{info(clipped ? 'Saved passage and action details' : 'About this action', entry.action?.kind === 'start-work' ? null : entry.action, clipped ? <q data-evidence-version={p.span.contentHash} data-evidence-start={p.span.start} data-evidence-end={p.span.end}>{p.span.text}</q> : undefined)}</p>
+          <p>{course(p.resource, true)} {named(p.resource)}{tag ?? ':'} <q>{excerpt}</q>{info(clipped ? 'Saved passage and action details' : 'About this action', entry.action?.kind === 'start-work' ? null : entry.action, clipped ? <q data-evidence-version={p.span.contentHash} data-evidence-start={p.span.start} data-evidence-end={p.span.end}>{p.span.text}</q> : undefined)}</p>
           {entry.action?.kind === 'start-work' ? <div className="briefing-action"><PreparedWork openTask={p.resource.kind === "assignment"} resource={p.resource} {...prepared} onInspect={() => onSelect(p.resource.id)} action/></div>
             : entry.action ? <div className="briefing-action"><BriefActionControl action={entry.action} onClick={run(entry.action)}/></div> : null}
         </div>;

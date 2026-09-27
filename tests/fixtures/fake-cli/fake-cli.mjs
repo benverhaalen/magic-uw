@@ -10,6 +10,8 @@
 //                       {output, text, usage, error, exit, stderr, sleepMs, crash, model}
 //   FAKE_CLI_AUTH       JSON {stdout, exit} for `claude auth status` / `codex login status`
 //                       (FAKE_CLI_AUTH_CLAUDE / FAKE_CLI_AUTH_CODEX override it per CLI)
+//   FAKE_CLI_START_MS   owner: voice-plan. A start-up delay before a model run reads its input (default 0),
+//                       standing in for the real CLI's local start-up in warm-versus-cold timing tests
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
@@ -79,6 +81,7 @@ if (args[0] === "--version") {
 if (kind === "claude" && args[0] === "auth" && args[1] === "status") auth();
 if (kind === "codex" && args[0] === "login" && args[1] === "status") auth();
 
+if (Number(env.FAKE_CLI_START_MS) > 0) await sleep(Number(env.FAKE_CLI_START_MS));
 if (kind === "claude" && args.includes("--input-format")) {
   // Warm session: one result event per stream-json user message.
   log({ argv: args, stdin: null, event: "spawn" });

@@ -130,7 +130,8 @@
  * --magic-hue-<h>-{strong,pale,ink}: verified assignment-type hues read by
  *   packages/ui/src/deadline-emphasis.css (IDENTITY_HUES order; mint and sky need the 13-hue mapper
  *   patch). Proximity changes the fill level of the same hue; ink never fades (>= 5.58:1 worst case).
- *   Course identity is the course code text, not a hue. Unverified type renders neutral.
+ *   Assignment type uses hue here; unverified type renders neutral. Daily Brief course pills
+ *   separately use a stable account/course hue plus explicit course code (September 27 correction).
  * --magic-color-status-*: meaning carried by Hugeicons glyph + words; "done" is deliberately not green.
  * --magic-color-selected-*: selection inside ivory content, with aria-current/aria-pressed.
  * --magic-color-action-*: richer action blue; ink stays >= 4.5:1 under the pressed overlay (the

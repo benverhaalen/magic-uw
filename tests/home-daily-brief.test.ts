@@ -211,7 +211,8 @@ test('rendered brief: stated relationship with provenance on demand, stable acti
   const brief = projectDailyBrief(input({ resources: [work, bare, late], links: [link(bare, work)], activeWork: [work], earlier: [late] }));
   const html = render(brief, [work, bare, late]);
   assert.match(html, /<h1 id="briefing-title" tabindex="-1">Daily Brief<\/h1>/);
-  assert.match(html, /href="#resource\/w"[^>]*>Project 2<\/a>/);
+  // The link names exactly the title; its aria-hidden arrow and no-orphan wrapper add no text.
+  assert.match(html.replace(/<svg[^>]*aria-hidden="true"[\s\S]*?<\/svg>|<\/?span( class="briefing-link-tail")?>/g, ''), /href="#resource\/w"[^>]*>Project 2<\/a>/);
   assert.match(text(html), /CS 400 Project 2 is due tomorrow · 1:00 PM\. Its instructions say you can use Week 5 slides\./);
   assert.match(html, /data-focus-key="brief-materials-w"[^>]*data-action-status="link-only"|data-action-status="link-only"[^>]*data-focus-key="brief-materials-w"/);
   const described = /aria-describedby="([^"]+)"[^>]*>Open linked material/.exec(html);
