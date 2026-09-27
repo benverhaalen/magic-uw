@@ -114,6 +114,7 @@ Ben resolved the pricing/provider disagreement with: "nathaniels is the way" (th
 - **Disclosure flow accepted:** Ben chose "Adopt this flow (Recommended)": consent once per provider, visible selected context and a receipt per request, with a blocking preview for the first sharing of a new sensitive category or when the student enables **always preview**. Keep the exact outgoing payload inspectable. Code must enforce course/category grants and revocation on every request; ongoing consent does not permit new categories or recipients. Disclosure timing does not relax data minimization or identity scrubbing.
 - These answers resolve commercial direction, paid-provider access, Jev billing, and disclosure timing. Other research-branch choices, including runtime permissions and storage/MCP architecture, still need scoped integration review; this is not a blanket branch merge.
 - Existing local-model code stays documented honestly. Automatic local model setup is no longer a launch requirement. No runtime, payment, or account settings were changed by this documentation correction.
+- **Open conflict, website price:** on September 26 Aidan chose to publish the $10 one-time price from the `marketing/Pricing.dc.html` draft on the website (Pricing page and FAQ) instead of the $5 license above. Ben has not confirmed the change; resolve it with both before treating either price as final.
 
 ## Design foundation and handoff — September 26
 
@@ -157,3 +158,21 @@ Merged in [PR #18](https://github.com/benverhaalen/magic-uw/pull/18). GitLab pro
 - Links are local preferences, capped at 200 and cleared by Delete local data. No new network access: a linked project is read by the existing GitLab connector with the app-owned GitLab session.
 
 Open for Ben: where the "link a GitLab project" input belongs on screen (Sources, or the course page). Until it has a screen, students cannot use it.
+
+## 2026-09-27 — Notifications and Jev announcement triage
+
+Implemented on `feat/notifications` (Aidan's session). A bell in the top bar opens a notifications dropdown built from stored changes. Source: Aidan, this project conversation, September 26–27 (original timestamps unavailable). Exact requests:
+
+> lets think through all of our data sources and what new information should be flagged as important enough to warrant a notification … This should be in some way evaluated by our deterministic model.
+
+> we are going to implement jev to run through announcements … we trust that we can train the model to work so we want to follow through with this as a feature
+
+Decisions and their reasons:
+
+- **Code decides every level** (urgent, important, info) from typed changes, current Canvas state and source health. Rules and thresholds live in one file, `packages/domain/src/notifications.ts`. A source's first import is a baseline, never news.
+- **Jev triages new course messages only** (announcements and discussions), through a new `message.triage.v1` gateway question. It may only **raise** a message's level, never lower, hide or dismiss one. It never receives grades, comments, planning records, URLs or account identifiers. It runs only with selective cloud, Jev enabled, a Jev consent record, and permission to share communications and course text.
+- **Deviation from the proposed Jev rules:** [Jev usage](notes/jev-usage.md) proposes shadow mode and 20–30 labelled examples per question before enforcing. By Aidan's decision above, triage is enforced from the start, raise-only, with provisional uncalibrated thresholds (Choice top ≥ 0.70 with a 0.15 lead; yes ≥ 0.70). Consequence: early false alarms are possible; nothing can be hidden. Refit the thresholds on labelled announcements and record the evaluation before calling triage accurate.
+- **Grades show the score in the row** (“Research outline: 18/20”), by Aidan's choice over score-on-open. The grade is visible whenever the dropdown is open; it stays local.
+- **Email (added after main gained Graph mail, #12).** Aidan chose which email can notify: advisor mail, course staff, university offices, meeting cancellations, job-interview invitations, clubs and publication updates, and relevant campus events; mail already read in Outlook never counts toward the badge. Canvas notification emails are dropped because the Canvas change already notifies. Code sets every level from the mail's code category and literal subject/preview rules. Jev (`mail.triage.v1`) may raise, never lower; it receives only the code's sender role, the subject and Outlook's ≤255-character preview (identity-scrubbed), plus a matched course's upcoming work, never a sender name or address. Mail reading itself has not yet run against Microsoft or UW (E1 pending), so email notifications are demonstrated on synthetic mail only.
+- **Placement:** mounted in the current top bar; Ben's Home layout owns the final position.
+- **Announcement rule tightened after the field-test benchmark.** Any single keyword ("deadline", "quiz", "location") used to make an announcement important, which marked about half of a real student's announcements important. It is now judged per sentence: a clear change phrase (cancelled, no class, postponed, moved to, room change) or a topic word together with a change word in the same sentence, unless a negation says nothing changed. Aidan, September 27: “exam should always flag as important, different than deadline or assignment” — so exam, midterm and final mentions stay important on their own. Quizzes follow the change-word rule. The same test decides urgent course-staff email.

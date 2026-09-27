@@ -520,7 +520,7 @@ export function generationKinds(): PoolOptions["kinds"] {
  * The Claude route with one warm session per lane (D38): a follow-up pack call reuses the live
  * process instead of paying a cold start. Other packs and a lane that fails twice go one-shot.
  */
-export function pooledClaudeBackend(options: { command: CliCommand; workDir: string; env?: Record<string, string> }): SessionPool {
+export function pooledClaudeBackend(options: { command: CliCommand; workDir: string; env?: Record<string, string>; extraArgs?: readonly string[] /* owner: client-health */ }): SessionPool {
   // One pool per process: a new one (a client or profile change) closes the previous sessions.
   void currentPool?.close();
   currentPool = createSessionPool({ ...options, kinds: generationKinds(), fallback: createClaudeBackend(options) });
