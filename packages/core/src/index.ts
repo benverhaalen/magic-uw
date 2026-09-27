@@ -19,10 +19,9 @@ import {
   type Snapshot,
   type CaptureBatch,
   type Resource,
-  type Job,
 } from "@magic/contracts";
 import { maySend, resolveDeadline } from "@magic/domain";
-import { JudgmentBudgetError, judgmentResultSchema, type JudgmentGateway } from "@magic/ai";
+import type { JudgmentGateway } from "@magic/ai";
 import { contentCategories, courseIncluded, courseInclusion } from "./access";
 import { evidenceFor } from "./evidence";
 import { rebaseFixture } from "./fixture-dates";
@@ -46,13 +45,12 @@ import {
   buildUwPublicEnrollmentPackagesRequest,
   normalizeUwPublicEnrollmentPackages,
 } from "../../connectors/src/uw-planning-catalog";
-// owner: T05b. The seams: the job registry, the stub drain and the injected handlers.
-import { enqueueOnSave, type JobRegistry } from "./jobs/registry";
-import { defaultJobRegistry, runRegistered } from "./jobs/default-registry";
+// owner: drain. The job registry and the app's one drain (the pipeline loop); Jev's kind is a handler.
+import { createJobRegistry, enqueueOnSave, type JobRegistry } from "./jobs/registry";
+import { createPipelineLoop, type PipelineTiming } from "./jobs/pipeline";
+import { createEnrichJob, judgedHash } from "./jobs/enrich";
+// end owner: drain
 import { codeAssignmentKind, resourceViews, runQuery } from "./queries"; // owner: T15
-import { textHash } from "../../retrieval/src/index";
-/** Judgments are keyed on the title-and-text hash, so a grade or submission change reuses them (O5). */
-const judgedHash = (r: Resource) => textHash(r.title, r.text);
 /** The Jev kind question reads the title, about 2,000 characters, and the item's own stated policy, clipped. */
 const JEV_TEXT_CHARS = 2000;
 const JEV_POLICY_CHARS = 500;
@@ -128,15 +126,17 @@ export interface CoreOptions {
   planningHttp?: Pick<UwPlanningHttp, "read">;
   madgrades?: MadgradesTransport;
   // owner: T05b
+  /** Extra job kinds for the drain (the worker passes the pipeline registry); core adds `enrich.resource`. */
   jobs?: JobRegistry;
   seams?: CoreSeams;
   // end owner: T05b
+  /** owner: drain. The drain's idle gap and slice sizes (defaults in `jobs/pipeline.ts`). */
+  drain?: PipelineTiming;
 }
 export function createCore(store: Store, options: CoreOptions) {
   const planningReads = new Set<AbortController>();
   // owner: T05b. Seam calls (learning, packs) are cancelled by purge and privacy like planning reads.
   const seamCalls = new Set<AbortController>();
-  const jobs = options.jobs ?? defaultJobRegistry();
   const seams = options.seams ?? {};
   // end owner: T05b
   const publicClient = options.planningPublicClient ?? createPublicClient();
@@ -153,6 +153,28 @@ export function createCore(store: Store, options: CoreOptions) {
     active: AbortController | undefined,
     working: Promise<void> | undefined,
     closed = false;
+  // owner: drain. One drain for every job kind. The caller's kinds plus Jev's, which keeps its
+  // egress checks through core's manifest and receipts; purge, privacy changes and close cancel it.
+  let cancel = new AbortController();
+  const jobs = createJobRegistry([
+    ...(options.jobs ? options.jobs.kinds().map((kind) => options.jobs!.get(kind)!) : []),
+    createEnrichJob({
+      gateway: options.gateway,
+      context: (id) => context(id, "jev"),
+      receipt,
+      scope() {
+        const version = generation;
+        return { signal: cancel.signal, live: () => !closed && generation === version };
+      },
+    }),
+  ]);
+  const pipeline = createPipelineLoop({
+    ...options.drain,
+    store: store as Store & Pick<CourseCoreStore, "lease">,
+    registry: jobs,
+    now,
+  });
+  // end owner: drain
   function profileFor(r: Resource): CourseIntelligence | undefined {
     const source = store.sources().find((s) => s.id === r.sourceId);
     return source
@@ -327,21 +349,6 @@ export function createCore(store: Store, options: CoreOptions) {
       createdAt: now(),
     });
   }
-  function current(job: Job, version: number) {
-    const r = store.resource(job.resourceId);
-    const live = store.jobs().find((j) => j.id === job.id);
-    return (
-      !closed &&
-      generation === version &&
-      r &&
-      !r.deleted &&
-      (r.contentHash === job.inputHash || judgedHash(r) === job.inputHash) &&
-      live?.leaseToken === job.leaseToken &&
-      live.status === "running" &&
-      !!live.leaseUntil &&
-      live.leaseUntil > now()
-    );
-  }
   async function extractCourses() {
     if (!options.courseExtractor || closed) return;
     for (const profile of store.courseIntelligence()) {
@@ -441,119 +448,15 @@ export function createCore(store: Store, options: CoreOptions) {
       if (generation !== version) break;
     }
   }
-  let budgetTimer: ReturnType<typeof setTimeout> | undefined;
-  function scheduleBudgetWake() {
-    clearTimeout(budgetTimer);
-    const until = store.jobCooldown("enrich.resource");
-    const delay = until ? Date.parse(until) - Date.parse(now()) : 0;
-    if (!closed && delay > 0) {
-      budgetTimer = setTimeout(wake, Math.min(delay, 2_147_483_647));
-      budgetTimer.unref?.();
-    }
-  }
-  async function drain() {
-    if (closed) return;
-    scheduleBudgetWake();
-    let job: Job | undefined;
-    while (!closed) {
-      // Each registered handler retains its own egress checks. Jev availability only
-      // controls assignment enrichment; storage excludes kinds with durable cooldowns.
-      const kinds = jobs.readyKinds().filter((kind) => kind !== "enrich.resource");
-      if (options.gateway && maySend(store.privacy(), "jev", ["course_text"]).allowed)
-        kinds.push("enrich.resource");
-      if (!kinds.length) break;
-      job = (store as Store & Pick<CourseCoreStore, "lease">).lease(now(), 60000, kinds);
-      if (!job) break;
-      if (job.kind !== "enrich.resource") {
-        // Registered kinds retain their handler-specific refusal and consent checks.
-        const version = generation;
-        active = new AbortController();
-        try {
-          if (!(await runRegistered(job, jobs, store, now, active.signal))) break;
-        } finally {
-          active = undefined;
-        }
-        if (generation !== version) break;
-        continue;
-      }
-      const r = store.resource(job.resourceId);
-      if (
-        !r ||
-        r.deleted ||
-        (r.contentHash !== job.inputHash && judgedHash(r) !== job.inputHash) ||
-        r.kind !== "assignment" ||
-        // Code decides the unambiguous kinds from Canvas submission types; no Jev call.
-        codeAssignmentKind(r) ||
-        // A judgment for the same title and text is reused: a grade or submission change spends 0 budget.
-        store.judgment(`${r.id}:${judgedHash(r)}:assignment.kind.v1`)
-      ) {
-        store.finish(job, undefined, now());
-        continue;
-      }
-      const manifest = context(r.id, "jev");
-      if (!manifest.allowed) {
-        receipt(manifest, "blocked"); // owner: T06: a refused Jev send writes a receipt too.
-        store.finish(job, "Data sharing is disabled", now());
-        break;
-      }
-      const version = generation;
-      active = new AbortController();
-      const timer = setTimeout(() => active?.abort(), 20000);
-      try {
-        // Log the attempt before crossing the boundary. This does not claim delivery.
-        receipt(manifest, "sent");
-        const result = judgmentResultSchema.parse(
-          await options.gateway!.evaluate(manifest.payload, active.signal),
-        );
-        if (
-          !current(job, version) ||
-          !maySend(store.privacy(), "jev", manifest.categories).allowed ||
-          active.signal.aborted
-        ) {
-          store.finish(job, "Discarded after data or privacy changed", now());
-          continue;
-        }
-        store.putJudgment({
-          key: `${r.id}:${judgedHash(r)}:assignment.kind.v1`,
-          resourceId: r.id,
-          inputHash: judgedHash(r),
-          model: result.model,
-          questionVersion: result.questionVersion,
-          result,
-          createdAt: now(),
-        });
-        store.finish(job, undefined, now());
-      } catch (error) {
-        if (!closed && generation === version) {
-          receipt(manifest, "failed");
-          if (error instanceof JudgmentBudgetError && !active.signal.aborted) {
-            store.defer(job, new Date(Date.parse(now()) + error.retryAfterMs).toISOString(),
-              "Judgment budget reached; waiting to retry. Local data is still usable.", now());
-            scheduleBudgetWake();
-            continue;
-          }
-          store.finish(
-            job,
-            "Judgment unavailable; local data is still usable",
-            now(),
-          );
-        }
-      } finally {
-        clearTimeout(timer);
-        active = undefined;
-      }
-      if (generation !== version) break;
-    }
-  }
   function wake() {
     if (closed) return;
+    pipeline.wake(); // owner: drain: jobs run in the pipeline's idle slices, never inline here
     if (working) {
       wakePending = true;
       return;
     }
     wakePending = false;
-    working = drain()
-      .then(extractCourses)
+    working = extractCourses()
       .finally(() => {
         working = undefined;
         if (wakePending && !closed) wake();
@@ -562,6 +465,10 @@ export function createCore(store: Store, options: CoreOptions) {
   function interrupt() {
     generation++;
     active?.abort();
+    // owner: drain: cancel in-flight job sends and stop the running slice between jobs.
+    cancel.abort();
+    cancel = new AbortController();
+    pipeline.interrupt();
     for (const read of planningReads) read.abort();
     for (const call of seamCalls) call.abort(); // owner: T05b
   }
@@ -1067,6 +974,7 @@ export function createCore(store: Store, options: CoreOptions) {
     wake,
     saved, // owner: T05b
     jobs, // owner: T05b
+    pipeline, // owner: drain: the worker feeds it sync, presence and suspend signals
     // owner: T15. A scoped query: reads only, never a command, never the whole workspace.
     query(request: QueryRequest): QueryResult {
       if (closed) throw new Error("Workspace is closed.");
@@ -1091,13 +999,15 @@ export function createCore(store: Store, options: CoreOptions) {
       return result;
       // end owner: platform-fix
     },
+    /** Tests and evals: wait for course extraction, then drain every due job (ignores the idle gap). */
     async settled() {
       while (working) await working;
+      if (!closed) await pipeline.runToIdle(); // owner: drain
     },
     async close() {
       closed = true;
-      clearTimeout(budgetTimer);
       interrupt();
+      await pipeline.stop(); // owner: drain
       await working;
       store.close();
     },

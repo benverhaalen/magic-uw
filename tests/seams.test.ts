@@ -18,7 +18,9 @@ import {
   enqueueOnSave,
   type JobHandler,
 } from "../packages/core/src/jobs/registry";
-import { defaultJobRegistry } from "../packages/core/src/jobs/default-registry";
+import { pipelineJobRegistry } from "../packages/core/src/jobs/default-registry";
+import { cardJob } from "../packages/core/src/jobs/card";
+import { mailGistJob } from "../packages/core/src/jobs/mail-gist";
 import { createLearningRouter } from "../packages/learning/src/router";
 
 const batch = captureBatchSchema.parse(fixture);
@@ -229,14 +231,12 @@ test("the workspace command resolves due items and open links by code; https onl
 });
 
 test("the job registry refuses duplicates and bad kinds; stubs are known but never enqueued", () => {
-  const registry = defaultJobRegistry();
-  assert.deepEqual(registry.kinds().sort(), [
-    "card.resource",
-    "compile.course",
-    "link.resource",
-    "passages.resource",
-  ]);
+  // The stub-only default registry is gone (one drain): the stubs left are cards and mail gists.
+  const registry = createJobRegistry([cardJob, mailGistJob]);
+  assert.deepEqual(registry.kinds().sort(), ["card.resource", "mail.gist"]);
   assert.deepEqual(registry.readyKinds(), []);
+  const pipeline = pipelineJobRegistry();
+  assert.ok(pipeline.kinds().includes("card.resource") && !pipeline.readyKinds().includes("card.resource"));
   assert.throws(() =>
     registry.register({ ...registry.get("card.resource")! }),
   );

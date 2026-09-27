@@ -185,8 +185,37 @@ The map of what exists is [the backend map](notes/backend-map.md).
 | Fuzzy supporting-material candidates after each sync (rule `link.fuzzy.v1`) | the input to Jev's link judgments (spec C4), not a second candidate generator |
 | Known-identity scrubber and citation-span validation | applied to every hosted payload, MCP output and platform export |
 | Madgrades adapter | planning (local only) |
-| Judgment queue that pauses on gateway budget refusals | kept in the extended drain |
+| Judgment queue that pauses on gateway budget refusals | kept as the `enrich.resource` handler's retry-after in the one drain (§4.2a) |
 | Recurring ICS events expanded within a bounded window | the unified schedule |
+
+### 4.2a Jobs: one drain and how a kind registers
+
+There is exactly **one job drain** in the app: core's pipeline loop (`packages/core/src/jobs/pipeline.ts`, over `createDrain` in `packages/core/src/drain.ts`). Core has no inline drain; `saved()` and `wake()` only wake the loop. Every kind runs there as a registered handler: the material pipeline's code jobs (`passages.resource`, `link.resource`, `compile.course`) and Jev's `enrich.resource` (`jobs/enrich.ts`).
+- **Idle-only and sliced:** a slice starts after a quiet gap (3 s), leases at most 20 jobs while the student is present (200 away), then yields.
+- **Never during a sync:** `syncStarted()` aborts the slice between jobs and nothing is leased, whatever wakes it, until `syncEnded()`. The desktop worker wraps `ingestion.tick` with both.
+- **Retry-after:** a handler's `defer` returns the job to pending without spending an attempt and sets a durable per-kind cooldown; the loop wakes itself when it ends, also after a restart.
+- **Errors:** a thrown handler error is a retry, and its message is recorded on the job.
+- **Cancellation:** purge, a privacy change and close abort the running slice between jobs and cancel an in-flight Jev call (its result is discarded; no receipt claims a failure).
+
+**Registering a kind** (for example a `course.facts` job): add a `JobHandler` to the registry passed to `createCore({ jobs })` (the worker passes `pipelineJobRegistry()` in `jobs/default-registry.ts`). Register before `createCore`: the loop fixes its kinds when it starts. Core adds `enrich.resource` itself.
+
+```ts
+interface JobHandler {
+  kind: string;                         // "area.name", unique
+  subject: "resource" | "course" | "assessment";
+  ready: boolean;                       // false: a stub, never enqueued or leased
+  owner: string;
+  onSave?(resource: Resource): boolean; // save → enqueue for resource subjects; course subjects get one job per course at its inventory hash
+  available?(ctx: { store }): boolean;  // checked before every lease; false leaves the kind queued (Jev: gateway + maySend)
+  run(job, { store, now, signal }): Promise<
+    | { status: "done" }
+    | { status: "retry"; error: string }               // backoff, then the store's retry limit
+    | { status: "stop"; error: string }                // refused (consent): finish with the error, end this wake
+    | { status: "defer"; until: string; error: string } // retry-after: no attempt spent, the kind waits
+  >;
+}
+```
+A handler that sends goes through egress itself (manifest, receipt, re-check after the call), as `enrich.resource` does. `signal` aborts between jobs for a sync, suspend or the student's return; a handler that must stop mid-call on purge or privacy takes core's cancellation scope, as `enrich.resource` does.
 
 ### 4.3 The Today rail and planning
 
