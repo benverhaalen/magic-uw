@@ -9,6 +9,9 @@ export interface VoiceSessionView {
   phase: "idle" | "starting" | "listening" | "transcribing" | "working" | "unavailable";
   reason?: VoiceSessionReason;
   levels: readonly number[];
+  capturing?: boolean;
+  queuedTurns?: number;
+  capturePaused?: boolean;
 }
 
 export const VOICE_REASON_TEXT: Record<VoiceSessionReason, string> = {
@@ -40,7 +43,7 @@ export function launcherVoice(
   const reason = state === "unavailable" ? VOICE_UNAVAILABLE_TEXT
     : state === "error" ? (view.reason && VOICE_REASON_TEXT[view.reason]) || "Voice stopped. Try again, or type instead."
     : undefined;
-  return { state, reason, levels: state === "listening" ? view.levels : undefined, onStart: controls.onStart, onStop: controls.onStop };
+  return { state, reason, levels: state === "listening" ? view.levels : undefined, capturing: view.capturing, queuedTurns: view.queuedTurns, capturePaused: view.capturePaused, onStart: controls.onStart, onStop: controls.onStop };
 }
 
 /** One short announcement per transition, for the launcher's polite live region. */

@@ -1,15 +1,22 @@
 import { app, BrowserWindow, ipcMain, powerMonitor, screen, systemPreferences, type IpcMainInvokeEvent } from 'electron';
+import { bundledGeist, floatingStopHtml } from './floating-stop';
 import { VoiceSession, type VoiceDispatch } from './session';
+import type { AgentReadiness } from './agent-warmup'; // owner: voice-plan
 import { LocalWhisperTransport, localWhisperConfig } from './local-whisper';
 import type { VoiceContext, VoiceEvent, VoiceReason } from './types';
-import { isToken, isVoiceAudio, microphonePermission } from './policy';
+import { isPcmFrame, isToken, isVoiceAudio, isVoiceTurn, microphonePermission } from './policy';
+import { NativeStreamingSTT } from './native-streaming-adapter'; // owner: voice-plan
+import { access, constants as fsConstants } from 'node:fs/promises';
 
 const reasons = new Set<VoiceReason>(['stopped', 'permission-denied', 'device-unavailable', 'transport-unavailable', 'disconnected', 'context-changed', 'too-long']);
 
 /** Additive host installer. Main must call stop on every account/consent transition. */
-export async function installDesktopVoice(options: { window: BrowserWindow; rendererURL: string; context(): VoiceContext; dispatch: VoiceDispatch; headless?: boolean }) {
+export async function installDesktopVoice(options: { window: BrowserWindow; rendererURL: string; context(): VoiceContext; dispatch: VoiceDispatch; headless?: boolean; /** owner: voice-plan */ agent?: { status(): AgentReadiness; activate(): void }; /** owner: voice-plan: the Apple SpeechTranscriber helper executable */ streamingHelper?: string }) {
   const owner = options.window.webContents;
   const config = await localWhisperConfig();
+  // owner: voice-plan. Only an installed, executable helper is offered; nothing is spawned until a Start click.
+  const helper = options.streamingHelper && process.platform === 'darwin' && !options.headless ? await access(options.streamingHelper, fsConstants.X_OK).then(() => options.streamingHelper!, () => null) : null;
+  const stopHtml = floatingStopHtml(await bundledGeist(options.rendererURL));
   let floating: BrowserWindow | null = null;
   let floatingReady = false;
   let disposed = false;
@@ -25,12 +32,13 @@ export async function installDesktopVoice(options: { window: BrowserWindow; rend
       return new LocalWhisperTransport(config);
     },
     requestMicrophone: async () => {
-      if (!config || options.headless) return false;
+      if ((!config && !helper) || options.headless) return false;
       if (process.platform !== 'darwin') return true;
       const status = systemPreferences.getMediaAccessStatus('microphone');
       return status === 'granted' || (status === 'not-determined' && await systemPreferences.askForMediaAccess('microphone'));
     },
     event: event => { send(event); if (event.type === 'state') updateFloating(); },
+    ...(helper ? { streaming: (onEvent: ConstructorParameters<typeof NativeStreamingSTT>[1]) => new NativeStreamingSTT(helper, onEvent) } : {}),
   });
   function updateFloating() {
     if (disposed) return;
@@ -48,9 +56,7 @@ export async function installDesktopVoice(options: { window: BrowserWindow; rend
       floating.webContents.on('will-navigate', (event, url) => { event.preventDefault(); if (url === 'magic-voice:stop') session.stop(); });
       floating.webContents.on('before-input-event', (event, input) => { if (input.type === 'keyDown' && (input.key === 'Escape' || input.key === ' ')) { event.preventDefault(); session.stop(); } });
       floating.on('closed', () => { floating = null; floatingReady = false; if (!disposed) session.stop(); });
-      // Constant local content, no script, remote resource, app activation, or bridge.
-      const html = '<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'"><style>html,body{margin:0;height:100%;background:#f9f6ee}a{display:flex;align-items:center;justify-content:center;gap:9px;height:100%;color:#24241f;font:500 15px system-ui;text-decoration:none}a:focus-visible{outline:2px solid #8b4941;outline-offset:-4px}span{height:11px;width:11px;border-radius:2px;background:#8b4941}</style><a href="magic-voice:stop" aria-label="Stop voice"><span aria-hidden="true"></span>Stop voice</a>';
-      void floating.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`).then(() => { floatingReady = true; updateFloating(); }).catch(() => session.stop('disconnected'));
+      void floating.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(stopHtml)}`).then(() => { floatingReady = true; updateFloating(); }).catch(() => session.stop('disconnected'));
     }
     if (floatingReady && floating && !floating.isVisible()) floating.showInactive();
   }
@@ -62,11 +68,16 @@ export async function installDesktopVoice(options: { window: BrowserWindow; rend
   owner.on('did-start-navigation', stopped);
   powerMonitor.on('suspend', stopped); powerMonitor.on('lock-screen', stopped);
   const handlers: [string, (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown][] = [
-    ['magic:voice-capabilities', event => { validate(event); return { microphone: !options.headless, transcription: config ? 'local-whisper' : null, externalControl: false, streamingSpeech: false }; }],
-    ['magic:voice-start', event => { validate(event); if (!config) return session.stop('transport-unavailable'); return session.start(); }],
+    // owner: voice-plan: streamingSpeech is true only while this session's utterance helper reported ready.
+    ['magic:voice-capabilities', event => { validate(event); const streaming = session.streamingReady(); return { microphone: !options.headless, transcription: streaming ? 'speech-transcriber' : config ? 'local-whisper' : helper ? 'speech-transcriber' : null, externalControl: false, streamingSpeech: streaming, agent: options.agent?.status() ?? null }; }],
+    ['magic:voice-start', event => { validate(event); options.agent?.activate(); if (!config && !helper) return session.stop('transport-unavailable'); return session.start(); }],
     ['magic:voice-ready', (event, token: unknown) => { validate(event); if (!isToken(token)) throw new Error('Invalid voice session'); return session.ready(token); }],
     ['magic:voice-stop', (event, reason: unknown) => { validate(event); return session.stop(typeof reason === 'string' && reasons.has(reason as VoiceReason) ? reason as VoiceReason : 'stopped'); }],
     ['magic:voice-transcribe', (event, audio: unknown) => { validate(event); if (!isVoiceAudio(audio)) throw new Error('Invalid voice audio'); return session.transcribe(audio); }],
+    // owner: voice-plan: on-device streaming speech, per utterance (BRIDGE-CONTRACT).
+    ['magic:voice-stream-begin', (event, token: unknown) => { validate(event); if (!isToken(token)) throw new Error('Invalid voice session'); return session.beginStream(token); }],
+    ['magic:voice-stream-push', (event, token: unknown, frame: unknown, turn: unknown) => { validate(event); if (!isToken(token) || !isPcmFrame(frame) || (turn !== undefined && turn !== null && !isVoiceTurn(turn))) throw new Error('Invalid voice audio'); return session.pushStream(token, frame, turn ?? undefined); }],
+    ['magic:voice-stream-end', (event, audio: unknown) => { validate(event); if (!isVoiceAudio(audio)) throw new Error('Invalid voice audio'); return session.endStream(audio); }],
   ];
   for (const [channel, handler] of handlers) ipcMain.handle(channel, handler);
   const dispose = () => {
@@ -80,5 +91,5 @@ export async function installDesktopVoice(options: { window: BrowserWindow; rend
     powerMonitor.off('suspend', stopped); powerMonitor.off('lock-screen', stopped);
   };
   options.window.once('closed', dispose);
-  return { allowsPermission: (sender: Parameters<typeof microphonePermission>[3], permission: string, details: Parameters<typeof microphonePermission>[5]) => microphonePermission(owner, options.rendererURL, session.allowsMicrophone(), sender, permission, details), stop: (reason: VoiceReason = 'stopped') => session.stop(reason), dispose, status: () => session.status() };
+  return { allowsPermission: (sender: Parameters<typeof microphonePermission>[3], permission: string, details: Parameters<typeof microphonePermission>[5]) => microphonePermission(owner, options.rendererURL, session.allowsMicrophone(), sender, permission, details), stop: (reason: VoiceReason = 'stopped') => session.stop(reason), dispose, status: () => session.status(), announceAgent: (agent: AgentReadiness) => { if (!disposed && !owner.isDestroyed()) owner.send('magic:voice-agent', agent); } };
 }

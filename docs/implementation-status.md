@@ -1,6 +1,6 @@
 # Implementation status
 
-One row per feature: its status, where it is, and the evidence behind it. **Checked against `main` at `53ecbe3` on September 27, 2026**, after wave 2 and tab speed (#53), course analytics (#55), the study prepper (#57), the stall fix (#58), the break-card fixes (#59) Sean's sync fixes (#48, #52, #61), the stale sign-in cleanup (#54) and the desktop task setup. **Known on main at this check:** six failing tests (Today, readiness and seams tests) are being fixed on `fix/main-green`; the intent-latency test is slow on Windows since the per-ask sessions (#53). How the parts fit together is in [the architecture](architecture.md); measurement methods are in [benchmarks](benchmarks.md). The dated verification log this table replaces, with its full test narratives, is [archived](archive/implementation-log-2026-09-27.md). The desktop frontend's runtime receipts and boundaries are kept in [the desktop handoff](design-handoff.md).
+One row per feature: its status, where it is, and the evidence behind it. **Checked against `main` at `42217fb` on September 27, 2026 (13:05 CT)**, after wave 2 and tab speed (#53), course analytics (#55), the study prepper (#57), the stall fix (#58), the break-card fixes (#59) Sean's sync fixes (#48, #52, #61), the stale sign-in cleanup (#54) and the desktop task setup. **Known on main at this check:** `pnpm test` has seven failures on CI (the six Today, readiness, summary, calendar-command and seams failures that PR #64 fixes, plus a disputed-object test after the date-conflict notices were hidden in `53ecbe3`); the intent-latency test is slow on Windows since the per-ask sessions (#53); the GPA panel is not mounted in My UW (PR #65 restores it). How the parts fit together is in [the architecture](architecture.md); measurement methods are in [benchmarks](benchmarks.md). The dated verification log this table replaces, with its full test narratives, is [archived](archive/implementation-log-2026-09-27.md). The desktop frontend's runtime receipts and boundaries are kept in [the desktop handoff](design-handoff.md).
 
 **Status** uses the ladder in [AGENTS.md](../AGENTS.md):
 
@@ -65,7 +65,8 @@ One row per feature: its status, where it is, and the evidence behind it. **Chec
 | Embedded Jev key (temporary) | integrated | `main` (#39, build-time `MAGIC_EMBED_TYPESAFE_KEY`) | accepted risk recorded in [decisions](decisions.md#2026-09-27--embedded-jev-key-temporary) |
 | Hosted Jev gateway | tested in isolation | `main` (`apps/gateway`) | not deployed |
 | Local tutor (Ollama) | integrated | `main` (`packages/ai/src/local.ts`, `LocalAiPanel`) | one real-model run, ~2.2 s (2026-09-26) |
-| Local voice navigation (Whisper) | integrated | `main` (`renderer/voice`) | synthesized-audio transcription and copied-data checks; real human microphone use not demonstrated ([desktop handoff](design-handoff.md)) |
+| Voice: on-device streaming (Apple) with local Whisper fallback, rolling transcript, Stop | integrated | `main` (`renderer/voice`, `42217fb`) | 41 focused checks; hidden Electron with synthetic audio: first partial 1,283 ms, audio end to dispatch 146 ms (synthetic); no human microphone trial ([desktop handoff](design-handoff.md)) |
+| Connected-agent voice planner (observed actions) | integrated, prerequisites unmet | `main` (`42217fb`) | needs the provider, consent, Jev and macOS Accessibility; not a completed computer-use demo |
 
 ## Study
 
@@ -129,6 +130,14 @@ One row per feature: its status, where it is, and the evidence behind it. **Chec
 | Website (Home, Pricing, About, FAQ, account) | built | `main` (`apps/web`, `vercel.json`) | deployment not claimed here |
 | Accounts and payments (email sign-in, Supabase, Lemon Squeezy webhook) | tested in isolation | `main` (`api/lemon-webhook.ts`, `supabase/`) | stand-ins only; not connected to a live store; price decided as $5 a month; the site still shows $10 one-time ([accounts and payments](accounts-and-payments.md)) |
 
-## Open pull requests (not reflected above)
+## Open pull requests at this check (not reflected above)
 
-#56 (the website: every current feature), #60 (the launch film pipeline) and #62 (Data & AI redesign). Their state is in each PR.
+| PR | What | State |
+|---|---|---|
+| #64 `fix/main-green` | main green again: Today dedupe fixtures, readiness counts, summary single read, the calendar command case | open |
+| #65 `fix/regressions` | GPA panel restored on My UW, the GPA what-if command wired to the calculator, the next ask's spare started early, `tests/feature-mounts.test.ts`; adds `docs/notes/regressions-2026-09-27.md` | open |
+| #62 `feat/data-ai-page` | Data & AI redesign: one column, plain sharing rows, Start fresh | open |
+| #56 `feat/site-update` | the website with every current feature (still shows $10 one-time) | open |
+| #60 `feat/launch-video` | the 2-minute launch film pipeline | open |
+
+Static routes and the voice fast path had no open PR at this check. Older open PRs (#1, #3, #4, #5, #35) predate the current architecture.

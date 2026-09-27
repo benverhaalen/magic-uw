@@ -175,7 +175,7 @@ export function createIntentRouter(deps: IntentRouterDeps) {
     return { status: "failed", reason: result.message };
   }
 
-  function context(host: IntentHost, signal: AbortSignal, runnerP: Promise<ModelRunner | null>, spent: { tokens: Tokens }, request: ActionContext["request"]): ActionContext {
+  function context(host: IntentHost, signal: AbortSignal, runnerP: Promise<ModelRunner | null>, spent: { tokens: Tokens }, request: ActionContext["request"], utterance: string): ActionContext {
     return {
       request,
       store,
@@ -203,7 +203,7 @@ export function createIntentRouter(deps: IntentRouterDeps) {
         const said = norm(question);
         const mentions = findCourseMentions(current(), said);
         const searchText = mentions.length ? [...mentions].reverse().reduce((t, m) => `${t.slice(0, m.start)} ${t.slice(m.end)}`, said).replace(/\s+/g, " ").trim() : undefined;
-        const r = await groundedAsk({ store, runner: () => runnerP, artifacts, ledger, now, resourceId, protection, timeZone, coursePrefix /* owner: course-facts */ }, question, list, s, { previous, ...(searchText ? { searchText } : {}) }); // owner: privacy
+        const r = await groundedAsk({ store, runner: () => runnerP, artifacts, ledger, now, resourceId, utterance, protection, timeZone, coursePrefix /* owner: course-facts */ }, question, list, s, { previous, ...(searchText ? { searchText } : {}) }); // owner: privacy
         if (!r.notFound && !r.unavailable) exchanges.set(key, { question, answer: r.text, at: now().getTime() });
         spent.tokens = add(spent.tokens, r.tokens);
         return r;
@@ -250,7 +250,7 @@ export function createIntentRouter(deps: IntentRouterDeps) {
         return { kind: "answer", unavailable: "This item is no longer available in the current course. Choose it again." };
     }
     signal.throwIfAborted();
-    return spec.run(args, context(host, signal, runnerP, spent, request));
+    return spec.run(args, context(host, signal, runnerP, spent, request, args.text));
   }
 
   function outcomeOf(spec: AnyAction, args: ResolvedArgs, result: unknown) {

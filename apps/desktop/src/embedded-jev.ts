@@ -10,6 +10,11 @@ import { createGateway, DEFAULT_LIMITS } from "../../gateway/src/gateway";
 declare const __MAGIC_EMBEDDED_TYPESAFE_KEY__: string | undefined;
 const embeddedKey = (): string =>
   typeof __MAGIC_EMBEDDED_TYPESAFE_KEY__ === "string" ? __MAGIC_EMBEDDED_TYPESAFE_KEY__.trim() : "";
+/**
+ * owner: voice-plan. The spoken-action Jev Choice runs in main with this same key (the gateway has no
+ * action-choice route). Main only; never pass it to the worker, the renderer, logs or Git.
+ */
+export const embeddedJevKey = (): string => embeddedKey();
 
 export interface EmbeddedJev {
   /** Loopback URL for the desktop's ordinary gateway client. */

@@ -189,21 +189,29 @@ function relayJudgment(
 // interactive:intent, tools off, the byte-stable catalogue prefix) so the AI fallback skips the
 // CLI's start-up after the first call; Codex stays one-shot (its app-server is unmeasured, S9).
 import { createIntentRouter, fromNotes, type NotesSeam } from "../../../packages/core/src/intent/index";
+import { plannerOrigin, plannerWarmRequest, runPlanner } from "../../../packages/core/src/intent/planner"; // owner: voice-plan
+import { plannerPack } from "../../../packages/packs/intent/src/planner"; // owner: voice-plan
+import { createAgentWarmup } from "./voice/agent-warmup"; // owner: voice-plan
+import { maySend } from "../../../packages/domain/src/index"; // owner: voice-plan
+import { memoryArtifactStore, memoryLedgerStore } from "../../../packages/packs/core/src/index"; // owner: voice-plan
+import { createVoicePlanWorker } from "./voice/plan-protocol"; // owner: voice-plan
 import { notesActions } from "../../../packages/notes/src/actions";
 import { notesRequestSchema } from "@magic/contracts";
 import { createModelRunner, createSessionPool, type SessionPool } from "../../../packages/runner/src/index";
 import { askPack, classifyPack } from "../../../packages/packs/intent/src/index";
-let intentRuntime: { client: string; runner: ModelRunner; pool: SessionPool | null } | null = null;
+// owner: voice-plan: `voice` is the planner's own Claude pool (below); null for a one-shot client.
+let intentRuntime: { client: string; runner: ModelRunner; pool: SessionPool | null; voice: { runner: ModelRunner; pool: SessionPool } | null } | null = null;
 async function intentRunner(): Promise<ModelRunner | null> {
   // owner: client-health: the chosen client in its saved mode (instant by default), health-gated.
   const chosen = await chosenClient();
   if (!chosen) return null;
   if (intentRuntime?.client === chosen.key) return intentRuntime.runner;
   await intentRuntime?.pool?.close();
+  await intentRuntime?.voice?.pool.close(); // owner: voice-plan: the old provider's voice session ends
   intentRuntime = null;
   if (chosen.id !== "claude") {
     const runner = await generationRunner();
-    if (runner) intentRuntime = { client: chosen.key, runner, pool: null };
+    if (runner) intentRuntime = { client: chosen.key, runner, pool: null, voice: null };
     return runner;
   }
   const run = await clientRunOptions("claude", { userData: generationUserData }, () => isolatedOptions("claude"));
@@ -211,8 +219,26 @@ async function intentRunner(): Promise<ModelRunner | null> {
   const options = run.options;
   // end owner: client-health
   const pool = createSessionPool({ ...options, fallback: createClaudeBackend(options), kinds: { [classifyPack.id]: classifyPack.schema, [askPack.id]: askPack.schema } });
-  intentRuntime = { client: chosen.key, runner: createModelRunner({ backend: healthGatedBackend(pool, run.check) }), pool }; // owner: client-health: gated
+  // owner: voice-plan. The planner has its own pool (same run options, tools off, same health gate) whose
+  // only output kind is the plan. On the shared classify/ask/plan union schema the warmed first plan took
+  // 4–6 structured-output turns and 19.8–25.1 s (one gave up); planner-only took 2–4 turns and 2.3–7.3 s.
+  const check = primedCheck(run.check);
+  const voicePool = createSessionPool({ ...options, fallback: createClaudeBackend(options), kinds: { [plannerPack.id]: plannerPack.schema }, maxLive: 2, turns: "conversation" }); // the warm-up lifecycle ends and re-warms the lane after each run
+  const voice = { runner: createModelRunner({ backend: healthGatedBackend(voicePool, check) }), pool: voicePool };
+  intentRuntime = { client: chosen.key, runner: createModelRunner({ backend: healthGatedBackend(pool, check) }), pool, voice }; // owner: client-health: gated
   return intentRuntime.runner;
+}
+// owner: voice-plan. The health check that found the client at launch serves the first call if it's
+// under the gate's own five-minute window, so the first spoken request doesn't wait for a second check.
+function primedCheck<H>(check: () => Promise<H>, ttlMs = 5 * 60_000): () => Promise<H> {
+  const at = Date.now();
+  let primed: Promise<H> | null = check();
+  primed.catch(() => undefined);
+  return () => {
+    const p = primed;
+    primed = null;
+    return p && Date.now() - at < ttlMs ? p : check();
+  };
 }
 // prewarm (the bar opened) finds the client, then starts its pooled session with the catalogue prefix.
 // The notes lane's plain actions (packages/notes/src/actions.ts) run through the notes service,
@@ -230,6 +256,40 @@ const intent = createIntentRouter({
   coursePrefix: generation.coursePrefix, // owner: course-facts: a one-course ask opens with the course prefix
 });
 // end owner: intent
+// owner: voice-plan. A spoken request that isn't an exact page phrase: the student's connected Claude
+// Code/Codex plans each step through the intent runner (tools off, schema-checked; the run's history is
+// carried in the prompt by code), with the consent authorizer and the open item's course AI policy on
+// every call. Main runs the observed executor; main's Stop or authority change cancels the run here.
+/** The planner's runner: Claude's voice pool, or the one-shot client for Codex/Gemini. */
+async function voiceRunner(): Promise<ModelRunner | null> {
+  const runner = await intentRunner();
+  return runner && (intentRuntime?.voice?.runner ?? runner);
+}
+// The student's connected agent is started at launch (main asks after first paint), before any voice.
+const agentWarmup = createAgentWarmup({
+  chosen: chosenClient,
+  runtime: async () => ((await intentRunner()) && intentRuntime ? { client: intentRuntime.client, pool: intentRuntime.voice?.pool ?? null } : null),
+  consented: (id) => maySend(store.privacy(), id, plannerPack.categories).allowed,
+  warmRequest: () => plannerWarmRequest(store, { route: "home" }, new Date()),
+  onStatus: (agent) => port.postMessage({ kind: "voice-agent", agent }),
+});
+const voicePlan = createVoicePlanWorker({
+  post: (message) => port.postMessage(message),
+  run: async (request, executor, signal) => {
+    const origin = plannerOrigin(store, request.context);
+    try {
+      return await runPlanner(
+        { store, runner: voiceRunner, artifacts: memoryArtifactStore(), ledger: memoryLedgerStore(), now: () => new Date(), executor, current: () => !signal.aborted },
+        { runId: request.runId, utterance: request.utterance, origin },
+        signal,
+      );
+    } finally {
+      // This run's session and its conversation end with it; the launch session is started again.
+      void agentWarmup.afterRun(plannerWarmRequest(store, origin, new Date()));
+    }
+  },
+});
+// end owner: voice-plan
 // owner: notes. Session notes: batch scaffolds on the tick, "fill from slides" through the same
 // runner, and Google Docs sync through main (which alone holds the token). Microsoft waits for graph.ts.
 import { createLocalNotesDrive, createNotesService, detectCloudFolders, googleRemote, microsoftRemote, type NotesRemote } from "../../../packages/notes/src/index";
@@ -654,6 +714,10 @@ changeWatch.unref();
 // end owner: stall-audit
 const commandAborts = new Map<string, AbortController>();
 port.on("message", async ({ data }: { data: any }) => {
+  if (voicePlan.handle(data)) return; // owner: voice-plan
+  // owner: voice-plan: launch warm-up, a retry on voice activation, and teardown on a provider/account change.
+  if (data.kind === "voice-agent-warm") return void agentWarmup.start();
+  if (data.kind === "voice-agent-refresh") return void agentWarmup.refresh();
   if (data.kind === "cancel-command") { commandAborts.get(data.id)?.abort(); return; }
   // owner: privacy. Main's install secret: at-rest key for the store, pseudonym key for sends.
   if (data.kind === "privacy-key") {
@@ -804,6 +868,8 @@ port.on("message", async ({ data }: { data: any }) => {
     return;
   }
   if (data.kind === "shutdown") {
+    await agentWarmup.close(); // owner: voice-plan
+    await intentRuntime?.voice?.pool.close(); // owner: voice-plan
     await intentRuntime?.pool?.close(); // owner: intent
     cancelPlanning();
     await planningRun?.promise.catch(() => {});

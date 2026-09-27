@@ -1,5 +1,13 @@
 > **Archived September 27, 2026.** Superseded as the status source by [implementation status](../implementation-status.md). Kept as the dated verification log that the status table cites (frontend runtime records continue in [the desktop handoff](../design-handoff.md)).
 
+## Streaming voice integration · September 27, 12:54 UTC
+
+The in-app microphone now has an integrated Apple on-device streaming path with local Whisper fallback, a rolling transcript pill, bounded queued utterances and Stop. The connected-agent planner/observed-action path is integrated but still requires its actual provider, consent, Jev and macOS Accessibility prerequisites. Missing-Jev/uncertain-action handoff to connected Codex remains a known unconnected fallback; this is not a completed general computer-use demo.
+
+Verification: full TypeScript/desktop/website build, 41 focused voice checks, and hidden Electron synthetic audio crossing the production typed preload bridge, Int16 IPC, VoiceSession, Apple helper and actual launcher component. Seven native checks passed with no renderer errors; 11 partials produced exactly one final inert dispatch, and Stop rejected stale work. The measured synthetic first partial was 1,283 ms and audio-end to inert dispatch 146 ms. These measurements exclude human microphone capture, provider reasoning and a real computer action.
+
+The last actual visible receipt before this source checkpoint is main/worker `5f79bb0` with renderer `53ecbe3`, PID 9112. Its current sidebar no longer shows CS540; Today 14 versus the reported six remains unresolved. The following runtime records are historical where they differ. Same-profile voice promotion and a human microphone trial are separate receipts.
+
 ## Daily Brief checkpoint · September 27, 12:42 UTC
 
 Daily Brief now admits verified current enrollment before evidence selection, offers concise source-backed project preparation, preserves exact reading relationships, and allows informational news without an action. Date-conflict notices/actions are temporarily hidden without changing producer evidence. Full build and 23 focused tests pass; corrected copied-profile native QA passes seven checks with no errors. This does not resolve the Today count, course-sidebar admission, missing-time or raw assignment-category bugs. Connected-agent Brief synthesis and corrected Study cards remain separate work.
@@ -155,3 +163,5 @@ Known-identity scrubbing now runs in core hosted context, MCP and Nate’s quiz/
 
 Combined verification at product revision `218cad1`: **734 passed, one Windows-only skip**; TypeScript, desktop/web build and hidden Electron renderer/preload/worker/SQLite check passed. The hidden check exercised synthetic planning import, MCP export and purge. Its initial startup timeout passed unchanged on rerun; no live provider or UW validation was performed. See the [audit verification record](backend-branch-audit.md#combined-verification).
 > **Latest integration boundary, September 27, 12:05 UTC:** task setup, remembered choices and direct Home entry are integrated with main 02c5c19. Hidden copied-data save/Add/Back/reload pass; browser opening is test-only and actual split-window/Close remains a user-trial boundary. Visible app remains 7b9bdf9. Calendar enrolled meetings/personal events are already integrated and visible. Study/direct chat, streaming/connected voice and retrieval upgrades remain private work. See [current task handoff](../design-handoff.md#2026-09-27-1205-utc--task-setup-integrated-native-browser-trial-pending). This supersedes older checkpoints below.
+
+Production copied-profile Electron also starts Home with no renderer errors: six checks cover microphone disabled in headless mode, no streaming before a click, stale typed PCM rejection, malformed Float32 rejection, stale stream begin and idle Stop. The owned app closed cleanly; this does not exercise physical input.

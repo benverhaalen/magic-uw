@@ -4,7 +4,7 @@ My Magic UW is an independent student project, not affiliated with the Universit
 
 This is the canonical architecture: processes, packages, data flow, the AI boundary, retrieval, study, notes and Outlook, privacy and the open agent layer. Per-feature status and evidence are in [implementation status](implementation-status.md); measurements and their methods are in [benchmarks](benchmarks.md). Deeper backend reference (the schema history, the job-handler contract, the measured effect of each design choice, the command bar) is in [the backend reference](course-backend-architecture.md); the platform and developer view is in [the academic data platform](academic-data-platform.md).
 
-**Checked against:** `main` at `53ecbe3` (September 27, 2026), after wave 2 and the tab-speed work (#53), course analytics (#55), the study prepper (#57), the stall fix (#58), the break-card fixes (#59) and the Canvas file-CDN host fix (`749f389`).
+**Checked against:** `main` at `42217fb` (September 27, 2026), after wave 2 and the tab-speed work (#53), course analytics (#55), the study prepper (#57), the stall fix (#58), the break-card fixes (#59) and the Canvas file-CDN host fix (`749f389`).
 
 **Status marks used on this page**
 
@@ -25,7 +25,7 @@ Code does everything with one right answer: dates, IDs, permissions, budgets, qu
 ```mermaid
 flowchart LR
   subgraph PC["Student's computer"]
-    R["Renderer (React)<br/>Home, Courses, Calendar, My UW, Sources, chat launcher, local voice"] -->|"preload bridge: magic:* channels"| M
+    R["Renderer (React)<br/>Home, Courses, Calendar, My UW, Study & Learn, Sources, chat launcher, voice"] -->|"preload bridge: magic:* channels"| M
     M["Main process<br/>owns the persist:uw session, consent gate,<br/>sign-in and Microsoft windows, Graph proxy,<br/>session reads (redirect-safe), embedded Jev gateway on 127.0.0.1"]
     M <-->|"utilityProcess messages:<br/>command, query, source-fetch, graph, evaluate"| W
     W["Utility worker<br/>Store (the one writer), ingestion and refresh,<br/>one job drain, runner and warm pool,<br/>intent router, learning, notes"]
@@ -41,6 +41,7 @@ flowchart LR
 ```
 
 - **Renderer → preload → main** (**main**). The renderer has no Node access; `apps/desktop/src/preload.ts` exposes typed `magic:*` channels, and commands go through `magic:execute` against `commandSchema` in `packages/contracts`.
+- **Voice** (**main**, `42217fb`): on-device streaming speech (Apple) with a local Whisper fallback, a rolling transcript and Stop; exact page commands navigate without a model call. A connected-agent planner exists but needs the provider, consent, Jev and macOS Accessibility before it can act ([desktop handoff](design-handoff.md)).
 - **Main owns every credential and session** (**main**). The worker never holds cookies or tokens: it asks main for each signed-in read (`source-fetch`), each Graph request (main checks the URL against an allowlist and attaches the token) and each Jev call (`evaluate`).
 - **Every session read goes through one redirect-safe helper** (**main**, #53). Electron 44's `session.fetch(url, { redirect: "manual" })` rejects every redirect, and every Canvas file download is a redirect, so a live run on September 27 lost 386 of 386 files. `sessionHopFetch` (`packages/connectors/src/session-fetch.ts`) drives `net.request` itself: only the Canvas hop carries cookies, refused downloads (403/404/410) become "not available to you", and timeouts, network errors, 429 and 5xx retry twice (1 s, 4 s). Every main-process session read (Canvas API, GitLab, Kaltura, course spaces, the sign-in check, UW planning reads) now sees a redirect as a 3xx, so a sign-out redirect becomes `needs_sign_in` instead of a transport failure. A later live refresh got all 98 files past Canvas's first redirect and then stopped at Instructure's file-service CDN (`cdn.inst-fs-…inscloudgate.net`); `canvasFileHost` now allows exactly that prefix (`749f389`), and non-Canvas hops stay cookie-less.
 - **The utilityProcess worker** (**main**, `apps/desktop/src/worker.ts`) owns the Store, ingestion, refresh, the job drain, the runner and the learning and notes routers. It answers one message at a time, which is why the snapshot poll matters ([§12](#12-performance-where-the-time-goes)).
@@ -166,7 +167,7 @@ All study runs at zero model tokens: `readPackArtifact` takes no runner, and the
 | Study prep per assessment | `study.prep`: one composite read per assessment (coverage, filter chips, a code-built overview, materials, mastery), then guide, quiz and cards in one checked call, KaTeX maths; ~23 ms warm on a 5,000-resource store (synthetic) | **main** (#57); generation and Ask are held in the renderer until account, source and policy scoping is connected (`a719430`) |
 | Item space | one study space per work item, 11 code-derived types (exam, quiz, problem set, essay, lab, project, discussion post, presentation, reading, lecture, participation): code types the item with its reason (40/40 synthetic cases), the student can correct it, and a per-type table sets the sections and actions; practice problems and practice exams from past exams with recomputed answers | **main** (#57) |
 | Course Analytics tab | grade trend, homework completion, readiness per assessment (never a grade), topic mastery, three next actions; hand-rolled SVG charts; three batched learning calls whatever the course size; paints in ~8–10 ms median; a synthetic term in the sample course | **main** (#55), a tab on every course page |
-| GPA calculator | GPA by semester, what-if projections, grades needed (10/10 tests with worked examples) | **main** (#53); the panel is not yet mounted in the My UW page |
+| GPA calculator | GPA by semester, what-if projections, grades needed (10/10 tests with worked examples) | **main** (#53); the panel is not yet mounted in My UW (PR #65 restores it) |
 
 The views are capped on purpose: a dossier core of 8, an assignment view of 5, Study & Learn of 3 ([spec](plans/2026-09-26-course-backend/spec.md)).
 
