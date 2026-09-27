@@ -179,7 +179,8 @@ export function termFacts(text: string): Fact[] {
     if (facts.length >= 200) return facts;
   }
   for (const m of text.matchAll(definedAs)) {
-    const term = m[1]!.trim().split(/\s+/).slice(-4).join(" ");
+    const term = m[1]!.trim().split(/\s+/).slice(-4).join(" ").replace(/^(?:an?|the)\s+/i, "");
+    if (!term) continue;
     const termStart = m.index + m[0].indexOf(term);
     if (termStart < m.index) continue;
     facts.push({ kind: "term", value: term, basis: "text", start: termStart, end: termStart + term.length });
@@ -195,7 +196,7 @@ export function termFacts(text: string): Fact[] {
   return facts;
 }
 
-const codeLine = /;\s*$|[{}]\s*$|==|\b(?:let|var|const|int|def|return|for|while|public|private|void|import)\b/;
+const codeLine = /;\s*$|[{}]\s*$|==|^\s*(?:let|var|const|int|def|return|for\s*\(|while\s*\(|public|private|void|import)\b/;
 const mathChar = /[+\-*/^√∑∫≤≥≈∞πθλμσ]|\b(?:sin|cos|tan|log|ln|exp|sqrt|lim|max|min)\b/;
 export function formulaFacts(text: string): Fact[] {
   const facts: Fact[] = [];
