@@ -88,6 +88,28 @@ export function gatePublicClient(
       check();
       return client.signedDownload(url, allowedOrigins, signal);
     },
+    // owner: T30: the Outlook published-calendar reads were not forwarded, so the gated client
+    // (the one the worker uses) had no Outlook feed at all.
+    ...(client.outlookFeed
+      ? {
+          async outlookFeed(secretUrl: string, signal?: AbortSignal) {
+            check();
+            return client.outlookFeed!(secretUrl, signal);
+          },
+        }
+      : {}),
+    ...(client.outlookFeedIfChanged
+      ? {
+          async outlookFeedIfChanged(
+            secretUrl: string,
+            validators: Parameters<NonNullable<PublicClient["outlookFeedIfChanged"]>>[1],
+            signal?: AbortSignal,
+          ) {
+            check();
+            return client.outlookFeedIfChanged!(secretUrl, validators, signal);
+          },
+        }
+      : {}),
   };
 }
 

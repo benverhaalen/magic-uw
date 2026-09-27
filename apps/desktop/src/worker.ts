@@ -18,6 +18,12 @@ import {
 import { createWorkerClients } from "./worker-clients"; // owner: T06
 import { pullPublicSubjects, pullPublicTerms } from "../../../packages/connectors/src/planning-public";
 import type { UwPlanningSyncResult } from "../../../packages/connectors/src/uw-planning-sync";
+// owner: pipeline
+import { pipelineJobRegistry } from "../../../packages/core/src/jobs/default-registry";
+import { createPipelineLoop } from "../../../packages/core/src/jobs/pipeline";
+import { agenda, courseGraph, createPipelineReferences, references } from "../../../packages/core/src/graph/index";
+import { graphQuerySchema } from "../../../packages/contracts/src/course-core";
+// end owner: pipeline
 const port = process.parentPort;
 if (!port) throw new Error("Workspace must be started by the desktop app.");
 const pending = new Map<
@@ -47,22 +53,68 @@ async function generationRunner(): Promise<ModelRunner | null> {
     Object.entries(profileEnv(chosen, { userData: generationUserData })).flatMap(([k, v]) => (v === undefined ? [] : [[k, v]])),
   );
   const options = { command, workDir: workDir(generationUserData, chosen), env };
-  const backend = chosen === "claude" ? createClaudeBackend(options) : createCodexBackend(options);
+  // owner: ai-paths. Claude runs through the warm session pool (one per worker, replaced on a
+  // client change); Codex stays one-shot.
+  const { pooledClaudeBackend } = await import("../../../packages/core/src/pack-handler");
+  const backend = chosen === "claude" ? pooledClaudeBackend(options) : createCodexBackend(options);
+  // end owner: ai-paths
   generationRuntime = { client: chosen, runner: createPackRuntime(backend, DEFAULT_PACK_CONFIG).runner };
   return generationRuntime.runner;
 }
 const generation = createPackHandler({ store, runner: generationRunner });
 // end owner: generation
+// owner: notes. Session notes: batch scaffolds on the tick, "fill from slides" through the same
+// runner, and Google Docs sync through main (which alone holds the token). Microsoft waits for graph.ts.
+import { createNotesService, googleRemote, microsoftRemote, type NotesRemote } from "../../../packages/notes/src/index";
+function notesHostCall(payload: unknown, timeoutMs: number): Promise<any> {
+  const id = randomUUID();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      hostRequests.delete(id);
+      reject(new Error("Google Docs didn't answer in time."));
+    }, timeoutMs);
+    hostRequests.set(id, {
+      resolve(value) { clearTimeout(timer); resolve(value); },
+      reject(error) { clearTimeout(timer); reject(error); },
+    });
+    port.postMessage({ kind: "notes-google", id, payload });
+  });
+}
+const notesRemotes: { microsoft?: NotesRemote; google?: NotesRemote & { connect(): Promise<boolean> } } = process.env.MAGIC_GOOGLE_CLIENT_ID
+  ? {
+      google: {
+        ...googleRemote(
+          (request) => notesHostCall({ op: "request", request }, 90_000),
+          async () => Boolean((await notesHostCall({ op: "status" }, 10_000))?.connected),
+        ),
+        connect: async () => Boolean((await notesHostCall({ op: "connect" }, 330_000))?.connected),
+      },
+    }
+  : {};
+// Word online: the app folder through main's Graph proxy (T30). Connected once the student's
+// Microsoft sign-in granted Files.ReadWrite.AppFolder. graphHost is defined below; called later.
+notesRemotes.microsoft = microsoftRemote(
+  (request) => graphHost.transport(request),
+  async () => graphScopes.includes("Files.ReadWrite.AppFolder"),
+);
+const notes = createNotesService({ store, runner: generationRunner, remotes: notesRemotes });
+// end owner: notes
 const core = createCore(store, {
   fixture: captureBatchSchema.parse(fixture),
   courseExtractor: createLocalCourseExtractor(),
   planningPublicClient: publicClients.core, // owner: T06
+  jobs: pipelineJobRegistry(), // owner: pipeline: passages, links and facts, the course pass
   madgrades: { read: (request, signal) => hostRead("madgrades-read", { request }, signal) },
   planningHttp: { read: (request, signal) => hostRead("planning-public-read", { request }, signal) },
   seams: { learning: createLearningRouter({
     store: store.learning,
     resolveContext: (resourceId): StudyContext | null => resolveStudyContext(resourceId),
-  }), pack: generation.pack /* owner: generation */ },
+    // owner: analytics. One references port per analytics request, over the coursework store.
+    // owner: pipeline: the material pipeline's adapter (it reuses analytics' adapter for exam dates
+    // and course-map assessment rows).
+    analyticsReferences: () => createPipelineReferences(store),
+    // end owner: analytics
+  }), pack: generation.pack /* owner: generation */, notes /* owner: notes */ },
   ...(process.env.MAGIC_GATEWAY_URL
     ? {
         gateway: {
@@ -162,6 +214,30 @@ const extractor = createLocalDocumentExtractor(
       }
     : {},
 );
+// owner: T30. Microsoft Graph through main's proxy: this process never sees a token. Main says
+// which scopes the student granted; the delta links live in main's encrypted vault.
+let graphScopes: string[] = [];
+const graphHost = {
+  transport: async (request: import("../../../packages/connectors/src/graph").GraphRequest) => {
+    const { signal, ...payload } = request;
+    const value = await hostRead("source-fetch", { service: "graph", ...payload }, signal);
+    return {
+      status: Number(value?.status) || 0,
+      headers: (value?.headers ?? {}) as Record<string, string>,
+      body: typeof value?.body === "string" ? value.body : "",
+    };
+  },
+  state: {
+    get: async (key: string) =>
+      ((await hostRead("graph-state", { operation: "get", key })) as string | undefined) || undefined,
+    set: async (key: string, value: string | null) => {
+      await hostRead("graph-state", { operation: "set", key, value });
+    },
+  },
+  scopes: () => graphScopes,
+  onSynced: (result: unknown) => port.postMessage({ kind: "graph-synced", payload: result }),
+};
+// end owner: T30
 const ingestion = createIngestion(store, {
   directory: dirname(process.env.MAGIC_DB_PATH!),
   extractor,
@@ -170,9 +246,26 @@ const ingestion = createIngestion(store, {
   gitlabFetch: sourceFetch("gitlab"),
   onSaved: (sourceId) => void core.saved(sourceId), // owner: T05b: save → enqueue
   spaceFetch: sourceFetch("space"), // owner: T05b: D41 access check
+  graph: graphHost, // owner: T30
   secrets: (operation, key, value) =>
     hostRead("source-secret", { operation, key, value }),
 });
+// owner: pipeline. The material pipeline's drain: code-only jobs (passages, links and facts, the
+// course pass) in bounded idle slices. A sync aborts the slice between jobs and wakes it when done;
+// presence sets the slice size. Nothing here calls Jev or a model, and planning is never queued.
+const pipeline = createPipelineLoop({ store, registry: core.jobs });
+const syncTick = ingestion.tick;
+ingestion.tick = (trigger) => {
+  pipeline.syncStarted();
+  const run = syncTick(trigger);
+  void run.finally(() => pipeline.syncEnded()).catch(() => {});
+  return run;
+};
+const pipelineTimer = setInterval(() => pipeline.wake(), 60_000);
+pipelineTimer.unref();
+const pipelineBackfill = setTimeout(() => void pipeline.backfill().then(() => pipeline.wake()), 20_000);
+pipelineBackfill.unref();
+// end owner: pipeline
 const planningPublicClient = publicClients.planning; // owner: T06
 let planningAccountScope = /^uw-session:[a-f0-9-]{36}$/.test(process.env.MAGIC_PLANNING_SCOPE ?? "")
   ? process.env.MAGIC_PLANNING_SCOPE! : `uw-session:${randomUUID()}`;
@@ -259,6 +352,18 @@ const refreshTimer = setInterval(() => {
 refreshTimer.unref();
 const tick = setInterval(() => core.wake(), 30000);
 tick.unref();
+// owner: notes. The rolling window's scaffolds (skipped when nothing changed) and the sync check.
+function notesTick() {
+  try {
+    notes.refresh();
+  } catch (error) {
+    console.error("Notes refresh failed:", error instanceof Error ? error.name : "unknown");
+  }
+  notes.syncTick().catch((error) => console.error("Notes sync failed:", error instanceof Error ? error.name : "unknown"));
+}
+const notesTimer = setInterval(notesTick, 30_000);
+notesTimer.unref();
+// end owner: notes
 port.on("message", async ({ data }: { data: any }) => {
   if (data.kind === "source-response") {
     const request = hostRequests.get(data.id);
@@ -270,23 +375,55 @@ port.on("message", async ({ data }: { data: any }) => {
   if (data.kind === "suspend") {
     cancelPlanning();
     ingestion.suspend();
+    pipeline.suspend(); // owner: pipeline
     return;
   }
   if (data.kind === "resume") {
     ingestion.resume();
+    pipeline.resume(); // owner: pipeline
     return;
   }
   if (data.kind === "presence") {
     // Main's signal: OS input within 30 minutes and the screen unlocked. Gates signed-in reads.
     ingestion.presence(data.present === true);
+    pipeline.presence(data.present === true); // owner: pipeline
     return;
   }
+  // owner: pipeline. Graph reads: references, the agenda, a course's graph and coverage.
+  if (data.kind === "graph") {
+    try {
+      const query = graphQuerySchema.parse(data.query);
+      const result =
+        query.type === "references"
+          ? references(store, query.assignmentId)
+          : query.type === "agenda"
+            ? agenda(store, { date: query.date, tz: query.tz, ...(query.days ? { days: query.days } : {}) })
+            : courseGraph(store, { accountScope: query.accountScope, courseId: query.courseId });
+      port.postMessage({ kind: "response", id: data.id, result });
+    } catch (error) {
+      port.postMessage({
+        kind: "response",
+        id: data.id,
+        error: error instanceof Error && error.name !== "ZodError" ? error.message : "The graph query did not match its schema.",
+      });
+    }
+    return;
+  }
+  // end owner: pipeline
   // owner: T33. App focus runs the content probe on the next tick (D37).
   if (data.kind === "focus") {
     ingestion.focus();
     return;
   }
   // end owner: T33
+  // owner: T30. The granted Graph scopes (never a token); an empty list stops the Graph step.
+  if (data.kind === "graph-scopes") {
+    graphScopes = Array.isArray(data.scopes)
+      ? data.scopes.filter((s: unknown): s is string => typeof s === "string" && s.length < 100).slice(0, 20)
+      : [];
+    return;
+  }
+  // end owner: T30
   if (data.kind === "reconnected") {
     ingestion.reconnected();
     return;
@@ -351,8 +488,14 @@ port.on("message", async ({ data }: { data: any }) => {
     cancelPlanning();
     await planningRun?.promise.catch(() => {});
     clearInterval(refreshTimer);
+    // owner: pipeline
+    clearInterval(pipelineTimer);
+    clearTimeout(pipelineBackfill);
+    await pipeline.stop();
+    // end owner: pipeline
     await ingestion.stop();
     clearInterval(tick);
+    clearInterval(notesTimer); // owner: notes
     local.cancel();
     await core.close();
     port.postMessage({ kind: "closed" });
@@ -411,6 +554,7 @@ port.on("message", async ({ data }: { data: any }) => {
     cancelPlanning();
     await planningRun?.promise.catch(() => {});
     ingestion.suspend();
+    pipeline.suspend(); // owner: pipeline
     await ingestion.tick();
   }
   if (["import", "planning-import", "fixture", "privacy", "purge", "course-override"].includes(data.command?.type)) {
@@ -422,7 +566,10 @@ port.on("message", async ({ data }: { data: any }) => {
       id: data.id,
       result: await core.execute(data.command),
     });
-    if (data.command?.type === "purge") ingestion.resume();
+    if (data.command?.type === "purge") {
+      ingestion.resume();
+      pipeline.resume(); // owner: pipeline
+    }
   } catch (error) {
     port.postMessage({
       kind: "response",
@@ -436,3 +583,4 @@ port.on("message", async ({ data }: { data: any }) => {
 });
 core.wake();
 port.postMessage({ kind: "ready" });
+setTimeout(notesTick, 0); // owner: notes

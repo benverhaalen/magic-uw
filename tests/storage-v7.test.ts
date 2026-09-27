@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { createStore, migrationBackupPath, SCHEMA_VERSION } from "@magic/storage";
 import type { ResourceInput } from "@magic/contracts";
+import { COURSE_CORE_SCHEMA } from "../packages/storage/src/course-core";
 import { LEARNING_TABLES } from "../packages/storage/src/learning";
 
 // Synthetic data only.
@@ -167,4 +168,47 @@ test("purge leaves zero rows in every learning table", () => {
   } finally {
     cleanup();
   }
+});
+
+
+test("v8 → v9 preserves every learning row, including v8-only fields and concept cards", () => {
+  const { file, cleanup } = temporary();
+  try {
+    let store = createStore(file);
+    store.ingest({ source, observedAt: t(0), complete: true, status: "ok", resources: [item("r1", "Osmosis moves water.")] });
+    store.putAssessment({ id: "mid", sourceId: source.id, resourceId: null, kind: "midterm", title: "Midterm", date: null, weight: null, format: null, origin: "syllabus" }, t(1));
+    const resourceId = store.resources()[0]!.id;
+    store.close();
+    const old = new DatabaseSync(file);
+    let before: Record<string, unknown[]>;
+    try {
+      const historical = COURSE_CORE_SCHEMA.slice(COURSE_CORE_SCHEMA.indexOf("  CREATE TABLE course_spaces ("), COURSE_CORE_SCHEMA.indexOf("  CREATE TABLE course_briefs ("));
+      assert.ok(historical.includes("checked_at TEXT NOT NULL"));
+      old.exec(`DROP TABLE course_spaces; ${historical} PRAGMA user_version=8;`);
+      seedLearning(old, resourceId);
+      old.exec(`UPDATE learning_items SET unit='Transport';
+        UPDATE learning_attempts SET option_id='b';
+        UPDATE learning_coverage SET decided_by_student=1;
+        INSERT INTO learning_cards (id,course_id,concept_id,due,stability,difficulty,elapsed_days,scheduled_days,reps,lapses,state,fsrs_version,params_hash,is_concept_track)
+          VALUES ('concept-card','student-1:course-1','osmosis','${t(2)}',2,4,0,0,1,0,1,'5.4.2','p',1);`);
+      before = Object.fromEntries(LEARNING_TABLES.map(name => [name, old.prepare(`SELECT * FROM ${name}`).all()]));
+      for (const name of LEARNING_TABLES) assert.ok(before[name]!.length > 0, `${name} is seeded`);
+    } finally { old.close(); }
+    // Opening invokes only migration 9; accidentally rerunning 8 fails on its added columns.
+    store = createStore(file); store.close();
+    store = createStore(file); store.close();
+    const migrated = new DatabaseSync(file, { readOnly: true });
+    try {
+      assert.equal(migrated.prepare("PRAGMA user_version").get()!.user_version, SCHEMA_VERSION);
+      for (const name of LEARNING_TABLES)
+        assert.deepEqual(migrated.prepare(`SELECT * FROM ${name}`).all(), before[name], `${name} survives migration and reopening unchanged`);
+      assert.deepEqual(migrated.prepare("PRAGMA foreign_key_check").all(), []);
+      const backup = new DatabaseSync(migrationBackupPath(file), { readOnly: true });
+      try {
+        assert.equal(backup.prepare("PRAGMA user_version").get()!.user_version, 8);
+        for (const name of LEARNING_TABLES)
+          assert.deepEqual(backup.prepare(`SELECT * FROM ${name}`).all(), before[name], `${name} is backed up before migration`);
+      } finally { backup.close(); }
+    } finally { migrated.close(); }
+  } finally { cleanup(); }
 });

@@ -1,8 +1,8 @@
 # Technical direction
 
-## Sync resilience integration in progress
+## Sync resilience integration
 
-A local extension of this backend shares validated acquisition results across capture, inventory and freshness; resolves typed references through the existing document pipeline; and persists access observations independently of saved evidence. Learning keeps migration v8 and this extension uses v9. Product code is not yet published. See the [canonical handoff](sync-resilience-review.md#implementation-handoff--september-26-2026) for the implemented interfaces and evidence.
+The integrated sync resilience extension shares validated acquisition results across capture, inventory and freshness; resolves typed references through the existing document pipeline; and persists access observations independently of saved evidence. Learning keeps migration v8 and this extension uses v9. Product code is integrated into main; no packaged release is claimed. See the [canonical handoff](sync-resilience-review.md#implementation-handoff--september-26-2026) for the implemented interfaces and evidence.
 
 ## The app's backend
 

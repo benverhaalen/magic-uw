@@ -131,6 +131,9 @@ function populate(file: string) {
 /** Turns a v6 file into the exact v5 shape (the shipped v1–v5 DDL), with field history rows. */
 const TO_V5 = `
   ${LEARNING_TABLES.slice().reverse().map((t) => `DROP TABLE ${t};`).join(" ")}
+  DROP TABLE resource_refs; DROP TABLE external_refs;
+  DROP TABLE note_sync_settings; DROP TABLE note_remotes; DROP TABLE note_suggestions; DROP TABLE note_template_choices;
+  DROP TABLE note_links; DROP TABLE note_versions; DROP TABLE notes;
   DROP TABLE passage_vocab; DROP TABLE passage_fts; DROP TABLE passages; DROP TABLE counters;
   DROP TABLE assessment_scope; DROP TABLE assessments; DROP TABLE course_sessions; DROP TABLE map_links;
   DROP TABLE course_spaces; DROP TABLE extraction_recipes; DROP TABLE course_briefs; DROP TABLE material_facts;
@@ -372,10 +375,20 @@ test("purge enumerates every table: zero rows everywhere, FTS empty, backup dele
       store.putExtractionRecipe({ id: "rec", host: "example.test", layoutHash: "h", version: 1, recipe: { selector: "main" }, validatedAt: null });
       store.putCourseSpace({ id: "sp", sourceId: "canvas-course-1", kind: "external_tool", host: "tool.example.test", url: "https://tool.example.test/x", title: TOKEN, foundInResourceId: syllabus.id, route: "lti", readState: "skipped", readSourceId: null, lastReadAt: null, recipeId: "rec", accessState: "link-only", accessReason: null, checkedAt: t(9), storeOrLink: "link" });
       assert.deepEqual(store.putMaterialFacts({ resourceId: syllabus.id, textHash: textHash(syllabus.title, syllabus.text), analyzerVersion: "a1", facts: [{ kind: "term", start: 0, end: 7, value: "BIO 101" }] }), { ok: true });
+      const ref = store.putExternalRef({ sourceId: "canvas-course-1", url: "https://tool.example.test/reading", title: TOKEN, hostClass: "unknown", treatment: "link", foundInResourceId: syllabus.id }, t(9));
+      assert.deepEqual(store.putResourceRefs(syllabus.id, syllabus.contentHash, [{ toResourceId: null, externalRefId: ref, target: "https://tool.example.test/reading", kind: "external", strength: "direct", reason: "linked in the body" }]), { ok: true });
       store.addLedgerEntry({ id: "le", pack: "p", packVersion: "1", tier: "fast", model: "m", tokensIn: 1, tokensCached: 0, tokensOut: 1, latencyMs: 1, checkFailures: 0, escalated: false, course: null, createdAt: t(9) });
       store.addCompileRun({ id: "cr", course: { accountScope: "student-1", courseId: "course-1" }, packVersion: "1", model: "m", tier: "fast", inputHash: "h", tokens: 1, latencyMs: 1, checkFailures: 0, escalated: false, createdAt: t(9) });
       store.addUiEvent({ kind: "open", subject: TOKEN, createdAt: t(9) });
       store.enqueueSubject({ kind: "course.compile", subjectKind: "course", subjectId: "student-1:course-1", sourceId: "canvas-course-1", inputHash: "h" }, t(9));
+      // v11 notes: one of each row, the planted token in the note's text.
+      const block = { id: "notes", kind: "section" as const, heading: "Notes", items: [{ id: "i", text: TOKEN, origin: "student" as const }] };
+      store.notes.insert({ id: "n1", accountScope: "student-1", courseId: "course-1", sessionId: "course-1/2099-09-01:lecture", session: null, sessionDate: "2099-09-01", sessionType: "lecture", moduleId: null, moduleName: null, title: "Lecture", template: "outline", templateReason: "t", state: "edited", scaffoldHash: null, scheduled: true, editedAt: t(9) }, [block], "student");
+      store.notes.setLinks("n1", [{ resourceId: syllabus.id, role: "reading", reason: "t" }]);
+      store.notes.setTemplateChoice("student-1", "course-1", "lecture", "outline");
+      store.notes.addSuggestions("n1", [{ id: "sg", blockId: "notes", text: "t", resourceId: syllabus.id, quote: "q" }]);
+      store.notes.putRemote({ noteId: "n1", provider: "google", remoteId: "r", webUrl: null, etag: null, modifiedTime: null, syncedVersion: 1, syncedAt: t(9), status: "synced", error: null });
+      store.notes.setSyncSetting({ provider: "google", enabled: true, enabledAt: t(9), lastCheckAt: null, message: null });
       assert.ok(store.migrationBackup());
       for (const [table, n] of Object.entries(counts(file)))
         if (!["preferences", "life_items", "course_briefs", "mcp_grants"].includes(table) && !table.startsWith("learning_")) assert.ok(n > 0, `${table} is populated before purge`);

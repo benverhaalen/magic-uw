@@ -27,6 +27,7 @@ import { StartWork, preparedWorkRevision } from "./StartWork";
 import { PersonalReport } from "./PersonalReport";
 import { Action, Disclosure } from "../../../../packages/ui/src";
 import { useDesktopNavigation, type DesktopView } from "./navigation";
+import { CourseSpaceDetails } from "./CourseSpaceDetails";
 
 type View = DesktopView;
 // owner: T05b. Route slots, each rendering nothing until its task fills it: the notebook (T43),
@@ -1177,6 +1178,7 @@ function Sources({
       <IngestionControls snapshot={snapshot} busy={busy} run={run} />
       <section className="settings-section">
         <h2>Captured sources</h2>
+        <CourseSpaceDetails sources={snapshot.sources} revision={snapshot.sources.map(s => s.lastAttemptAt).join("|")} />
         <p className="muted">
           A successful check describes that capture. It does not guarantee that
           the source is still unchanged.

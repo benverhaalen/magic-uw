@@ -13,8 +13,10 @@ import {
 } from "../packages/learning/src/router";
 import { createStudyContextResolver } from "../apps/desktop/src/learning-context";
 import { seedLearningFixture } from "./learning-fixture";
+import { seedSyncResilienceFixture } from "./sync-resilience-fixture";
 import { linkExactEvidence } from "../packages/core/src/evidence";
 // Explicit opt-in QA output, never a substitute for live model inference.
+const syncFixture = process.env.MAGIC_PREVIEW_SYNC_FIXTURE === "1";
 const learningFixture = process.env.MAGIC_PREVIEW_LEARNING_FIXTURE === "1";
 // Local verification surface using the real core/store. No browser sessions or gateway.
 const directory = await mkdtemp(join(tmpdir(), "magic-preview-"));
@@ -55,7 +57,7 @@ const server = createServer(async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
   try {
-    if (path === "/command") {
+    if (path === "/command" || path === "/query") {
       if (
         req.method !== "POST" ||
         req.headers.authorization !== `Bearer ${token}` ||
@@ -92,7 +94,11 @@ const server = createServer(async (req, res) => {
         return;
       }
 
-      let result = await core.execute(parsed);
+      let result = path === "/query" ? core.query(parsed) : await core.execute(parsed);
+      if (syncFixture && path === "/command" && parsed.type === "fixture") {
+        seedSyncResilienceFixture(store);
+        result = await core.execute({type:"snapshot"});
+      }
       if (learningFixture && parsed.type === "fixture") {
         linkExactEvidence(store);
         const loaded = await core.execute({ type: "snapshot" });
@@ -110,7 +116,7 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (path === "/bridge.js") {
-      const script = `window.magic={execute:async(command)=>{const r=await fetch('/command',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer ${token}'},body:JSON.stringify(command)});const data=await r.json();if(!r.ok)throw new Error(data.error);return data;},openExternal:async()=>{throw new Error('External windows are disabled in this headless verification surface.');},startWork:async(id,previewHash,only)=>{const r=await fetch('/command',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer ${token}'},body:JSON.stringify({type:'start-work',id,previewHash,only})});const data=await r.json();if(!r.ok)throw new Error(data.error);return data;},importFile:async()=>{throw new Error('Use the desktop app to import a local capture.');},localStatus:async()=>({status:'setup_needed',reason:'Local runtime checks are disabled in this browser verification surface. Use the desktop app.',cloudDisabled:false,selectedModel:null,recommenderAvailable:false,basis:'No runtime was contacted.'}),localAsk:async()=>{throw new Error('Local inference is disabled in this browser verification surface. Use the desktop app.');},cancelLocal:async()=>{}};`;
+      const script = `window.magic={query:async(request)=>{const r=await fetch('/query',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer ${token}'},body:JSON.stringify(request)});const data=await r.json();if(!r.ok)throw new Error(data.error);return data;},execute:async(command)=>{const r=await fetch('/command',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer ${token}'},body:JSON.stringify(command)});const data=await r.json();if(!r.ok)throw new Error(data.error);return data;},openExternal:async()=>{throw new Error('External windows are disabled in this headless verification surface.');},startWork:async(id,previewHash,only)=>{const r=await fetch('/command',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer ${token}'},body:JSON.stringify({type:'start-work',id,previewHash,only})});const data=await r.json();if(!r.ok)throw new Error(data.error);return data;},importFile:async()=>{throw new Error('Use the desktop app to import a local capture.');},localStatus:async()=>({status:'setup_needed',reason:'Local runtime checks are disabled in this browser verification surface. Use the desktop app.',cloudDisabled:false,selectedModel:null,recommenderAvailable:false,basis:'No runtime was contacted.'}),localAsk:async()=>{throw new Error('Local inference is disabled in this browser verification surface. Use the desktop app.');},cancelLocal:async()=>{}};`;
       res.writeHead(200, { "Content-Type": "text/javascript" }).end(script);
       return;
     }
@@ -130,8 +136,8 @@ const server = createServer(async (req, res) => {
           .replace("<head>", '<head><script src="/bridge.js"></script>')
           .replace(
             "<body>",
-            learningFixture
-              ? '<body><div role="note" style="padding:8px;background:#ffe7a8;color:#382700">Synthetic learning verification — prepared items are test fixtures, not live AI.</div>'
+            learningFixture || syncFixture
+              ? '<body><div role="note" style="padding:8px;background:#ffe7a8;color:#382700">Synthetic verification — test fixtures, no live school or AI connections.</div>'
               : "<body>",
           ),
       );

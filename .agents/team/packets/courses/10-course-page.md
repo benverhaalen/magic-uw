@@ -31,10 +31,12 @@ Replaces the one-line Courses stub with **one card per course → a course page*
   - **AI policy found 0/6, assessments 0/6, topics 1/6.** Real syllabi mostly live in PDFs or aren't written under the headings the literal extractor looks for. The page therefore shows honest "not found" states most of the time. The biggest lever for this screen is **reading syllabus files** (D34).
 - **Freshness flaw in `intelligenceView`.** It treats `inaccessible` sources, such as a disabled Pages or Quizzes area, as stale. With that rule, **every** real course showed "may be out of date" even right after a sync. The course page derives freshness from the course's own sources instead:
   - Inaccessible and unpublished areas count as checked.
+  - A source that was attempted but only partly read makes the course "partly checked". Account to-do, upcoming events and course websites are routinely partial on a real account.
   - Sign-in and error failures, or a last check more than 24 h old, count as stale.
+  - On the fresh live pull, the 6 current courses now show "Partly checked" and past courses show "Checked".
   - I didn't change the shared function. Nathaniel, please decide whether it should match.
 - Tests: 5 new (`tests/course-page.test.ts`). The full suite on the rebased branch passes 673 of 675. The one failure is the real-PTY "sessions are killed on close" test, which is in code this branch doesn't touch and also failed on the previous base.
-- **Rendered journey** (hidden Electron, Ben's private data, re-run on the rebased branch with main's learning router; ready in about 6 s): Courses shows 7 cards → course page ("How this course works | Coursework | Materials", grading table, muted not-found facts) → item opens shared detail → Back refocuses the originating card; 0 console errors. Live module grouping is still pending: the first pull predates the module-id change, so Materials shows the flat fallback there. A second pull is running, and the grouping is unit-tested.
+- **Rendered journey** (hidden Electron, Ben's private data, re-run on the rebased branch with main's learning router; ready in about 6 s): Courses shows 7 cards → course page ("How this course works | Coursework | Materials", grading table, muted not-found facts) → item opens shared detail → Back refocuses the originating card; 0 console errors. Live module grouping is verified on a fresh pull: the current courses show 1–9 Canvas modules each, and remaining files and pages sit under "Other files and pages".
 
 ## Next action
 

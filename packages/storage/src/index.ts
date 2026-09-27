@@ -11,11 +11,14 @@ import { basename, dirname, join, resolve } from "node:path";
 import { backup, DatabaseSync, type StatementSync } from "node:sqlite";
 import { planningMigration, planningRepository } from "./planning";
 import { textHash } from "../../retrieval/src/index";
-import { COURSE_CORE_SCHEMA, courseCoreRepository } from "./course-core";
+import { COURSE_CORE_SCHEMA, COURSE_SPACE_OBSERVATION_MIGRATION, courseCoreRepository } from "./course-core";
 import { createPassageIndex, scopeToken } from "./passages";
+import { graphRepository, migrateGraph } from "./graph";
 import { LEARNING_SCHEMA } from "./learning";
 import { LEARNING_V8 } from "./learning-v8";
 import { createSqlLearningStore, type SqlLearningStore } from "../../learning/src/sql-store";
+import { NOTES_V11 } from "./notes-v11"; // owner: notes
+import { createSqlNotesStore, type SqlNotesStore } from "../../notes/src/sql-store"; // owner: notes
 import { decodePayload, encodePayload } from "./payload";
 import { personalReportRepository } from "./personal-reports";
 import {
@@ -24,6 +27,8 @@ import {
   type ChangeWithSeq,
   type CourseCoreStore,
   type CourseJob,
+  type CourseRef,
+  type GraphStore,
   type SubjectKind,
 } from "../../contracts/src/course-core";
 import {
@@ -75,7 +80,7 @@ import {
   type Store,
 } from "@magic/contracts";
 
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 11;
 const MAX_ATTEMPTS = 3;
 /** The latest pre-migration backup, beside the database (one kept; purge deletes it). */
 export function migrationBackupPath(path: string): string {
@@ -175,7 +180,7 @@ function payloadTextHash(payload: unknown): string {
 export function createStore(
   path: string,
   options: { now?: () => Date } = {},
-): Store & CourseCoreStore & { learning: SqlLearningStore } {
+): Store & CourseCoreStore & GraphStore & { learning: SqlLearningStore; notes: SqlNotesStore } {
   const clock = options.now ?? (() => new Date());
   const file = path !== ":memory:";
   if (file) mkdirSync(dirname(resolve(path)), { recursive: true, mode: 0o700 });
@@ -346,6 +351,17 @@ export function createStore(
   // v7: learning and practice tables (T10L, D17).
   steps.push([7, () => db.exec(LEARNING_SCHEMA + "PRAGMA user_version = 7;")]);
   steps.push([8, () => db.exec(LEARNING_V8 + "PRAGMA user_version = 8;")]);
+  steps.push([9, () => db.exec(COURSE_SPACE_OBSERVATION_MIGRATION + "PRAGMA user_version = 9;")]);
+  // v10: the course graph (the material pipeline): external refs, resource refs, quoted facts.
+  steps.push([
+    10,
+    () => {
+      migrateGraph(db);
+      db.exec("PRAGMA user_version = 10;");
+    },
+  ]);
+  // v11 "notes": session notes (packages/notes); additive tables only (IF NOT EXISTS). Runs after v10 (the course graph).
+  steps.push([11, () => db.exec(NOTES_V11 + "PRAGMA user_version = 11;")]);
   const migrationBackup = file ? migrationBackupPath(path) : null;
   const passageIndex = createPassageIndex(db, prepare);
   const courseScope = (accountScope: string, courseId: string) =>
@@ -692,6 +708,8 @@ export function createStore(
     versionText,
   });
   const learning = createSqlLearningStore(prepare, transaction, () => clock().toISOString());
+  const graph = graphRepository(prepare, { transaction, timestamp });
+  const notes = createSqlNotesStore(prepare, transaction, () => clock().toISOString()); // owner: notes
   let closed = false;
   // Keep two weeks of day-plan history, measured from the newest saved day.
   const DAY_PLAN_KEEP_DAYS = 14;
@@ -754,6 +772,7 @@ export function createStore(
   return {
     ...personalReports,
     learning,
+    notes, // owner: notes
     courseIntelligence() {
       return prepare(
           "SELECT payload FROM course_intelligence p WHERE version=(SELECT MAX(version) FROM course_intelligence WHERE id=p.id) ORDER BY id",
@@ -868,7 +887,10 @@ export function createStore(
               .length / count
           : 0;
         const drift: string[] = [];
-        if (complete && baseline && Number(baseline.record_count) >= 5) {
+        // owner: T30: a Graph source's set is built from Microsoft's own delta, whose removals are
+        // authoritative (a student archiving mail), so a drop there is real, not a failed read.
+        const deltaAuthoritative = source.scope.startsWith("graph_");
+        if (complete && baseline && !deltaAuthoritative && Number(baseline.record_count) >= 5) {
           if (count < Number(baseline.record_count) * 0.3)
             drift.push("record_count_drop");
           if (
@@ -1989,5 +2011,25 @@ export function createStore(
       return migrationBackup && existsSync(migrationBackup) ? migrationBackup : null;
     },
     ...courseCore,
+    ...graph,
+    sourceResources(sourceId: string) {
+      return (
+        prepare(
+          `SELECT r.*, v.payload, COALESCE(c.completed, 0) AS completed
+           FROM resources r JOIN resource_versions v ON v.resource_id = r.id AND v.version = r.version
+           LEFT JOIN completions c ON c.resource_id = r.id WHERE r.source_id = ? AND r.deleted = 0 ORDER BY r.external_id`,
+        ).all(sourceId) as Row[]
+      ).map(readResource);
+    },
+    courseResources(course: CourseRef) {
+      return (
+        prepare(
+          `SELECT r.*, v.payload, COALESCE(c.completed, 0) AS completed, s.scope AS source_scope
+           FROM resources r JOIN resource_versions v ON v.resource_id = r.id AND v.version = r.version
+           JOIN sources s ON s.id = r.source_id LEFT JOIN completions c ON c.resource_id = r.id
+           WHERE s.account_scope = ? AND s.course_id = ? AND r.deleted = 0 ORDER BY r.source_id, r.external_id`,
+        ).all(course.accountScope, course.courseId) as Row[]
+      ).map((row) => ({ ...readResource(row), scope: String(row.source_scope) }));
+    },
   };
 }
