@@ -84,7 +84,7 @@ export class VoiceSession {
     live.seen.add(operationId);
     if (live.seen.size > 256) { this.stop("too-long"); return { status: "stopped" }; }
     live.busy = true;
-    this.publish({ phase: 'processing', token: live.token });
+    this.publish({ phase: 'transcribing', token: live.token });
     try {
       const text = (await live.transport.transcribe(audio, live.abort.signal)).trim();
       if (!this.current(live)) {
@@ -99,12 +99,13 @@ export class VoiceSession {
         if (this.live === live) this.stop('context-changed');
         return { status: 'stopped', operationId };
       }
+      this.publish({ phase: 'working', token: live.token });
       const result = await this.options.dispatch(text, audio.turn?.context ?? {}, { signal: live.abort.signal, current: () => this.current(live), operationId });
       if (!this.current(live)) { if (this.live === live) this.stop('context-changed'); return { status: 'stopped', operationId }; }
       this.options.event({ type: 'result', token: live.token, operationId, text, result });
       return { status: 'dispatched', operationId };
     } catch {
-      if (this.live === live) this.stop('disconnected');
+      if (this.live === live) this.stop('transport-unavailable');
       return { status: 'stopped', operationId };
     } finally {
       live.busy = false;

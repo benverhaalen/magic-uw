@@ -1,5 +1,15 @@
 # My Magic UW desktop handoff
 
+## 2026-09-27 — Calendar classes and local microphone feedback
+
+This integrated slice connects Calendar to the saved enrolled Course Search & Enroll schedule. Week and month run Sunday–Saturday, with class/exam provenance, type filters, titled month previews and local personal-event create/edit/delete. Meetings use the exact planning account and captured term; lecture/lab/discussion subtype is not invented. The live profile already contains five enrolled packages and scheduled meetings; the older visible build lacked this projection.
+
+The center microphone now shows real input-level Listening/Hearing, Transcribing, Working, Stop and failure feedback. Local navigation can match the current included course by saved name/code/term and asks for clarification when ambiguous. Navigation uses the last available snapshot, with no worker request or provider generation; unsupported speech stays fenced. Human mic capture and connected-agent/Jev computer control are not established by these checks.
+
+Validation: full TypeScript and desktop/website builds, 48 focused tests, and five final Calendar geometry/enrollment checks passed. A closed copied-data Electron run verified actual saved classes in the initial week viewport, Sunday-first week/month, class details/focus, filters, month fit, and personal create → reload → edit → delete → reload. No native error chunks were observed. The first reload test clicked during startup; an exact-sidebar retry completed the journey. Private evidence: `work/desktop-build/recovery-20260927/calendar-mic-native/receipt.json`, `week.png`, `month.png`, and `personal-edited.png`.
+
+The visible user window remains `e7746ca` until controlled promotion; this source publication is not a runtime-update receipt. Preserve the populated profile and drafts. Fresh fetch before this batch still found main `611f824`; Nate's snapshot/per-page optimization remains separately owned.
+
 ## 2026-09-27 — main is the delivery target; backend wave reconciled
 
 Ben explicitly requested continuously publishing finished work to `main`. The existing `codex/desktop-design-integration` checkout remains the sole integration workspace; tested coherent checkpoints are reconciled with fresh `origin/main` and pushed normally to `main`, with no force push. The earlier frontend-only branch instruction below is superseded.

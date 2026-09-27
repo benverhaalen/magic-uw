@@ -14,6 +14,11 @@
 .mc-calendar-find { border:0; background:var(--magic-fill-action); color:var(--magic-ink-action)!important; border-radius:var(--magic-radius-control); padding:11px 15px; font-size:13px!important; display:flex; gap:22px; align-items:center; }
 .mc-calendar-find:hover { background:var(--magic-fill-action-hover); }
 .mc-calendar-meta { display:flex; gap:16px; flex-wrap:wrap; color:var(--magic-ink-muted); font-size:11px; margin:14px 0; }
+.mc-calendar-filters { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 8px; }
+.mc-calendar-filters label { display:inline-flex; align-items:center; gap:6px; padding:5px 9px; border:1px solid var(--magic-line-quiet); border-radius:999px; background:var(--magic-surface-quiet); font-size:12px; cursor:pointer; }
+.mc-calendar-filters label:has(input:checked) { background:var(--magic-surface-workspace); border-color:var(--magic-ink-muted); }
+.mc-calendar-filters input { accent-color:var(--magic-ink); margin:0; }
+.mc-calendar-schedule-note { margin:0 0 8px; color:var(--magic-ink-muted); font-size:12px; line-height:1.4; }
 .mc-calendar-scroll { overflow:auto; min-height:0; flex:1; scrollbar-gutter:stable; }
 .mc-calendar-week { min-width:820px; }
 .mc-calendar-days,.mc-calendar-all-day,.mc-calendar-time-grid { display:grid; grid-template-columns:58px repeat(7,minmax(0,1fr)); }
@@ -55,6 +60,14 @@
 .mc-calendar-review h3 { font:500 19px var(--magic-font-editorial); margin:0; }
 .mc-calendar-review p { font-size:12px; line-height:1.5; margin:8px 0; }
 .mc-calendar-review [role=alert] { color:#8a2f25; }
+.mc-calendar-personal-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 14px; }
+.mc-calendar-personal-form .mc-calendar-review-heading,.mc-calendar-personal-form > p,.mc-calendar-personal-form > [role=alert],.mc-calendar-personal-form > .mc-calendar-plan-actions { grid-column:1 / -1; }
+.mc-calendar-personal-form label { display:flex; flex-direction:column; gap:5px; font-size:12px; }
+.mc-calendar-personal-form input:not([type=checkbox]),.mc-calendar-personal-form textarea { min-width:0; padding:7px 9px; border:1px solid var(--magic-line-quiet); border-radius:var(--magic-radius-control); background:var(--magic-surface-workspace); font-size:13px; }
+.mc-calendar-personal-form textarea { resize:vertical; min-height:46px; }
+.mc-calendar-personal-form .mc-calendar-personal-check { flex-direction:row; align-items:center; }
+.mc-calendar-personal-times { display:flex; gap:10px; }
+.mc-calendar-personal-times label { flex:1; }
 .mc-calendar-date-label { display:flex; align-items:center; gap:10px; font-size:12px; }
 .mc-calendar-date-label input { padding:5px; background:var(--magic-surface-raised); border:1px solid var(--magic-line-quiet); border-radius:5px; }
 .mc-calendar-suggestion { display:flex; gap:22px; align-items:center; justify-content:space-between; padding-top:12px; margin-top:12px; border-top:1px solid var(--magic-line-quiet); }
@@ -105,6 +118,8 @@
 /* Month occupies the available pane. Week keeps its own scrollable time grid. */
 .mc-calendar > .mc-calendar-toolbar,
 .mc-calendar > .mc-calendar-meta,
+.mc-calendar > .mc-calendar-filters,
+.mc-calendar > .mc-calendar-schedule-note,
 .mc-calendar > .mc-calendar-feedback,
 .mc-calendar > .mc-calendar-empty { flex-shrink:0; }
 .mc-calendar-scroll--month { scrollbar-gutter:auto; }
@@ -118,6 +133,22 @@
 .mc-calendar-month .mc-calendar-event-detail,
 .mc-calendar-month .mc-calendar-event-course { font-size:.6875rem; line-height:.875rem; }
 .mc-calendar-month .mc-calendar-more { flex-shrink:0; box-sizing:border-box; height:1.5rem; min-width:0; max-width:100%; padding:0 .3125rem; font-size:.75rem!important; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* A compact title and disclosure share two short rows so crowded dates stay scannable. */
+.mc-calendar-month-days section { position:relative; padding:.1875rem; gap:.125rem; }
+.mc-calendar-month .mc-calendar-day-number { height:1.125rem; line-height:1.125rem; padding:0 .25rem; }
+.mc-calendar-month .mc-calendar-event--compact { display:block; height:1.25rem; min-height:1.25rem; padding:.125rem .25rem; }
+.mc-calendar-month .mc-calendar-event-title { font-size:.6875rem; line-height:1rem; }
+.mc-calendar-month .mc-calendar-event-detail,
+.mc-calendar-month .mc-calendar-event-course { display:none; }
+.mc-calendar-month .mc-calendar-more { position:absolute; top:.1875rem; left:.1875rem; height:1.125rem; max-width:calc(100% - 2.75rem); padding:0 .25rem; font-size:.6875rem!important; }
+/* Keep deadlines reachable without pushing the student's timed classes below the fold. */
+.mc-calendar-all-day > div { box-sizing:border-box; height:3.125rem; min-height:0; padding:.1875rem .25rem; gap:.125rem; overflow:hidden; }
+.mc-calendar-all-day > span { padding:.375rem .1875rem; }
+.mc-calendar-all-day .mc-calendar-event--compact { display:block; height:1.25rem; min-height:1.25rem; padding:.125rem .25rem; }
+.mc-calendar-all-day .mc-calendar-event-title { display:block; font-size:.6875rem; line-height:1rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.mc-calendar-all-day .mc-calendar-event-detail,
+.mc-calendar-all-day .mc-calendar-event-course { display:none; }
+.mc-calendar-all-day .mc-calendar-more { box-sizing:border-box; height:1.125rem; min-width:0; max-width:100%; padding:0 .25rem; font-size:.6875rem!important; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 @media (max-height:700px) {
   .mc-calendar { padding:10px 16px 6px; }
   .mc-calendar-meta { margin:8px 0; }
