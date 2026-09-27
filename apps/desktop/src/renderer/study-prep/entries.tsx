@@ -11,6 +11,12 @@ import { ItemSpace, dateLine } from "./ItemSpace";
 import { Icon, type IconName } from "./icons";
 import { prepQuery } from "./api";
 
+// ---------- Opening Study & Learn (the app shell listens and navigates) ----------
+export const STUDY_LEARN_EVENT = "magic:open-study-learn";
+export function openStudyLearn(): void {
+  window.dispatchEvent(new CustomEvent(STUDY_LEARN_EVENT));
+}
+
 // ---------- Opening a space from anywhere ----------
 export interface OpenItem {
   courseId: string;
@@ -174,8 +180,8 @@ export interface PrepFirstTarget {
   kind: string;
   submissionTypes?: string[];
   submitted?: boolean | null;
-  submission?: { submittedAt?: string } | null;
-  lockAt?: string;
+  submission?: { submittedAt?: string | null } | null;
+  lockAt?: string | null;
 }
 const SKIP_KEY = "magic:prep-first-skip";
 const skipped = (): Set<string> => {

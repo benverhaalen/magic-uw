@@ -13,6 +13,8 @@ export {
   PrepFirstPrompt,
   UpcomingAssessments,
   openItemSpace,
+  openStudyLearn,
+  STUDY_LEARN_EVENT,
   openWithPrep,
   refreshStudyLists,
   shouldAskPrepFirst,
