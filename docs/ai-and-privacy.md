@@ -149,6 +149,10 @@ It drives every path above with recording fakes and asserts four things:
   - A wrapped key that can no longer be unwrapped leaves sealed rows readable only as their clear part; the app never overwrites the key.
   - Session note bodies (`packages/notes`) are not sealed.
 
+## Accounts and payments
+
+An optional My Magic UW account (built, not yet live) sends the student's **email address** to our Supabase project to sign in, and records whether that account bought the app: the Lemon Squeezy order id, customer id, variant, amount, currency, date, test-mode flag and paid/refunded status. No coursework, course names, grades, UW identifiers or anything read from UW goes there. Lemon Squeezy, as merchant of record, holds the buyer's name, address and payment details; our webhook ignores them. Having an account or paying grants no data access and does not change hosted-sharing consent. Details: [accounts and payments](accounts-and-payments.md).
+
 ## Local model selection
 
 The integrated route uses [llmfit](https://github.com/AlexsJones/llmfit) for hardware recommendations and selects a compatible **already installed** Ollama model. The adapter checks installed tag, quantization, memory fit, and context instead of guessing a fallback. Missing tools or suitable weights produce an unavailable state, never hosted inference.

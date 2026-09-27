@@ -36,6 +36,7 @@ import { CourseSpaceDetails } from "./CourseSpaceDetails";
 import { NotificationsMenu } from "./NotificationsMenu";
 import { RememberSignIn } from "./RememberSignIn"; // owner: T05e
 import { FloatingChat, FloatingChatSetting, chatWarmPolicy, openFloatingChat } from "./floating-chat";
+import { AccountSection } from "./AccountSection"; // owner: accounts
 
 type View = DesktopView;
 // owner: T05b. Route slots, each rendering nothing until its task fills it: the notebook (T43),
@@ -1509,6 +1510,7 @@ function Privacy({
         )}
       </section>
       <FloatingChatSetting /* owner: floating-chat */ />
+      <AccountSection /> {/* owner: accounts */}
       <section className="settings-section danger-section">
         <h2>Delete local data</h2>
         <p>
