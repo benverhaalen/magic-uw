@@ -4,24 +4,26 @@
  * grounded answer. Code first (0 tokens); the model only classifies what code missed, never
  * gets tools, and never decides an ID, a date or a permission.
  *
- * Latency: when a command arrives, the AI branch's preparation (client lookup, catalogue
- * prompt, cache lookup) starts at once and overlaps the code resolver; the send itself is gated
- * on the resolver's verdict (`speculation: "gate"`, the default), so a code hit bills nothing and
- * a miss starts the call as soon as preparation is done. `race` (send at once, abort on a code
- * hit) is kept for measurement: in this single-threaded worker the synchronous resolver answers
- * before the send's first await resumes, so it measured the same as gate (see the architecture
- * doc, "Command bar and intent router").
+ * Routing is static (`routes.ts`): an action code recognises runs its measured route directly. A
+ * `code` route never acquires the student's client or touches the pool; a `model` route (the
+ * grounded ask) goes straight to the course's warm interactive session, pre-warmed when the bar
+ * opens, with no classify call. Only an utterance code can't place goes to the classify call, and
+ * only then is the client acquired (`speculation: "gate"`, the default). `race` (send at once,
+ * abort on a code hit) is kept for measurement: in this single-threaded worker the synchronous
+ * resolver answers before the send's first await resumes, so it measured the same as gate (see the
+ * architecture doc, "Command bar and intent router").
  */
 import { randomUUID } from "node:crypto";
 import { courseInclusion } from "../access";
 import type { CommandOutcome, IntentCandidate, IntentCommand, IntentCommandResult, IntentSlots } from "@magic/contracts";
 import type { ModelRunner, WarmRequest } from "../../../runner/src/index";
 import { buildPrompt, memoryArtifactStore, memoryLedgerStore, type ArtifactStore, type CourseFrame, type LedgerStore } from "../../../packs/core/src/index";
-import { classifyPack, SLOT_GLOSSARY, type ClassifyInput, type ClassifyOutput, type ClassifySlots } from "../../../packs/intent/src/index";
+import { askPack, classifyPack, SLOT_GLOSSARY, type ClassifyInput, type ClassifyOutput, type ClassifySlots } from "../../../packs/intent/src/index";
 import { readPackArtifact, runPack } from "../jobs/pack";
 import { defaultActions } from "./adapters";
 import { groundedAsk, refersBack, type PreviousExchange } from "./ask";
-import { coursePrefixes, type CoursePrefixSource } from "../course-facts/prefix"; // owner: course-facts
+import { routeOf } from "./routes";
+import { coursePackCatalogue, coursePrefixes, type CoursePrefixSource } from "../course-facts/prefix"; // owner: course-facts
 import { createCourseBriefs } from "../course-facts/brief";
 import { authorizer } from "./consent";
 import { buildIndex, createResolve, findCourseMentions, indexSignature, norm, refreshTopics, type IntentIndex } from "./courses";
@@ -56,6 +58,8 @@ export interface IntentRouterDeps {
 }
 
 const zero = () => ({ in: 0, cached: 0, out: 0 });
+/** The client a `code` route runs with: none. */
+const noClient = async (): Promise<ModelRunner | null> => null;
 type Tokens = ReturnType<typeof zero>;
 const add = (a: Tokens, b: Tokens): Tokens => ({ in: a.in + b.in, cached: a.cached + b.cached, out: a.out + b.out });
 const INDEX_RECHECK_MS = 2000;
@@ -140,7 +144,7 @@ export function createIntentRouter(deps: IntentRouterDeps) {
       .filter(([, v]) => v !== undefined && v !== null)
       .map(([k, v]) => `${k}=${Array.isArray(v) ? v.join(", ") : String(v)}`);
 
-  async function classify(text: string, hints: IntentSlots, contextCourse: ResolvedCourse | null, runnerP: Promise<ModelRunner | null>, signal: AbortSignal): Promise<ClassifyAttempt> {
+  async function classify(text: string, hints: IntentSlots, contextCourse: ResolvedCourse | null, runner: () => Promise<ModelRunner | null>, signal: AbortSignal): Promise<ClassifyAttempt> {
     // owner: privacy: the command and hints are the student's words; the catalogue and courses are teaching text.
     const p = protection.request("classify");
     const plainFrame = classifyFrame();
@@ -152,7 +156,7 @@ export function createIntentRouter(deps: IntentRouterDeps) {
       currentCourse: contextCourse ? protection.prefix(courseDisplay(contextCourse)) : null,
       hints: hintsOf(hints).map((h) => p.text(h, "personal")),
     };
-    const runner = await runnerP;
+    const client = await runner();
     if (signal.aborted) return { status: "failed", reason: "Cancelled." };
     const prompt = buildPrompt(classifyPack, frame, input, []);
     const receiptIds: string[] = [];
@@ -162,20 +166,20 @@ export function createIntentRouter(deps: IntentRouterDeps) {
       () => now().toISOString(),
       receiptIds,
     );
-    if (!runner) {
+    if (!client) {
       // No client: a cached classification still serves (0 tokens); a miss is the code path only.
       const art = readPackArtifact(artifacts, classifyPack, frame, input, []);
       if (art) return { status: "done", output: restoreArgs(art.output, p.restore), cached: true, tokens: zero(), model: art.model };
       return { status: "no_client" };
     }
-    const result = await runPack({ runner, artifacts, ledger, authorize, now: () => now().getTime() }, classifyPack, frame, input, [], { lane: "interactive", scope: "command", signal });
+    const result = await runPack({ runner: client, artifacts, ledger, authorize, now: () => now().getTime() }, classifyPack, frame, input, [], { lane: "interactive", scope: "command", signal });
     if (result.status === "done") return { status: "done", output: restoreArgs(result.artifact.output, p.restore), cached: result.cached, tokens: result.cached ? zero() : result.artifact.usage, model: result.artifact.model }; // owner: privacy
     if (result.status === "blocked") return { status: "blocked", reason: result.reason };
     if (result.status === "needs_student") return { status: "failed", reason: "The AI's reading of that request didn't pass the app's checks." };
     return { status: "failed", reason: result.message };
   }
 
-  function context(host: IntentHost, signal: AbortSignal, runnerP: Promise<ModelRunner | null>, spent: { tokens: Tokens }, request: ActionContext["request"]): ActionContext {
+  function context(host: IntentHost, signal: AbortSignal, runner: () => Promise<ModelRunner | null>, spent: { tokens: Tokens }, request: ActionContext["request"]): ActionContext {
     return {
       request,
       store,
@@ -203,7 +207,7 @@ export function createIntentRouter(deps: IntentRouterDeps) {
         const said = norm(question);
         const mentions = findCourseMentions(current(), said);
         const searchText = mentions.length ? [...mentions].reverse().reduce((t, m) => `${t.slice(0, m.start)} ${t.slice(m.end)}`, said).replace(/\s+/g, " ").trim() : undefined;
-        const r = await groundedAsk({ store, runner: () => runnerP, artifacts, ledger, now, resourceId, protection, timeZone, coursePrefix /* owner: course-facts */ }, question, list, s, { previous, ...(searchText ? { searchText } : {}) }); // owner: privacy
+        const r = await groundedAsk({ store, runner, artifacts, ledger, now, resourceId, protection, timeZone, coursePrefix /* owner: course-facts */ }, question, list, s, { previous, ...(searchText ? { searchText } : {}) }); // owner: privacy
         if (!r.notFound && !r.unavailable) exchanges.set(key, { question, answer: r.text, at: now().getTime() });
         spent.tokens = add(spent.tokens, r.tokens);
         return r;
@@ -234,7 +238,7 @@ export function createIntentRouter(deps: IntentRouterDeps) {
     }
   }
 
-  function runAction(spec: AnyAction, args: ResolvedArgs, host: IntentHost, signal: AbortSignal, runnerP: Promise<ModelRunner | null>, spent: { tokens: Tokens }, request: ActionContext["request"] = {}, allowedActions?: readonly string[]) {
+  function runAction(spec: AnyAction, args: ResolvedArgs, host: IntentHost, signal: AbortSignal, runner: () => Promise<ModelRunner | null>, spent: { tokens: Tokens }, request: ActionContext["request"] = {}, allowedActions?: readonly string[]) {
     // The authoritative dispatch boundary, after code/model resolution and before effects.
     signal.throwIfAborted();
     if (allowedActions && !allowedActions.includes(spec.name))
@@ -250,7 +254,7 @@ export function createIntentRouter(deps: IntentRouterDeps) {
         return { kind: "answer", unavailable: "This item is no longer available in the current course. Choose it again." };
     }
     signal.throwIfAborted();
-    return spec.run(args, context(host, signal, runnerP, spent, request));
+    return spec.run(args, context(host, signal, runner, spent, request));
   }
 
   function outcomeOf(spec: AnyAction, args: ResolvedArgs, result: unknown) {
@@ -266,7 +270,7 @@ export function createIntentRouter(deps: IntentRouterDeps) {
   async function handle(command: IntentCommand, host: IntentHost, signal: AbortSignal): Promise<IntentCommandResult> {
     const mode = command.mode ?? "run";
     if (mode === "preview") return preview(command.text, command.context?.courseId);
-    if (mode === "prewarm") return prewarm();
+    if (mode === "prewarm") return prewarm(command.context?.courseId);
     const t0 = clock();
     const text = command.text.trim();
     const spent = { tokens: zero() };
@@ -277,26 +281,30 @@ export function createIntentRouter(deps: IntentRouterDeps) {
     };
     if (!text) return done({ status: "clarify", question: "What would you like to do?", candidates: [] }, "none", null);
 
-    // Speculation: the AI branch starts preparing now, overlapping the code resolver.
-    const runnerP = acquire();
+    // The client is acquired only when a route needs the model: a code route never touches it.
+    let acquired: Promise<ModelRunner | null> | null = null;
+    const runner = () => (acquired ??= acquire());
     const aiAbort = new AbortController();
     const onAbort = () => aiAbort.abort();
     signal.addEventListener("abort", onAbort, { once: true });
     const contextCourse = command.context?.courseId ? resolve.courseById(command.context.courseId) : null;
-    const raced = speculation === "race" ? classify(text, {}, contextCourse, runnerP, aiAbort.signal).catch((): ClassifyAttempt => ({ status: "failed", reason: "Cancelled." })) : null;
+    const raced = speculation === "race" ? classify(text, {}, contextCourse, runner, aiAbort.signal).catch((): ClassifyAttempt => ({ status: "failed", reason: "Cancelled." })) : null;
     try {
       const code: CodeOutcome = deps.codePath === false ? { status: "miss", slots: {} } : resolveCode(text, command.context?.courseId, { registry, resolve, index, budgetMs: deps.resolverBudgetMs });
       if (code.status === "hit") {
         aiAbort.abort();
         const spec = registry.get(code.action)!;
-        const result = await runAction(spec, code.args, host, signal, runnerP, spent, command.context, command.allowedActions);
+        // The static route decides: a code route runs with no client at all (0 tokens, no pool); a
+        // model route (the ask) acquires it only when it sends, on the course's warm session.
+        const route = routeOf(spec.name);
+        const result = await runAction(spec, code.args, host, signal, route?.route === "code" ? noClient : runner, spent, command.context, command.allowedActions);
         return done(outcomeOf(spec, code.args, result), "code", spec.name, code.args.course);
       }
       if (code.status === "clarify") {
         aiAbort.abort();
         return done({ status: "clarify", question: code.question, candidates: code.candidates }, "code", code.action);
       }
-      const attempt = await (raced ?? classify(text, code.slots, contextCourse, runnerP, aiAbort.signal));
+      const attempt = await (raced ?? classify(text, code.slots, contextCourse, runner, aiAbort.signal));
       if (attempt.status === "no_client") return done({ status: "unavailable", reason: NO_CLIENT_REASON }, "none", null);
       if (attempt.status !== "done") return done({ status: "unavailable", reason: attempt.reason }, "none", null);
       spent.tokens = add(spent.tokens, attempt.tokens);
@@ -321,7 +329,7 @@ export function createIntentRouter(deps: IntentRouterDeps) {
       }
       const checked = resolveSlots(spec, slots, resolve, text, command.context?.courseId);
       if (!checked.ok) return done({ status: "clarify", question: checked.question, candidates: checked.candidates.length ? checked.candidates : alternatives }, path, spec.name, undefined, attempt.model);
-      const result = await runAction(spec, checked.args, host, signal, runnerP, spent, command.context, command.allowedActions);
+      const result = await runAction(spec, checked.args, host, signal, runner, spent, command.context, command.allowedActions);
       return done(outcomeOf(spec, checked.args, result), path, spec.name, checked.args.course, attempt.model);
     } finally {
       signal.removeEventListener("abort", onAbort);
@@ -341,8 +349,24 @@ export function createIntentRouter(deps: IntentRouterDeps) {
     return { status: "preview", hint: null, action: null, slots: code.slots, ...base, latencyMs: clock() - t0 };
   }
 
-  /** Called when the bar opens: builds the index and the prefix, finds the client, warms it. */
-  async function prewarm(): Promise<IntentCommandResult> {
+  /**
+   * The ask's byte-stable prefix for one course, exactly as `groundedAsk` builds it (the protected
+   * course prefix, or the pack catalogue when the course has none), so the warm session is the one
+   * the ask lands on.
+   */
+  function askWarmRequest(courseId: string): WarmRequest | null {
+    const course = resolve.courseById(courseId);
+    if (!course) return null;
+    const brief = protection.prefix(coursePrefix(course.ref)?.text ?? coursePackCatalogue());
+    const prompt = buildPrompt(askPack, { courseId: course.ref, course: "", skeleton: "", policy: "", brief }, { question: "" }, []);
+    return { systemPrompt: prompt.systemPrompt, pack: { id: askPack.id, version: askPack.version }, tier: askPack.tier, lane: "interactive", courseId: course.ref };
+  }
+
+  /**
+   * Called when the bar opens: builds the index and the prefix, finds the client, and warms the
+   * classify session and, with a course open, that course's ask session (the `ask` model route).
+   */
+  async function prewarm(courseId?: string): Promise<IntentCommandResult> {
     const t0 = clock();
     index();
     const frame = classifyFrame();
@@ -354,6 +378,8 @@ export function createIntentRouter(deps: IntentRouterDeps) {
       await deps
         .warm({ systemPrompt: prompt.systemPrompt, pack: { id: classifyPack.id, version: classifyPack.version }, tier: classifyPack.tier, lane: "interactive", courseId: frame.courseId })
         .catch(() => undefined);
+      const ask = courseId ? askWarmRequest(courseId) : null;
+      if (ask) await deps.warm(ask).catch(() => undefined);
     }
     return { status: "ready", ai: !!runner, path: "none", latencyMs: clock() - t0, tokens: zero() };
   }

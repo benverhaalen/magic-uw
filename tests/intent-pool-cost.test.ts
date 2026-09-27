@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { createCore } from "@magic/core";
 import { CONSENT_DISCLOSURE_VERSION } from "@magic/domain";
 import type { IntentCommandResult } from "@magic/contracts";
-import { CLAUDE_TIER_MODELS, createClaudeBackend, createModelRunner, createSessionPool, promptCacheMinimum, type CliCommand } from "../packages/runner/src/index";
+import { CLAUDE_TIER_MODELS, INTERACTIVE_HISTORY_TOKENS, createClaudeBackend, createModelRunner, createSessionPool, promptCacheMinimum, type CliCommand } from "../packages/runner/src/index";
 import { askPack, classifyPack } from "../packages/packs/intent/src/index";
 import { createIntentRouter } from "../packages/core/src/intent/index";
 import { refersBack } from "../packages/core/src/intent/ask";
@@ -127,7 +127,7 @@ async function turns(h: Awaited<ReturnType<typeof pooledBar>>, replyTokens: numb
   return out;
 }
 
-test("a burst of asks: every turn sends its question and passages only, so input doesn't grow past turn 2", { timeout: 60_000 }, async () => {
+test("a burst of asks: every turn sends its question and passages only, and the warm session's kept history stays within its budget, so input stays flat", { timeout: 60_000 }, async () => {
   const probe = await pooledBar([]);
   const recursion = probe.pid("Recursion notes");
   await probe.close();
@@ -142,12 +142,21 @@ test("a burst of asks: every turn sends its question and passages only, so input
       "why does every recursive method need a base case",
       "explain the base case in recursion",
     ];
-    for (const text of burst) assert.equal((await h.run(text, "c400")).status, "answer", text);
+    const ms: number[] = [];
+    for (const text of burst) {
+      const t0 = performance.now();
+      assert.equal((await h.run(text, "c400")).status, "answer", text);
+      ms.push(Math.round(performance.now() - t0));
+    }
     const t = await turns(h, tokens(JSON.stringify(reply.output)));
     assert.equal(t.length, burst.length);
-    for (const [i, x] of t.entries()) assert.equal(x.history, 0, `turn ${i + 1} carries ${x.history} tokens of earlier turns`);
-    const second = t[1]!.billed;
-    for (const [i, x] of t.slice(2).entries()) assert.ok(x.billed <= second, `turn ${i + 3}: ${x.billed} > turn 2's ${second}`);
+    console.log(`INTENT-POOL-COST ${JSON.stringify({ budget: INTERACTIVE_HISTORY_TOKENS, billed: t.map((x) => x.billed), history: t.map((x) => x.history), spawnedBefore: t.map((x) => x.spawned), total: t.reduce((n, x) => n + x.billed, 0), ms })}`);
+    // Each message is the question and its passages only (plus the one exchange a back-reference
+    // needs); the warm session keeps at most its history budget of earlier turns, then rotates.
+    for (const [i, x] of t.entries()) assert.ok(x.history <= INTERACTIVE_HISTORY_TOKENS, `turn ${i + 1} carries ${x.history} tokens of earlier turns (budget ${INTERACTIVE_HISTORY_TOKENS})`);
+    const first = t[0]!.billed;
+    for (const [i, x] of t.entries()) assert.ok(x.billed <= first + INTERACTIVE_HISTORY_TOKENS, `turn ${i + 1}: ${x.billed} > turn 1's ${first} + the ${INTERACTIVE_HISTORY_TOKENS} budget`);
+    assert.ok(t.slice(1).some((x) => !x.spawned), "a follow-up ran in the warm session, not a new one");
   } finally {
     await h.close();
   }

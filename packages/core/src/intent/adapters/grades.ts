@@ -189,16 +189,18 @@ export const gpaWhatIf: ActionSpec<ResolvedArgs> = {
   label: () => "GPA what-if",
   // owner: gpa. Planning records never leave code: computed from the saved course history and this term's enrollment.
   async run(a, ctx) {
+    // A "ran" result (the command bar shows its message), so the student sees which action answered.
+    const ran = (message: string) => ({ message });
     const records = ctx.store.planningRecords();
     const history = records.flatMap((r) => (r.kind === "course_history"
       ? [{ id: r.id, kind: "course_history" as const, provenance: r.provenance, courseKey: r.courseKey, termCode: r.termCode, state: r.state, credits: r.credits, grade: r.grade, gpaEligible: r.gpaEligible }]
       : []));
     const semesters = gpaBySemester(history);
     const cumulative = semesters.at(-1)?.cumulativeGpa ?? null;
-    if (!history.length) return reply("Connect Course Search & Enroll in My UW to compute your GPA from your course history.");
+    if (!history.length) return ran("Connect Course Search & Enroll in My UW to compute your GPA from your course history.");
     const target = Number(/([0-3](?:.d{1,3})?|4(?:.0{1,3})?)/.exec(a.text)?.[1] ?? Number.NaN);
     const now = cumulative === null ? "not enough graded credits yet" : cumulative.toFixed(3);
-    if (!Number.isFinite(target)) return reply(`Your cumulative GPA from your course history is ${now}. Try "what do I need this term for a 3.5", or open My UW › GPA for what-if grades.`);
+    if (!Number.isFinite(target)) return ran(`Your cumulative GPA from your course history is ${now}. Try "what do I need this term for a 3.5", or open My UW › GPA for what-if grades.`);
     const enrolled = records.filter((r) => r.kind === "enrollment_package" && r.enrollmentState === "enrolled");
     const term = enrolled.map((r) => (r.kind === "enrollment_package" ? r.termCode : "")).sort()[0];
     const catalog = records.filter((r) => r.kind === "catalog_course");
@@ -207,7 +209,7 @@ export const gpaWhatIf: ActionSpec<ResolvedArgs> = {
       return { courseKey: r.kind === "enrollment_package" ? r.courseKey : "", credits: c && c.kind === "catalog_course" && c.creditMin !== null ? c.creditMin : Number.NaN };
     });
     const r = gradesNeeded(history, current, target);
-    return reply(r.status === "unknown" ? `${r.reason} Your cumulative is ${now}; add credits in My UW › GPA.`
+    return ran(r.status === "unknown" ? `${r.reason} Your cumulative is ${now}; add credits in My UW › GPA.`
       : r.status === "already_met" ? `A ${target.toFixed(2)} cumulative is already reached (${r.achievableCumulative.toFixed(3)}), even with an F this term.`
       : r.status === "reachable" ? `To reach ${target.toFixed(2)} cumulative you need at least ${r.neededGrade} in every class this term (now ${now}).`
       : `${target.toFixed(2)} isn't reachable this term; the best you can reach is ${r.bestAchievableCumulative.toFixed(3)} (now ${now}).`);

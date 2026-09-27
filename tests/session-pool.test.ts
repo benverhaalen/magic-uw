@@ -26,7 +26,7 @@ const chat = { id: "chat", version: "v2" };
 const SYSTEM = "Role and synthetic course brief for Example 101.";
 
 type Log = { argv: string[]; stdin: string | null; event?: string };
-async function harness(responses: unknown[], extra: { rotateAtTokens?: number; maxLive?: number; turns?: "fresh" | "conversation" } = {}) {
+async function harness(responses: unknown[], extra: { rotateAtTokens?: number; maxLive?: number; turns?: "bounded" | "fresh" | "conversation"; historyBudgetTokens?: number } = {}) {
   const dir = await mkdtemp(join(tmpdir(), "pool-"));
   const workDir = join(dir, "work");
   await mkdir(workDir);
@@ -86,18 +86,44 @@ test("conversation turns: a warm interactive lane answers follow-ups in one proc
   }
 });
 
-test("fresh turns (the default): each follow-up goes to a spare started while the last ask answered, with the byte-identical prefix and no earlier turns", async () => {
-  const h = await harness([ok("chat", { text: "one" }), ok("chat", { text: "two" }), ok("chat", { text: "three" })]);
+test("bounded turns (the default): one warm session answers follow-ups back to back; past the history budget the next ask goes to the spare started at half of it", async () => {
+  const h = await harness([ok("chat", { text: "one" }), ok("chat", { text: "two" }), ok("chat", { text: "three" }), ok("chat", { text: "four" })], { historyBudgetTokens: 40 });
+  try {
+    const ask = { pack: chat, systemPrompt: SYSTEM, schema: answer, tier: "pass" as const, lane: "interactive" as const, courseId: "c1" };
+    // Each message plus reply is about 12 tokens (chars / 4): the spare starts after two asks, the rotation after four.
+    for (const input of ["SYNTH-Q1", "SYNTH-Q2", "SYNTH-Q3", "SYNTH-Q4"]) await h.runner.run({ ...ask, input });
+    const seq = h.events.filter((e) => e.type === "session_start" || e.type === "ask_start" || e.type === "rotate").map((e) => (e.type === "rotate" ? `rotate:${e.reason}` : e.type));
+    // No ask waits on a CLI start: after the first, every ask finds its session already running.
+    assert.deepEqual(seq.slice(0, 4), ["session_start", "ask_start", "ask_start", "session_start"], seq.join(","));
+    assert.equal(h.events.filter((e) => e.type === "rotate" && e.reason === "turn").length, 0, "no respawn per ask");
+    const log = await h.log();
+    let sinceSpawn = 0;
+    const perSession: number[] = [];
+    for (const l of log) {
+      if (l.event === "spawn") perSession.push((sinceSpawn = 0));
+      else if (l.event === "message") perSession[perSession.length - 1] = ++sinceSpawn;
+    }
+    assert.ok(perSession[0]! >= 2, `the first session answered ${perSession[0]} asks`);
+    assert.ok(h.events.some((e) => e.type === "rotate" && e.reason === "history"), "past the budget the lane rotates");
+    const spawns = log.filter((l) => l.event === "spawn");
+    assert.ok(spawns.every((s) => JSON.stringify(s.argv) === JSON.stringify(spawns[0]!.argv)), "the spare has the byte-identical prefix");
+  } finally {
+    await h.pool.close();
+  }
+});
+
+test("fresh turns (opt-in): each follow-up goes to a spare started while the last ask answered, with the byte-identical prefix and no earlier turns", async () => {
+  const h = await harness([ok("chat", { text: "one" }), ok("chat", { text: "two" }), ok("chat", { text: "three" })], { turns: "fresh" });
   try {
     const ask = { pack: chat, systemPrompt: SYSTEM, schema: answer, tier: "pass" as const, lane: "interactive" as const, courseId: "c1" };
     for (const input of ["SYNTH-Q1", "SYNTH-Q2", "SYNTH-Q3"]) await h.runner.run({ ...ask, input });
     const log = await h.log();
-    // Every message is the first one its process receives: nothing earlier is re-sent.
-    let sinceSpawn = 0;
-    for (const l of log) {
-      if (l.event === "spawn") sinceSpawn = 0;
-      else if (l.event === "message") assert.equal(++sinceSpawn, 1, `a session answered a second message: ${l.stdin}`);
-    }
+    // Every message is the first one its process receives: nothing earlier is re-sent. Counted per
+    // session from the pool's own events: a spare's spawn line can land in the CLI log after the
+    // next message (it logs once its process is up), so log order can't attribute messages.
+    const asks = new Map<string, number>();
+    for (const e of h.events) if (e.type === "ask_start") asks.set(e.session, (asks.get(e.session) ?? 0) + 1);
+    for (const [session, n] of asks) assert.equal(n, 1, `session ${session} answered ${n} asks`);
     const spawns = log.filter((l) => l.event === "spawn");
     assert.ok(spawns.length >= 3, `${spawns.length} spawns`);
     assert.ok(spawns.every((s) => JSON.stringify(s.argv) === JSON.stringify(spawns[0]!.argv)), "the same prefix file and schema for every session");
@@ -219,8 +245,8 @@ test("a usage limit inside a warm session surfaces as usage_limit and keeps the 
     const ask = { pack: chat, systemPrompt: SYSTEM, schema: answer, tier: "pass" as const, lane: "interactive" as const, courseId: "c1", input: "q" };
     await assert.rejects(h.runner.run(ask), (e: unknown) => e instanceof RunnerError && e.kind === "usage_limit");
     await h.runner.run(ask);
-    // The limit kills nothing: the only other process is the spare pre-started for the next ask.
-    assert.equal((await h.log()).filter((l) => l.event === "spawn").length, 2);
+    // The limit kills nothing: the same warm session answers the next ask (bounded turns).
+    assert.equal((await h.log()).filter((l) => l.event === "spawn").length, 1);
     assert.equal(h.events.filter((e) => e.type === "fallback").length, 0);
   } finally {
     await h.pool.close();

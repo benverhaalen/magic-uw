@@ -6,3 +6,4 @@ export { resolveDate, localDay } from "./dates";
 export { buildIndex, parseCourseName } from "./courses";
 export { groundedAsk, checkAnswer, NOT_IN_MATERIALS, ASK_TOKEN_BUDGET } from "./ask";
 export type * from "./types";
+export { ACTION_ROUTES, ASK_ROUTES, BACKGROUND_ROUTES, routeOf, type Route, type AskKind } from "./routes";
