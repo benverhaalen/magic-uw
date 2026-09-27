@@ -409,3 +409,40 @@ test("edits are validated: a real time range, and a warning when it overlaps cla
   assert.equal(overlap.ok, true);
   assert.deepEqual(overlap.overlaps, ["GEOSCI 100 Lecture"]);
 });
+
+test("tight counts only free time: classes and meetings before the deadline are subtracted", () => {
+  // Due in 36 h, estimated up to 8 h: roomy on raw hours (36 - 8 = 28 h spare).
+  const project = item("proj", { title: "Final project milestone", dueAt: "2026-10-01T07:00:00Z" });
+  const roomy = buildTodayRail([project], NOW, TZ).suggestions.find((s) => s.resourceId === "proj")!;
+  assert.doesNotMatch(roomy.reason, /tight/i);
+  // Six hours of meetings tomorrow leave 30 h free, so only 22 h spare: tight.
+  const meetings = [0, 1, 2].map((i) =>
+    item(`mtg-${i}`, {
+      kind: "event",
+      title: `Meeting ${i}`,
+      calendar: {
+        uid: `m${i}`,
+        start: `2026-09-30T${14 + i * 2}:00:00Z`,
+        end: `2026-09-30T${16 + i * 2}:00:00Z`,
+        allDay: false,
+      },
+    }),
+  );
+  const tight = buildTodayRail([project, ...meetings], NOW, TZ).suggestions.find((s) => s.resourceId === "proj")!;
+  assert.match(tight.reason, /tight/i);
+  assert.match(tight.reason, /6 h of classes and meetings/);
+});
+
+test("an accepted block keeps its reasons; only a done block swaps them for its completion", () => {
+  const block = rail.suggestions.find((s) => s.resourceId === "ps3")!;
+  const plan = [planEntry(block, rail.date, "accepted")];
+  const planned = buildTodayRail(all, NOW, TZ, plan).suggestions.find((s) => s.id === block.id)!;
+  assert.deepEqual(planned.factors, block.factors);
+  assert.equal(planned.reason, block.reason);
+  const prep = rail.suggestions.find((s) => s.type === "prep")!;
+  const plannedPrep = buildTodayRail(all, NOW, TZ, [planEntry(prep, rail.date, "accepted")]).suggestions.find((s) => s.id === prep.id)!;
+  assert.deepEqual(plannedPrep.factors, prep.factors);
+  const submitted = all.map((r) => (r.id === "ps3" ? { ...r, submitted: true } : r));
+  const done = buildTodayRail(submitted, NOW, TZ, plan).suggestions.find((s) => s.id === block.id)!;
+  assert.equal(done.reason, "Submitted on Canvas.");
+});

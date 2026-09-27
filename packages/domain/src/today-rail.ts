@@ -283,12 +283,12 @@ export function buildTodayRail(
   };
 
   // Prep: the most recent material in the same course, right before class.
+  // Why each suggestion exists, kept by key so an accepted block keeps its reasons.
+  const described = new Map<string, { reason: string; factors: string[] }>();
   const prepped = new Set<string>();
   for (const e of events.filter(
     (e) => !e.startOnly && CLASS_SESSION.test(e.title) && e.startMin - today.min >= PREP_MIN,
   )) {
-    if (suggestions.length + accepted.length - acceptedWork.length >= MAX_PREP) break;
-    if (decided.has(`prep:${e.id}`)) continue;
     const event = eventResources.find((r) => r.id === e.id)!;
     const material = live
       .filter(
@@ -300,6 +300,14 @@ export function buildTodayRail(
       )
       .sort((a, b) => (b.updatedAt ?? b.createdAt ?? "").localeCompare(a.updatedAt ?? a.createdAt ?? ""))[0];
     if (!material) continue;
+    // Recency alone does not establish assigned or relevant reading; say so.
+    const prepWhy = {
+      reason: `Before ${e.title} at ${fmt(e.startMin)}. Newest saved course material is “${material.title}”; it isn't confirmed as assigned for this session.`,
+      factors: [`Before class at ${fmt(e.startMin)}`, "Newest material, not confirmed assigned"],
+    };
+    described.set(`prep:${e.id}`, prepWhy);
+    if (decided.has(`prep:${e.id}`)) continue;
+    if (suggestions.length + accepted.length - acceptedWork.length >= MAX_PREP) continue;
     const slot = { start: e.startMin - PREP_MIN, end: e.startMin };
     if (!gaps.some(([s, g]) => s <= slot.start && slot.end <= g)) continue;
     reserve(slot.start, slot.end);
@@ -310,9 +318,7 @@ export function buildTodayRail(
       resourceId: material.id,
       title: `Prep for ${e.title}`,
       courseName: e.courseName,
-      // Recency alone does not establish assigned or relevant reading; say so.
-      reason: `Before ${e.title} at ${fmt(e.startMin)}. Newest saved course material is “${material.title}”; it isn't confirmed as assigned for this session.`,
-      factors: [`Before class at ${fmt(e.startMin)}`, "Newest material, not confirmed assigned"],
+      ...prepWhy,
       startMin: slot.start,
       endMin: slot.end,
       effort: null,
@@ -326,6 +332,21 @@ export function buildTodayRail(
   const nowMs = Date.parse(now);
   const dayMs = 86400000;
   const share = gradeShare(live);
+  // Classes, meetings, and accepted blocks already claim time before a deadline.
+  const busy: [number, number][] = [
+    ...eventResources
+      .filter((r) => r.calendar && !r.calendar.allDay && r.calendar.start.length > 10)
+      .map((r): [number, number] => {
+        const s = Date.parse(r.calendar!.start);
+        return [s, r.calendar!.end ? Date.parse(r.calendar!.end) : s + START_ONLY_MIN * 60000];
+      }),
+    ...accepted.map((p): [number, number] => [
+      nowMs + (p.block.startMin - today.min) * 60000,
+      nowMs + (p.block.endMin - today.min) * 60000,
+    ]),
+  ];
+  const busyHoursUntil = (untilMs: number) =>
+    busy.reduce((n, [s, e]) => n + Math.max(0, Math.min(e, untilMs) - Math.max(s, nowMs)), 0) / 3600000;
   const candidates = [...work.overdue, ...work.dueToday, ...work.upcoming]
     .map((w) => {
       const r = w.resource;
@@ -334,7 +355,8 @@ export function buildTodayRail(
       const lockMs = r.lockAt ? Date.parse(r.lockAt) : null;
       const hoursLeft = (ms - nowMs) / 3600000;
       const overdue = ms <= nowMs;
-      const tight = !!band && !overdue && hoursLeft - band.highMin / 60 < 24;
+      const busyHours = overdue ? 0 : busyHoursUntil(ms);
+      const tight = !!band && !overdue && hoursLeft - busyHours - band.highMin / 60 < 24;
       const tier = overdue
         ? 0
         : hoursLeft <= 24
@@ -344,7 +366,7 @@ export function buildTodayRail(
             : band?.category === "exam"
               ? 3
               : 4;
-      return { r, ms, band, lockMs, hoursLeft, overdue, tight, tier, weight: share(r) };
+      return { r, ms, band, lockMs, hoursLeft, busyHours, overdue, tight, tier, weight: share(r) };
     })
     // Overdue items are already limited by the projection; plan only the coming week.
     .filter((c) => c.overdue || c.ms - nowMs <= HORIZON_DAYS * dayMs)
@@ -356,22 +378,14 @@ export function buildTodayRail(
         a.ms - b.ms,
     );
   let budget = DAILY_BUDGET_MIN - acceptedWork.reduce((n, p) => n + p.block.endMin - p.block.startMin, 0);
+  let full = false;
   for (const c of candidates) {
-    if (suggestions.filter((s) => s.type !== "prep").length + acceptedWork.length >= MAX_WORK) break;
-    if (decided.has(`exam:${c.r.id}`) || decided.has(`work:${c.r.id}`)) continue;
     const { r, band, hoursLeft, overdue, tier, weight } = c;
     const at = localTime(r.deadline.planningAt!, timeZone);
     const isExam = band?.category === "exam";
     const days = Math.max(1, Math.ceil(hoursLeft / 24));
     const sessions = Math.min(days, 3);
-    const wanted = isExam ? (days <= 1 ? 90 : 60) : Math.min(band?.lowMin ?? 45, MAX_BLOCK_MIN);
-    const length = Math.min(wanted, budget);
-    if (length < MIN_BLOCK_MIN) break;
-    const slot = place(length, !overdue && at.date === today.date ? at.min : DAY_END);
-    if (!slot) continue;
-    budget -= length;
-    reserve(slot.end, slot.end + BREAK_MIN);
-
+    const key = `${isExam ? "exam" : "work"}:${r.id}`;
     const factors: string[] = [];
     const sentences: string[] = [];
     if (overdue) {
@@ -391,7 +405,8 @@ export function buildTodayRail(
     }
     if (tier === 2 && band) {
       factors.push("Tight");
-      sentences.push(`Tight: about ${Math.round(hoursLeft)} h left for an estimated ${hours(band.lowMin, band.highMin)}.`);
+      const busyText = c.busyHours >= 1 ? ` after ${Math.round(c.busyHours)} h of classes and meetings` : "";
+      sentences.push(`Tight: about ${Math.round(hoursLeft - c.busyHours)} h free before it's due${busyText}, for an estimated ${hours(band.lowMin, band.highMin)}.`);
     }
     if (isExam) sentences.push(sessions > 1 ? `Spaced review beats cramming; plan ${sessions} sessions before the exam.` : "Final review before the exam.");
     if (weight) {
@@ -404,8 +419,24 @@ export function buildTodayRail(
       factors.push("Dates disagree");
       sentences.push("Sources disagree on the date; planning for the earlier one.");
     }
+    described.set(key, { reason: sentences.join(" "), factors });
+    if (full || decided.has(key)) continue;
+    if (suggestions.filter((s) => s.type !== "prep").length + acceptedWork.length >= MAX_WORK) {
+      full = true;
+      continue;
+    }
+    const wanted = isExam ? (days <= 1 ? 90 : 60) : Math.min(band?.lowMin ?? 45, MAX_BLOCK_MIN);
+    const length = Math.min(wanted, budget);
+    if (length < MIN_BLOCK_MIN) {
+      full = true;
+      continue;
+    }
+    const slot = place(length, !overdue && at.date === today.date ? at.min : DAY_END);
+    if (!slot) continue;
+    budget -= length;
+    reserve(slot.end, slot.end + BREAK_MIN);
     suggestions.push({
-      id: `${isExam ? "exam" : "work"}:${r.id}`,
+      id: key,
       type: isExam ? "exam" : "work",
       resourceId: r.id,
       title: isExam
@@ -436,8 +467,13 @@ export function buildTodayRail(
     suggestions.push({
       id: p.key,
       ...p.block,
-      reason: doneBy === "canvas" ? "Submitted on Canvas." : doneBy === "student" ? "You marked this done." : "On your plan for today.",
-      factors: [],
+      reason:
+        doneBy === "canvas"
+          ? "Submitted on Canvas."
+          : doneBy === "student"
+            ? "You marked this done."
+            : (described.get(p.key)?.reason ?? "On your plan for today."),
+      factors: doneBy ? [] : (described.get(p.key)?.factors ?? []),
       effort: r ? effortBand(r) : null,
       state: doneBy ? "done" : "planned",
       doneBy,
