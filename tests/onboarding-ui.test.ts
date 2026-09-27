@@ -185,3 +185,15 @@ test("populating reports reading while a source is in flight, and empty with not
   assert.equal(summarize(snapshot(), true).outcome, "reading");
   assert.equal(summarize(snapshot({ sources: [source({})] }), false).outcome, "ready");
 });
+
+test("populating treats a finished Canvas batch as done, not reading, whatever its phase says", () => {
+  // Canvas progress has no total: phase is "complete" or the terminal status.
+  const done = source({ id: "a", status: "ok", complete: true, progress: { phase: "complete", completed: 4 } });
+  const shut = source({ id: "b", status: "inaccessible", complete: false, resourceCount: 0, progress: { phase: "inaccessible", completed: 0 } });
+  const streaming = source({ id: "c", status: "partial", complete: false, progress: { phase: "reading", completed: 2 } });
+  const idle = summarize(snapshot({ sources: [done, shut, streaming] }), false);
+  assert.deepEqual(idle.sources.map((l) => l.state), ["ready", "failed", "partial"]);
+  assert.equal(idle.outcome, "issues");
+  const running = summarize(snapshot({ sources: [done, shut, streaming] }), true);
+  assert.deepEqual(running.sources.map((l) => l.state), ["ready", "failed", "reading"]);
+});
