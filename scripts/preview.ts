@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { readFile, mkdtemp, rm } from "node:fs/promises";
-import { resolve, extname, join } from "node:path";
+import { resolve, extname, join, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { randomBytes } from "node:crypto";
 import { createCore, launchWorkSet, selectWorkRetry } from "@magic/core";
@@ -86,7 +86,7 @@ const server = createServer(async (req, res) => {
           realpath: async (p) => p,
           materialize: async (p, extension) => p + extension,
           documentsRoot: join(directory, "documents"),
-          separator: "/",
+          separator: sep,
           now: () => new Date(),
         });
         failures.set(parsed.id, new Set(receipt.failed.map(item => item.resourceId)));
@@ -121,9 +121,10 @@ const server = createServer(async (req, res) => {
       return;
     }
     const file = resolve(root, "." + (path === "/" ? "/index.html" : path));
+    // resolve() returns the platform's separators (backslashes on Windows), so compare with sep.
     if (
       file !== join(root, "index.html") &&
-      !file.startsWith(root + "/assets/")
+      !file.startsWith(join(root, "assets") + sep)
     ) {
       res.writeHead(404).end();
       return;
@@ -146,6 +147,8 @@ const server = createServer(async (req, res) => {
       ".js": "text/javascript",
       ".css": "text/css",
       ".svg": "image/svg+xml",
+      ".woff2": "font/woff2",
+      ".ttf": "font/ttf",
     };
     res
       .writeHead(200, {
