@@ -11,6 +11,8 @@ export * from "./course-intelligence";
 export * from "./course-core";
 // owner: notes
 export * from "./notes";
+export * from "./benchmarks"; // owner: benchmarks
+import type { BenchmarksBridge } from "./benchmarks"; // owner: benchmarks
 import { notesRequestSchema, type NotesResult } from "./notes";
 // end owner: notes
 import type { GraphQuery, GraphResult } from "./course-core"; // owner: pipeline
@@ -1922,6 +1924,8 @@ export interface AppBridge {
   keepSignedIn?(value?: boolean): Promise<boolean>;
   /** T80: the student's AI command-line clients, each in an app-owned profile. */
   clients?: ClientsBridge;
+  /** owner: benchmarks. Local benchmarks: the measured full runs banked on this computer. */
+  benchmarks?: BenchmarksBridge;
 }
 /** T80. The AI command-line clients Magic Canvas can host in an app-owned profile. */
 export type ClientId = "claude" | "codex" | "gemini";

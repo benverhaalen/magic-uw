@@ -10,6 +10,7 @@ import type {
 } from "@magic/contracts";
 import { MyUw, PlanningAlerts } from "./MyUw";
 import { LocalAiPanel } from "./LocalAiPanel";
+import { LocalBenchmarks } from "./Benchmarks"; // owner: benchmarks
 import { LearningPanel } from "./LearningPanel";
 import { ProviderGuidance } from "./ProviderGuidance";
 import { IngestionControls, McpConnections } from "./IngestionControls";
@@ -1661,6 +1662,7 @@ function Privacy({
           <div className="no-activity">No recorded AI data activity.</div>
         )}
       </section>
+      <LocalBenchmarks snapshot={snapshot} /> {/* owner: benchmarks */}
       <section className="settings-section danger-section">
         <h2>Delete local data</h2>
         <p>

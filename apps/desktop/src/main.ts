@@ -246,6 +246,7 @@ app
         ...process.env,
         MAGIC_DB_PATH: join(data, "workspace.sqlite"),
         MAGIC_PLANNING_SCOPE: planningAccountScope,
+        MAGIC_APP_VERSION: app.getVersion(), // owner: benchmarks: recorded with each measured run
       },
       stdio: "pipe",
       serviceName: "My Magic UW local workspace",
@@ -1124,6 +1125,31 @@ app
       });
     });
     // end owner: T15
+    // owner: benchmarks. Local benchmarks: reads of the bank, the live status, clear, and "Run
+    // benchmark" (a manual full sync, so it has the sync's consent gate, timeout and cancel).
+    ipcMain.handle("magic:benchmarks", async (event, request: unknown) => {
+      validateSender(event);
+      const value = (request ?? {}) as { op?: unknown; id?: unknown };
+      const op = value.op;
+      if (op !== "list" && op !== "get" && op !== "status" && op !== "run" && op !== "clear")
+        throw new Error("Unknown benchmarks request.");
+      if (op === "get" && (typeof value.id !== "string" || !/^[a-f0-9-]{36}$/.test(value.id)))
+        throw new Error("Unknown benchmark run.");
+      if (op === "run" && !(await consentGate("magic:sync"))) throw new Error(consentRefused);
+      await ready;
+      const id = randomUUID();
+      const limit = op === "run" ? 35 * 60_000 : 30_000;
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          calls.delete(id);
+          if (op === "run") worker.postMessage({ kind: "refresh-cancel" });
+          reject(new Error(op === "run" ? "The benchmark was stopped after 35 minutes." : "Local workspace request timed out."));
+        }, limit);
+        calls.set(id, { resolve: resolve as (value: CommandResult) => void, reject, timer });
+        worker.postMessage({ kind: "benchmarks", id, request: op === "get" ? { op, id: value.id } : { op } });
+      });
+    });
+    // end owner: benchmarks
     // owner: pipeline. Graph reads (references, agenda, a course's graph): sender-checked, parsed
     // here and again in the worker, answered on the same response channel as queries.
     ipcMain.handle("magic:graph", async (event, request) => {
@@ -1748,6 +1774,16 @@ app
         if (!(await stat(clientsDir).catch(() => null)))
           throw new Error("Client profile was not created");
         // end owner: T80
+        // owner: benchmarks. The bank opens empty and private; "Run benchmark" is a sync, so it
+        // is refused until the setup agreement exists (this smoke never grants it).
+        const bench = await window.webContents.executeJavaScript(
+          "Promise.all([window.magic.benchmarks.list(), window.magic.benchmarks.status(), window.magic.benchmarks.run().then(() => 'ran', () => 'refused')])",
+        );
+        const benchFile = await stat(join(data, "benchmarks.sqlite")).catch(() => null);
+        if (!Array.isArray(bench[0]) || bench[0].length || bench[1]?.running !== false || bench[2] !== "refused" ||
+            !benchFile || benchFile.mode & 0o077)
+          throw new Error("Local benchmarks bridge failed");
+        // end owner: benchmarks
         const cleared = await window.webContents.executeJavaScript(
           "window.magic.execute({type:'purge',confirmation:'DELETE LOCAL DATA'})",
         );
@@ -1761,7 +1797,7 @@ app
         )
           throw new Error("Local purge left data or access credentials");
         console.log(
-          "PASS hidden desktop: renderer → preload → worker → SQLite; synthetic planning import, MCP export and local purge",
+          "PASS hidden desktop: renderer → preload → worker → SQLite; synthetic planning import, MCP export, local benchmarks bridge and local purge",
         );
       } catch (error) {
         console.error(

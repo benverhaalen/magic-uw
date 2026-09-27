@@ -39,8 +39,16 @@ const pending = new Map<
   { resolve: (value: any) => void; reject: (error: Error) => void }
 >();
 const store = createStore(process.env.MAGIC_DB_PATH!);
+// owner: benchmarks. Local benchmarks: every full run is measured and banked in its own file beside
+// the workspace (apps/desktop/src/benchmarks.ts). The recorder's pipeline hooks attach below.
+import { createBenchmarkBank, createBenchmarkRecorder, measuredPublicClient, type BenchmarkRecorder } from "./benchmarks";
+import { createPublicClient } from "../../../packages/connectors/src/network";
+const benchmarkBank = createBenchmarkBank(join(dirname(process.env.MAGIC_DB_PATH!), "benchmarks.sqlite"));
+let benchmarks: BenchmarkRecorder; // created once core's pipeline exists
+let benchmarkPresent = true;
+// end owner: benchmarks
 // owner: T06: every direct public client refuses until the setup consent record exists.
-const publicClients = createWorkerClients(store);
+const publicClients = createWorkerClients(store, () => measuredPublicClient(createPublicClient(), { request: (...args) => benchmarks?.request(...args) })); // owner: benchmarks: measured
 // end owner: T06
 // owner: generation. The pack runner: the student's chosen client in its app-owned profile
 // (CLAUDE_CONFIG_DIR / CODEX_HOME), tools off, our system prompt, the background budget, and
@@ -239,11 +247,16 @@ function hostRead(
 }
 function sourceFetch(service: string) {
   return async (url: string, init?: RequestInit) => {
+    const started = performance.now(); // owner: benchmarks
     const value = await hostRead(
       "source-fetch",
       { service, url },
       init?.signal ?? undefined,
-    );
+    ).catch((error) => {
+      benchmarks?.request(service, url, { status: null, ms: performance.now() - started, failed: true }); // owner: benchmarks
+      throw error;
+    });
+    benchmarks?.request(service, url, { status: value.status, bytes: typeof value.body === "string" ? value.body.length : 0, ms: performance.now() - started }); // owner: benchmarks
     const response = new Response(
       [204, 205, 304].includes(value.status) ? null : value.body,
       { status: value.status, headers: value.headers },
@@ -292,7 +305,20 @@ const ingestion = createIngestion(store, {
   client: publicClients.ingestion, // owner: T06
   canvasFetch: sourceFetch("canvas"),
   gitlabFetch: sourceFetch("gitlab"),
-  onSaved: (sourceId) => void core.saved(sourceId), // owner: T05b: save → enqueue
+  // owner: drain. The pipeline pauses only while a read really runs (a skipped 30 s tick used to
+  // abort the slice, turning finished jobs into "Interrupted." retries); benchmarks see real runs.
+  onRunStart: () => {
+    core.pipeline.syncStarted();
+    benchmarks?.started();
+  },
+  onRunEnd: (run) => {
+    core.pipeline.syncEnded();
+    benchmarks?.ended(run);
+  },
+  onSaved: (sourceId) => {
+    benchmarks?.saved(sourceId); // owner: benchmarks
+    void core.saved(sourceId); // owner: T05b: save → enqueue
+  },
   spaceFetch: sourceFetch("space"), // owner: T05b: D41 access check
   graph: graphHost, // owner: T30
   secrets: (operation, key, value) =>
@@ -306,13 +332,17 @@ const ingestion = createIngestion(store, {
 // and facts, the course pass, Jev's enrich.resource) in bounded idle slices. A sync aborts the
 // slice between jobs and nothing is leased until it ends; presence sets the slice size.
 const pipeline = core.pipeline;
-const syncTick = ingestion.tick;
-ingestion.tick = (trigger) => {
-  pipeline.syncStarted();
-  const run = syncTick(trigger);
-  void run.finally(() => pipeline.syncEnded()).catch(() => {});
-  return run;
-};
+// (The loop is paused and resumed by ingestion's onRunStart / onRunEnd above.)
+// owner: benchmarks. Real runs are recorded; only full reads (and "Run benchmark") are banked.
+benchmarks = createBenchmarkRecorder({
+  store,
+  dbPath: process.env.MAGIC_DB_PATH!,
+  bank: benchmarkBank,
+  registry: core.jobs,
+  pipelineTotals: () => pipeline.totals,
+  present: () => benchmarkPresent,
+});
+// end owner: benchmarks
 const pipelineTimer = setInterval(() => pipeline.wake(), 60_000);
 pipelineTimer.unref();
 const pipelineBackfill = setTimeout(() => void pipeline.backfill().then(() => pipeline.wake()), 20_000);
@@ -361,6 +391,7 @@ function refreshPlanning(trigger: "manual" | "scheduled" = "manual"): Promise<vo
   const promise = Promise.all([
     (async () => {
       let result: UwPlanningSyncResult;
+      const benchmarkStart = { at: new Date().toISOString(), t: performance.now() }; // owner: benchmarks
       const hints = { storedAudits: storedAuditReports(store), freshSubjects: termFreshSearchSubjects(store, nowIso) ?? undefined, scheduled: trigger === "scheduled" };
       try { result = await hostRead("planning-refresh", hints, signal, PLANNING_WORKER_TIMEOUT_MS); }
       catch {
@@ -368,6 +399,15 @@ function refreshPlanning(trigger: "manual" | "scheduled" = "manual"): Promise<vo
         result = { captures: [], invalidated: ["uw_enroll", "uw_myuw", "uw_dars"].map((source) => ({ source: source as "uw_enroll" | "uw_myuw" | "uw_dars", status: "failed", code: "refresh_failed" })) };
       }
       signal.throwIfAborted();
+      // owner: benchmarks: the planning refresh is its own banked run (its sync's own metrics).
+      benchmarks.planning({
+        startedAt: benchmarkStart.at,
+        wallMs: performance.now() - benchmarkStart.t,
+        ok: result.invalidated.length === 0,
+        failed: result.invalidated.map((failure) => `${failure.source}:${failure.code}`),
+        requests: result.metrics?.requests ?? 0,
+        bytes: result.metrics?.bytes ?? 0,
+      });
       if (result.addDrop !== undefined) planningAddDrop = result.addDrop;
       const reconfirmed = reconfirmedAuditCaptures(store, result.reconfirmed ?? [], new Date().toISOString());
       const refreshed = new Set([...result.captures, ...reconfirmed].map((capture) => JSON.stringify([capture.source, capture.accountScope, capture.scope])));
@@ -471,6 +511,7 @@ port.on("message", async ({ data }: { data: any }) => {
     ingestion.presence(data.present === true);
     pipeline.presence(data.present === true); // owner: pipeline
     planningPresent = data.present === true; // owner: planning-perf
+    benchmarkPresent = data.present === true; // owner: benchmarks
     return;
   }
   // owner: pipeline. Graph reads: references, the agenda, a course's graph and coverage.
@@ -569,6 +610,7 @@ port.on("message", async ({ data }: { data: any }) => {
     return;
   }
   if (data.kind === "shutdown") {
+    benchmarks.close(); // owner: benchmarks: stops any drain wait; nothing more is banked
     await intentRuntime?.pool?.close(); // owner: intent
     cancelPlanning();
     await planningRun?.promise.catch(() => {});
@@ -584,6 +626,7 @@ port.on("message", async ({ data }: { data: any }) => {
     clearInterval(notesTimer); // owner: notes
     local.cancel();
     await core.close();
+    benchmarkBank.close(); // owner: benchmarks
     port.postMessage({ kind: "closed" });
     return;
   }
@@ -648,6 +691,24 @@ port.on("message", async ({ data }: { data: any }) => {
     return;
   }
   // end owner: T15
+  // owner: benchmarks. The Local benchmarks section: list, one record, live status, run, clear.
+  if (data.kind === "benchmarks") {
+    try {
+      const request = data.request ?? {};
+      const result =
+        request.op === "list" ? benchmarkBank.list()
+        : request.op === "get" && typeof request.id === "string" && request.id.length <= 64 ? benchmarkBank.get(request.id)
+        : request.op === "status" ? benchmarks.status()
+        : request.op === "run" ? await benchmarks.runBenchmark(() => ingestion.tick("manual"))
+        : request.op === "clear" ? (benchmarkBank.clear(), null)
+        : (() => { throw new Error("Unknown benchmarks request."); })();
+      port.postMessage({ kind: "response", id: data.id, result });
+    } catch (error) {
+      port.postMessage({ kind: "response", id: data.id, error: error instanceof Error ? error.message : "Benchmarks unavailable." });
+    }
+    return;
+  }
+  // end owner: benchmarks
   if (data.kind !== "command") return;
   if (data.command?.type === "purge") {
     cancelPlanning();
@@ -665,10 +726,12 @@ port.on("message", async ({ data }: { data: any }) => {
       id: data.id,
       result: await core.execute(data.command),
     });
-    if (data.command?.type === "purge") {
-      ingestion.resume();
-      pipeline.resume(); // owner: pipeline
-    }
+    if (data.command?.type === "purge")
+      try {
+        benchmarks.purge(); // owner: benchmarks: the bank goes too
+      } catch {
+        console.error("Local benchmarks could not be cleared.");
+      }
   } catch (error) {
     port.postMessage({
       kind: "response",
@@ -678,6 +741,13 @@ port.on("message", async ({ data }: { data: any }) => {
           ? error.message
           : "The request did not match the workspace schema.",
     });
+  } finally {
+    // A purge that fails still resumes reading and the drain (they used to stay suspended until
+    // the next sleep/wake or restart).
+    if (data.command?.type === "purge") {
+      ingestion.resume();
+      pipeline.resume(); // owner: pipeline
+    }
   }
 });
 core.wake();

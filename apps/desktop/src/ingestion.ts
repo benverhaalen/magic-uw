@@ -76,7 +76,7 @@ import {
   gitlabProjectsForCourse,
 } from "../../../packages/connectors/src/gitlab";
 import { courseInclusion } from "../../../packages/core/src/access";
-import { createRefreshCoordinator } from "../../../packages/core/src/refresh";
+import { createRefreshCoordinator, type RefreshRun } from "../../../packages/core/src/refresh";
 // owner: T33. Per-course freshness probes (D37).
 import {
   fetchCanvasContentProbe,
@@ -200,6 +200,13 @@ export interface IngestionHost {
   spaceFetch?(url: string, init?: RequestInit): Promise<Response>;
   /** owner: T05b. A course's inventory with access states; the data builder stores it in course_spaces. */
   onSpaces?(accountScope: string, courseId: string, spaces: CourseSpace[]): void;
+  /**
+   * owner: drain. A read actually starts / has been recorded. A tick the coordinator skips (not
+   * due, quiet hours, suspended, or joining a running read) calls neither, so the pipeline loop is
+   * paused only while a sync really reads and local benchmarks see only real runs.
+   */
+  onRunStart?(): void;
+  onRunEnd?(run: RefreshRun): void;
   /** owner: acquisition. Overrides of ACQUISITION_DEFAULTS (tests and the perf comparison). */
   acquisition?: Partial<AcquisitionOptions>;
   /** owner: acquisition. The built extract-worker.cjs; without it extraction stays in-process. */
@@ -1588,6 +1595,7 @@ export function createIngestion(
       moduleRun = undefined;
       rateLimitRemaining = undefined;
       requestCost = undefined;
+      host.onRunStart?.(); // owner: drain
     },
     settings() {
       const s = store.ingestionSettings();
@@ -1684,7 +1692,11 @@ export function createIngestion(
     // end owner: T33
     external,
     record(run) {
-      recordRun(run);
+      try {
+        recordRun(run);
+      } finally {
+        host.onRunEnd?.(run); // owner: drain: paired with onRunStart even if recording fails
+      }
     },
   });
   // owner: T33. One Canvas read: every included course (full), or only the given ones (warm).

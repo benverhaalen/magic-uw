@@ -15,9 +15,12 @@ import { createStudyContextResolver } from "../apps/desktop/src/learning-context
 import { seedLearningFixture } from "./learning-fixture";
 import { seedSyncResilienceFixture } from "./sync-resilience-fixture";
 import { linkExactEvidence } from "../packages/core/src/evidence";
+import { createBenchmarkFixture } from "./benchmark-fixture"; // owner: benchmarks
+import { pipelineJobRegistry } from "../packages/core/src/jobs/default-registry"; // owner: benchmarks
 // Explicit opt-in QA output, never a substitute for live model inference.
 const syncFixture = process.env.MAGIC_PREVIEW_SYNC_FIXTURE === "1";
 const learningFixture = process.env.MAGIC_PREVIEW_LEARNING_FIXTURE === "1";
+const benchmarkFixture = process.env.MAGIC_PREVIEW_BENCHMARK_FIXTURE === "1"; // owner: benchmarks
 // Local verification surface using the real core/store. No browser sessions or gateway.
 const directory = await mkdtemp(join(tmpdir(), "magic-preview-"));
 const store = createStore(join(directory, "workspace.sqlite"));
@@ -30,6 +33,8 @@ if (learningFixture) {
 }
 const core = createCore(store, {
   fixture: sample,
+  // owner: benchmarks: the worker's material-pipeline kinds, so measured runs have a real drain.
+  ...(process.env.MAGIC_PREVIEW_BENCHMARK_FIXTURE === "1" ? { jobs: pipelineJobRegistry() } : {}),
   seams: {
     learning: createLearningRouter({
       store: store.learning,
@@ -39,6 +44,12 @@ const core = createCore(store, {
   },
 });
 const resolveStudyContext = createStudyContextResolver(store, core);
+// owner: benchmarks. Real Local benchmarks of the fabricated university, measured before serving.
+const benchmarks = benchmarkFixture ? createBenchmarkFixture({ directory, store, core }) : null;
+if (benchmarks) {
+  console.log("Measuring synthetic Local benchmarks (offline)…");
+  await benchmarks.seed(4);
+}
 const token = randomBytes(32).toString("hex");
 const root = resolve("apps/desktop/dist/renderer");
 const server = createServer(async (req, res) => {
@@ -56,7 +67,7 @@ const server = createServer(async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
   try {
-    if (path === "/command" || path === "/query") {
+    if (path === "/command" || path === "/query" || (benchmarks && path === "/benchmarks")) {
       if (
         req.method !== "POST" ||
         req.headers.authorization !== `Bearer ${token}` ||
@@ -74,7 +85,7 @@ const server = createServer(async (req, res) => {
         }
       }
       const parsed = JSON.parse(body);
-      let result = path === "/query" ? core.query(parsed) : await core.execute(parsed);
+      let result = path === "/benchmarks" ? await benchmarks!.handle(parsed) : path === "/query" ? core.query(parsed) : await core.execute(parsed);
       if (syncFixture && path === "/command" && parsed.type === "fixture") {
         seedSyncResilienceFixture(store);
         result = await core.execute({type:"snapshot"});
@@ -96,7 +107,7 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (path === "/bridge.js") {
-      const script = `window.magic={query:async(request)=>{const r=await fetch('/query',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer ${token}'},body:JSON.stringify(request)});const data=await r.json();if(!r.ok)throw new Error(data.error);return data;},execute:async(command)=>{const r=await fetch('/command',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer ${token}'},body:JSON.stringify(command)});const data=await r.json();if(!r.ok)throw new Error(data.error);return data;},openExternal:async()=>{throw new Error('External windows are disabled in this headless verification surface.');},importFile:async()=>{throw new Error('Use the desktop app to import a local capture.');},localStatus:async()=>({status:'setup_needed',reason:'Local runtime checks are disabled in this browser verification surface. Use the desktop app.',cloudDisabled:false,selectedModel:null,recommenderAvailable:false,basis:'No runtime was contacted.'}),localAsk:async()=>{throw new Error('Local inference is disabled in this browser verification surface. Use the desktop app.');},cancelLocal:async()=>{}};`;
+      const script = `window.magic={query:async(request)=>{const r=await fetch('/query',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer ${token}'},body:JSON.stringify(request)});const data=await r.json();if(!r.ok)throw new Error(data.error);return data;},execute:async(command)=>{const r=await fetch('/command',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer ${token}'},body:JSON.stringify(command)});const data=await r.json();if(!r.ok)throw new Error(data.error);return data;},openExternal:async()=>{throw new Error('External windows are disabled in this headless verification surface.');},importFile:async()=>{throw new Error('Use the desktop app to import a local capture.');},localStatus:async()=>({status:'setup_needed',reason:'Local runtime checks are disabled in this browser verification surface. Use the desktop app.',cloudDisabled:false,selectedModel:null,recommenderAvailable:false,basis:'No runtime was contacted.'}),localAsk:async()=>{throw new Error('Local inference is disabled in this browser verification surface. Use the desktop app.');},cancelLocal:async()=>{}};${benchmarks ? `window.magic.benchmarks=(()=>{const call=async(request)=>{const r=await fetch('/benchmarks',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer ${token}'},body:JSON.stringify(request)});const data=await r.json();if(!r.ok)throw new Error(data.error);return data;};return{list:()=>call({op:'list'}),get:(id)=>call({op:'get',id}),status:()=>call({op:'status'}),run:()=>call({op:'run'}),clear:()=>call({op:'clear'})};})();` : ""}`;
       res.writeHead(200, { "Content-Type": "text/javascript" }).end(script);
       return;
     }
@@ -116,7 +127,7 @@ const server = createServer(async (req, res) => {
           .replace("<head>", '<head><script src="/bridge.js"></script>')
           .replace(
             "<body>",
-            learningFixture || syncFixture
+            learningFixture || syncFixture || benchmarkFixture
               ? '<body><div role="note" style="padding:8px;background:#ffe7a8;color:#382700">Synthetic verification — test fixtures, no live school or AI connections.</div>'
               : "<body>",
           ),
@@ -149,6 +160,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const)
   process.on(signal, () => {
     server.closeAllConnections();
     server.close(async () => {
+      await benchmarks?.close();
       await core.close();
       await rm(directory, { recursive: true, force: true });
       process.exit(0);

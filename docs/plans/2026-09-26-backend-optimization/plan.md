@@ -13,7 +13,7 @@
 - **Every claim comes from our own runs.** See [benchmarking](../../notes/benchmarking.md).
 
 ## 1. Baseline first (measure the backend as delivered)
-Harness: `evals/perf/`. It's headless and uses synthetic plus labelled imported data; it writes to `.data/perf/` (not committed).
+Harness: `evals/perf/`. It's headless and uses synthetic plus labelled imported data; it writes to `.data/perf/` (not committed). Live runs on a real account are banked by the app itself: Data & AI → Local benchmarks (see [implementation status](../../implementation-status.md#local-benchmarks-september-27)).
 
 | Metric | How | Why |
 |---|---|---|

@@ -9,6 +9,24 @@ const accessLabels: Record<CourseSpace["accessState"], string> = {
   "link-only": "Open in original service",
   blocked: "Access unavailable",
 };
+/**
+ * The courses whose material the app reads: a Canvas course with any area beyond its own course
+ * row. Canvas also lists past-term enrollments (metadata only) and non-course sites (orientations,
+ * advising, excluded by selection); those have only the course row and no material to check.
+ */
+export function readCourseSources(sources: SourceHealth[]): { read: SourceHealth[]; listedOnly: number } {
+  const canvas = sources.filter((s) => s.kind === "canvas" && !["account", "connection"].includes(s.courseId));
+  const key = (s: SourceHealth) => JSON.stringify([s.accountScope, s.courseId]);
+  const read = new Set(canvas.filter((s) => s.scope !== "course").map(key));
+  const all = new Map<string, SourceHealth>();
+  // Prefer the course row as the representative source (its label names the course).
+  for (const s of [...canvas].sort((a, b) => Number(a.scope === "course") - Number(b.scope === "course"))) all.set(key(s), s);
+  const courses = [...all.entries()];
+  return {
+    read: courses.filter(([k]) => read.has(k)).map(([, s]) => s),
+    listedOnly: courses.filter(([k]) => !read.has(k)).length,
+  };
+}
 /** Course detail within Sources; saved material and current access are independent facts. */
 export function CourseSpaceDetails({
   sources,
@@ -17,23 +35,14 @@ export function CourseSpaceDetails({
   sources: SourceHealth[];
   revision: string;
 }) {
-  const courses = [
-    ...new Map(
-      [...sources]
-        .sort(
-          (a, b) => Number(b.scope === "course") - Number(a.scope === "course"),
-        )
-        .filter(
-          (s) =>
-            s.kind === "canvas" &&
-            !["account", "connection"].includes(s.courseId),
-        )
-        .reverse()
-        .map((s) => [JSON.stringify([s.accountScope, s.courseId]), s]),
-    ).values(),
-  ];
+  const { read: courses, listedOnly } = readCourseSources(sources);
   return (
     <>
+      {listedOnly > 0 && (
+        <p className="small muted">
+          {listedOnly} other Canvas site{listedOnly === 1 ? " is" : "s are"} listed but not read: past-term courses (kept as course history only) and non-course sites such as orientations.
+        </p>
+      )}
       {courses.map((source) => (
         <CourseSpaces
           key={JSON.stringify([source.accountScope, source.courseId])}

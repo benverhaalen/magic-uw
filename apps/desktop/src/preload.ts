@@ -93,5 +93,13 @@ const bridge: AppBridge = {
   calendarProposeEvent: (input) => ipcRenderer.invoke("magic:calendar-propose-event", input),
   calendarCreateEvent: (proposalId) => ipcRenderer.invoke("magic:calendar-create-event", proposalId),
   // end owner: T30
+  // owner: benchmarks. Local benchmarks (Settings); content-free measurements only.
+  benchmarks: {
+    list: () => ipcRenderer.invoke("magic:benchmarks", { op: "list" }),
+    get: (id) => ipcRenderer.invoke("magic:benchmarks", { op: "get", id }),
+    status: () => ipcRenderer.invoke("magic:benchmarks", { op: "status" }),
+    run: () => ipcRenderer.invoke("magic:benchmarks", { op: "run" }),
+    clear: () => ipcRenderer.invoke("magic:benchmarks", { op: "clear" }),
+  },
 };
 contextBridge.exposeInMainWorld("magic", bridge);
