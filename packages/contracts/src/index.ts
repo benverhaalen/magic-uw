@@ -14,7 +14,7 @@ import type {
   CourseIntelligenceView,
   EffectiveCoursePolicy,
 } from "./course-intelligence";
-import { identityRosterSchema, citationClaimSchema, type IdentityRoster, type RedactionSummary, type CitationResult, type AutoIdentityState, type AutoIdentityUpdate } from "./identity";
+import { identityRosterSchema, citationClaimSchema, type IdentityRoster, type RedactionSummary, type CitationResult, type AutoIdentityState, type AutoIdentityUpdate, type ProtectionCounts } from "./identity";
 export * from "./identity";
 
 export const instant = z.iso.datetime({ offset: true });
@@ -864,6 +864,8 @@ export interface EgressReceipt {
   /** `preview_required`: held until the student answers a blocking preview; nothing sent. */
   status: "blocked" | "sent" | "failed" | "preview_required";
   createdAt: string;
+  /** owner: privacy. Replacements per kind in the payload of this send (counts only, never values). */
+  protection?: ProtectionCounts;
 }
 export const ingestionSettingsSchema = z
   .object({
@@ -1087,6 +1089,8 @@ export interface ContextManifest {
   payload: { course: string; title: string; text: string; policy: string };
   /** Present when free text was scrubbed for a hosted recipient; payload is the exact outgoing text. */
   redaction?: RedactionSummary;
+  /** owner: privacy. Replacements per kind in `payload` (counts only); copied to the receipt. */
+  protection?: ProtectionCounts;
   citationProjections?: { resourceId: string; contentHash: string; field: "text"; projectionId: string }[];
 }
 export interface ResourceView extends Resource {

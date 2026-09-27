@@ -11,7 +11,8 @@ import { buildPrompt, packCacheKey, type ArtifactStore, type LedgerStore, type P
 import { runPack } from "../../../core/src/jobs/pack";
 import { buildReceipt, egressFor, payloadHash } from "../../../core/src/egress";
 import { contentCategories } from "../../../core/src/access";
-import { payloadScrubber, rosterFor, scrubText, toOriginalSpan } from "../../../core/src/identity";
+import { rosterFor, toOriginalSpan } from "../../../core/src/identity";
+import { protectedPayloadScrubber, protectionCounts } from "../../../core/src/privacy/protect"; // owner: privacy
 import { findQuote } from "../../../retrieval/src/quotes";
 import { conceptState, toView } from "../../../learning/src/knowledge/state";
 import { confusablePairs, frequentDistractors } from "../../../learning/src/insights/errors";
@@ -125,11 +126,12 @@ export async function generateGuide(
   };
   const runner = await deps.runner();
   const hosted = runner ? runner.client !== "local" : store.privacy().mode !== "local_only";
-  const roster = rosterFor(store, sel.courseId, sel.accountScope);
-  const scrubber = payloadScrubber(store, hosted, sel.accountScope);
+  // owner: privacy: the protection pass (roster + code detectors + per-request pseudonyms).
+  const scrubber = protectedPayloadScrubber(store, hosted, sel.accountScope, `guide:${sel.courseRef}`);
   const scrub = (value: string) => scrubber.field(value, sel.courseId);
+  scrubber.prime([...sel.passages.map((p) => p.text), sel.input.scope, ...sel.input.materials, ...sel.input.topics, ...sel.input.facts, sel.frame.course, sel.frame.skeleton, sel.frame.policy], sel.courseId);
   // Freeze the exact passage projection; quotes map back to the original text through it.
-  const frozen = new Map(sel.passages.map((p) => [p.sourceId, { original: p.text, result: hosted ? scrubText(p.text, roster) : { text: p.text, spans: [] } }]));
+  const frozen = new Map(sel.passages.map((p) => [p.sourceId, { original: p.text, result: scrubber.text(p.text, sel.courseId) }]));
   const toOriginal = (sourceId: string | null, quote: string | null): string | null => {
     const p = sourceId ? frozen.get(sourceId) : undefined;
     if (!p) return quote;
@@ -209,6 +211,7 @@ export async function generateGuide(
       allowed: permission.allowed,
       reason: permission.reason,
       payload,
+      ...(hosted ? { protection: protectionCounts(payload) } : {}), // owner: privacy
     };
     const decision = egressFor(store).check(m, { at: at(), background: lane === "background" });
     if (decision.status === "blocked") {

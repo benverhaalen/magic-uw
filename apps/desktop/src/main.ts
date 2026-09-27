@@ -53,6 +53,7 @@ import {
 } from "./keep-signed-in";
 // end owner: T05c
 import { consentGateAllows } from "../../../packages/core/src/egress"; // owner: T06
+import { logLine, redactForLog } from "../../../packages/core/src/privacy/log"; // owner: privacy
 import { consentRecordSchema, type ConsentRecord } from "@magic/contracts"; // owner: T06
 import {
   commandSchema,
@@ -126,7 +127,8 @@ function trialPath(input: string): string {
 function trialLog(event: Record<string, unknown>) {
   const file = process.env.MAGIC_TRIAL_LOG;
   if (!file) return;
-  void appendFile(file, JSON.stringify({ at: new Date().toISOString(), ...event }) + "\n").catch(() => {});
+  // owner: privacy: every line is redacted (URL → host + path class, no query, no identifiers).
+  void appendFile(file, logLine({ at: new Date().toISOString(), ...event })).catch(() => {});
 }
 function allowedLogin(input: string) {
   try {
@@ -231,6 +233,29 @@ app
       stdio: "pipe",
       serviceName: "My Magic UW local workspace",
     });
+    // owner: privacy. The install secret: 32 random bytes wrapped by safeStorage in
+    // privacy-key.enc, sent to the worker over its channel (never env, argv or a log). The worker
+    // derives the at-rest and pseudonym keys from it. Purge deletes the file and sends a new one.
+    const privacyKeyPath = join(data, "privacy-key.enc");
+    async function privacySecret(): Promise<Buffer | null> {
+      if (!safeStorage.isEncryptionAvailable()) return null;
+      try {
+        return Buffer.from(safeStorage.decryptString(await readFile(privacyKeyPath)), "base64");
+      } catch (error) {
+        // An unreadable wrapped key is never overwritten: sealed rows might still open later.
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") return null;
+      }
+      const secret = randomBytes(32);
+      await writeFile(privacyKeyPath, safeStorage.encryptString(secret.toString("base64")), { mode: 0o600 });
+      return secret;
+    }
+    async function sendPrivacyKey() {
+      const secret = await privacySecret().catch(() => null);
+      worker.postMessage({ kind: "privacy-key", secret: secret ? secret.toString("base64") : null });
+      secret?.fill(0);
+    }
+    void sendPrivacyKey();
+    // end owner: privacy
     const calls = new Map<
       string,
       {
@@ -953,6 +978,9 @@ app
             gitlabSession.clearStorageData(),
             resetPlanningScope(),
           ]);
+          // owner: privacy: purge destroys the install secret; new data is sealed under a new one.
+          await rm(privacyKeyPath, { force: true });
+          await sendPrivacyKey();
         }
         return result;
       } finally {
@@ -1685,7 +1713,7 @@ app
       } catch (error) {
         console.error(
           "FAIL hidden desktop integration:",
-          error instanceof Error ? error.message : "unknown",
+          error instanceof Error ? redactForLog(error.message) : "unknown", // owner: privacy
         );
         process.exitCode = 1;
       } finally {

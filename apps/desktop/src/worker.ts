@@ -1,6 +1,9 @@
 import { judgmentFailureError } from "./judgment-errors";
 import { createLocalCourseExtractor } from "@magic/ai";
 import { createStore } from "@magic/storage";
+import { deriveInstallKeys } from "../../../packages/core/src/privacy/at-rest"; // owner: privacy
+import { configurePseudonymKey } from "../../../packages/core/src/privacy/pseudonyms"; // owner: privacy
+import { logLine } from "../../../packages/core/src/privacy/log"; // owner: privacy
 import { createCore } from "@magic/core";
 import { captureBatchSchema, planningCaptureSchema, type PlanningCapture } from "@magic/contracts";
 import { queryRequestSchema } from "@magic/contracts"; // owner: T15
@@ -290,6 +293,22 @@ refreshTimer.unref();
 const tick = setInterval(() => core.wake(), 30000);
 tick.unref();
 port.on("message", async ({ data }: { data: any }) => {
+  // owner: privacy. Main's install secret: at-rest key for the store, pseudonym key for sends.
+  if (data.kind === "privacy-key") {
+    const secret = typeof data.secret === "string" ? Buffer.from(data.secret, "base64") : null;
+    const keys = secret ? deriveInstallKeys(secret) : null;
+    secret?.fill(0);
+    configurePseudonymKey(keys?.pseudonym ?? null);
+    try {
+      store.setAtRestKey(keys?.atRest ?? null);
+    } catch (error) {
+      process.stderr.write(logLine({ event: "privacy.seal-failed", error }));
+    }
+    keys?.atRest.fill(0);
+    keys?.pseudonym.fill(0);
+    return;
+  }
+  // end owner: privacy
   if (data.kind === "source-response") {
     const request = hostRequests.get(data.id);
     hostRequests.delete(data.id);

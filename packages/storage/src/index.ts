@@ -17,6 +17,9 @@ import { LEARNING_SCHEMA } from "./learning";
 import { LEARNING_V8 } from "./learning-v8";
 import { createSqlLearningStore, type SqlLearningStore } from "../../learning/src/sql-store";
 import { decodePayload, encodePayload } from "./payload";
+// owner: privacy. At-rest sealing of mail, notes and planning payloads (migration v14).
+import { createAtRestCodec, keyCheck, type AtRestCodec } from "../../core/src/privacy/at-rest";
+import { PRIVACY_SCHEMA_VERSION, privacyMigration, sealExistingRows } from "./privacy-v14";
 import {
   LIFE_COURSE_ID,
   subjectJobSchema,
@@ -74,7 +77,7 @@ import {
   type Store,
 } from "@magic/contracts";
 
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = PRIVACY_SCHEMA_VERSION; // owner: privacy (v14; the lead renumbers at integration)
 const MAX_ATTEMPTS = 3;
 /** The latest pre-migration backup, beside the database (one kept; purge deletes it). */
 export function migrationBackupPath(path: string): string {
@@ -170,11 +173,17 @@ function payloadTextHash(payload: unknown): string {
   return textHash(String(item.title ?? ""), String(item.text ?? ""));
 }
 
+/** owner: privacy. At-rest key control (the worker's side of main's safeStorage key). */
+export interface AtRestControl {
+  setAtRestKey(key: Uint8Array | null): { sealed: number; ms: number; keyMatches: boolean };
+  atRestStats(): { sealed: number; opened: number; failed: number; keyed: boolean };
+}
+
 /** One local writer. Network requests and model inference must happen outside its transactions. */
 export function createStore(
   path: string,
   options: { now?: () => Date } = {},
-): Store & CourseCoreStore & { learning: SqlLearningStore } {
+): Store & CourseCoreStore & { learning: SqlLearningStore } & AtRestControl {
   const clock = options.now ?? (() => new Date());
   const file = path !== ":memory:";
   if (file) mkdirSync(dirname(resolve(path)), { recursive: true, mode: 0o700 });
@@ -184,6 +193,10 @@ export function createStore(
     "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000; PRAGMA secure_delete = ON;",
   );
   db.function("magic_text_hash", { deterministic: true }, payloadTextHash);
+  // owner: privacy. Sensitive payloads are sealed on write once main has sent the key.
+  const atRest: AtRestCodec = createAtRestCodec();
+  const encodeItem = (item: Parameters<typeof encodePayload>[0]) => encodePayload(atRest.sealItem(item));
+  const decodeItem = (value: unknown) => atRest.openItem(decodePayload(value));
   const readVersion = () =>
     Number(db.prepare("PRAGMA user_version").get()!.user_version);
   const schemaVersion = readVersion();
@@ -346,6 +359,7 @@ export function createStore(
   steps.push([7, () => db.exec(LEARNING_SCHEMA + "PRAGMA user_version = 7;")]);
   steps.push([8, () => db.exec(LEARNING_V8 + "PRAGMA user_version = 8;")]);
   steps.push([9, () => db.exec(COURSE_SPACE_OBSERVATION_MIGRATION + "PRAGMA user_version = 9;")]);
+  steps.push([PRIVACY_SCHEMA_VERSION, () => privacyMigration(db)]); // owner: privacy
   const migrationBackup = file ? migrationBackupPath(path) : null;
   const passageIndex = createPassageIndex(db, prepare);
   const courseScope = (accountScope: string, courseId: string) =>
@@ -362,7 +376,7 @@ export function createStore(
         String(row.id),
         Number(row.version),
         String(row.text_hash),
-        decodePayload(row.payload),
+        atRest.searchable(decodeItem(row.payload)),
         courseScope(String(row.account_scope), String(row.course_id)),
       );
   }
@@ -407,7 +421,7 @@ export function createStore(
     }
   }
   migrate();
-  const planning = planningRepository(db);
+  const planning = planningRepository(db, atRest); // owner: privacy
   // owner: T06. Consent storage helpers.
   function readConsents(): ConsentRecord[] {
     const row = db
@@ -448,7 +462,7 @@ export function createStore(
 
   function readResource(row: Row): Resource {
     return {
-      ...decodePayload(row.payload),
+      ...decodeItem(row.payload),
       id: String(row.id),
       sourceId: String(row.source_id),
       contentHash: String(row.content_hash),
@@ -682,7 +696,7 @@ export function createStore(
           version: Number(row.version),
           currentVersion: Number(row.current),
           textHash: String(row.text_hash),
-          item: decodePayload(row.payload),
+          item: decodeItem(row.payload),
         }
       : undefined;
   }
@@ -731,6 +745,33 @@ export function createStore(
   }
   return {
     learning,
+    // owner: privacy. The worker calls this with main's key; the first call after v14 (or after
+    // any sensitive write made without a key) seals the plaintext rows. Purge drops the key.
+    setAtRestKey(key) {
+      atRest.setKey(key);
+      if (!key) return { sealed: 0, ms: 0, keyMatches: true };
+      const check = keyCheck(key);
+      const stored = prepare("SELECT value FROM preferences WHERE key = 'privacy.keyCheck'").get();
+      const keyMatches = !stored || String(stored.value) === check;
+      const state = prepare("SELECT value FROM preferences WHERE key = 'privacy.seal'").get();
+      if (stored && state && String(state.value) === "done" && !atRest.unsealedWrites()) return { sealed: 0, ms: 0, keyMatches };
+      const started = performance.now();
+      const sealed = transaction(() => {
+        const n = sealExistingRows(db, atRest, (id, version, textHash, item, accountScope, courseId) =>
+          passageIndex.index(id, version, textHash, atRest.searchable(item), courseScope(accountScope, courseId)),
+        );
+        const put = prepare("INSERT INTO preferences VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+        if (!stored) put.run("privacy.keyCheck", check);
+        put.run("privacy.seal", "done");
+        return n;
+      });
+      atRest.clearUnsealedWrites();
+      // Plaintext pages leave the WAL; secure_delete already zeroes the freed pages.
+      if (sealed) db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+      return { sealed, ms: performance.now() - started, keyMatches };
+    },
+    atRestStats: () => ({ ...atRest.stats(), keyed: atRest.hasKey() }),
+    // end owner: privacy
     courseIntelligence() {
       return prepare(
           "SELECT payload FROM course_intelligence p WHERE version=(SELECT MAX(version) FROM course_intelligence WHERE id=p.id) ORDER BY id",
@@ -875,7 +916,7 @@ export function createStore(
               )
               .get(source.id, value.externalId);
             const oldText = old
-              ? decodePayload(old.payload).text.trim()
+              ? decodeItem(old.payload).text.trim()
               : "";
             if (
               oldText.length >= 100 &&
@@ -975,7 +1016,7 @@ export function createStore(
             )
             .get(source.id, entry.value.externalId) as Row | undefined;
           const previous = existing
-            ? decodePayload(resourceRow(String(existing.id))!.payload)
+            ? decodeItem(resourceRow(String(existing.id))!.payload)
             : undefined;
           if (restrictedCatalog && previous && previous.kind !== "course")
             continue;
@@ -1042,7 +1083,7 @@ export function createStore(
           if (modified)
             prepare(
               "INSERT INTO resource_versions (resource_id,version,content_hash,payload,captured_at,text_hash) VALUES (?,?,?,?,?,?)",
-            ).run(id, version, hash, encodePayload(item), capturedAt, itemTextHash);
+            ).run(id, version, hash, encodeItem(item), capturedAt, itemTextHash);
           prepare("INSERT INTO observations VALUES (?,?,?,0)").run(
             id,
             observedAt,
@@ -1156,7 +1197,7 @@ export function createStore(
               id,
               version,
               itemTextHash,
-              item,
+              atRest.searchable(item),
               courseScope(source.accountScope, source.courseId),
             );
             // Jobs keyed to the text hash survive a submission or grade change (O5).
@@ -1874,8 +1915,9 @@ export function createStore(
       // This also rejects receipts from operations that were in flight when the user purged the store.
       if (value.resourceIds.some((id) => !liveResource(id))) return;
       prepare(
-        `INSERT INTO receipts VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO NOTHING`,
+        // owner: privacy: named columns; v14 added `protection` (counts per kind, never values).
+        `INSERT INTO receipts (id, recipient, purpose, categories, resource_ids, characters, status, created_at, protection)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`,
       ).run(
         value.id,
         value.recipient,
@@ -1885,6 +1927,7 @@ export function createStore(
         value.characters,
         value.status,
         timestamp(value.createdAt),
+        value.protection ? JSON.stringify(value.protection) : null, // owner: privacy
       );
     },
     receipts() {
@@ -1900,6 +1943,7 @@ export function createStore(
         characters: Number(row.characters),
         status: row.status as EgressReceipt["status"],
         createdAt: String(row.created_at),
+        ...(row.protection ? { protection: JSON.parse(String(row.protection)) } : {}), // owner: privacy
       }));
     },
     purge() {
@@ -1913,6 +1957,7 @@ export function createStore(
           db.exec("DELETE FROM sqlite_sequence");
       });
       passageIndex.invalidate();
+      atRest.setKey(null); // owner: privacy: purge destroys the key; main rotates and sends a new one
       // Compact the SQLite files. A reader holding a snapshot keeps its pages until it ends.
       db.exec(
         "PRAGMA wal_checkpoint(TRUNCATE); VACUUM; PRAGMA wal_checkpoint(TRUNCATE);",
@@ -1935,7 +1980,7 @@ export function createStore(
           resourceId,
           Number(row.version),
           String(row.text_hash),
-          decodePayload(row.payload),
+          atRest.searchable(decodeItem(row.payload)),
           courseScope(String(row.account_scope), String(row.course_id)),
         );
       });

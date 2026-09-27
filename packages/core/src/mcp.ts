@@ -10,7 +10,7 @@ import {
 import { maySend, resolveDeadline } from "@magic/domain";
 import { contentCategories, courseInclusion } from "./access";
 import { evidenceFor } from "./evidence";
-import { outgoingProjection, payloadScrubber } from "./identity";
+import { protectedPayloadScrubber, protectedProjection, type ProtectedScrubber } from "./privacy/protect"; // owner: privacy
 
 export const mcpArgumentsSchema = z
   .object({
@@ -89,12 +89,12 @@ export function createMcpService(
     // MCP output goes to hosted AI clients: scrub every free-text field with the
     // same scrubber as hosted payloads. Excerpt offsets are in scrubbed ("outgoing")
     // coordinates of the item's text, so validate-citations maps them back locally.
-    const scrubbers = new Map<string, ReturnType<typeof payloadScrubber>>();
+    const scrubbers = new Map<string, ProtectedScrubber>(); // owner: privacy
     const memo = new Map<string, string>();
     const out = (value: string, courseId: string, scope?: string) => {
       const scopeKey = scope ?? "";
       let scrubber = scrubbers.get(scopeKey);
-      if (!scrubber) scrubbers.set(scopeKey, scrubber = payloadScrubber(store, true, scope));
+      if (!scrubber) scrubbers.set(scopeKey, scrubber = protectedPayloadScrubber(store, true, scope, `mcp:${name}`)); // owner: privacy
       const key = `${scopeKey}\u0000${courseId}\u0000${value}`;
       let v = memo.get(key);
       if (v === undefined) memo.set(key, (v = scrubber.field(value, courseId)));
@@ -148,7 +148,7 @@ export function createMcpService(
         name === "answer_course_question" || name === "search"
           ? Math.max(0, match - 500)
           : 0;
-      const projection = outgoingProjection(store, r, "text", { start, end: start + 8000 });
+      const projection = protectedProjection(store, r, "text", { start, end: start + 8000 }, scrubbers.get(source.accountScope)); // owner: privacy
       return {
         id: r.id,
         courseId: r.courseId,

@@ -40,13 +40,54 @@ The default is `local_only`, with hosted sharing off and no MCP grants. Jev requ
 
 The Jev compiler excludes source URLs, cookies, account identifiers, grades, comments, and drafts as fields. Selected text can still contain private information. MCP conservatively treats all GitLab content as student work and messages as communications, each with a separate gate. Local feedback collection is independent of cloud permission: switching collection off stops future comment reads but does not erase previously saved feedback.
 
-The decided policy is to remove student identities and unnecessary personal identifiers from outgoing free text while retaining instructor/author names when they help interpret course material. There is no implemented name scrubber yet. Never equate today's allowlist with anonymization or imply that this docs update changes transmitted data. The redaction policy and proposed local citation-mapping boundary are in [pipeline details](pipeline-details.md#name-scrubbing-and-exact-citations).
+The decided policy is to remove student identities and unnecessary personal identifiers from outgoing free text while retaining instructor/author names when they help interpret course material. It is implemented as the [protection layers](#protection-layers) below. Never equate it with anonymization: distinctive details can still identify people. The redaction policy and proposed local citation-mapping boundary are in [pipeline details](pipeline-details.md#name-scrubbing-and-exact-citations).
 
 The gateway handles text in memory without persisting bodies. Its database stores device IDs, bearer-token hashes, enrollment IPs, timestamps, and usage counters. Logs contain request metadata, not bodies, authorization headers, or keys. Hosting logs and a deletion schedule need to be set before deployment; current operational records remain until the operator removes them. See [gateway operations](../apps/gateway/README.md).
 
 Local receipts record destination, purpose, category, resource IDs, character count, time, and status without duplicating text. A `sent` receipt means an attempted request or MCP response handoff, not confirmed provider delivery. Deleting local data clears coursework/history, downloaded documents, feed secrets, app-owned UW sessions, and MCP access files. Clearing only the UW session retains coursework. Neither removes UW records, provider copies, or OS backups.
 
-The coursework database and downloads are permission restricted but not app encrypted. Feed capabilities and gateway credentials use OS-backed encryption. Exported MCP access files contain a revocable local credential with restrictive permissions; the database stores its hash. Keep the exported configuration and access file on the device. Exporting again rotates that connection's credential.
+The coursework database and downloads are permission restricted. Mail previews, gists and senders, OneNote/OneDrive notes bodies, and planning captures and records are also sealed with AES-256-GCM (see [at rest](#at-rest)); the rest of the database is not app encrypted. Feed capabilities and gateway credentials use OS-backed encryption. Exported MCP access files contain a revocable local credential with restrictive permissions; the database stores its hash. Keep the exported configuration and access file on the device. Exporting again rotates that connection's credential.
+
+## Protection layers
+
+Built and tested in isolation on `feat/privacy-hardening` (September 27); integrated means called by the running app, which needs the lead's merge. Code: `packages/core/src/privacy/`. Tests: `tests/privacy-*.test.ts`.
+
+1. **Roster scrubber** (`identity.ts`, unchanged): known student names, emails, NetIDs and IDs from the manual roster and Canvas; instructors kept.
+2. **Code detectors** (`privacy/detectors.ts`), each with a precision guard: email; phone (NANP with separators, or E.164 with a leading `+` and 8 to 15 digits); UW student ID (10 digits only after a context word such as ID, student, campus, Wiscard); Wiscard or campus card numbers (11 to 19 digits after a card context word); street address (number, capitalised street name, a street suffix, optional unit); date of birth (only after born, DOB, date of birth or birthday); URLs carrying a credential or signature (`verifier`, `token`, `sig`, `key`, `access_token`, `code`, `X-Amz-Signature` and similar, userinfo, or a JWT) and bare JWTs; IPv4 (octets checked; not after section, version or figure words; small dotted numbers need an IP context word) and IPv6; Canvas user IDs in `/users/<id>` or `user_id=`; card numbers (issuer prefix, length and Luhn); US SSN (validity rules; a bare 9-digit number needs an SSN context word); labelled NetIDs. These replace the roster scrubber's own patterns, which fixes two false positives: a bare 10-digit number (a timestamp or an ISBN) is kept, and a sentence-start common word that is also a first name ("Will this be on the exam?") is kept unless a name cue follows ("Will said", "Will's") or the same word appears capitalised mid-sentence.
+3. **Pseudonyms** (`privacy/pseudonyms.ts`): within one request every value keeps one placeholder across all fields (`[EMAIL_1]` is the same address everywhere). Numbers are assigned in HMAC-SHA-256 order keyed by the install secret and the send context (`pack:<course>`, `guide:<course>`, `context:<recipient>:<course>`, `mcp:<tool>`), so a repeat of the same material gets the same placeholders (the pack cache stays warm) while another install or purpose ranks differently. The reverse map lives only in the request's memory. Names keep the roster's labels (`[STUDENT_SELF]`, `[STUDENT_n]`) for now; switching them to the per-request ranking is an open decision because existing tests pin those labels.
+4. **Receipts** record replacement counts per kind (`protection`, for example 3 names, 1 email, 1 phone), counted from the placeholders in the exact payload, never the values. Migration v14 adds the column.
+5. **Logs** (`privacy/log.ts`, `redactForLog`): a URL becomes host plus path class (numeric and opaque segments `:id`, page, file and user slugs `:slug`, no query or fragment); detector hits become `[kind]`; name-shaped runs of capitalised words become `[name]`; credential-keyed values become `[redacted]`. Used by the dev trial log, the worker's seal-failure line and main's startup error.
+
+Measured on this laptop (Windows 11, Node 24), one 10 KB course payload with a 42-person roster: the roster scrubber alone 0.32 ms, the full protection pass 0.72 ms (2.3×).
+
+### Egress coverage
+
+| Path | Call site | Protection applied |
+| --- | --- | --- |
+| Explain context and preview (Claude, ChatGPT, Gemini, OpenRouter) | `packages/core/src/index.ts:231` (`context`) | Full pass per field, primed per request; citation projection `index.ts:290`; `validate-citations` `index.ts:899`; receipt counts `index.ts:291`, `:307` |
+| Jev gateway (assignment kind) | `index.ts:482` → `packages/ai/src/index.ts:100` | The same `context(…, "jev")` payload; receipt with counts |
+| Packs: quiz, cards | `packages/core/src/pack-handler.ts:347`, sent at `packages/runner/src/runner.ts:182` | Passages, sections, topics and frame, then the whole system prompt and input again in `beforeCall`; receipt counts `pack-handler.ts:419` |
+| Study guides (guide, briefing, FAQ, timeline, compare, concept map) | `packages/packs/guide/src/run.ts:129` | As packs; receipt counts `run.ts:214` |
+| Intent classify and ask | not on this branch | Must go through the pack path (`runPack` with `beforeCall`), which the sweep covers |
+| MCP tools (`search`, `get_item`, `answer_course_question`, overview) | `packages/core/src/mcp.ts:97`, `:151` | Full pass per scope; projection for citations |
+| Mail as a hosted prompt (`mail.gist`) | stub, `packages/core/src/jobs/mail-gist.ts:8` | `protectMail`: subject, preview and gist as course text; sender name and address pseudonymised (a retained instructor name is kept); mail and unmapped notes use the account-wide roster |
+| OneNote and OneDrive notes | through the paths above | Same treatment as course text |
+| Notes export to OneDrive (`appFolderPut`) | `packages/connectors/src/graph.ts:1413` | Not called by the app yet; a caller must pass the body through `protectText` first |
+| `notes.fill`, `packages/agent-api` | not present on this branch | None needed yet |
+| Planning (DARS, transcript, holds) | no path | Hard-blocked for every hosted recipient (`tests/egress.test.ts`, "maySend refuses planning…", and the sweep) |
+| Dev trial log, startup errors, worker seal failures | `apps/desktop/src/main.ts:130`, `:1716`; `apps/desktop/src/worker.ts:296` | `redactForLog` |
+
+`tests/privacy-canary-sweep.test.ts` seeds canary identities (names, emails, a phone, a student ID, a card, a signed URL, an address, a date of birth, a Canvas user URL) across a material, an assignment with grader comments, a discussion, mail, OneNote notes and planning. It drives every path above with recording fakes and asserts three things: no canary leaves; quotes returned against the protected text map back to the original sentence; and, as a control, the roster scrubber alone lets the non-roster identifiers through.
+
+### At rest
+
+- **What:** mail preview, gist, sender name and address, and text; notes text and parts; planning captures and record versions. Subjects, dates, categories and links stay in the clear.
+- **How:** AES-256-GCM, a fresh IV per value, the column name as associated data. Main creates a 32-byte install secret, wraps it with Electron safeStorage in `privacy-key.enc`, and sends it to the worker over its message channel (never an environment variable, argument or log). HKDF derives the at-rest key and the pseudonym key. Without safeStorage nothing is sealed and pseudonyms use a per-process key.
+- **Migration v14** (the lead renumbers at integration) adds `receipts.protection` and marks existing rows. The first key the worker receives seals every plaintext mail, notes and planning row in one transaction, reindexes mail and checkpoints the WAL. A sensitive write made before the key arrives is sealed the same way.
+- **Search:** mail is indexed by subject and category only; its preview is decrypted in memory when read. Notes stay searchable for study, so their passage headings and index terms remain in the database.
+- **Purge** zeroes the key in the worker, deletes `privacy-key.enc` and sends a new secret.
+- **Cost:** 2,000 messages ingest in 390 to 540 ms unsealed and 490 to 580 ms sealed; reading them all takes 56 to 68 ms unsealed and 82 ms sealed; the lazy pass seals 2,000 rows in 266 ms.
+- **Limits:** the MCP server process has no key, so it serves sealed mail and notes with empty bodies. A wrapped key that can no longer be unwrapped leaves sealed rows readable only as their clear part; the app never overwrites it. The pre-migration backup (`.pre-v14.bak`) stays a plaintext copy until the next migration or a purge.
 
 ## Local model selection
 

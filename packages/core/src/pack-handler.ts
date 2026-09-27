@@ -19,7 +19,8 @@ import type { Concept, LearningStore } from "../../learning/src/store";
 import { eligibleStudySource } from "../../learning/src/router";
 import { findQuote } from "../../retrieval/src/quotes";
 import { contentCategories, courseInclusion } from "./access";
-import { payloadScrubber, rosterFor, scrubText, toOriginalSpan } from "./identity";
+import { rosterFor, toOriginalSpan } from "./identity";
+import { protectedPayloadScrubber, protectionCounts } from "./privacy/protect"; // owner: privacy
 import { buildReceipt, egressFor, payloadHash } from "./egress";
 import { runPack } from "./jobs/pack";
 // owner: guides
@@ -343,12 +344,13 @@ export function createPackHandler(deps: PackHandlerDeps) {
     const runner = await deps.runner();
     try { validate(); } catch (error) { return empty(name, "blocked", (error as Error).message, s.courseRef); }
     const hosted = runner ? runner.client !== "local" : store.privacy().mode !== "local_only";
-    const roster = rosterFor(store, s.courseId, s.accountScope);
-    const scrubber = payloadScrubber(store, hosted, s.accountScope);
+    // owner: privacy: the protection pass (roster + code detectors + per-request pseudonyms).
+    const scrubber = protectedPayloadScrubber(store, hosted, s.accountScope, `pack:${s.courseRef}`);
     const scrub = (value: string) => scrubber.field(value, s.courseId);
+    scrubber.prime([...passages.map((p) => p.text), ...input.sections, ...input.topics, ...input.focus, frame.course, frame.skeleton, frame.policy], s.courseId);
     // Freeze the exact passage projection; output citations may never search outside it.
     const frozen = new Map(passages.map((p) => [p.sourceId, {
-      original: p.text, result: hosted ? scrubText(p.text, roster) : { text: p.text, spans: [] },
+      original: p.text, result: scrubber.text(p.text, s.courseId),
     }]));
     const draftsOf = (output: O) => toDrafts(output).slice(0, input.count).map((d) => {
       const p = frozen.get(d.sourceId);
@@ -414,6 +416,7 @@ export function createPackHandler(deps: PackHandlerDeps) {
         allowed: permission.allowed,
         reason: permission.reason,
         payload,
+        ...(hosted ? { protection: protectionCounts(payload) } : {}), // owner: privacy
       };
       const decision = egressFor(store).check(m, { at: at(), background: lane === "background" });
       if (decision.status === "blocked") {

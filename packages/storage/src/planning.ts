@@ -4,6 +4,8 @@ import {
   planningCaptureSchema, planningRecordSchema,
   type PlanningCapture, type PlanningRecord, type PlanningSourceHealth, type StoredPlanningRecord,
 } from "@magic/contracts";
+// owner: privacy. Captures (DARS, transcript) and record versions are sealed at rest.
+import { PLANNING_CAPTURE_AAD, PLANNING_VERSION_AAD, type AtRestCodec } from "../../core/src/privacy/at-rest";
 
 const digest = (value: unknown): string => createHash("sha256").update(stable(value)).digest("hex");
 const privateKinds = new Set<PlanningRecord["kind"]>(["course_history", "audit", "hold", "appointment", "advisor", "student_summary", "account_link"]);
@@ -27,16 +29,28 @@ function stable(value: unknown): string {
 }
 
 /** Account-wide academic records are isolated from coursework search, MCP, and AI context. */
-export function planningRepository(db: DatabaseSync) {
+export function planningRepository(db: DatabaseSync, atRest?: AtRestCodec) {
+  // owner: privacy. Without a codec (or a key) values stay JSON; a value that cannot be opened is skipped.
+  const sealJson = (value: unknown, aad: string) => (atRest ? atRest.sealJson(value, aad) : JSON.stringify(value));
+  const openVersion = (text: string): PlanningRecord | null => {
+    try {
+      return (atRest ? atRest.openJson(text, PLANNING_VERSION_AAD) : JSON.parse(text)) as PlanningRecord;
+    } catch {
+      return null;
+    }
+  };
   function sources(): PlanningSourceHealth[] {
     return db.prepare("SELECT payload FROM planning_sources ORDER BY id").all().map((r) => JSON.parse(String(r.payload)));
   }
   return {
     planningSources: sources,
     planningRecords(): StoredPlanningRecord[] {
-      return db.prepare(`SELECT r.*, v.payload FROM planning_records r JOIN planning_versions v ON v.local_id=r.local_id AND v.version=r.version ORDER BY r.local_id`).all().map((r) => ({
-        ...JSON.parse(String(r.payload)),
-        provenance: { ...JSON.parse(String(r.payload)).provenance, observedAt: String(r.observed_at) },
+      return db.prepare(`SELECT r.*, v.payload FROM planning_records r JOIN planning_versions v ON v.local_id=r.local_id AND v.version=r.version ORDER BY r.local_id`).all().flatMap((r) => {
+        const record = openVersion(String(r.payload)); // owner: privacy
+        return record ? [{ r, record }] : [];
+      }).map(({ r, record }) => ({
+        ...record,
+        provenance: { ...record.provenance, observedAt: String(r.observed_at) },
         localId: String(r.local_id), sourceId: String(r.source_id),
         accountScope: String(r.account_scope), contentHash: String(r.content_hash), version: Number(r.version), deleted: Boolean(r.deleted),
       }));
@@ -78,7 +92,7 @@ export function planningRepository(db: DatabaseSync) {
       db.exec("BEGIN IMMEDIATE");
       try {
         db.prepare("INSERT INTO planning_sources(id,payload) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload").run(sourceId, JSON.stringify(health));
-        db.prepare("INSERT INTO planning_captures(source_id,observed_at,payload) VALUES(?,?,?)").run(sourceId, stamp, JSON.stringify({ ...capture, records: writable ? valid : [] }));
+        db.prepare("INSERT INTO planning_captures(source_id,observed_at,payload) VALUES(?,?,?)").run(sourceId, stamp, sealJson({ ...capture, records: writable ? valid : [] }, PLANNING_CAPTURE_AAD));
         const seen = new Set<string>();
         if (writable) for (const record of valid) {
           const localId = digest([sourceId, record.kind, record.id]); seen.add(localId);
@@ -86,7 +100,7 @@ export function planningRepository(db: DatabaseSync) {
           const hash = digest({ ...record, provenance: { ...record.provenance, observedAt: undefined } });
           const version = Number(old?.version ?? 0) + (old?.content_hash !== hash || old?.deleted ? 1 : 0);
           if (!old || version !== Number(old.version)) {
-            db.prepare("INSERT INTO planning_versions(local_id,version,payload) VALUES(?,?,?)").run(localId, version, JSON.stringify(record));
+            db.prepare("INSERT INTO planning_versions(local_id,version,payload) VALUES(?,?,?)").run(localId, version, sealJson(record, PLANNING_VERSION_AAD));
           }
           // A repeated unchanged read is still an observation; old versions remain immutable.
           db.prepare(`INSERT INTO planning_records(local_id,source_id,account_scope,version,content_hash,deleted,observed_at) VALUES(?,?,?,?,?,0,?) ON CONFLICT(local_id) DO UPDATE SET version=excluded.version,content_hash=excluded.content_hash,deleted=0,observed_at=excluded.observed_at`).run(localId, sourceId, capture.accountScope, version, hash, new Date(record.provenance.observedAt).toISOString());
