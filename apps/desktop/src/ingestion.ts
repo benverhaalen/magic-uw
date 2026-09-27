@@ -205,6 +205,12 @@ export interface IngestionHost {
    * decided `sync`. Absent (tests, older hosts), every seed is crawled as before.
    */
   triage?(accountScope: string, courseId: string, signal?: AbortSignal): Promise<Map<string, { decision: HostDecision }>>;
+  /**
+   * owner: site-recipes. The stored triage decisions (no rule re-run, no model call). Opening an
+   * item reads its `read_once` links by these, so an open never costs a triage call. Absent,
+   * `triage` decides.
+   */
+  triageDecisions?(accountScope: string, courseId: string): Map<string, { decision: HostDecision }>;
   /** owner: T05b. A course's inventory with access states; the data builder stores it in course_spaces. */
   onSpaces?(accountScope: string, courseId: string, spaces: CourseSpace[]): void;
   /** owner: acquisition. Overrides of ACQUISITION_DEFAULTS (tests and the perf comparison). */
@@ -1163,7 +1169,9 @@ export function createIngestion(
     const sources = new Map(store.sources().map((s) => [s.id, s]));
     const source = item && sources.get(item.sourceId);
     if (!item || item.deleted || !source || source.kind !== "canvas" || !host.triage) return { read: 0 };
-    const decided = await host.triage(source.accountScope, item.courseId, signal).catch(() => null);
+    const decided = host.triageDecisions
+      ? host.triageDecisions(source.accountScope, item.courseId)
+      : await host.triage(source.accountScope, item.courseId, signal).catch(() => null);
     if (!decided) return { read: 0 };
     const onceId = `web-once:${contentHash(`${source.accountScope}:${item.courseId}`).slice(0, 24)}`;
     const earlier = store.resources().filter((r) => r.sourceId === onceId && !r.deleted);
@@ -1996,6 +2004,10 @@ export function createIngestion(
       return barrier;
     },
     readLinked, // owner: site-recipes
+    /** owner: site-recipes. The core's `ui_event` seam: opening an item reads its `read_once` links. */
+    onUiEvent: async (event: { kind: string; subject: string }) => {
+      if (event.kind === "open") await readLinked(event.subject).catch(() => {});
+    },
     spaces: () => [...spaces.values()].flat(),
     accessSummary: () => accessSummary([...spaces.values()].flat()),
     recheckAccess,

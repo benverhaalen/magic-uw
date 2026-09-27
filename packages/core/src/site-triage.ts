@@ -286,7 +286,7 @@ export function createSiteTriage(deps: SiteTriageDeps) {
     const key = triageKey(course.accountScope, course.courseId);
     const id = courseIdentity(store, course);
     const report: TriageReport = { hosts: [], counts: { ignore: 0, link_only: 0, read_once: 0, sync: 0 }, ambiguous: 0, modelCalls: 0, tokens: { in: 0, cached: 0, out: 0 }, receiptIds: [] };
-    const open: { s: HostSignals; hash: string; reason: string }[] = [];
+    const open: { s: HostSignals; hash: string; reason: string; saved: TriageRecord | undefined }[] = [];
     const signals = hostSignals(store, course);
     for (const s of signals) {
       const hash = signalsHash(s);
@@ -307,7 +307,7 @@ export function createSiteTriage(deps: SiteTriageDeps) {
         report.hosts.push({ host: s.host, decision: saved.decision, reason: saved.reason, by: "model" });
         continue;
       }
-      open.push({ s, hash, reason: code.ambiguous });
+      open.push({ s, hash, reason: code.ambiguous, saved });
     }
     // Only hosts with course-text evidence are sent; one seen only in messages stays a link.
     const sendable = open.filter(({ s }) => s.urls.length > 0);
@@ -333,13 +333,17 @@ export function createSiteTriage(deps: SiteTriageDeps) {
       report.tokens = sent.usage;
       if (sent.result.status === "done") answer = sent.result.artifact.output as HostsAnswer;
     }
-    open.forEach(({ s, hash, reason }) => {
+    open.forEach(({ s, hash, reason, saved }) => {
       const i = sendable.findIndex((x) => x.s === s);
       const judged = i >= 0 && i < 40 ? answer?.hosts.find((h) => h.id === `h${i}`)?.decision : undefined;
       if (judged) {
         const why = `your AI judged it from how Canvas links it (${reason.split("; ").pop()})`;
         persist(s.host, key, { decision: judged, reason: why, by: "model", signalsHash: hash });
         report.hosts.push({ host: s.host, decision: judged, reason: why, by: "model" });
+      } else if (saved?.by === "model") {
+        // No judgment now (the AI is off or the call failed): the earlier judgment stands, so an
+        // outage never downgrades a synced host. Its stale hash asks again next time.
+        report.hosts.push({ host: s.host, decision: saved.decision, reason: saved.reason, by: "model" });
       } else {
         const why = `not decided yet (${reason}); kept as a link until your AI can judge it`;
         persist(s.host, key, { decision: "link_only", reason: why, by: "default", signalsHash: hash });

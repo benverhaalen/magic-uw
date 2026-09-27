@@ -244,9 +244,7 @@ const core = createCore(store, {
     // end owner: analytics
   }), pack: generation.pack /* owner: generation */, notes /* owner: notes */, intent /* owner: intent */,
     // owner: site-recipes. Opening an item reads its `read_once` links (the renderer's "open" event).
-    uiEvent: (event) => {
-      if (event.kind === "open") void ingestion.readLinked(event.subject).catch(() => {});
-    },
+    uiEvent: (event) => void ingestion.onUiEvent(event),
   },
   ...(process.env.MAGIC_GATEWAY_URL
     ? {
@@ -357,6 +355,7 @@ const ingestion = createIngestion(store, {
   // owner: site-recipes: the crawler reads only hosts triage decided `sync`.
   triage: async (accountScope, courseId, signal) =>
     new Map((await siteTriage.decide({ accountScope, courseId }, signal)).hosts.map((h) => [h.host, h])),
+  triageDecisions: (accountScope, courseId) => siteTriage.decisions({ accountScope, courseId }),
   directory: dirname(process.env.MAGIC_DB_PATH!),
   extractor,
   client: publicClients.ingestion, // owner: T06

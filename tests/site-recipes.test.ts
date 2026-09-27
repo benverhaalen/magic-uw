@@ -17,7 +17,7 @@ import { createPackRuntime } from "../packages/packs/core/src/index";
 import { applyConsent } from "../packages/core/src/egress";
 import { evidenceFor } from "../packages/core/src/evidence";
 import { agenda } from "../packages/core/src/graph/agenda";
-import { createSiteRecipes, siteSourceId, type SiteRunReport } from "../packages/core/src/site-recipes";
+import { createSiteRecipes, siteRecipeJob, siteSourceId, SITE_RECIPE_JOB, type SiteRunReport } from "../packages/core/src/site-recipes";
 import { contentHash, extractLinkedText, externalCourseConnector } from "../packages/connectors/src/external";
 import { MaterialReadError, type PublicClient } from "../packages/connectors/src/network";
 import { snapshotPage, storedRecipeSchema, type RecipeAnswer } from "../packages/connectors/src/recipes";
@@ -406,4 +406,48 @@ test("GET only and no new connections: the crawler reads the site, the recipe st
   }
   assert.equal(fetched, 0);
   assert.ok(store.sources().some((s) => s.id === siteSourceId(ACCOUNT, COURSE, "a-table.example.edu") && s.kind === "site"));
+});
+
+test("a sign-in page stored by a recrawl keeps that page's earlier items while a sibling page changes", async () => {
+  const store = createStore(":memory:");
+  canvas(store);
+  consent(store);
+  const table = scheduleTableSite();
+  const WEEK2 = "https://a-table.example.edu/cs564/week2.html";
+  crawl(store, [webPage(TABLE, table, 3), webPage(WEEK2, table, 3)], 3);
+  const fakeAi = await fakeRunner([tableRecipe(table)]);
+  const run = (day: number) => createSiteRecipes({ store, runner: () => fakeAi.runner, now: () => new Date(observed(day)) }).ingestCourse({ accountScope: ACCOUNT, courseId: COURSE });
+  await run(3);
+  const fromTable = () => siteResources(store).filter((r) => r.provenance?.sourceUrl === TABLE).map((r) => r.id).sort();
+  const before = fromTable();
+  assert.ok(before.length > 0);
+  // The session expired for one page; the other page gained rows (so the host is saved again).
+  // The sign-in page carries enough text to pass the store's text-collapse guard for web pages.
+  const signIn = `<!DOCTYPE html><html><head><title>Sign in</title></head><body><form action="/idp/login"><input type="password" name="p"></form><p>${"This service needs you to sign in with your account before it shows the page. ".repeat(80)}</p></body></html>`;
+  crawl(store, [webPage(TABLE, signIn, 5), webPage(WEEK2, scheduleTableSite({ rows: 36 }), 5)], 5);
+  const report = await run(5);
+  assert.match(report.pages.find((p) => p.url === TABLE)!.reason!, /sign-in page; previous items kept/);
+  assert.equal(report.pages.find((p) => p.url === WEEK2)!.route, "replayed");
+  assert.deepEqual(fromTable(), before, "a failed capture never erases coursework");
+});
+
+test("the job runs one pass per crawl: later jobs of the same crawl do nothing, so the new-layout budget is per sync", async () => {
+  const store = createStore(":memory:");
+  canvas(store);
+  consent(store);
+  const table = scheduleTableSite(), list = listSite(), pages = pagesSite();
+  crawl(store, [webPage(TABLE, table, 3), webPage(LIST, list, 3), webPage(PAGES, pages, 3)], 3);
+  const fakeAi = await fakeRunner([tableRecipe(table), listRecipe(list), pagesRecipe(pages)]);
+  const handler = siteRecipeJob({ runner: () => fakeAi.runner, now: () => new Date(observed(3)), budgets: { newLayoutsPerRun: 1 } });
+  const context = { store, now: () => observed(3), signal: new AbortController().signal };
+  const job = (url: string) => {
+    const r = store.resources().find((x) => x.url === url && !x.deleted && x.sourceId === "web-564")!;
+    return { id: `job-${r.id}`, kind: SITE_RECIPE_JOB, resourceId: r.id, inputHash: r.contentHash, status: "running" as const, attempts: 0, runAfter: observed(3), leaseUntil: null, leaseToken: null, error: null };
+  };
+  for (const url of [TABLE, LIST, PAGES]) assert.deepEqual(await handler.run(job(url), context), { status: "done" });
+  assert.equal(await fakeAi.calls(), 1, "three jobs from one crawl: one pass, one new layout (the budget)");
+  // The next crawl changes a page: a new pass, which takes the next layout within its budget.
+  crawl(store, [webPage(TABLE, scheduleTableSite({ rows: 36 }), 5), webPage(LIST, list, 3), webPage(PAGES, pages, 3)], 5);
+  await handler.run(job(TABLE), context);
+  assert.equal(await fakeAi.calls(), 2);
 });

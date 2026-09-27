@@ -19,6 +19,9 @@ import { createSiteTriage, readOnceTargets, syncSeeds, triageKey, type HostDecis
 import { externalCourseConnector } from "../packages/connectors/src/external";
 import { MaterialReadError, type PublicClient } from "../packages/connectors/src/network";
 import { createIngestion } from "../apps/desktop/src/ingestion";
+import { createCore } from "../packages/core/src/index";
+import { captureBatchSchema } from "@magic/contracts";
+import courseFixture from "../fixtures/course.json";
 import { createSyntheticCanvasUniversity } from "../packages/connectors/src/canvas-fixture";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -194,6 +197,31 @@ test("the student's choice wins; without the student's AI, ambiguous hosts stay 
   assert.equal(judged.hosts.find((x) => x.host === "service3.students.wisc.edu")!.decision, "sync");
 });
 
+test("an AI outage never downgrades a host the model judged sync: the earlier judgment stands and is asked again later", async () => {
+  const store = createStore(":memory:");
+  canvas(store);
+  consent(store);
+  const ai = await fakeRunner([toolAnswer]);
+  const first = await createSiteTriage({ store, runner: () => ai.runner, now: () => new Date(AT) }).decide(COURSE_REF);
+  const synced = first.hosts.find((h) => h.by === "model" && h.decision === "sync")!;
+  assert.ok(synced, "the model judged one tool host sync");
+  // New Canvas evidence for that host changes its signals; the student's AI is now unavailable.
+  store.ingest({
+    source: { id: "canvas-page-new", kind: "canvas", accountScope: ACCOUNT, courseId: COURSE, scope: "page:new", label: "CS 564 new page" },
+    observedAt: AT, complete: true, status: "ok",
+    resources: [resourceInputSchema.parse({ externalId: "new", kind: "material", courseId: COURSE, courseName: "COMP SCI 564: Database Systems", title: "New", url: `${CANVAS}/courses/${COURSE}/pages/new`, text: "See it.", links: [`https://${synced.host}/week-3`] })],
+  });
+  const offline = await createSiteTriage({ store, runner: () => null, now: () => new Date(AT) }).decide(COURSE_REF);
+  const kept = offline.hosts.find((h) => h.host === synced.host)!;
+  assert.deepEqual([kept.decision, kept.by], ["sync", "model"]);
+  assert.deepEqual(syncSeeds([`https://${synced.host}/`], new Map(offline.hosts.map((h) => [h.host, h]))), [`https://${synced.host}/`], "the crawl still seeds it");
+  // The stored judgment's signals are stale, so the next run with the AI asks about it again.
+  const back = await fakeRunner([{ hosts: [] }]);
+  const again = await createSiteTriage({ store, runner: () => back.runner, now: () => new Date(AT) }).decide(COURSE_REF);
+  assert.equal(again.modelCalls, 1);
+  assert.match((await back.inputs())[0]!, new RegExp(`host=${synced.host.replace(/\./g, "\\.")}`));
+});
+
 test("only sync hosts reach the crawler; read_once links are an item's own, read when it opens", async () => {
   const store = createStore(":memory:");
   canvas(store);
@@ -276,8 +304,16 @@ test("the app's sync: triage runs first and the crawler skips hosts not decided 
   const all = store.resources();
   const linking = all.find((r) => canvasSources.has(r.sourceId) && r.kind !== "message" && targetsOf(r).some((u) => u === "https://courses.synthetic.test/101/spec.html"));
   assert.ok(linking, "a Canvas item links the spec page");
-  const opened = await runtime.readLinked(linking.id);
-  assert.equal(opened.read, 1);
+  // Through the core's `ui_event` command, the path the renderer's open event takes (the worker
+  // wires the seam to `onUiEvent` the same way).
+  let pending: Promise<void> | undefined;
+  const core = createCore(store, {
+    fixture: captureBatchSchema.parse(courseFixture),
+    seams: { uiEvent: (event) => void (pending = runtime.onUiEvent(event)) },
+  });
+  await core.execute({ type: "ui_event", value: { kind: "open", subject: linking.id } });
+  assert.ok(pending, "the ui_event command reached the runtime");
+  await pending;
   assert.ok(pageCalls.every((u) => host(u) === "courses.synthetic.test") && pageCalls.filter((u) => !u.endsWith("robots.txt")).length === 1);
   const once = store.sources().find((s) => s.scope === "linked_pages")!;
   assert.ok(store.resources().some((r) => r.sourceId === once.id && /worked example/.test(r.text)));

@@ -366,13 +366,29 @@ export function createSiteRecipes(deps: SiteRecipeDeps) {
           continue;
         }
         if (isLoginHtml(page.rawHtml!)) {
-          report.pages.push({ ...base, reason: "The stored page is a sign-in page." });
+          // A failed capture (an expired session) never erases the page's earlier items.
+          keep();
+          report.pages.push({ ...base, reason: "The stored page is a sign-in page; previous items kept." });
           continue;
         }
         if (index >= budgets.pagesPerSite) {
           keep();
           report.pages.push({ ...base, reason: "Over this sync's page budget; previous items kept." });
           continue;
+        }
+        const prevDigest = previousByPage.get(page.url)?.find((r) => r.externalId.startsWith("digest:"));
+        // Unchanged page whose layout's recipe is still valid: decided from the digest alone,
+        // before any HTML parse.
+        const prevLayout = /; layout=([^;\s]+)/.exec(prevDigest?.provenance?.contentType ?? "")?.[1];
+        if (prevLayout && prevDigest?.crawl?.contentHash === page.contentHash) {
+          const known = store.extractionRecipe(host, prevLayout);
+          const valid = known ? storedRecipeSchema.safeParse(known.recipe) : null;
+          if (known && valid?.success && valid.data.status === "valid" && prevDigest.provenance?.contentType === recipeTag(known.id, prevLayout)) {
+            keep();
+            report.pages.push({ ...base, layoutHash: prevLayout, route: "unchanged", recipeId: known.id, items: previousByPage.get(page.url)?.length ?? 0 });
+            report.recipes.unchanged++;
+            continue;
+          }
         }
         const snap = snapshotPage(page.rawHtml!, page.url);
         const pageReport: SitePageReport = { ...base, layoutHash: snap.layoutHash, htmlTokens: snap.htmlTokens, snapshotTokens: snap.snapshotTokens };
@@ -398,10 +414,9 @@ export function createSiteRecipes(deps: SiteRecipeDeps) {
           pageReport.reason = "The page's address and title do not name this course.";
           continue;
         }
-        const prevDigest = previousByPage.get(page.url)?.find((r) => r.externalId.startsWith("digest:"));
 
         // Unchanged page and the same valid recipe: nothing to do, not even a replay.
-        if (recipe?.recipe.status === "valid" && prevDigest?.crawl?.contentHash === page.contentHash && prevDigest.provenance?.contentType === recipeTag(recipe.id)) {
+        if (recipe?.recipe.status === "valid" && prevDigest?.crawl?.contentHash === page.contentHash && prevDigest.provenance?.contentType === recipeTag(recipe.id, snap.layoutHash)) {
           keep();
           pageReport.route = "unchanged";
           pageReport.recipeId = recipe.id;
@@ -478,7 +493,7 @@ export function createSiteRecipes(deps: SiteRecipeDeps) {
           report.recipes[route]++;
         }
         const placed = await placeLeftovers(runner, page, course, items, report, prevDigest, signal);
-        const resources = toResources(page, placed, recipe!.id, canvasAssignments, report);
+        const resources = toResources(page, placed, recipeTag(recipe!.id, snap.layoutHash), canvasAssignments, report);
         pageReport.items = placed.length;
         out.push(...resources);
         changed = true;
@@ -680,9 +695,9 @@ export function createSiteRecipes(deps: SiteRecipeDeps) {
     return near.length === 1 ? near[0]! : null;
   }
 
-  function toResources(page: Resource, items: SiteItem[], recipeId: string, canvas: Resource[], report: SiteRunReport): ResourceInput[] {
+  function toResources(page: Resource, items: SiteItem[], tag: string, canvas: Resource[], report: SiteRunReport): ResourceInput[] {
     const observedAt = page.crawl?.observedAt ?? page.crawl?.fetchedAt ?? now().toISOString();
-    const provenance = { sourceUrl: page.url, discoveredFrom: page.url, contentType: recipeTag(recipeId), contentHash: page.contentHash, observedAt };
+    const provenance = { sourceUrl: page.url, discoveredFrom: page.url, contentType: tag, contentHash: page.contentHash, observedAt };
     const crawl = { discoveredFrom: page.url, contentType: "text/html", contentHash: page.contentHash, observedAt };
     const common = { courseId: page.courseId, courseName: page.courseName, provenance, crawl, createdAt: observedAt };
     const urlOf = (item: SiteItem) => item.links.map((l) => l.url).find((u) => resourceInputSchema.shape.url.safeParse(u).success) ?? page.url;
@@ -805,8 +820,11 @@ function namesCourse(page: Resource, snap: { title: string; text: string }, numb
   return numbers.some((n) => new RegExp(`(?<!\\d)${n}(?!\\d)`).test(where));
 }
 
-/** Provenance names the recipe that organized the page (a MIME parameter on the page's type). */
-const recipeTag = (id: string) => `text/html; recipe=${id}`;
+/**
+ * Provenance names the layout and the recipe that organized the page (MIME parameters on the
+ * page's type), so an unchanged page is recognized without parsing its HTML again.
+ */
+const recipeTag = (id: string, layoutHash: string) => `text/html; layout=${layoutHash}; recipe=${id}`;
 function add(a: SitePageReport["tokens"], b: SitePageReport["tokens"]) {
   return { in: a.in + b.in, cached: a.cached + b.cached, out: a.out + b.out };
 }
@@ -830,6 +848,10 @@ export const SITE_RECIPE_JOB = "site.recipe";
  * Replays and unchanged pages cost nothing; only a new layout calls the student's AI.
  */
 export function siteRecipeJob(deps: Omit<SiteRecipeDeps, "store">): JobHandler {
+  // One pass per course crawl: a crawl saving N pages queues N jobs, and the first pass already
+  // covers every page, so a job whose course's site pages are the same as the last pass's (ids
+  // and content hashes) does nothing. The new-layout budget is then per sync, not per job.
+  const lastPass = new Map<string, string>();
   return {
     kind: SITE_RECIPE_JOB,
     subject: "resource",
@@ -842,7 +864,24 @@ export function siteRecipeJob(deps: Omit<SiteRecipeDeps, "store">): JobHandler {
       const source = store.sources().find((s) => s.id === r.sourceId);
       if (!source || source.kind !== "web" || source.scope !== "course_websites") return { status: "done" };
       if (!("extractionRecipe" in store)) return { status: "done" };
-      await createSiteRecipes({ ...deps, store: store as SiteStore }).ingestCourse({ accountScope: source.accountScope, courseId: r.courseId }, signal);
+      const key = `${source.accountScope}:${r.courseId}`;
+      const siteSources = new Set(
+        store.sources().filter((s) => s.kind === "web" && s.scope === "course_websites" && s.accountScope === source.accountScope).map((s) => s.id),
+      );
+      const fingerprint = store
+        .resources()
+        .filter((p) => p.courseId === r.courseId && siteSources.has(p.sourceId) && isSitePage(p))
+        .map((p) => `${p.id}@${p.contentHash}`)
+        .sort()
+        .join("|");
+      if (lastPass.get(key) === fingerprint) return { status: "done" };
+      lastPass.set(key, fingerprint);
+      try {
+        await createSiteRecipes({ ...deps, store: store as SiteStore }).ingestCourse({ accountScope: source.accountScope, courseId: r.courseId }, signal);
+      } catch (error) {
+        lastPass.delete(key); // a failed or aborted pass is retried in full
+        throw error;
+      }
       return { status: "done" };
     },
   };
