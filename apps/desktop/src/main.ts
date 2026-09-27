@@ -27,6 +27,7 @@ import {
 } from "../../../packages/connectors/src/network";
 import { checkedSpaceProbeUrl } from "../../../packages/connectors/src/space-hosts"; // owner: T05b
 import { clearSignOutSecrets, createSecretVault } from "./secrets";
+import { purgeHostData } from "./purge-host"; // owner: platform-fix
 // owner: T30. Outlook through the app's own Microsoft sign-in (Graph); the token stays in main.
 import { createOutlook, readOutlookConfig } from "./outlook";
 import { electronAuthWindow } from "./outlook-window";
@@ -945,14 +946,15 @@ app
           await outlook.disconnect().catch(() => {}); // owner: T30: tokens and state
           void postGraphScopes(); // owner: T30
           clientsRuntime?.terminal.closeAll(); // owner: T80
-          await Promise.all([
-            rm(join(data, "clients"), { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }), // owner: T80
-            rm(join(data, "documents"), { recursive: true, force: true }),
-            rm(join(data, "mcp"), { recursive: true, force: true }),
-            studentSession.clearStorageData(),
-            gitlabSession.clearStorageData(),
-            resetPlanningScope(),
-          ]);
+          // owner: platform-fix. Both sessions lose their storage and their HTTP cache (sign-out
+          // already cleared the cache; purge did not), and every app-owned folder goes.
+          await purgeHostData({
+            sessions: [studentSession, gitlabSession],
+            folders: [join(data, "clients"), join(data, "documents"), join(data, "mcp")], // clients: owner T80
+            remove: (path) => rm(path, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }),
+            also: [resetPlanningScope()],
+          });
+          // end owner: platform-fix
         }
         return result;
       } finally {
@@ -972,8 +974,8 @@ app
       const connection = join(directory, `${id}.json`);
       await writeFile(
         connection,
+        // owner: platform-fix. No database path: the reader derives it from this file's folder.
         JSON.stringify({
-          databasePath: join(data, "workspace.sqlite"),
           clientId: id,
           token,
         }),

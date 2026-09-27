@@ -32,32 +32,34 @@ export interface Fitted<T> {
 }
 
 /**
- * The richest `build(level, count)` whose JSON fits `budgetTokens`. `build` must be deterministic
- * in its inputs; it runs once per attempt (at most the level count plus a few item-count steps).
+ * The richest `build(level, count)` whose JSON fits `budgetTokens`. Sizing builds run with
+ * `final = false` (they may skip side effects such as registering citation projections, but must
+ * produce the same length); the chosen level and count are built once more with `final = true`.
  */
 export function fitToBudget<T>(
   budgetTokens: number,
   count: number,
-  build: (level: DetailLevel, count: number) => T,
+  build: (level: DetailLevel, count: number, final: boolean) => T,
   /** The richest level to try first (search excerpts start narrower than a single item). */
   from = 0,
 ): Fitted<T> {
   const limit = budgetTokens * CHARS_PER_TOKEN;
-  let value: T | undefined;
-  let text = "";
+  const finish = (level: DetailLevel, n: number, trimmed: boolean): Fitted<T> => {
+    const value = build(level, n, true);
+    return { value, text: JSON.stringify(value), count: n, trimmed };
+  };
+  let length = Infinity;
   for (const [index, level] of DETAIL_LEVELS.entries()) {
     if (index < from) continue;
-    value = build(level, count);
-    text = JSON.stringify(value);
-    if (text.length <= limit) return { value, text, count, trimmed: index > from };
+    length = JSON.stringify(build(level, count, false)).length;
+    if (length <= limit) return finish(level, count, index > from);
   }
   const smallest = DETAIL_LEVELS[DETAIL_LEVELS.length - 1]!;
   let n = count;
-  while (n > 0 && text.length > limit) {
+  while (n > 0 && length > limit) {
     // Scale down by the overshoot, always by at least one item.
-    n = Math.max(0, Math.min(n - 1, Math.floor((n * limit) / text.length)));
-    value = build(smallest, n);
-    text = JSON.stringify(value);
+    n = Math.max(0, Math.min(n - 1, Math.floor((n * limit) / length)));
+    length = JSON.stringify(build(smallest, n, false)).length;
   }
-  return { value: value!, text, count: n, trimmed: true };
+  return finish(smallest, n, true);
 }

@@ -91,7 +91,7 @@ export function readerReceiptLogPath(path: string): string {
 }
 /** The reader refuses a database it cannot read as this version; only the app migrates. */
 export class ReaderSchemaError extends Error {}
-/** Receipts keep 90 days of detail; older ones roll up into per-day counts (receipt_counts). */
+/** Receipts keep 90 days of detail; older ones roll up into per-day counts (preferences 'receiptCounts'). */
 export const RECEIPT_DETAIL_DAYS = 90;
 // end owner: platform-fix
 /** A failed migration. The single transaction rolled back, so the original file is intact. */
@@ -395,16 +395,11 @@ export function createStore(
   steps.push([8, () => db.exec(LEARNING_V8 + "PRAGMA user_version = 8;")]);
   steps.push([9, () => db.exec(COURSE_SPACE_OBSERVATION_MIGRATION + "PRAGMA user_version = 9;")]);
   // owner: platform-fix. v13 (additive, idempotent; reserved for this branch, applied after main's
-  // v9): the receipts index for the retention sweep, and the per-day counts that outlive 90 days of detail.
+  // v9): the receipts index for the retention sweep. The per-day counts that outlive 90 days of
+  // detail live in preferences ('receiptCounts'), like consents and the day plan: no new table.
   steps.push([
     13,
-    () =>
-      db.exec(`CREATE INDEX IF NOT EXISTS receipts_created ON receipts(created_at);
-      CREATE TABLE IF NOT EXISTS receipt_counts (
-        day TEXT NOT NULL, recipient TEXT NOT NULL, purpose TEXT NOT NULL, status TEXT NOT NULL,
-        receipts INTEGER NOT NULL, characters INTEGER NOT NULL,
-        PRIMARY KEY (day, recipient, purpose, status));
-      PRAGMA user_version = 13;`),
+    () => db.exec("CREATE INDEX IF NOT EXISTS receipts_created ON receipts(created_at); PRAGMA user_version = 13;"),
   ]);
   // end owner: platform-fix
   const migrationBackup = file ? migrationBackupPath(path) : null;
@@ -824,20 +819,49 @@ export function createStore(
   }
   const atomically = <T>(work: () => T): T => (db.isTransaction ? work() : transaction(work));
   let rolledUpAt = 0;
+  function readReceiptCounts(): ReceiptCount[] {
+    const row = prepare("SELECT value FROM preferences WHERE key = 'receiptCounts'").get();
+    try {
+      const value: unknown = row ? JSON.parse(String(row.value)) : [];
+      return Array.isArray(value) ? (value as ReceiptCount[]) : [];
+    } catch {
+      return [];
+    }
+  }
   /** Receipts past the detail window become per-day counts (indexed on created_at, so cheap). */
   function rollUpReceipts() {
     if (readOnly) return;
     rolledUpAt = clock().getTime();
     const cutoff = new Date(rolledUpAt - RECEIPT_DETAIL_DAYS * 86_400_000).toISOString();
     atomically(() => {
+      const expired = prepare(
+        `SELECT substr(created_at, 1, 10) AS day, recipient, purpose, status, COUNT(*) AS receipts,
+           SUM(characters) AS characters FROM receipts WHERE created_at < ? GROUP BY 1, 2, 3, 4`,
+      ).all(cutoff) as Row[];
+      if (!expired.length) return;
+      const counts = new Map(readReceiptCounts().map((c) => [`${c.day}|${c.recipient}|${c.purpose}|${c.status}`, c]));
+      for (const r of expired) {
+        const key = `${r.day}|${r.recipient}|${r.purpose}|${r.status}`;
+        const prior = counts.get(key);
+        counts.set(key, {
+          day: String(r.day),
+          recipient: String(r.recipient),
+          purpose: String(r.purpose),
+          status: String(r.status),
+          receipts: (prior?.receipts ?? 0) + Number(r.receipts),
+          characters: (prior?.characters ?? 0) + Number(r.characters),
+        });
+      }
+      const sorted = [...counts.values()].sort(
+        (a, b) =>
+          a.day.localeCompare(b.day) ||
+          a.recipient.localeCompare(b.recipient) ||
+          a.purpose.localeCompare(b.purpose) ||
+          a.status.localeCompare(b.status),
+      );
       prepare(
-        `INSERT INTO receipt_counts (day, recipient, purpose, status, receipts, characters)
-         SELECT substr(created_at, 1, 10), recipient, purpose, status, COUNT(*), SUM(characters)
-         FROM receipts WHERE created_at < ? GROUP BY 1, 2, 3, 4
-         ON CONFLICT(day, recipient, purpose, status) DO UPDATE SET
-           receipts = receipt_counts.receipts + excluded.receipts,
-           characters = receipt_counts.characters + excluded.characters`,
-      ).run(cutoff);
+        "INSERT INTO preferences VALUES ('receiptCounts', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      ).run(JSON.stringify(sorted));
       prepare("DELETE FROM receipts WHERE created_at < ?").run(cutoff);
     });
   }
@@ -2084,25 +2108,12 @@ export function createStore(
     ...courseCore,
     // owner: platform-fix
     importReaderReceipts,
-    receiptCounts() {
-      return (
-        prepare("SELECT * FROM receipt_counts ORDER BY day, recipient, purpose, status").all() as Row[]
-      ).map((r) => ({
-        day: String(r.day),
-        recipient: String(r.recipient),
-        purpose: String(r.purpose),
-        status: String(r.status),
-        receipts: Number(r.receipts),
-        characters: Number(r.characters),
-      }));
-    },
+    receiptCounts: readReceiptCounts,
     // end owner: platform-fix
   };
-  // owner: platform-fix. The writer takes in what the reader logged while it was away, then sweeps.
-  if (!readOnly) {
-    importReaderReceipts();
-    rollUpReceipts();
-  }
+  // owner: platform-fix. The writer takes in what the reader logged while it was away. (The retention
+  // sweep runs with the next receipt, never at open, so opening or migrating keeps every row.)
+  if (!readOnly) importReaderReceipts();
   return api;
   // end owner: platform-fix
 }

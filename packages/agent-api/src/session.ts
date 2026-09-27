@@ -42,26 +42,43 @@ export function authorize(store: Store, credentials: Credentials): McpGrant {
   return g;
 }
 
-/** A store whose whole-table reads are decoded once for the duration of one call. */
-function oneRead(store: Store): Store {
+/**
+ * Runs one synchronous read with the store's whole-table reads decoded once: every helper it calls
+ * (inclusion, deadline evidence, the identity roster behind each projection) shares one decode of
+ * `resources()` and `sources()` instead of one each. The store is restored before returning; nothing
+ * else can run in between, since the work is synchronous.
+ */
+export function withOneRead<T>(store: Store, work: () => T): T {
+  const resources = store.resources;
+  const sources = store.sources;
   let all: Resource[] | undefined;
-  let sources: SourceHealth[] | undefined;
-  return new Proxy(store, {
-    get(target, key) {
-      if (key === "resources")
-        return (search?: string) => (search ? target.resources(search) : (all ??= target.resources()));
-      if (key === "sources") return () => (sources ??= target.sources());
-      const value = Reflect.get(target, key);
-      return typeof value === "function" ? value.bind(target) : value;
-    },
-  });
+  let health: SourceHealth[] | undefined;
+  try {
+    store.resources = (search?: string) =>
+      search ? resources.call(store, search) : (all ??= resources.call(store)).slice();
+    store.sources = () => (health ??= sources.call(store)).slice();
+  } catch {
+    return work(); // a frozen store: correct, only slower
+  }
+  try {
+    return work();
+  } finally {
+    store.resources = resources;
+    store.sources = sources;
+  }
 }
 
 export interface ProjectOptions {
   level: DetailLevel;
   /** An offset in the scrubbed text to centre the excerpt on (a search match). */
   around?: number;
+  /**
+   * Sizing only: the same JSON length without registering a citation projection (each registration
+   * scrubs the whole item again). The budget sizes with dry builds and projects once, for real.
+   */
+  dry?: boolean;
 }
+const DRY_PROJECTION_ID = "00000000-0000-4000-8000-000000000000";
 
 export function openSession(
   store: Store,
@@ -75,7 +92,7 @@ export function openSession(
   const permitted = (category: McpCategory) =>
     g.categories.includes(category) && maySend(privacy, g.recipient, [category]).allowed;
   if (!g.categories.some(permitted)) throw new Error("Sharing is disabled for this connection.");
-  const view = oneRead(store);
+  const view = store;
   const included = courseInclusion(view);
   const sourceMap = new Map(view.sources().map((s) => [s.id, s]));
   const grantedCourse = (accountScope: string, courseId: string) =>
@@ -132,13 +149,17 @@ export function openSession(
   const clip = (text: string, max: number) => (text.length > max ? text.slice(0, max) : text);
 
   /** A resource as an agent sees it: scrubbed, cited, excerpted to the level's window. */
-  function project(r: Resource, { level, around }: ProjectOptions) {
+  function project(r: Resource, { level, around, dry }: ProjectOptions) {
     const source = sourceMap.get(r.sourceId)!;
     const s = scrubFor(r);
     const text = s(r.text);
     const lead = Math.min(500, Math.floor(level.window / 4));
     const start = around === undefined ? 0 : Math.max(0, Math.min(around - lead, text.length - level.window));
-    const projection = outgoingProjection(store, r, "text", { start, end: start + level.window });
+    // The scrubbed text here is the projection's own (same scrubber, same roster), so a dry build
+    // has exactly the real build's length.
+    const projection = dry
+      ? { id: DRY_PROJECTION_ID, text: text.slice(start, start + level.window), start, end: Math.min(text.length, start + level.window) }
+      : outgoingProjection(store, r, "text", { start, end: start + level.window });
     return {
       id: r.id,
       courseId: r.courseId,
