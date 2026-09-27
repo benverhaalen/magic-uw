@@ -2,7 +2,7 @@
 
 Magic UW's entry for **The Art of the Break**: one failure specific to how we built the app, how often it happened, what we did to stop it and what we learned.
 
-The one-page submission is [break-card.pdf](break-card.pdf) (source: [break-card.tex](break-card.tex), written in ASD-STE100 Simplified Technical English; build with `xelatex break-card.tex`).
+The one-page submission is [break-card.pdf](break-card.pdf) (source: [break-card.tex](break-card.tex), written in ASD-STE100 Simplified Technical English; build with `pdflatex break-card.tex`).
 
 ## The failure
 
