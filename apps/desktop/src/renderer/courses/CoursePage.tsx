@@ -1,12 +1,17 @@
 import type { ReactNode } from "react";
 import type { ResourceView } from "@magic/contracts";
 import {
+  isDone,
   whenDue,
   type CourseCard,
   type CourseFact,
+  type CourseFactKind,
   type CoursePage as CoursePageModel,
   type CourseWorkGroup,
 } from "../../../../../packages/domain/src/course-page";
+import { Glyph } from "../DesktopShell";
+import { courseTone } from "../Home";
+import { freshnessText, groupSummary, nextUp, shownFacts, unknownFacts, type NextItem } from "./course-view";
 import "./courses.css";
 
 // owner: course page. The frame the notebook (T43) fills later: its Sources/Notes/Studio replace
@@ -25,17 +30,6 @@ function when(value: string | null, withYear = false): string {
     minute: "2-digit",
   }).format(date);
 }
-const freshnessLabel = (page: Pick<CoursePageModel, "freshness" | "lastSuccessAt">) =>
-  page.freshness === "current_capture"
-    ? `Checked ${when(page.lastSuccessAt, true)}`
-    : page.freshness === "partial"
-      ? `Partly checked ${when(page.lastSuccessAt, true)}`
-      : page.freshness === "stale"
-        ? page.lastSuccessAt
-          ? `May be out of date · last checked ${when(page.lastSuccessAt, true)}`
-          : "Not checked yet"
-        : "Freshness unknown";
-
 export function CoursesOverview({
   cards,
   onOpen,
@@ -63,9 +57,9 @@ export function CoursesOverview({
               {card.cue}
               {card.next ? <span className="muted"> · {when(whenDue(card.next))}</span> : null}
             </span>
-            {card.freshness === "stale" || card.syllabusMissing ? (
+            {card.freshness === "stale" || card.freshness === "partial" ? (
               <span className="course-card-note">
-                {card.freshness === "stale" ? "May be out of date" : "Syllabus not captured"}
+                {card.freshness === "stale" ? "Saved copy, may be out of date" : "Partly checked"}
               </span>
             ) : null}
           </button>
@@ -78,12 +72,18 @@ export function CoursesOverview({
   );
 }
 
+const Chevron = () => (
+  <span className="course-chevron" aria-hidden="true">
+    <Glyph name="chevron" />
+  </span>
+);
+
 function Evidence({ fact, open }: { fact: CourseFact; open: (url: string) => void }) {
   const evidence = fact.items.flatMap((item) => item.evidence).slice(0, 4);
   if (!evidence.length) return null;
   return (
     <details className="course-evidence">
-      <summary>Source</summary>
+      <summary><Chevron />Source</summary>
       {evidence.map((e, index) => (
         <figure key={`${e.resourceId}:${index}`}>
           <blockquote>{e.quote.length > 600 ? `${e.quote.slice(0, 600)}…` : e.quote}</blockquote>
@@ -101,13 +101,11 @@ function Evidence({ fact, open }: { fact: CourseFact; open: (url: string) => voi
 function FactRow({
   label,
   fact,
-  missing,
   open,
   children,
 }: {
   label: string;
   fact: CourseFact;
-  missing: string;
   open: (url: string) => void;
   children?: ReactNode;
 }) {
@@ -128,18 +126,27 @@ function FactRow({
           </p>
         ))}
         {exceptions.length ? (
-          <p className="muted">
+          <p className="course-quiet">
             {exceptions.length === 1
               ? `${exceptions[0]!.assignmentTitle} has its own policy.`
               : `${exceptions.length} assignments have their own policy.`}
           </p>
         ) : null}
-        {!children && fact.state === "not_found" ? <p className="muted">{missing}</p> : null}
         <Evidence fact={fact} open={open} />
       </div>
     </div>
   );
 }
+
+const itemType: Record<string, string> = {
+  File: "File",
+  Page: "Page",
+  ExternalUrl: "Link",
+  ExternalTool: "Tool",
+  Quiz: "Quiz",
+  Discussion: "Discussion",
+  Assignment: "Assignment",
+};
 
 function WorkRow({
   resource,
@@ -160,7 +167,7 @@ function WorkRow({
           {due ? `Due ${when(due)}` : "No due date"}
           {resource.points != null ? ` · ${resource.points} pts` : ""}
           {resource.submitted === true ? " · Submitted" : resource.completed ? " · Marked done" : ""}
-          {resource.submission?.grade ? ` · ${resource.submission.grade}` : ""}
+          {resource.submission?.grade ? ` · Canvas grade ${resource.submission.grade}` : ""}
         </span>
       </button>
     </li>
@@ -169,35 +176,86 @@ function WorkRow({
 
 function Group({
   group,
+  open,
   selectedId,
   onSelect,
 }: {
   group: CourseWorkGroup;
+  open: boolean;
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
   const row = (r: ResourceView) => (
     <WorkRow key={r.id} resource={r} selected={r.id === selectedId} onSelect={onSelect} />
   );
+  const key = group.id ?? "other";
   return (
-    <section className="course-group">
-      <h3>
-        {group.name}
-        {group.weight ? <span className="badge">{group.weight}% listed</span> : null}
-      </h3>
+    <details className="course-group" data-place-disclosure={`group-${key}`} open={open}>
+      <summary>
+        <Chevron />
+        <span className="course-group-name">{group.name}</span>
+        <span className="course-group-counts">{groupSummary(group)}</span>
+      </summary>
       <ul>
         {group.upcoming.map(row)}
         {group.undated.map(row)}
       </ul>
       {group.past.length ? (
-        <details className="course-past" data-place-disclosure={`past-${group.id ?? "other"}`}>
-          <summary>
-            {group.past.length} past or finished
-          </summary>
+        <details className="course-past" data-place-disclosure={`past-${key}`}>
+          <summary><Chevron />{group.past.length} past or finished</summary>
           <ul>{group.past.map(row)}</ul>
         </details>
       ) : null}
-    </section>
+    </details>
+  );
+}
+
+function NextRow({ item, onSelect }: { item: NextItem; onSelect: (id: string) => void }) {
+  const r = item.resource;
+  const due = new Date(whenDue(r)!);
+  return (
+    <li>
+      <button
+        className={`course-next-row tone-${courseTone(`${r.sourceId}:${r.courseId}`)}`}
+        data-focus-key={`course-next-${r.id}`}
+        data-place-anchor={`course-next-${r.id}`}
+        onClick={() => onSelect(r.id)}
+      >
+        <span className="course-next-main">
+          <span className="course-next-meta">
+            {item.group}
+            {r.points != null ? <span>{r.points} pts</span> : null}
+            {item.copies > 1 ? <span>{item.copies} Canvas entries with this title</span> : null}
+          </span>
+          <span className="course-next-title">{r.title}</span>
+        </span>
+        <span className="course-next-due">
+          <strong>{new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" }).format(due)}</strong>
+          <span>{new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(due)}</span>
+        </span>
+        <Glyph name="chevron" />
+      </button>
+    </li>
+  );
+}
+
+function MaterialRow({
+  resource,
+  selected,
+  onSelect,
+}: {
+  resource: ResourceView;
+  selected: boolean;
+  onSelect: (id: string) => void;
+}) {
+  const type = resource.moduleItem?.type;
+  return (
+    <li className={`course-row ${selected ? "selected" : ""}`}>
+      <button className="course-material" data-focus-key={`course-material-${resource.id}`} data-place-anchor={`course-material-${resource.id}`} onClick={() => onSelect(resource.id)}>
+        <span className="resource-title">{resource.title}</span>
+        {type && itemType[type] ? <span className="course-material-type">{itemType[type]}</span> : null}
+      </button>
+    </li>
   );
 }
 
@@ -218,34 +276,69 @@ export function CoursePageView({
   detail: ReactNode;
 }) {
   const syllabus = page.syllabus;
-  const weighted = page.weights.filter((w) => w.weight);
+  const next = nextUp(page);
+  const nextCovered = next.reduce((n, item) => n + item.copies, 0);
+  const facts = shownFacts(page);
+  const unknown = unknownFacts(page);
+  const status = freshnessText(page, (iso) => when(iso, true));
+  const undatedOpen = page.groups.reduce((n, g) => n + g.undated.filter((r) => !isDone(r)).length, 0);
+  const materialCount = (page.modules ?? []).reduce((n, m) => n + m.items.length, 0) + page.materials.length;
+  const factLabel: Record<CourseFactKind, string> = {
+    ai_policy: "AI use",
+    grading: "Grading",
+    assessment: "Exams and assessments",
+    topic: "Topics",
+  };
   return (
     <>
-      <div className="page-heading">
-        <div>
-          <button className="subtle-button course-back" onClick={onBack}>
-            ← Courses
-          </button>
-          <h1 tabIndex={-1} title={page.rawCourseName}>{page.courseName}</h1>
-          <p className="course-subline">
-            {[page.code, page.term].filter(Boolean).join(" · ")}
-            {page.code || page.term ? " · " : ""}
-            <span className={page.freshness === "current_capture" ? "" : "attention-text"}>
-              {freshnessLabel(page)}
-            </span>
-          </p>
-        </div>
+      <div className="page-heading course-heading">
+        <button className="course-back" aria-label="Back to Courses" onClick={onBack}>
+          <Glyph name="back" />
+          Courses
+        </button>
+        <h1 tabIndex={-1} title={page.rawCourseName}>{page.courseName}</h1>
+        <p className="course-subline">
+          {page.code || page.term ? <span>{[page.code, page.term].filter(Boolean).join(" · ")}</span> : null}
+          <span className={status.attention ? "course-status attention-text" : "course-status"}>{status.text}</span>
+        </p>
       </div>
-      {page.needsSignIn ? (
-        <div className="evidence-note" role="status">
-          <p>Canvas needs sign-in before this course can be checked again. Saved coursework is shown.</p>
-        </div>
-      ) : null}
       <div className={`course-layout ${selectedId ? "has-detail" : ""}`}>
         <div className="course-main">
+          <section className="course-section" aria-labelledby="course-next">
+            <h2 id="course-next">Next up</h2>
+            {next.length ? (
+              <ul className="course-next">
+                {next.map((item) => (
+                  <NextRow key={item.resource.id} item={item} onSelect={onSelect} />
+                ))}
+              </ul>
+            ) : null}
+            {!next.length || page.counts.upcoming > nextCovered || undatedOpen ? (
+              <p className="course-quiet">
+                {[
+                  next.length
+                    ? ""
+                    : page.counts.assignments
+                      ? `No dated work ahead in the saved Canvas records${page.freshness !== "current_capture" ? ", which may be out of date" : ""}.`
+                      : "No assignments captured for this course.",
+                  page.counts.upcoming > nextCovered || undatedOpen
+                    ? `${[
+                        page.counts.upcoming > nextCovered ? `${page.counts.upcoming - nextCovered} more dated` : "",
+                        undatedOpen ? `${undatedOpen} without a due date` : "",
+                      ]
+                        .filter(Boolean)
+                        .join(", ")} in Coursework below.`
+                    : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+              </p>
+            ) : null}
+          </section>
+
           <section className="course-section" aria-labelledby="course-how">
             <h2 id="course-how">How this course works</h2>
-            <p className="course-syllabus muted">
+            <p className="course-quiet">
               {syllabus.state === "canvas" ? (
                 <>
                   From the{" "}
@@ -256,122 +349,115 @@ export function CoursePageView({
                 </>
               ) : syllabus.state === "file" ? (
                 <>
-                  Syllabus file found:{" "}
+                  Syllabus file:{" "}
                   <button className="link-button" onClick={() => open(syllabus.resource.url)}>
                     {syllabus.resource.title}
                   </button>
-                  . It isn't read for policy or grading yet.
+                  . Not read for policy or grading yet.
                 </>
               ) : (
-                "No syllabus captured for this course. Facts below come from Canvas records."
+                "No syllabus captured. Details come from Canvas records."
               )}
             </p>
-            <FactRow
-              label="AI use"
-              fact={page.facts.ai_policy}
-              missing="No AI policy found in captured sources. That isn't permission · check with your instructor."
-              open={open}
-            />
-            <FactRow
-              label="Grading"
-              fact={page.facts.grading}
-              missing="No grading breakdown found in captured sources."
-              open={open}
-            >
-              {weighted.length ? (
-                <>
-                  <table className="course-weights">
-                    <tbody>
-                      {page.weights.map((w) => (
-                        <tr key={w.groupId}>
-                          <th scope="row">{w.name}</th>
-                          <td>{w.weight != null ? `${w.weight}%` : "Not listed"}</td>
-                          <td className="muted">
-                            {[
-                              w.dropLowest ? `drops lowest ${w.dropLowest}` : "",
-                              w.dropHighest ? `drops highest ${w.dropHighest}` : "",
-                            ]
-                              .filter(Boolean)
-                              .join(", ")}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <p className="muted">
-                    Weights as listed in Canvas. Canvas may not apply them to your final grade.
-                  </p>
-                </>
-              ) : null}
-            </FactRow>
-            <FactRow
-              label="Exams & assessments"
-              fact={page.facts.assessment}
-              missing="No exam or assessment details recognized."
-              open={open}
-            />
-            {page.facts.topic.state !== "not_found" ? (
-              <FactRow label="Topics" fact={page.facts.topic} missing="" open={open} />
+            {facts.map((kind) =>
+              kind === "grading" ? (
+                <FactRow key={kind} label={factLabel[kind]} fact={page.facts.grading} open={open}>
+                  {page.weights.some((w) => w.weight != null) ? (
+                    <>
+                      <table className="course-weights">
+                        <tbody>
+                          {page.weights.map((w) => (
+                            <tr key={w.groupId}>
+                              <th scope="row">{w.name}</th>
+                              <td>{w.weight != null ? `${w.weight}%` : "Not listed"}</td>
+                              <td className="muted">
+                                {[
+                                  w.dropLowest ? `drops lowest ${w.dropLowest}` : "",
+                                  w.dropHighest ? `drops highest ${w.dropHighest}` : "",
+                                ]
+                                  .filter(Boolean)
+                                  .join(", ")}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <p className="course-quiet">
+                        Weights as listed in Canvas. Canvas may not apply them to your final grade.
+                      </p>
+                    </>
+                  ) : null}
+                </FactRow>
+              ) : (
+                <FactRow key={kind} label={factLabel[kind]} fact={page.facts[kind]} open={open} />
+              ),
+            )}
+            {unknown.names.length ? (
+              <p className="course-unknowns">
+                Not found in saved sources: {unknown.names.join(", ")}.
+                {unknown.aiMissing ? " Without a stated AI policy, ask your instructor before using AI." : ""}
+              </p>
             ) : null}
           </section>
 
           <section className="course-section" aria-labelledby="course-work">
-            <h2 id="course-work">
-              Coursework
-              {page.counts.dueThisWeek ? (
-                <span className="badge">{page.counts.dueThisWeek} due this week</span>
-              ) : null}
-            </h2>
+            <h2 id="course-work">Coursework</h2>
             {page.groups.length ? (
               page.groups.map((group) => (
-                <Group key={group.id ?? "other"} group={group} selectedId={selectedId} onSelect={onSelect} />
+                <Group
+                  key={group.id ?? "other"}
+                  group={group}
+                  open={page.groups.length === 1}
+                  selectedId={selectedId}
+                  onSelect={onSelect}
+                />
               ))
             ) : (
-              <p className="muted">No assignments captured for this course.</p>
+              <p className="course-quiet">No assignments captured for this course.</p>
             )}
           </section>
 
           {/* T43: the notebook replaces this section with its tiers for the same course key. */}
-          <section className="course-section" aria-labelledby="course-materials">
-            <h2 id="course-materials">Materials</h2>
-            {page.modules ? (
-              page.modules.map((module, index) => (
-                <details key={module.id} className="course-module" data-place-disclosure={`module-${module.id}`} open={index === 0}>
-                  <summary>
-                    {module.name} <span className="muted">· {module.items.length}</span>
-                  </summary>
-                  <ul>
-                    {module.items.map((r) => (
-                      <li key={r.id} className={`course-row ${r.id === selectedId ? "selected" : ""}`}>
-                        <button data-focus-key={`course-material-${r.id}`} data-place-anchor={`course-material-${r.id}`} onClick={() => onSelect(r.id)}>
-                          <span className="resource-title">{r.title}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              ))
-            ) : null}
+          <section className="course-section course-materials" aria-labelledby="course-materials">
+            <h2 id="course-materials">
+              Materials
+              {materialCount ? <span className="course-count">{materialCount}</span> : null}
+            </h2>
+            {page.modules
+              ? page.modules.map((module, index) => (
+                  <details
+                    key={module.id}
+                    className="course-module"
+                    data-place-disclosure={`module-${module.id}`}
+                    open={index === 0 && module.items.length <= 15}
+                  >
+                    <summary>
+                      <Chevron />
+                      {module.name} <span className="muted">{module.items.length}</span>
+                    </summary>
+                    <ul>
+                      {module.items.map((r) => (
+                        <MaterialRow key={r.id} resource={r} selected={r.id === selectedId} onSelect={onSelect} />
+                      ))}
+                    </ul>
+                  </details>
+                ))
+              : null}
             {page.materials.length ? (
-              <details className="course-module" data-place-disclosure="other-materials" open={!page.modules}>
+              <details className="course-module" data-place-disclosure="other-materials" open={!page.modules && page.materials.length <= 15}>
                 <summary>
+                  <Chevron />
                   {page.modules ? "Other files and pages" : "Files, pages and module items"}{" "}
-                  <span className="muted">· {page.materials.length}</span>
+                  <span className="muted">{page.materials.length}</span>
                 </summary>
                 <ul>
                   {page.materials.map((r) => (
-                    <li key={r.id} className={`course-row ${r.id === selectedId ? "selected" : ""}`}>
-                      <button data-focus-key={`course-material-${r.id}`} data-place-anchor={`course-material-${r.id}`} onClick={() => onSelect(r.id)}>
-                        <span className="resource-title">{r.title}</span>
-                      </button>
-                    </li>
+                    <MaterialRow key={r.id} resource={r} selected={r.id === selectedId} onSelect={onSelect} />
                   ))}
                 </ul>
               </details>
             ) : null}
-            {!page.modules && !page.materials.length ? (
-              <p className="muted">No course materials captured.</p>
-            ) : null}
+            {!materialCount ? <p className="course-quiet">No course materials captured.</p> : null}
           </section>
         </div>
         {selectedId ? detail : null}
