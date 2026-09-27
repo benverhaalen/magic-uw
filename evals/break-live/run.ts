@@ -64,7 +64,7 @@ const frame: CourseFrame = {
   brief: coursePackCatalogue(),
 };
 
-type Sentence = { text: string; quotes: string; checked: boolean; claimsInAnyPassage: boolean };
+type Sentence = { text: string; quotes: string; inOwnQuote: boolean; shown: boolean };
 type Row = { id: string; family: string; repeat: number; found?: boolean; sentences?: Sentence[]; shownAfter?: string; replacedAfter?: number; model?: string; usage?: unknown; latencyMs?: number; error?: string };
 const only = process.env.ONLY?.split(","); const jobs = CASES.filter((c) => !only || only.includes(c.id)).flatMap((c) => Array.from({ length: repeats }, (_, r) => ({ c, r })));
 const rows: Row[] = [];
@@ -76,15 +76,15 @@ async function worker() {
     const prompt = buildPrompt(askPack, frame, { question: c.question }, passages);
     try {
       const res = await runner.run({ pack: { id: askPack.id, version: askPack.version }, systemPrompt: prompt.systemPrompt, input: prompt.input, schema: askPack.schema, tier: askPack.tier, budget: askPack.budget });
-      const all = c.passages.join("\n");
+      const meta = new Map(passages.map((p) => [p.sourceId, { resourceId: p.sourceId, title: "Synthetic", url: "https://canvas.example.edu/synthetic" }]));
+      // What the student sees comes from the app's own checkAnswer; inOwnQuote: every claim is inside the sentence's own quotes.
+      const after = checkAnswer(res.output, passages, meta as never, (id) => passages.find((p) => p.sourceId === id)?.text ?? null);
       const sentences: Sentence[] = res.output.sentences.map((s) => {
         const quotes = s.citations.map((q) => q.quote).join(" ");
-        return { text: s.text, quotes, checked: claimsMatch(s.text, quotes), claimsInAnyPassage: claimsMatch(s.text, all) };
+        return { text: s.text, quotes, inOwnQuote: claimsMatch(s.text, quotes), shown: after.text.includes(s.text.trim()) };
       });
-      const meta = new Map(passages.map((p) => [p.sourceId, { resourceId: p.sourceId, title: "Synthetic", url: "https://canvas.example.edu/synthetic" }]));
-      const after = checkAnswer(res.output, passages, meta as never, (id) => passages.find((p) => p.sourceId === id)?.text ?? null);
-      rows.push({ id: c.id, family: c.family, repeat: r, found: res.output.found, sentences, shownAfter: after.text, replacedAfter: sentences.filter((s) => !s.checked).length, model: res.model, usage: res.usage, latencyMs: res.latencyMs });
-      process.stdout.write(`${c.id}#${r} ${sentences.filter((s) => !s.checked).length}/${sentences.length} mismatched\n`);
+      rows.push({ id: c.id, family: c.family, repeat: r, found: res.output.found, sentences, shownAfter: after.text, replacedAfter: sentences.filter((s) => !s.shown).length, model: res.model, usage: res.usage, latencyMs: res.latencyMs });
+      process.stdout.write(`${c.id}#${r} ${sentences.filter((s) => !s.shown).length}/${sentences.length} replaced\n`);
     } catch (error) {
       rows.push({ id: c.id, family: c.family, repeat: r, error: String((error as Error).message ?? error) });
       process.stdout.write(`${c.id}#${r} error ${(error as Error).message}\n`);
@@ -96,5 +96,4 @@ rows.sort((a, b) => a.id.localeCompare(b.id) || a.repeat - b.repeat);
 await writeFile(join(here, "results.json"), `${JSON.stringify({ date: new Date().toISOString(), client: "claude (instant mode)", repeats, rows }, null, 2)}\n`);
 const ok = rows.filter((r) => r.sentences);
 const sentences = ok.flatMap((r) => r.sentences!);
-const bad = sentences.filter((s) => !s.checked);
-console.log(`answers ${ok.length}/${rows.length} (errors ${rows.length - ok.length}); sentences ${sentences.length}; mismatched ${bad.length}; answers with a mismatch ${ok.filter((r) => r.sentences!.some((s) => !s.checked)).length}; mismatched but true of another passage ${bad.filter((s) => s.claimsInAnyPassage).length}`);
+console.log(`answers ${ok.length}/${rows.length} (errors ${rows.length - ok.length}); sentences ${sentences.length}; replaced ${sentences.filter((s) => !s.shown).length}; answers with a replaced sentence ${ok.filter((r) => r.sentences!.some((s) => !s.shown)).length}; shown with a claim outside its own quote (read these) ${sentences.filter((s) => s.shown && !s.inOwnQuote).length}`);
