@@ -96,3 +96,7 @@ See [engineering principles](engineering-principles.md) for the wider selection 
 ## Current visual exploration
 
 The [Home direction](home-design-direction.md) records Ben's settled interface requirements and current card alternatives. Separate local HTML mocks demonstrate visual hierarchy, typography, navigation and selected mock routes. They have not been integrated into the Electron renderer; live launch bundles, audio generation, briefing refresh, and context-aware model chat remain unproven by this visual work. Private screenshots and course captures are not committed.
+
+### Selective backend integration — September 26
+
+Known-identity scrubbing now runs in core hosted context and MCP with Canvas automatic roster capture. Outgoing literal citations bind to frozen local projection IDs; source/category filtering precedes derived MCP deadlines. Deterministic prose deadlines are available through canonical resource queries. See [pipeline boundaries and limitations](pipeline-details.md#integrated-identity-and-deadline-evidence-september-26). Synthetic regressions cover denied communications, roster drift, account scope and unseen quote ranges. This is not a claim that every separate model runner has adopted the boundary, nor a live private-course demonstration. Fuzzy linking and Madgrades from the older branch are separate integration work.

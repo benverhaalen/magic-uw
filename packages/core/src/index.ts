@@ -26,6 +26,8 @@ import { contentCategories, courseIncluded } from "./access";
 import { evidenceFor } from "./evidence";
 import { rebaseFixture } from "./fixture-dates";
 export { rebaseFixture } from "./fixture-dates";
+import { clearOutgoingProjections, outgoingProjection, payloadScrubber, validateCitations } from "./identity";
+export { scrubText, rosterFor, toOriginalSpan, validateCitations } from "./identity";
 import { pullGuideForSubject } from "../../connectors/src/planning-public";
 import {
   createPublicClient,
@@ -217,17 +219,26 @@ export function createCore(store: Store, options: CoreOptions) {
           (c) => maySend(store.privacy(), recipient, [c]).allowed,
         ),
     );
+    // Hosted recipients get identity-scrubbed free text; this payload is both
+    // the preview and the exact outgoing body. Each field is scrubbed on its own
+    // so citations can be re-validated per source field.
+    const scrub = payloadScrubber(store, recipient !== "local", store.sources().find((s) => s.id === r.sourceId)?.accountScope);
+    const rootText = scrub.field(r.text, r.courseId);
     const payload = {
-      course: r.courseName.slice(0, 200),
-      title: r.title.slice(0, 500),
-      text: [r.text, ...supporting.map((s) => `${s.title}\n${s.text}`)]
+      course: scrub.field(r.courseName, r.courseId).slice(0, 200),
+      title: scrub.field(r.title, r.courseId).slice(0, 500),
+      text: [
+        rootText,
+        ...supporting.map((s) => `${scrub.field(s.title, s.courseId)}\n${scrub.field(s.text, s.courseId)}`),
+      ]
         .join("\n\n")
         .slice(0, 12000),
-      policy: (policyAllowed
+      policy: scrub.field((policyAllowed
         ? effectivePolicy.evidence
         : "Policy evidence is withheld by data-sharing settings; use coaching only."
-      ).slice(0, 4000),
+      ), r.courseId).slice(0, 4000),
     };
+    const redaction = scrub.summary(r.courseId);
     const categories = [
       ...new Set(
         [r, ...supporting, ...(policyAllowed ? policyResources : [])].flatMap(
@@ -268,6 +279,8 @@ export function createCore(store: Store, options: CoreOptions) {
       characters: JSON.stringify(payload).length,
       ...permission,
       payload,
+      ...(recipient !== "local" ? { citationProjections: [{ resourceId: r.id, contentHash: r.contentHash, field: "text" as const, projectionId: outgoingProjection(store, r, "text", { start: 0, end: Math.min(payload.text.length, rootText.length) }).id }] } : {}),
+      ...(redaction ? { redaction } : {}),
     };
   }
   function receipt(
@@ -824,6 +837,12 @@ export function createCore(store: Store, options: CoreOptions) {
         message = "Judgment queued.";
         break;
       }
+      case "identity-roster":
+        store.setIdentityRoster(command.value);
+        message = "Names to remove saved on this device. Future hosted requests use them; earlier requests are unchanged.";
+        break;
+      case "validate-citations":
+        return { snapshot: snapshot(), citations: validateCitations(store, command.claims) };
       case "link":
         store.decideLink(command.id, command.status);
         break;
@@ -848,6 +867,7 @@ export function createCore(store: Store, options: CoreOptions) {
         break;
       }
       case "purge":
+        clearOutgoingProjections(store);
         interrupt();
         store.purge();
         semanticAttempts.clear();
