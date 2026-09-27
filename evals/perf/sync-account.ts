@@ -141,6 +141,8 @@ export function syntheticAccount(shape: AccountShape = LIVE_ACCOUNT, latencyMs =
     term: { id: 40, name: "Fall 2024-2025", start_at: "2024-09-04T05:00:00Z", end_at: "2024-12-25T06:00:00Z" },
     calendar: { ics: `${origin}/feeds/calendars/course_SYNTH${id}.ics` },
   });
+  const fileBody = (id: number | string) => `Synthetic reading ${id}. Lecture notes about topic ${id}.\n`.repeat(40);
+  const fileSize = (id: number | string) => Buffer.byteLength(fileBody(id));
   function fileId(course: number, n: number) {
     return (course - 1000) * 1000 + n + 100000;
   }
@@ -263,7 +265,7 @@ export function syntheticAccount(shape: AccountShape = LIVE_ACCOUNT, latencyMs =
       const course = Math.floor((id - 100000) / 1000) + 1000;
       return json({
         id, folder_id: 1, display_name: `reading-${id}.txt`, filename: `reading-${id}.txt`, "content-type": "text/plain",
-        size: 2048, updated_at: "2026-09-12T12:00:00Z", locked_for_user: false, hidden: false,
+        size: fileSize(id), updated_at: "2026-09-12T12:00:00Z", locked_for_user: false, hidden: false,
         context_type: "Course", context_id: String(course), url: `${origin}/files/${id}/download?download_frd=1&verifier=SYNTH`,
       });
     }
@@ -307,7 +309,7 @@ export function syntheticAccount(shape: AccountShape = LIVE_ACCOUNT, latencyMs =
         return json([{ id: fileId(course, 0), display_name: "syllabus.txt", updated_at: "2026-09-12T12:00:00Z", size: 2048 }]);
       return json(Array.from({ length: shape.filesPerCourse }, (_, n) => ({
         id: fileId(course, n), folder_id: 1, display_name: `reading-${fileId(course, n)}.txt`, filename: `reading-${fileId(course, n)}.txt`,
-        "content-type": "text/plain", size: 2048, updated_at: "2026-09-12T12:00:00Z",
+        "content-type": "text/plain", size: fileSize(fileId(course, n)), updated_at: "2026-09-12T12:00:00Z",
       })));
     }
     if (tail === "/folders") return json([{ id: 1, name: "course files", files_count: shape.filesPerCourse, folders_count: 0 }]);
@@ -330,7 +332,7 @@ export function syntheticAccount(shape: AccountShape = LIVE_ACCOUNT, latencyMs =
       await sleep(latencyMs, init?.signal);
       counters.downloads++;
       const id = /\/files\/(\d+)\/download/.exec(new URL(url).pathname)?.[1] ?? "0";
-      return new Response(`Synthetic reading ${id}. Lecture notes about topic ${id}.\n`.repeat(40), {
+      return new Response(fileBody(id), {
         headers: { "content-type": "text/plain", "x-magic-host-class": "canvas" },
       });
     }
@@ -478,7 +480,7 @@ function snapshot(
  * freshness window, the steady hot tick, focus, a teacher's due-date change, a manual refresh,
  * and the six-hour backstop. Each scenario's counters start at zero.
  */
-export async function runSyncAccount(options: { latencyMs?: number; shape?: AccountShape; derivation?: boolean } = {}) {
+export async function runSyncAccount(options: { latencyMs?: number; shape?: AccountShape; derivation?: boolean; stopAfter?: string } = {}) {
   const directory = mkdtempSync(join(tmpdir(), "magic-perf-sync-account-"));
   const file = join(directory, "sync.sqlite");
   const account = syntheticAccount(options.shape ?? LIVE_ACCOUNT, options.latencyMs ?? LATENCY_MS);
@@ -520,6 +522,7 @@ export async function runSyncAccount(options: { latencyMs?: number; shape?: Acco
       scenario.derivationMs = Math.round(performance.now() - t);
     }
     scenarios.push(scenario);
+    if (options.stopAfter === name) throw new StopRun();
     process.stderr.write(`[sync] ${name}: ${scenario.requests} requests, ${Math.round(scenario.milestones.syncMs)} ms
 `);
     return scenario;
@@ -528,6 +531,7 @@ export async function runSyncAccount(options: { latencyMs?: number; shape?: Acco
     at = new Date(at.getTime() + n * 60_000);
   };
   try {
+    try {
     await ingestion.reconnected();
     await step("first sync after sign-in", "sign-in (renderer's manual sync)", () => ingestion.tick("manual"), true);
     minutes(0.5);
@@ -536,9 +540,9 @@ export async function runSyncAccount(options: { latencyMs?: number; shape?: Acco
     await step("manual refresh within a minute", "manual", () => ingestion.tick("manual"));
     // A second launch: a new worker process over the same database, 10 minutes later.
     await ingestion.stop();
-    minutes(10);
+    minutes(5);
     ingestion = make();
-    await step("second launch within the freshness window", "background (first timer tick)", () => ingestion.tick("background"));
+    await step("second launch within the freshness window", "background (first timer tick, 5 min later)", () => ingestion.tick("background"));
     minutes(6.5);
     await step("steady hot tick (+5 min)", "background", () => ingestion.tick("background"));
     minutes(1.5);
@@ -551,6 +555,9 @@ export async function runSyncAccount(options: { latencyMs?: number; shape?: Acco
     await step("manual refresh (steady)", "manual", () => ingestion.tick("manual"));
     minutes(6 * 60 + 1);
     await step("six-hour backstop", "background", () => ingestion.tick("background"));
+    } catch (error) {
+      if (!(error instanceof StopRun)) throw error;
+    }
     return { shape: account.shape, latencyMs: options.latencyMs ?? LATENCY_MS, scenarios };
   } finally {
     await ingestion.stop();
@@ -559,3 +566,5 @@ export async function runSyncAccount(options: { latencyMs?: number; shape?: Acco
     rmSync(directory, { recursive: true, force: true });
   }
 }
+
+class StopRun extends Error {}

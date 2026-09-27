@@ -318,6 +318,11 @@ export function createIngestion(
         source: sources.get(resource.sourceId)!,
       }));
   }
+  // fix/sync-events: a course feed is read once per run, and a background run reads it at most
+  // every 15 minutes (the hot probe already carries the dated items a feed repeats).
+  const feedsThisRun = new Set<string>(),
+    feedReadAt = new Map<string, number>();
+  let manualRun = false;
   async function feeds(signal: AbortSignal) {
     let changed = false;
     const secrets = (await host.secrets("list")) ?? {};
@@ -326,6 +331,11 @@ export function createIngestion(
       const key = `calendar:${source.accountScope}:${resource.courseId}`,
         feedUrl = secrets[key];
       if (!feedUrl) continue;
+      if (feedsThisRun.has(key)) continue;
+      const last = feedReadAt.get(key);
+      if (!manualRun && last !== undefined && now().getTime() - last < 15 * 60_000) continue;
+      feedsThisRun.add(key);
+      feedReadAt.set(key, now().getTime());
       const before = store
         .resources()
         .filter((r) => r.calendar && r.courseId === resource.courseId)
@@ -649,6 +659,20 @@ export function createIngestion(
           (stored.extractionStatus === "ok" ||
             stored.extractionStatus === "unsupported" ||
             (stored.extractionStatus !== "error" && !!stored.localPath && existsSync(stored.localPath)))
+        ) {
+          skipped++;
+          continue;
+        }
+        // fix/sync-events: with the Files tab hidden there is no list row to compare, so a document
+        // already read whole is re-checked on the six-hour backstop, not on every probe; a change
+        // to it shows first in the probes (modules, newest page) or the course's warm read.
+        const checkedAt = sources.get(`documents:${source.accountScope}:${course.courseId}:${id}`)?.lastSuccessAt;
+        if (
+          acquisition.skipUnchanged &&
+          !listed &&
+          (stored?.extractionStatus === "ok" || stored?.extractionStatus === "unsupported") &&
+          checkedAt &&
+          now().getTime() - Date.parse(checkedAt) < 6 * 3600_000
         ) {
           skipped++;
           continue;
@@ -1585,6 +1609,7 @@ export function createIngestion(
   const coordinator = createRefreshCoordinator({
     now,
     begin() {
+      feedsThisRun.clear(); // fix/sync-events
       runScheduler = undefined; // owner: T17: a new sync reads afresh
       activeStart = performance.now();
       firstValueMs = undefined;
@@ -1810,6 +1835,7 @@ export function createIngestion(
       courseOverrides: store.courseOverrides(),
       knownResources: store.resources(),
       enrolledThisTerm: planningEnrollment(), // fix/current-courses-only
+      pageReadThisRun: (url) => [...observedPages].some((key) => key.endsWith(`:${url}`)), // fix/sync-events
       moduleRun,
       onModuleRun: (run) => {
         if (!signal.aborted && !reconnecting) moduleRun = run;
@@ -1928,6 +1954,7 @@ export function createIngestion(
       signInRead = undefined;
       return Promise.resolve(run);
     }
+    manualRun = trigger === "manual"; // fix/sync-events
     const running = coordinator.tick(trigger);
     if (signInPending) {
       signInPending = false;
