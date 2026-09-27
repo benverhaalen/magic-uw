@@ -35,7 +35,9 @@ const dayText = (iso: string) => {
 const inDays = (d: number) => (d === 0 ? "today" : d === 1 ? "tomorrow" : `in ${d} days`);
 
 interface Props {
-  snapshot: Snapshot;
+  snapshot: Snapshot | null;
+  /** The course a host page already chose (Workspace tools): no selector is shown. */
+  course?: CourseChoice;
   api?: MasteryApi;
   /** Opens Data & AI, where a held first-time share is reviewed. */
   onOpenPrivacy?: () => void;
@@ -44,8 +46,8 @@ interface Props {
 }
 type Tab = "upcoming" | "past" | "grades";
 
-export function MasteryView({ snapshot, api = bridgeApi, onOpenPrivacy, initial }: Props) {
-  const courses = courseChoices(snapshot);
+export function MasteryView({ snapshot, course: fixed, api = bridgeApi, onOpenPrivacy, initial }: Props) {
+  const courses = fixed ? (fixed.anchorIds.length ? [fixed] : []) : snapshot ? courseChoices(snapshot) : [];
   const [courseKey, setCourseKey] = useState(initial?.courseKey ?? courses[0]?.key ?? "");
   const course = courses.find((c) => c.key === courseKey) ?? courses[0];
   const [data, setData] = useState<CourseMasteryData | null>(null);
@@ -131,15 +133,15 @@ export function MasteryView({ snapshot, api = bridgeApi, onOpenPrivacy, initial 
 
   if (!courses.length)
     return (
-      <div className="mastery">
-        <Header />
+      <div className={`mastery ${fixed ? "mastery--embedded" : ""}`}>
+        {fixed ? null : <Header />}
         <p className="mastery-empty">No course with assignments is saved yet. Connect Canvas or load the sample from Home, then open Mastery again.</p>
       </div>
     );
 
   if (session)
     return (
-      <div className="mastery">
+      <div className={`mastery ${fixed ? "mastery--embedded" : ""}`}>
         <SessionRunner
           api={api}
           start={session}
@@ -152,8 +154,8 @@ export function MasteryView({ snapshot, api = bridgeApi, onOpenPrivacy, initial 
     );
 
   return (
-    <div className="mastery" aria-busy={loading}>
-      <Header courses={courses} course={course} onCourse={setCourseKey} />
+    <div className={`mastery ${fixed ? "mastery--embedded" : ""}`} aria-busy={loading}>
+      {fixed ? null : <Header courses={courses} course={course} onCourse={setCourseKey} />}
       <div className="mastery-feedback-region" aria-live="polite">
         {error ? (
           <p className="mastery-error" role="alert">

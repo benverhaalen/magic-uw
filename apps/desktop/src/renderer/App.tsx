@@ -13,13 +13,14 @@ import { LocalAiPanel } from "./LocalAiPanel";
 import { LearningPanel } from "./LearningPanel";
 import { ProviderGuidance } from "./ProviderGuidance";
 import { IngestionControls, McpConnections } from "./IngestionControls";
+import { WorkspaceTools } from "./backend"; // owner: ui-wiring: backend wiring previews
 // owner: T06
 import { ConsentSetup, hasUwConsent, missingConsents } from "./consent/ConsentSetup";
 // owner: T81
 import { Onboarding, needsFirstRunSetup } from "./onboarding";
 import { CourseSpaceDetails } from "./CourseSpaceDetails";
 import { TodayRail } from "./TodayRail";
-import { MasteryView } from "./backend/mastery"; // owner: mastery (D57)
+import { NotificationsMenu } from "./NotificationsMenu";
 
 type View =
   | "today"
@@ -33,7 +34,7 @@ type View =
   | "practice"
   | "insights"
   | "settings"
-  | "mastery"; // owner: mastery (D57): a Preview tab until the integrated UI lands
+  | "tools"; // owner: ui-wiring: the "Workspace tools" previews
 // owner: T05b. Route slots, each rendering nothing until its task fills it: the notebook (T43),
 // practice and insights (P17), settings (T40) and the workspace command bar (D40).
 function NotebookSlot(_: { snapshot: Snapshot | null }) {
@@ -98,7 +99,7 @@ function formatDate(value: string | null, full = false): string {
 function Icon({
   name,
 }: {
-  name: "today" | "courses" | "myuw" | "sources" | "privacy" | "search" | "arrow" | "file" | "check" | "mastery";
+  name: "today" | "courses" | "myuw" | "sources" | "privacy" | "search" | "arrow" | "file" | "check";
 }) {
   if (name === "myuw") return <img className="uw-nav-mark" src={new URL("./assets/uw-crest.svg", import.meta.url).href} alt="" aria-hidden="true" />;
   const paths = {
@@ -138,7 +139,6 @@ function Icon({
       </>
     ),
     check: <path d="m4 10 4 4 8-8" />,
-    mastery: <path d="M4 16V11m6 5V7m6 9V4" />, // owner: mastery
   };
   return (
     <svg
@@ -390,7 +390,6 @@ export function App() {
               ["myuw", "My UW"],
               ["sources", "Sources"],
               ["privacy", "Data & AI"],
-              ["mastery", "Mastery"], // owner: mastery (D57)
             ] as const
           ).map(([key, label]) => (
             <button
@@ -404,9 +403,18 @@ export function App() {
               {key === "today" && openItems > 0 ? (
                 <span className="nav-count">{openItems}</span>
               ) : null}
-              {key === "mastery" ? <span className="badge">Preview</span> /* owner: mastery */ : null}
             </button>
           ))}
+          {/* owner: ui-wiring. Backend wiring previews until the designed screens replace them. */}
+          <button
+            className={`nav-button ${view === "tools" ? "active" : ""}`}
+            aria-current={view === "tools" ? "page" : undefined}
+            onClick={() => setView("tools")}
+          >
+            <Icon name="file" />
+            Workspace tools
+          </button>
+          {/* end owner: ui-wiring */}
         </nav>
         <div className="sidebar-bottom">
           <div className="storage-label">
@@ -432,7 +440,7 @@ export function App() {
               ? "Your workspace"
               : view === "sources"
                 ? "Connected sources"
-                : view === "privacy" ? "Privacy & models" : view === "myuw" ? "My UW" : view === "mastery" ? "Course mastery · Preview" /* owner: mastery */ : "Your courses"}
+                : view === "privacy" ? "Privacy & models" : view === "myuw" ? "My UW" : "Your courses"}
           </span>
           <div className="topbar-end">
             {snapshot?.fixtureMode ? (
@@ -445,6 +453,15 @@ export function App() {
             ) : (
               <span className="muted">Local workspace</span>
             )}
+            <NotificationsMenu
+              feed={snapshot?.notifications}
+              busy={busy}
+              run={run}
+              canOpenResource={(id) => resources.some((resource) => resource.id === id)}
+              onOpenResource={(id) => { setQuery(""); setSelectedId(id); setView("today"); }}
+              onOpenSources={() => setView("sources")}
+              onOpenPrivacy={() => setView("privacy")}
+            />
           </div>
         </header>
         <div className="feedback-region">
@@ -677,9 +694,9 @@ export function App() {
           <InsightsSlot snapshot={snapshot} />
         ) : view === "settings" ? (
           <SettingsSlot snapshot={snapshot} />
-        ) : /* end owner: T05b */ view === "mastery" ? (
-          <MasteryView snapshot={snapshot} onOpenPrivacy={() => setView("privacy")} /* owner: mastery (D57) */ />
-        ) : view === "sources" ? (
+        ) : /* owner: ui-wiring */ view === "tools" ? (
+          <WorkspaceTools snapshot={snapshot} />
+        ) : /* end owner: T05b */ view === "sources" ? (
           <Sources
             snapshot={snapshot}
             run={run}

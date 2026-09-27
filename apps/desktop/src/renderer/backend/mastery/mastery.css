@@ -16,6 +16,11 @@
   font-size: 14px;
   line-height: 1.55;
 }
+/* Inside a host page (Workspace tools): the host owns the outer spacing and surface. */
+.mastery--embedded {
+  padding: 8px 0 24px;
+  max-width: 880px;
+}
 .mastery h1,
 .mastery h2 {
   font-family: var(--magic-font-editorial);
