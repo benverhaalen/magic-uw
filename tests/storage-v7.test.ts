@@ -199,7 +199,7 @@ test("v8 → v9 preserves every learning row, including v8-only fields and conce
     store = createStore(file); store.close();
     const migrated = new DatabaseSync(file, { readOnly: true });
     try {
-      assert.equal(migrated.prepare("PRAGMA user_version").get()!.user_version, 9);
+      assert.equal(migrated.prepare("PRAGMA user_version").get()!.user_version, SCHEMA_VERSION);
       for (const name of LEARNING_TABLES)
         assert.deepEqual(migrated.prepare(`SELECT * FROM ${name}`).all(), before[name], `${name} survives migration and reopening unchanged`);
       assert.deepEqual(migrated.prepare("PRAGMA foreign_key_check").all(), []);

@@ -118,8 +118,7 @@ export function termFreshSearchSubjects(store: Pick<Store, "planningSources" | "
 const publicKinds = new Set<PlanningRecord["kind"]>(["subject", "crosslist", "term", "catalog_course", "enrollment_package", "grade_distribution"]);
 
 export function comparePlanning(store: Store, termCode: string, style: "balanced" | "mornings" | "compact" | "lighter", now: string,
-  // Default stays the legacy rule until planning-core tests 56/87 (6-day "stale" fixtures) move past a term.
-  horizons: PlanningHorizons = legacyPlanningHorizons): PlanningComparison {
+  horizons: PlanningHorizons = semesterPlanningHorizons(now)): PlanningComparison {
   const result: PlanningComparison = { termCode, createdAt: now, warnings: [], candidates: [] };
   if (!/^1\d{2}[246]$/.test(termCode) || !Number.isFinite(Date.parse(now))) {
     result.warnings.push("The requested term or comparison time is invalid."); return result;
