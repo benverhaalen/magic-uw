@@ -22,6 +22,20 @@ import {
   outlookCalendarConnector,
 } from "../../../packages/connectors/src/calendar";
 import { OUTLOOK_CALENDAR_COURSE_ID } from "@magic/contracts";
+// owner: T30. Outlook, OneNote and OneDrive through Microsoft Graph (main holds the token).
+import { mkdir, writeFile } from "node:fs/promises";
+import {
+  streamsFor,
+  syncGraph,
+  type DeltaState,
+  type DriveExtraction,
+  type GraphStream,
+  type GraphSyncResult,
+  type GraphTransport,
+} from "../../../packages/connectors/src/graph";
+import type { FeedValidators } from "../../../packages/connectors/src/network";
+import { createLocalDocumentExtractor } from "../../../packages/connectors/src/documents";
+// end owner: T30
 import {
   externalCourseConnector,
   contentHash,
@@ -82,6 +96,16 @@ export interface IngestionHost {
   spaceFetch?(url: string, init?: RequestInit): Promise<Response>;
   /** owner: T05b. A course's inventory with access states; the data builder stores it in course_spaces. */
   onSpaces?(accountScope: string, courseId: string, spaces: CourseSpace[]): void;
+  /**
+   * owner: T30. Microsoft Graph through main: `transport` is main's proxy (the token never
+   * reaches the worker), `state` the vault's delta links, `scopes` what the student granted.
+   */
+  graph?: {
+    transport: GraphTransport;
+    state: DeltaState;
+    scopes(): string[];
+    onSynced?(result: Pick<GraphSyncResult, "requests" | "changed" | "failures"> & { at: string }): void;
+  };
 }
 export function inputResource(resource: Resource): ResourceInput {
   return resourceInputSchema.parse(
@@ -204,8 +228,20 @@ export function createIngestion(store: Store, host: IngestionHost) {
       accountScope: "local",
       client,
       now,
+      // owner: T30: If-None-Match / If-Modified-Since; a 304 is no work.
+      validators: {
+        get: () => (outlookUrl ? icsValidators.get(outlookUrl) : undefined),
+        set: (value) => {
+          if (outlookUrl) icsValidators.set(outlookUrl, value);
+        },
+      },
     });
-    if (outlookUrl) {
+    // owner: T30: the Microsoft calendar, when connected, replaces the published link's read.
+    if (outlookUrl && graphCalendarConnected()) {
+      // The Graph calendar is fresher and carries the same meetings: the ICS copy would show
+      // them twice. The link stays in the vault as the fallback; no request is made.
+      if (store.sources().some((s) => s.id === outlook.id)) store.removeSource(outlook.id);
+    } else if (outlookUrl) {
       for await (const batch of outlook.pull(signal)) save(batch);
     } else if (store.sources().some((s) => s.id === outlook.id)) {
       // Disconnected by the student: delete the meetings outright. An empty "read" would be
@@ -215,6 +251,91 @@ export function createIngestion(store: Store, host: IngestionHost) {
     changed ||= outlookBefore !== outlookHashes();
     return { changed };
   }
+  // owner: T30. Graph: the ICS fallback's validators, the calendar check, and the sync step.
+  const icsValidators = new Map<string, FeedValidators>();
+  function graphCalendarConnected(): boolean {
+    if (!host.graph || !streamsFor(host.graph.scopes()).includes("calendar")) return false;
+    return store
+      .sources()
+      .some((s) => s.scope === "graph_calendar" && (s.status === "ok" || s.status === "partial"));
+  }
+  let onenoteAt = 0;
+  async function graph(signal: AbortSignal, trigger: "manual" | "background") {
+    if (!host.graph) return;
+    const granted = streamsFor(host.graph.scopes());
+    if (!granted.length) return;
+    // Mail, calendar and OneDrive ride every run (a delta with nothing new is one request each);
+    // OneNote has no delta, so its page list is read at most hourly unless asked.
+    const streams: GraphStream[] = granted.filter(
+      (s) => s !== "onenote" || trigger === "manual" || now().getTime() - onenoteAt >= 60 * 60_000,
+    );
+    if (streams.includes("onenote")) onenoteAt = now().getTime();
+    const included = courseInclusion(store);
+    const directory = courses()
+      .filter(({ resource }) => included(resource))
+      .map(({ resource, source }) => ({
+        courseId: resource.courseId,
+        accountScope: source.accountScope,
+        courseName: resource.courseName,
+        ...(resource.course?.courseCode ? { courseCode: resource.course.courseCode } : {}),
+      }));
+    // Local only: the advisor's name from planning, compared in code here and never stored.
+    const advisorNames = (store.planningRecords?.() ?? [])
+      .flatMap((r) => (r.kind === "advisor" && !r.deleted ? [r.displayName] : []));
+    const result = await syncGraph({
+      transport: host.graph.transport,
+      state: host.graph.state,
+      accountScope: "local",
+      previous: (sourceId) =>
+        store
+          .resources()
+          .filter((r) => r.sourceId === sourceId && !r.deleted)
+          .map(inputResource),
+      context: { courses: directory, advisorNames, canvasOrigin: origin },
+      streams,
+      now,
+      signal,
+      extract: (file) => extractDriveFile(file),
+    });
+    for (const batch of result.batches) save(batch);
+    await result.commit();
+    host.graph.onSynced?.({
+      at: now().toISOString(),
+      requests: result.requests,
+      changed: result.changed,
+      failures: result.failures,
+    });
+  }
+  async function extractDriveFile(file: {
+    itemId: string;
+    name: string;
+    mimeType: string;
+    bytes: Buffer;
+    signal?: AbortSignal;
+  }): Promise<DriveExtraction | undefined> {
+    const folder = join(host.directory, "documents", "onedrive");
+    await mkdir(folder, { recursive: true });
+    const extension = (file.name.match(/.[A-Za-z0-9]{1,8}$/)?.[0] ?? "").toLowerCase();
+    const path = join(folder, `${createHash("sha256").update(file.itemId).digest("hex").slice(0, 32)}${extension}`);
+    await writeFile(path, file.bytes, { mode: 0o600 });
+    const extracted = await (host.extractor ?? createLocalDocumentExtractor()).extract(path, {
+      contentType: file.mimeType,
+      filename: file.name,
+      ...(file.signal ? { signal: file.signal } : {}),
+    });
+    return {
+      text: extracted.text,
+      parts: extracted.parts,
+      document: {
+        localPath: path,
+        sha256: createHash("sha256").update(file.bytes).digest("hex"),
+        sizeBytes: file.bytes.length,
+        extractionStatus: extracted.status,
+        pages: extracted.pages,
+      },
+    };
+  }
+  // end owner: T30
   async function documents(signal: AbortSignal) {
     const settings = store.ingestionSettings(),
       manager = createDocumentManager({
@@ -702,8 +823,11 @@ export function createIngestion(store: Store, host: IngestionHost) {
         quietEndHour: s.quietHours.enabled ? s.quietHours.end : 0,
       };
     },
-    hasSources: () => store.sources().some((s) => s.kind === "canvas"),
+    hasSources: () =>
+      store.sources().some((s) => s.kind === "canvas") ||
+      Boolean(host.graph?.scopes().length), // owner: T30
     feeds,
+    graph, // owner: T30
     async probe(signal) {
       const result = await fetchCanvasActivitySummary(
         { fetch: host.canvasFetch, scheduler: scheduler() },

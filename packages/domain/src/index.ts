@@ -40,7 +40,8 @@ export function resolveDeadline(claims: DeadlineClaim[]): DeadlineResolution {
  * The disclosure the setup screen and a provider's consent screen show. A record written for
  * another version is not current, so changing the disclosure asks again.
  */
-export const CONSENT_DISCLOSURE_VERSION = "setup-2026-09-26";
+// T30: bumped for the Outlook (Microsoft Graph) line, OUTLOOK_GRAPH_DISCLOSURE in contracts.
+export const CONSENT_DISCLOSURE_VERSION = "setup-2026-09-26-outlook";
 /**
  * Storage attaches the consent records to `privacy()` under this registered symbol as a
  * non-enumerable, frozen property. Spread, JSON, structured clone (IPC) and zod parsing all

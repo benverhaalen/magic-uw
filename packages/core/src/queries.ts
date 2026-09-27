@@ -222,6 +222,55 @@ export function runQuery(store: Store, request: QueryRequest, context: QueryCont
         changes: store.changes({ resourceId: r.id, limit: 50 }),
       };
     }
+    // owner: T30. The agent layer's mail search: stored fields only (subject, preview, gist,
+    // sender, category, org, course). Bodies are never stored, so they are never searched.
+    case "mail.search": {
+      const terms = (request.text ?? "")
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((t) => t.length > 1)
+        .slice(0, 12);
+      const from = request.from?.toLowerCase();
+      const org = request.org?.toLowerCase();
+      const since = request.since ? Date.parse(request.since) : undefined;
+      const items = store
+        .resources()
+        .filter((r) => r.kind === "message" && !r.deleted && r.mail)
+        .filter((r) => {
+          const m = r.mail!;
+          if (request.category && m.category !== request.category) return false;
+          if (request.courseId && m.courseId !== request.courseId) return false;
+          if (org && !(m.org ?? "").toLowerCase().includes(org)) return false;
+          if (from && !`${m.fromName ?? ""} ${m.fromAddress ?? ""}`.toLowerCase().includes(from))
+            return false;
+          if (since !== undefined && Date.parse(m.receivedAt) < since) return false;
+          if (!terms.length) return true;
+          const hay = `${r.title} ${m.preview} ${m.gist ?? ""} ${m.org ?? ""} ${m.fromName ?? ""}`.toLowerCase();
+          return terms.every((t) => hay.includes(t));
+        })
+        .sort((a, b) => b.mail!.receivedAt.localeCompare(a.mail!.receivedAt))
+        .slice(0, request.limit)
+        .map((r) => {
+          const m = r.mail!;
+          return {
+            id: r.id,
+            subject: r.title,
+            webLink: r.url,
+            receivedAt: m.receivedAt,
+            ...(m.fromName ? { fromName: m.fromName } : {}),
+            category: m.category,
+            categoryReason: m.categoryReason,
+            ...(m.courseId ? { courseId: m.courseId } : {}),
+            ...(m.org ? { org: m.org } : {}),
+            preview: m.preview,
+            ...(m.gist ? { gist: m.gist } : {}),
+            ...(m.importance ? { importance: m.importance } : {}),
+            ...(m.hasAttachments !== undefined ? { hasAttachments: m.hasAttachments } : {}),
+          };
+        });
+      return { view: "mail.search", items };
+    }
+    // end owner: T30
     case "changes": {
       const previous = decode(request.cursor, isChangeCursor);
       const limit = request.limit ?? 100;
