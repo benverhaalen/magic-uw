@@ -8,6 +8,8 @@ import type {
   Snapshot,
   SourceHealth,
 } from "@magic/contracts";
+import { createAssignmentTypeHues } from "../../../../packages/ui/src/deadline-emphasis";
+import { SourcesPage } from "./sources";
 import { MyUw, PlanningAlerts } from "./MyUw";
 import { CoursePageView, CoursesOverview } from "./courses/CoursePage";
 import { buildCourseCards, buildCoursePage, courseKey } from "../../../../packages/domain/src/course-page";
@@ -358,6 +360,7 @@ export function App() {
     }) ?? [];
   const accountBySource = new Map(snapshot?.sources.map((source) => [source.id, source.accountScope]));
   const courseInput = { resources, sources: snapshot?.sources ?? [], courseIntelligence: snapshot?.courseIntelligence, now: snapshot?.generatedAt ?? new Date().toISOString() };
+  const typeHueOf = createAssignmentTypeHues(snapshot?.resources ?? [], snapshot?.sources ?? []);
   const courseCards = buildCourseCards(courseInput);
   const coursePage = navigation.courseKey ? buildCoursePage(courseInput, navigation.courseKey) : null;
   const selected =
@@ -465,7 +468,7 @@ export function App() {
             signIn={(service) => uwConsented /* owner: T06 */ ? void perform(async () => { await window.magic.signInUW?.(service); return window.magic.syncPlanning?.(); }) : openConsent()} />
         ) : view === "courses" ? (
           <section className="desktop-courses">
-            {navigation.courseKey ? coursePage ? <CoursePageView key={coursePage.key} page={coursePage} selectedId={null} onSelect={setSelectedId} onBack={() => navigation.navigate("courses")} open={open} detail={null}/> : <><h1 tabIndex={-1}>Course unavailable</h1><p>This course is no longer included in the saved workspace.</p><Action onClick={() => navigation.navigate("courses")}>View courses</Action></> : <CoursesOverview cards={courseCards} onOpen={key => navigation.navigate("courses", null, key)}/>}
+            {navigation.courseKey ? coursePage ? <CoursePageView typeHueOf={typeHueOf} key={coursePage.key} page={coursePage} selectedId={null} onSelect={setSelectedId} onBack={() => navigation.navigate("courses")} open={open} detail={null}/> : <><h1 tabIndex={-1}>Course unavailable</h1><p>This course is no longer included in the saved workspace.</p><Action onClick={() => navigation.navigate("courses")}>View courses</Action></> : <CoursesOverview cards={courseCards} onOpen={key => navigation.navigate("courses", null, key)}/>}
           </section>
         ) : view === "consent" ? (
           // owner: T06. Consent route: setup, a new recipient's consent, or Agreements.
@@ -500,18 +503,14 @@ export function App() {
         ) : view === "settings" ? (
           <SettingsSlot snapshot={snapshot} />
         ) : /* end owner: T05b */ view === "sources" ? (
-          <Sources
-            snapshot={snapshot}
-            run={run}
-            busy={busy}
-            canSignIn={Boolean(window.magic.signInUW)}
-            canSync={Boolean(window.magic.syncCanvas)}
-            canSignOut={Boolean(window.magic.signOutUW)}
-            onSignIn={signIn}
-            onSync={sync}
-            onSignOut={signOut}
-            onImport={importFile}
-            onSample={() => run({ type: "fixture" })}
+          <SourcesPage snapshot={snapshot} run={run} busy={busy}
+            onSignIn={signIn} onSync={sync} onSignOut={signOut} onImport={importFile}
+            onSample={() => run({ type: "fixture" })} uwConsented={uwConsented}
+            onOpenMyUw={() => setView("myuw")} onOpenPrivacy={() => setView("privacy")}
+            onSourcesChanged={refresh}
+            courseLabels={courseCards.map(card => ({ key: card.key, label: card.code ?? card.courseName }))}
+            readingSettings={<IngestionControls snapshot={snapshot} busy={busy} run={run}/>}
+            accessDetails={<CourseSpaceDetails sources={snapshot.sources} revision={snapshot.sources.map(source => source.lastAttemptAt).join("|")}/>}
           />
         ) : (
           <Privacy

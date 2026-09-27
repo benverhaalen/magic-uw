@@ -82,9 +82,9 @@ test('a plain time is not interactive; a routed time is a named native link', ()
 test('entity exposes the raw title only when the label was shortened', () => {
   const link = (label: string) => h('a', { href: '#resource/r1' }, label);
   const short = presentationLabel('COMPSCI 574: P1 (MySQL)', shown);
-  assert.match(renderToStaticMarkup(h(InlineEntity, { name: short }, link(short.label))), /title="COMPSCI 574: P1 \(MySQL\)"[^>]*><a href="#resource\/r1">P1 \(MySQL\)<\/a>/);
+  assert.match(renderToStaticMarkup(h(InlineEntity, { name: short, children: link(short.label) })), /title="COMPSCI 574: P1 \(MySQL\)"[^>]*><a href="#resource\/r1">P1 \(MySQL\)<\/a>/);
   const whole = presentationLabel('Assigned readings');
-  assert.doesNotMatch(renderToStaticMarkup(h(InlineEntity, { name: whole }, link(whole.label))), /title=/);
+  assert.doesNotMatch(renderToStaticMarkup(h(InlineEntity, { name: whole, children: link(whole.label) })), /title=/);
 });
 
 test('disagreement tags only show due dates a source states, never title-derived or out-of-scope ones', () => {

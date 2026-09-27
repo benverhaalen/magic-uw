@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { ResourceView, WorkLaunchReceipt, WorkSet, Snapshot } from "@magic/contracts";
 import { Action, Disclosure } from "../../../../packages/ui/src";
+import { destinationAction } from "../../../../packages/ui/src/inline-context";
 import { Glyph } from "./DesktopShell";
 import "./StartWork.css";
 import { reportWorkspaceFailure } from "./workspace-feedback";
@@ -101,10 +102,10 @@ function PreparedWork({ resource, refreshKey, compact, action, onInspect }: Prop
       }
     } finally { busy.current = false; if (mounted.current) setPending(false); }
   };
-  const assignmentOnly = Boolean(set && set.items.length === 1 && set.items[0]?.role === "instructions");
+  const named = set ? destinationAction(set.items) : null;
   const fallback = Boolean(onInspect && (!set || error || !window.magic.startWork));
   const activate = () => fallback ? onInspect?.() : void launch();
-  const launchLabel = fallback ? "View assignment" : assignmentOnly ? "Open assignment" : "Start work";
+  const launchLabel = fallback ? "View assignment" : named?.label ?? "Start work";
   const unavailable = pending || (!fallback && (!set || !window.magic.startWork)) || undefined;
   const destinations = fallback ? "Opens the saved assignment details." : set ? destinationSummary(set) : error ? "Destinations unavailable." : "Preparing what opens…";
   return <section ref={container} className={compact ? 'magic-start-work magic-start-work--compact' : action ? 'magic-start-work magic-start-work--action' : 'magic-start-work'} aria-label={compact || action ? `Prepared work: ${resource.title}` : undefined} aria-labelledby={compact || action ? undefined : heading} data-place-anchor={compact ? `work-${resource.id}` : undefined}>
@@ -124,7 +125,7 @@ function PreparedWork({ resource, refreshKey, compact, action, onInspect }: Prop
       <span id={described} hidden>{[compact.description, destinations].filter(Boolean).join(". ")}</span>
     </div> : action ? <>
       <Action data-focus-key={`start-${resource.id}`} pending={pending} aria-disabled={unavailable} onClick={activate}>
-        <span>{launchLabel}{!assignmentOnly && !fallback && <small>{destinations}</small>}</span><Glyph name="forward"/>
+        <span>{launchLabel}{(!named || named.multiple) && !fallback && <small>{destinations}</small>}</span><Glyph name="forward"/>
       </Action>
     </> : set ? <>
       <ol className="magic-start-work__destinations" aria-label="Destinations prepared to open">
