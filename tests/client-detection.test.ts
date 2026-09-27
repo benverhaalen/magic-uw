@@ -48,7 +48,7 @@ async function place(dir: string, file: string, text = "") {
 }
 
 // --- Windows: an app started from the Start menu, PATH = System32 only -------------------------
-test("scenario win-install-locations: each installer's folder is found with a minimal PATH", async () => {
+test("scenario win-install-locations: each installer's folder is found with a minimal PATH", { skip: process.platform !== "win32" && "Windows install layout; covered on the Windows runner" }, async () => {
   const cases: [string, (root: string) => string, "claude" | "codex"][] = [
     ["claude native installer", (r) => join(r, "home", ".local", "bin"), "claude"],
     ["codex app installer", (r) => join(r, "local", "Programs", "OpenAI", "Codex", "bin"), "codex"],
@@ -74,7 +74,7 @@ test("scenario win-install-locations: each installer's folder is found with a mi
   }
 });
 
-test("scenario win-npm-and-pnpm-shims: npm's and pnpm's .cmd shims resolve to node plus the script, no shell", async () => {
+test("scenario win-npm-and-pnpm-shims: npm's and pnpm's .cmd shims resolve to node plus the script, no shell", { skip: process.platform !== "win32" && "Windows install layout; covered on the Windows runner" }, async () => {
   const root = await tmp("magic-shim-");
   const npm = join(root, "roaming", "npm");
   await place(join(npm, "node_modules", "@anthropic-ai", "claude-code"), "cli.js");
@@ -261,7 +261,7 @@ test("scenario not-found-diagnostics: the notice lists the folders searched, hom
 });
 
 // --- Resolution order, native layout, Keychain (the macOS brief, research/mac, 2026-09-27) --------
-test("scenario win-path-order: the folder that comes first on PATH wins, as in the student's terminal", async () => {
+test("scenario win-path-order: the folder that comes first on PATH wins, as in the student's terminal", { skip: process.platform !== "win32" && "Windows install layout; covered on the Windows runner" }, async () => {
   const root = await tmp("magic-order-");
   const npm = join(root, "npm");
   await place(join(npm, "node_modules", "@openai", "codex", "bin"), "codex.js");
@@ -275,7 +275,7 @@ test("scenario win-path-order: the folder that comes first on PATH wins, as in t
   assert.equal(resolveCli("codex", { env: reversed, platform: "win32" })!.file, appBundled);
 });
 
-test("scenario claude-native-versions: with the launcher missing, the newest installed version is used", async () => {
+test("scenario claude-native-versions: with the launcher missing, the newest installed version is used", { skip: process.platform !== "win32" && "Windows install layout; covered on the Windows runner" }, async () => {
   for (const platform of ["darwin", "win32"] as const) {
     const home = await tmp("magic-versions-");
     await place(join(home, ".local", "share", "claude", "versions"), "2.1.281");
