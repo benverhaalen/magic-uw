@@ -818,6 +818,8 @@ export interface Store {
   ): void;
   lease(now: string, leaseMs: number): Job | undefined;
   finish(job: Job, error?: string, now?: string): boolean;
+  /** Return a leased job to the queue without consuming an attempt (e.g. an upstream budget wait). */
+  defer(job: Job, runAfter: string, reason: string): boolean;
   jobs(): Job[];
   judgment(key: string): Judgment | undefined;
   putJudgment(value: Judgment): boolean;

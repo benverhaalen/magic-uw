@@ -1261,6 +1261,18 @@ export function createStore(path: string): Store {
         });
       });
     },
+    defer(job, runAfter, reason) {
+      const time = timestamp(runAfter);
+      return transaction(() => {
+        const changed = db
+          .prepare(
+            `UPDATE jobs SET status = 'pending', attempts = MAX(0, attempts - 1), run_after = ?, lease_until = NULL, lease_token = NULL, error = ?
+            WHERE id = ? AND status = 'running' AND lease_token = ? AND resource_id = ? AND input_hash = ?`,
+          )
+          .run(time, reason.slice(0, 2000), job.id, job.leaseToken, job.resourceId, job.inputHash);
+        return Number(changed.changes) > 0;
+      });
+    },
     finish(job, error, now = new Date().toISOString()) {
       const time = timestamp(now);
       return transaction(() => {

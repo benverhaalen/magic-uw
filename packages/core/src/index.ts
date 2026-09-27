@@ -20,7 +20,7 @@ import {
   type Job,
 } from "@magic/contracts";
 import { maySend, resolveDeadline } from "@magic/domain";
-import { judgmentResultSchema, type JudgmentGateway } from "@magic/ai";
+import { JudgmentBudgetError, judgmentResultSchema, type JudgmentGateway } from "@magic/ai";
 import { contentCategories, courseIncluded } from "./access";
 import { evidenceFor } from "./evidence";
 import { suggestEvidenceLinks } from "./fuzzy-links";
@@ -406,9 +406,14 @@ export function createCore(store: Store, options: CoreOptions) {
       if (generation !== version) break;
     }
   }
+  // While the gateway reports its budget spent, the whole queue waits: sending the
+  // remaining jobs would only collect refusals and exhaust their attempts.
+  let budgetUntil = 0;
+  let budgetTimer: ReturnType<typeof setTimeout> | undefined;
   async function drain() {
     if (
       closed ||
+      Date.now() < budgetUntil ||
       !options.gateway ||
       !maySend(store.privacy(), "jev", ["course_text"]).allowed
     )
@@ -461,9 +466,21 @@ export function createCore(store: Store, options: CoreOptions) {
           createdAt: now(),
         });
         store.finish(job, undefined, now());
-      } catch {
+      } catch (error) {
         if (!closed && generation === version) {
           receipt(manifest, "failed");
+          if (error instanceof JudgmentBudgetError) {
+            budgetUntil = Date.now() + error.retryAfterMs;
+            store.defer(
+              job,
+              new Date(budgetUntil).toISOString(),
+              "Judgment budget reached; waiting to retry. Local data is still usable.",
+            );
+            clearTimeout(budgetTimer);
+            budgetTimer = setTimeout(wake, error.retryAfterMs);
+            budgetTimer.unref?.();
+            break;
+          }
           store.finish(
             job,
             "Judgment unavailable; local data is still usable",
@@ -764,6 +781,7 @@ export function createCore(store: Store, options: CoreOptions) {
     },
     async close() {
       closed = true;
+      clearTimeout(budgetTimer);
       interrupt();
       await working;
       store.close();
