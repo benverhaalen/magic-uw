@@ -31,15 +31,25 @@ Renderer paths above are under `apps/desktop/src/renderer`. Contracts and comman
 
 ## What is verified and what remains
 
+### September 27 09:42 UTC visible runtime receipt
+
+Published code **`f5a2df5`** is now running in the actual original desktop workspace, using the normal Electron entry and its existing data. Ready time: **09:42:02 UTC**, Electron PID **61214**, persistent launcher/monitor PID **61071**. The captured view is Home with the expanded sidebar and message composer. The previous app processes were already closed at preflight; a closed-database backup was retained before launch. No live route or unsaved draft could be captured from that closed process, so this receipt does not claim their restoration.
+
+The visible capture has no renderer exceptions or computed Karma/Geist weight mismatches. Its source includes main `2f4cc27`, Aidan PR #39 and the frontend bundle described below. This confirms startup and the rendered Home state; it does not establish a completed model answer, live sign-in, every notification action or whole-app polish. Private receipt and screenshot: `recovery-20260927/visible-f5a2df5/{receipt.json,home-ready.png}` in the established desktop-build evidence area; private captures are not committed.
+
+Known remaining visible issues: the sidebar wizard head is cropped and needs a bounded containment correction; the saved Sunday due count remains 14 pending verified provider identity/status reconciliation; Lecture 7's raw Participation category is not proof of its actual submission destination. Retain those distinctions in the data handoff. Main `5372c5a` remains a semantic reconciliation hold, and `sean/sync-timeout-fix` `b8820e5` is fetched but unadopted. Unknown account identity, conflicting dates and personal planning choices must survive any dedup integration. These statuses were rechecked with an origin fetch after promotion.
+
+This receipt supersedes older present-tense runtime claims below. Those dated sections preserve prior evidence, not the current running version.
+
 ### September 27 09:41 UTC frontend integration checkpoint
 
 The current bundle integrates Daily Brief with aligned action units, anchored Schedule, consistent Upcoming date columns, subtle reveal buttons and measured Today expansion; Hugeicons with the shared 1.35 stroke; the wizard app icon; launcher divider/shadow; centered Courses cards, verified-current-only grade tabs labeled `Current grade: x%`, per-mode navigation and Today-first coursework. Main `2f4cc27` and Aidan PR #39 remain integrated, including embedded-Jev startup, worker URL propagation and notification routing. New main `5372c5a` dedup semantics and feature-branch previews are pending reconciliation; fetching them does not expose their journeys.
 
-Full integrated build/typecheck and 72 focused checks pass. A closed copied-data Electron run demonstrated Home, all five current course cards, course detail and exact Back focus, Today-first work list, mode return and Home Back with no renderer exceptions. The run caught a notification badge weight outside the single-Geist-weight rule; badge and notification title now consume the shared weight. The app icon is wired to the native window and macOS Dock; installer packaging is not claimed. Private evidence remains in the established recovery area, outside Git. Original `2fb19e1` processes were absent at the final promotion preflight; the next launch reuses the original user data, not the QA copy.
+Full integrated build/typecheck and 72 focused checks pass. A closed copied-data Electron run demonstrated Home, all five current course cards, course detail and exact Back focus, Today-first work list, mode return and Home Back with no renderer exceptions. The run caught a notification badge weight outside the single-Geist-weight rule; badge and notification title now consume the shared weight. The app icon is wired to the native window and macOS Dock; installer packaging is not claimed. Private evidence remains in the established recovery area, outside Git. Original `2fb19e1` processes were absent at the final promotion preflight; the 09:42 launch above reused the original user data, not the QA copy.
 
 Teammate ownership is feature-specific: Nate also owns frontend previews and onboarding. Adapt his existing UI/contracts where applicable; do not assign all frontend work to this branch's design workers. Learning prompt review must follow the user's requirement that all learning system prompts follow course AI policy. Apply policy to each request's actual source/account/version scope, surface missing or conflicting policy, and inventory the real prompt paths with Nate before duplicating backend logic. The local learning-harness reference review is a proposed behavioral input, not an adopted dependency.
 
-### September 27 source and runtime reconciliation
+### Historical source and runtime reconciliation before the 09:42 promotion
 
 The verified hotfix source checkpoint is `966db3c`: main `2f4cc27` is reconciled, including onboarding account-status and completed-read spinner fixes. Aidan subsequently merged PR #39 into the shared frontend branch at `1e9aaf9` (09:20:14 UTC); its embedded-Jev and notification changes are source-integrated but have not been promoted or independently verified in the original runtime. The latest team review below supersedes earlier source-status statements. The merge preserves Karma500 and the reviewed desktop shell. Main's website and cardinal brand assets are preserved; the desktop build continues verifying bundled fonts. The branch tip after publication is the authoritative source revision. `2fb19e1` remains the frozen visible main/renderer on the existing user data (PID 13565). Its new shell rendered and preserved the collapsed sidebar; the user continued navigating. The restoration harness had a stale collapse-control selector, so it did not produce a success receipt. More importantly, original-profile workspace requests still time out: promotion is rendered, not a healthy-workspace acceptance pass. Building later source does not update that window.
 
@@ -119,6 +129,8 @@ Chat preview timeout, authorization and cancellation now terminate through its e
 
 
 ## Team reconciliation · September 27, 09:25 UTC
+
+Runtime statements in this section are historical; the 09:42 receipt above records the actual promoted app.
 
 Fetched main `2f4cc27` is an ancestor of this branch. Source `0ce27e0` includes the snapshot-read correction, bounded chat failures, Karma and default wizard avatar. A normal merge reconciles our documentation commit with teammate merge `1e9aaf9`; neither history was rewritten. The branch tip includes both. The original app is still `2fb19e1`: an idle-safe upgrade stopped before quit when the user changed routes. Source publication is not runtime promotion.
 
