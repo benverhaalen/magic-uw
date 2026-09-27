@@ -1,0 +1,123 @@
+/* owner: floating-chat. Shadow styles for <magic-floating-chat>: launcher, pill, panel chrome.
+ * Every colour, type size, radius and duration is a design token by name; tokens inherit through the
+ * shadow boundary as custom properties, so the host page must load docs/design/tokens.css (and
+ * packages/ui/src/motion/motion.css for the motion roles; the durations fall back to the same values).
+ * Motion: the panel grows from the launcher (scale + opacity, overlay enter/exit roles); a snap travels
+ * along the drawer curve; reduced motion makes both instant. */
+:host {
+  /* Proposal: the design system has no spacing token yet; this local inset matches the shell's 16px. */
+  --floating-chat-inset: 16px;
+  --fc-ease: var(--magic-motion-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+  --fc-enter: var(--magic-motion-overlay-enter, 150ms);
+  --fc-exit: var(--magic-motion-overlay-exit, 100ms);
+  position: fixed; inset: 0; z-index: 40; pointer-events: none;
+  font-family: var(--magic-font-interface); color: var(--magic-ink);
+  contain: layout style;
+}
+:host([hidden]) { display: none; }
+* { box-sizing: border-box; }
+
+/* Launcher: the wizard stands on a disc filled with the command role; his hat rises above it. */
+.dock { position: fixed; left: 0; top: 0; width: 60px; height: 72px; pointer-events: auto; visibility: hidden; touch-action: none; }
+:host([data-ready]) .dock { visibility: visible; }
+:host([data-snapping]) .dock { transition: transform var(--magic-motion-drawer, 220ms) var(--magic-motion-ease-drawer, cubic-bezier(0.32, 0.72, 0, 1)); }
+.launcher {
+  position: relative; display: block; width: 60px; height: 72px; margin: 0; padding: 0; border: 0;
+  background: none; color: inherit; font: inherit; cursor: grab; -webkit-tap-highlight-color: transparent;
+}
+:host([data-dragging]) .launcher { cursor: grabbing; }
+.disc {
+  position: absolute; left: 2px; bottom: 0; width: 56px; height: 56px; border-radius: 50%;
+  background: var(--magic-fill-action); box-shadow: var(--magic-shadow-popover);
+}
+.launcher:focus { outline: none; }
+.launcher:focus-visible .disc { outline: 2px solid var(--magic-focus); outline-offset: 3px; }
+.figure { position: absolute; left: 0; bottom: 3px; width: 60px; height: 66px; pointer-events: none; }
+.figure svg { display: block; width: 100%; height: 100%; }
+.state {
+  position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%); display: none;
+  padding: 1px 7px; border-radius: 999px; white-space: nowrap;
+  background: var(--magic-surface-raised); border: 1px solid var(--magic-line-quiet);
+  font-size: var(--magic-type-label); line-height: 1.5; color: var(--magic-ink-muted-strong);
+}
+@media (hover: hover) { .launcher:hover .disc { background: var(--magic-fill-action-hover); } }
+
+/* "Click to chat": a pill with an arrow toward the wizard. On first launch until the first open,
+ * afterwards on hover and keyboard focus. Decorative duplicate of the button's name. */
+.pill {
+  position: absolute; bottom: 14px; display: flex; align-items: center; height: 28px; padding: 0 12px;
+  border-radius: 14px; white-space: nowrap; pointer-events: none;
+  background: var(--magic-surface-raised); border: 1px solid var(--magic-line-quiet); box-shadow: var(--magic-shadow-popover);
+  font-size: var(--magic-type-compact-control); line-height: 1; color: var(--magic-ink);
+  opacity: 0; visibility: hidden;
+  transition: opacity var(--fc-exit) var(--fc-ease), transform var(--fc-exit) var(--fc-ease), visibility 0s linear var(--fc-exit);
+}
+.pill::after {
+  content: ""; position: absolute; top: 50%; width: 8px; height: 8px; margin-top: -4px;
+  background: inherit; border: inherit; border-width: 0 1px 1px 0;
+}
+:host(:is([data-corner=top-right], [data-corner=bottom-right])) .pill { right: calc(100% + 12px); transform: translateX(4px); }
+:host(:is([data-corner=top-right], [data-corner=bottom-right])) .pill::after { right: -5px; transform: rotate(-45deg); }
+:host(:is([data-corner=top-left], [data-corner=bottom-left])) .pill { left: calc(100% + 12px); transform: translateX(-4px); }
+:host(:is([data-corner=top-left], [data-corner=bottom-left])) .pill::after { left: -5px; transform: rotate(135deg); }
+:host([data-intro]) .pill, .launcher:focus-visible + .pill { opacity: 1; visibility: visible; transform: none; transition-duration: var(--fc-enter), var(--fc-enter), 0s; transition-delay: 0s; }
+@media (hover: hover) { .dock:hover .pill { opacity: 1; visibility: visible; transform: none; transition-duration: var(--fc-enter), var(--fc-enter), 0s; transition-delay: 0s; } }
+:host(:is([open], [data-dragging], [data-snapping])) .pill { opacity: 0; visibility: hidden; }
+
+/* Panel: non-modal dialog beside the launcher's corner. JS sets its box and transform-origin. */
+.panel {
+  position: fixed; left: 0; top: 0; display: flex; flex-direction: column; min-width: 0; overflow: hidden;
+  pointer-events: auto; background: var(--magic-surface-raised); color: var(--magic-ink);
+  border: 1px solid var(--magic-line-quiet); border-radius: var(--magic-radius-overlay); box-shadow: var(--magic-shadow-overlay);
+  opacity: 0; transform: scale(0.94); visibility: hidden;
+  transition: opacity var(--fc-exit) var(--fc-ease), transform var(--fc-exit) var(--fc-ease), visibility 0s linear var(--fc-exit);
+}
+:host([open]:not([data-dragging]):not([data-snapping])) .panel {
+  opacity: 1; transform: none; visibility: visible;
+  transition-duration: var(--fc-enter), var(--fc-enter), 0s; transition-delay: 0s;
+}
+.head {
+  flex: none; display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 8px 8px 8px 16px;
+  border-bottom: 1px solid var(--magic-line-quiet); cursor: grab; user-select: none; touch-action: none;
+}
+:host([data-dragging]) .head { cursor: grabbing; }
+.title { flex: none; margin: 0; font: 500 var(--magic-type-page-title)/1.3 var(--magic-font-editorial); color: var(--magic-ink); }
+.scope {
+  flex: 0 1 auto; min-width: 0; display: inline-flex; align-items: baseline; gap: 5px; padding: 3px 8px;
+  border-radius: var(--magic-radius-tag-candidate); background: var(--magic-fill-tag-candidate); color: var(--magic-ink-tag-candidate);
+  font-size: var(--magic-type-meta); line-height: 1.4; white-space: nowrap; cursor: default;
+}
+.scope[hidden] { display: none; }
+.scope-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.spacer { flex: 1 1 0; min-width: 0; }
+.icon {
+  flex: none; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0;
+  border-radius: var(--magic-radius-control); background: transparent; color: var(--magic-ink-muted-strong); cursor: pointer;
+}
+.icon svg, .glyph { width: var(--magic-glyph-control); height: var(--magic-glyph-control); fill: none; stroke: currentColor; stroke-width: var(--magic-icon-stroke-seed); stroke-linecap: round; stroke-linejoin: round; }
+.icon:focus-visible, .grip:focus-visible { outline: 2px solid var(--magic-focus); outline-offset: -2px; }
+.icon:focus:not(:focus-visible), .grip:focus:not(:focus-visible) { outline: none; }
+@media (hover: hover) { .icon:hover { background: var(--magic-fill-secondary); color: var(--magic-ink-secondary); } }
+.body { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; container: floating-chat / inline-size; }
+.foot { flex: none; }
+
+/* Resize grip on the panel's free corner (away from the launcher): a corner bracket, 24px target. */
+.grip { position: absolute; width: 24px; height: 24px; padding: 0; border: 0; background: none; border-radius: var(--magic-radius-control); z-index: 1; }
+.grip::before { content: ""; position: absolute; inset: 7px; border: 2px solid var(--magic-line-field); border-right: 0; border-bottom: 0; border-radius: 4px 0 0 0; }
+:host([data-corner=bottom-right]) .grip { left: 0; top: 0; cursor: nwse-resize; }
+:host([data-corner=bottom-left]) .grip { right: 0; top: 0; cursor: nesw-resize; }
+:host([data-corner=bottom-left]) .grip::before { transform: rotate(90deg); }
+:host([data-corner=top-right]) .grip { left: 0; bottom: 0; cursor: nesw-resize; }
+:host([data-corner=top-right]) .grip::before { transform: rotate(-90deg); }
+:host([data-corner=top-left]) .grip { right: 0; bottom: 0; cursor: nwse-resize; }
+:host([data-corner=top-left]) .grip::before { transform: rotate(180deg); }
+:host([data-corner^=bottom]) .head { padding-left: 22px; }
+
+.sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+/* Reduced motion: no grow, no travel; the wizard is still and its state shows as text. */
+@media (prefers-reduced-motion: reduce) {
+  .panel, .pill, :host([data-snapping]) .dock { transition: none !important; }
+  .panel { transform: none; }
+  .state:not(:empty) { display: block; }
+}
