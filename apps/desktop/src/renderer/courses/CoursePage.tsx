@@ -7,11 +7,19 @@ import {
   type CourseFact,
   type CourseFactKind,
   type CoursePage as CoursePageModel,
-  type CourseWorkGroup,
 } from "../../../../../packages/domain/src/course-page";
 import { Glyph } from "../DesktopShell";
 import { courseTone } from "../Home";
-import { freshnessText, groupSummary, nextUp, shownFacts, unknownFacts, type NextItem } from "./course-view";
+import {
+  courseWork,
+  freshnessText,
+  groupSummary,
+  shownFacts,
+  unknownFacts,
+  type NextItem,
+  type WorkEntry,
+  type WorkGroup,
+} from "./course-view";
 import "./courses.css";
 
 // owner: course page. The frame the notebook (T43) fills later: its Sources/Notes/Studio replace
@@ -148,26 +156,46 @@ const itemType: Record<string, string> = {
   Assignment: "Assignment",
 };
 
+/** Distinguishes a genuinely separate Canvas assignment that shares a title, and names date disagreement. */
+function identityNotes(entry: WorkEntry): string[] {
+  return [
+    entry.sameTitleElsewhere ? `Canvas id ${entry.resource.externalId}` : "",
+    entry.dueDiffers ? "Canvas lists disagree on the due date" : "",
+  ].filter(Boolean);
+}
+
 function WorkRow({
-  resource,
+  entry,
   selected,
   onSelect,
 }: {
-  resource: ResourceView;
+  entry: WorkEntry;
   selected: boolean;
   onSelect: (id: string) => void;
 }) {
+  const resource = entry.resource;
   const due = whenDue(resource);
-  const done = resource.completed || resource.submitted === true;
+  const done = isDone(resource);
   return (
     <li className={`course-row ${selected ? "selected" : ""} ${done ? "is-complete" : ""}`}>
-      <button data-focus-key={`course-work-${resource.id}`} data-place-anchor={`course-work-${resource.id}`} onClick={() => onSelect(resource.id)} aria-current={selected ? "true" : undefined}>
+      <button
+        data-focus-key={`course-work-${resource.id}`}
+        data-place-anchor={`course-work-${resource.id}`}
+        data-resource-ids={entry.copies.map((c) => c.id).join(" ")}
+        onClick={() => onSelect(resource.id)}
+        aria-current={selected ? "true" : undefined}
+      >
         <span className="resource-title">{resource.title}</span>
         <span className="resource-subline">
-          {due ? `Due ${when(due)}` : "No due date"}
-          {resource.points != null ? ` · ${resource.points} pts` : ""}
-          {resource.submitted === true ? " · Submitted" : resource.completed ? " · Marked done" : ""}
-          {resource.submission?.grade ? ` · Canvas grade ${resource.submission.grade}` : ""}
+          {[
+            due ? `Due ${when(due)}` : "No due date",
+            resource.points != null ? `${resource.points} pts` : "",
+            resource.submitted === true ? "Submitted" : resource.completed ? "Marked done" : "",
+            resource.submission?.grade ? `Canvas grade ${resource.submission.grade}` : "",
+            ...identityNotes(entry),
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         </span>
       </button>
     </li>
@@ -180,13 +208,13 @@ function Group({
   selectedId,
   onSelect,
 }: {
-  group: CourseWorkGroup;
+  group: WorkGroup;
   open: boolean;
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
-  const row = (r: ResourceView) => (
-    <WorkRow key={r.id} resource={r} selected={r.id === selectedId} onSelect={onSelect} />
+  const row = (e: WorkEntry) => (
+    <WorkRow key={e.key} entry={e} selected={e.resource.id === selectedId} onSelect={onSelect} />
   );
   const key = group.id ?? "other";
   return (
@@ -211,7 +239,7 @@ function Group({
 }
 
 function NextRow({ item, onSelect }: { item: NextItem; onSelect: (id: string) => void }) {
-  const r = item.resource;
+  const r = item.entry.resource;
   const due = new Date(whenDue(r)!);
   return (
     <li>
@@ -219,13 +247,16 @@ function NextRow({ item, onSelect }: { item: NextItem; onSelect: (id: string) =>
         className={`course-next-row tone-${courseTone(`${r.sourceId}:${r.courseId}`)}`}
         data-focus-key={`course-next-${r.id}`}
         data-place-anchor={`course-next-${r.id}`}
+        data-resource-ids={item.entry.copies.map((c) => c.id).join(" ")}
         onClick={() => onSelect(r.id)}
       >
         <span className="course-next-main">
           <span className="course-next-meta">
             {item.group}
             {r.points != null ? <span>{r.points} pts</span> : null}
-            {item.copies > 1 ? <span>{item.copies} Canvas entries with this title</span> : null}
+            {identityNotes(item.entry).map((note) => (
+              <span key={note}>{note}</span>
+            ))}
           </span>
           <span className="course-next-title">{r.title}</span>
         </span>
@@ -276,12 +307,16 @@ export function CoursePageView({
   detail: ReactNode;
 }) {
   const syllabus = page.syllabus;
-  const next = nextUp(page);
-  const nextCovered = next.reduce((n, item) => n + item.copies, 0);
+  const work = courseWork(page);
+  const next = work.next;
+  const moreDated = work.counts.upcoming - next.length;
+  const undatedOpen = work.counts.undatedOpen;
   const facts = shownFacts(page);
   const unknown = unknownFacts(page);
   const status = freshnessText(page, (iso) => when(iso, true));
-  const undatedOpen = page.groups.reduce((n, g) => n + g.undated.filter((r) => !isDone(r)).length, 0);
+  // The concise label the sidebar already shows, then the course's own title as detail. No new shortening.
+  const label = page.code || page.courseName;
+  const officialTitle = page.code ? page.courseName : null;
   const materialCount = (page.modules ?? []).reduce((n, m) => n + m.items.length, 0) + page.materials.length;
   const factLabel: Record<CourseFactKind, string> = {
     ai_policy: "AI use",
@@ -296,9 +331,9 @@ export function CoursePageView({
           <Glyph name="back" />
           Courses
         </button>
-        <h1 tabIndex={-1} title={page.rawCourseName}>{page.courseName}</h1>
+        <h1 tabIndex={-1} title={page.rawCourseName}>{label}</h1>
         <p className="course-subline">
-          {page.code || page.term ? <span>{[page.code, page.term].filter(Boolean).join(" · ")}</span> : null}
+          {officialTitle || page.term ? <span>{[officialTitle, page.term].filter(Boolean).join(" · ")}</span> : null}
           <span className={status.attention ? "course-status attention-text" : "course-status"}>{status.text}</span>
         </p>
       </div>
@@ -309,32 +344,41 @@ export function CoursePageView({
             {next.length ? (
               <ul className="course-next">
                 {next.map((item) => (
-                  <NextRow key={item.resource.id} item={item} onSelect={onSelect} />
+                  <NextRow key={item.entry.key} item={item} onSelect={onSelect} />
                 ))}
               </ul>
-            ) : null}
-            {!next.length || page.counts.upcoming > nextCovered || undatedOpen ? (
+            ) : (
               <p className="course-quiet">
-                {[
-                  next.length
-                    ? ""
-                    : page.counts.assignments
-                      ? `No dated work ahead in the saved Canvas records${page.freshness !== "current_capture" ? ", which may be out of date" : ""}.`
-                      : "No assignments captured for this course.",
-                  page.counts.upcoming > nextCovered || undatedOpen
-                    ? `${[
-                        page.counts.upcoming > nextCovered ? `${page.counts.upcoming - nextCovered} more dated` : "",
-                        undatedOpen ? `${undatedOpen} without a due date` : "",
-                      ]
-                        .filter(Boolean)
-                        .join(", ")} in Coursework below.`
-                    : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
+                {work.counts.total
+                  ? `No dated work ahead in the saved Canvas records${page.freshness !== "current_capture" ? ", which may be out of date" : ""}.`
+                  : "No assignments captured for this course."}
               </p>
-            ) : null}
+            )}
           </section>
+
+          {work.rest.length ? (
+            <section className="course-section" aria-labelledby="course-work">
+              <h2 id="course-work">
+                {next.length ? "More coursework" : "Coursework"}
+                {moreDated || undatedOpen ? (
+                  <span className="course-count">
+                    {[moreDated ? `${moreDated} more dated` : "", undatedOpen ? `${undatedOpen} without a due date` : ""]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                ) : null}
+              </h2>
+              {work.rest.map((group) => (
+                <Group
+                  key={group.id ?? "other"}
+                  group={group}
+                  open={work.rest.length === 1}
+                  selectedId={selectedId}
+                  onSelect={onSelect}
+                />
+              ))}
+            </section>
+          ) : null}
 
           <section className="course-section" aria-labelledby="course-how">
             <h2 id="course-how">How this course works</h2>
@@ -398,23 +442,6 @@ export function CoursePageView({
                 {unknown.aiMissing ? " Without a stated AI policy, ask your instructor before using AI." : ""}
               </p>
             ) : null}
-          </section>
-
-          <section className="course-section" aria-labelledby="course-work">
-            <h2 id="course-work">Coursework</h2>
-            {page.groups.length ? (
-              page.groups.map((group) => (
-                <Group
-                  key={group.id ?? "other"}
-                  group={group}
-                  open={page.groups.length === 1}
-                  selectedId={selectedId}
-                  onSelect={onSelect}
-                />
-              ))
-            ) : (
-              <p className="course-quiet">No assignments captured for this course.</p>
-            )}
           </section>
 
           {/* T43: the notebook replaces this section with its tiers for the same course key. */}
