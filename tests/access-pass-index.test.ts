@@ -106,3 +106,57 @@ test("a per-item course recheck reads one row and agrees with the full inclusion
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("the per-item recheck keeps accounts apart and follows the selected term, like the full inclusion", () => {
+  const directory = mkdtempSync(join(tmpdir(), "magic-access-accounts-"));
+  const store = createStore(join(directory, "db.sqlite"));
+  try {
+    let n = 0;
+    // The same Canvas course id under two accounts, in different terms.
+    const save = (account: string, termName: string) =>
+      store.ingest({
+        source: { id: `canvas:${account}:1:course`, label: "Course", kind: "canvas", accountScope: account, courseId: "1", scope: "course" },
+        observedAt: new Date(Date.UTC(2099, 0, 1, 0, n)).toISOString(),
+        readId: `read-${n++}`,
+        status: "ok",
+        complete: true,
+        resources: [
+          {
+            externalId: "1",
+            kind: "course",
+            courseId: "1",
+            courseName: "Biology 101",
+            title: "Biology 101",
+            url: `${origin}/courses/1`,
+            text: "",
+            deadlines: [],
+            points: null,
+            submitted: null,
+            policy: { mode: "unknown", evidence: "" },
+            course: { workflowState: "available", termName },
+          },
+        ],
+      });
+    save("a", "Fall 2026");
+    save("b", "Spring 2026");
+    const sources = new Map(store.sources().map((s) => [s.id, s.accountScope]));
+    const courseOf = (account: string) =>
+      store.resources().find((r) => r.kind === "course" && sources.get(r.sourceId) === account)!;
+    const [a, b] = [courseOf("a"), courseOf("b")];
+    const agree = (expectedA: boolean, expectedB: boolean) => {
+      assert.deepEqual([courseInclusion(store)(a), courseInclusion(store)(b)], [expectedA, expectedB]);
+      assert.deepEqual([courseRowIncluded(store, a), courseRowIncluded(store, b)], [expectedA, expectedB]);
+    };
+    agree(true, true);
+    store.setCourseOverride({ accountScope: "b", courseId: "1", included: false }); // only account b
+    agree(true, false);
+    store.setCourseOverride({ accountScope: "b", courseId: "1", included: null });
+    store.setIngestionSettings({ ...store.ingestionSettings(), selectedTerm: "Fall 2026" });
+    agree(true, false);
+    store.setIngestionSettings({ ...store.ingestionSettings(), selectedTerm: "Spring 2026" });
+    agree(false, true);
+  } finally {
+    store.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
