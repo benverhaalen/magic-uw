@@ -509,6 +509,7 @@ export function App() {
                   resources={resources}
                   sources={snapshot.sources}
                   plan={snapshot.dayPlan}
+                  changes={snapshot.changes}
                   onSelect={setSelectedId}
                   onPlan={(command) => run(command)}
                 />

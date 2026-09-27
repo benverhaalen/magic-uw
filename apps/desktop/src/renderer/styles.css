@@ -1671,3 +1671,16 @@ select {
   border-radius: 6px;
   background: #fff;
 }
+/* Today rail: what a source changed on a due item */
+.rail-row-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.rail-change {
+  font-size: 11px;
+  color: #9a5b1e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

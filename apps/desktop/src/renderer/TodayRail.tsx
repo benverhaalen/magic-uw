@@ -7,9 +7,11 @@ import type {
 } from "@magic/contracts";
 import {
   buildTodayRail,
+  changeNotes,
   layoutLanes,
   planEntry,
   validatePlanEdit,
+  type RailChange,
   type RailSuggestion,
 } from "@magic/domain";
 
@@ -41,12 +43,15 @@ export function TodayRail({
   resources,
   sources,
   plan = [],
+  changes = [],
   onSelect,
   onPlan,
 }: {
   resources: ResourceView[];
   sources: SourceHealth[];
   plan?: DayPlanEntry[];
+  /** Recent source changes; due items note a moved date or updated instructions. */
+  changes?: RailChange[];
   onSelect: (id: string) => void;
   /** Saves a day-plan decision locally; resolves after the snapshot refreshes. */
   onPlan: (command: Command) => Promise<unknown>;
@@ -64,6 +69,7 @@ export function TodayRail({
     () => buildTodayRail(resources, now, timeZone, plan),
     [resources, now, timeZone, plan],
   );
+  const notes = useMemo(() => changeNotes(changes, now, timeZone), [changes, now, timeZone]);
   // Normal content is commitments and accepted blocks; suggestions appear on request.
   const [showSuggestions, setShowSuggestions] = useState(false);
   const visible = rail.suggestions.filter(
@@ -227,11 +233,16 @@ export function TodayRail({
             <li key={d.id}>
               <button
                 className="rail-row"
-                title={`${d.title} · ${d.courseName}${d.conflict ? " · dates disagree, planning for the earlier one" : ""}`}
+                title={`${d.title} · ${d.courseName}${d.conflict ? " · dates disagree, planning for the earlier one" : ""}${notes.get(d.id) ? ` · ${notes.get(d.id)!.join(" · ")}` : ""}`}
                 onClick={() => onSelect(d.id)}
               >
                 <span className="rail-time">{clock(d.dueMin)}</span>
-                <span className="rail-row-title">{d.title}</span>
+                <span className="rail-row-main">
+                  <span className="rail-row-title">{d.title}</span>
+                  {(notes.get(d.id) ?? []).map((n) => (
+                    <span key={n} className="rail-change">{n}</span>
+                  ))}
+                </span>
                 {d.conflict ? (
                   <span className="rail-flag" aria-label="Dates disagree">
                     !
