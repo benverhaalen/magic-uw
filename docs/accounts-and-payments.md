@@ -1,6 +1,6 @@
 # Accounts and payments
 
-Status, September 27, 2026: **built and tested in isolation; not yet connected to a live Supabase project or Lemon Squeezy store.** Accepted scope (Aidan, September 27): a student signs up and pays on the website; the desktop app signs in and shows whether the account has bought the app. Price: $10 one-time, which still conflicts with the $5 license in [decisions](decisions.md#pricing-and-ai-access-resolution--september-26). Sign-in is by email, no passwords.
+Status, September 27, 2026: **built and tested in isolation. The Supabase project exists with both migrations applied; the website, webhook and app are not yet pointed at it, and no Lemon Squeezy store is connected.** Accepted scope (Aidan, September 27): a student signs up and pays on the website; the desktop app signs in and shows whether the account has bought the app. Price: $10 one-time, which still conflicts with the $5 license in [decisions](decisions.md#pricing-and-ai-access-resolution--september-26). Sign-in is by email, no passwords.
 
 ## What exists
 
@@ -16,13 +16,17 @@ Status, September 27, 2026: **built and tested in isolation; not yet connected t
 
 Supabase stores the account's **email address** (Supabase Auth) and, after a purchase, the Lemon Squeezy order id, customer id, variant id, amount, currency, date, test-mode flag and paid/refunded status. It never receives coursework, course names, grades, UW identifiers or anything read from UW. Lemon Squeezy, as merchant of record, holds the buyer's name, email, address and payment details; the webhook ignores those fields. Signing in sends only the email to Supabase. This is a new hosted destination; see [AI and privacy](ai-and-privacy.md#accounts-and-payments).
 
+## Live project
+
+Supabase project `my-magic-uw` (ref `lfqsbnmqknujzhvpbmyf`, region us-east-2, free plan) in Aidan's organization, URL `https://lfqsbnmqknujzhvpbmyf.supabase.co`. Both migrations in `supabase/migrations/` are applied. Checked September 27: the public key is refused on both tables (read and write); signed-in users can only read `entitlements`; Supabase's security advisor reports only the intended "no policies" note on `lemon_events`.
+
 ## Setup
 
 Keys go into Vercel and your local environment, never into Git or chat.
 
 **Supabase**
 
-1. Create a project. In **SQL Editor**, run the migration file above.
+1. Create a project. In **SQL Editor**, run both files in `supabase/migrations/`, in order. (Done for `my-magic-uw`.)
 2. **Authentication → URL Configuration**: Site URL `https://magic-uw-omega.vercel.app` (the current domain); Redirect URLs `https://magic-uw-omega.vercel.app/account/` and, for local testing, `http://localhost:4179/account/`.
 3. **Authentication → Emails → Magic Link**: keep the link and add `Or enter this code in the app: {{ .Token }}` so the desktop app can sign in with the code.
 4. Before real students: **Authentication → Emails → SMTP Settings** with a mail provider. Supabase's built-in sender is rate-limited and meant for testing.
