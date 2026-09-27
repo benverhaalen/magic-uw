@@ -404,7 +404,11 @@ function claims(text: string): Claims {
   return { dates, weekdays, numbers, names, labels, codes };
 }
 const wordsOf = (text: string) => new Set(text.toLowerCase().split(/[^a-z0-9'’-]+/).filter(Boolean));
-const phrase = (text: string) => ` ${text.toLowerCase().replace(/\s+/g, " ")} `;
+const phrase = (text: string) => ` ${text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()} `;
+/** A word without a plural "s", so "Section 303" finds "sections". */
+const stem = (w: string) => w.replace(/(?<=[a-z]{3})s$/, "");
+/** Date arithmetic written in a sentence: "October 13 + 7 days". */
+const DATE_PLUS = new RegExp(`\\b${MONTH}\\s+(\\d{1,2})\\s*([+−–-])\\s*(\\d+)\\s*days?\\b`, "gi");
 const numberText = (x: number) => String(Number(x.toFixed(2)));
 function calculate(a: number, op: string, b: number): number {
   if (op === "×" || op === "x" || op === "*") return a * b;
@@ -444,6 +448,21 @@ export function claimsMatch(sentence: string, quotes: string, context: { passage
   const known = new Set([...shown.numbers, ...(context.known ?? [])]);
   if (!shown.numbers.length) for (const n of around.numbers) known.add(n);
   if (/\bdays?\b/i.test(sentence)) for (const n of daySpans(said.dates)) known.add(n);
+  // A date worked out from a date the sentence may state ("October 13 + 7 days") is re-done by code.
+  const stateable = (d: string) => shown.dates.includes(d) || (!shown.dates.length && around.dates.includes(d));
+  const derivedDates: string[] = [];
+  for (const m of sentence.matchAll(DATE_PLUS)) {
+    if (!stateable(`${month(m[1]!)} ${Number(m[2])}`)) continue;
+    const at = new Date(Date.UTC(2026, MONTHS.indexOf(month(m[1]!)), Number(m[2]) + (m[3] === "+" ? 1 : -1) * Number(m[4])));
+    derivedDates.push(`${MONTHS[at.getUTCMonth()]} ${at.getUTCDate()}`);
+    known.add(numberText(Number(m[4])));
+  }
+  // A label whose number is quoted may use the passage's word for it ("Section 303" for "303 meets" under "sections").
+  const stems = new Set([...quoteWords, ...passageWords].map(stem));
+  const labelled = (l: string) => {
+    const [word, n] = l.split(" ");
+    return shown.numbers.includes(n!) && stems.has(stem(word!));
+  };
   // Re-do the sentence's arithmetic until nothing new is verified (one step may feed the next).
   const exprs = [...sentence.replace(/(\d),(?=\d{3}\b)/g, "$1").matchAll(EXPR)];
   for (let changed = true; changed; ) {
@@ -458,10 +477,10 @@ export function claimsMatch(sentence: string, quotes: string, context: { passage
     }
   }
   return (
-    fits(said.dates, shown.dates, (d) => shown.dates.includes(d), (d) => around.dates.includes(d)) &&
+    fits(said.dates, shown.dates, (d) => shown.dates.includes(d) || derivedDates.includes(d), (d) => around.dates.includes(d)) &&
     fits(said.weekdays, shown.weekdays, (d) => shown.weekdays.includes(d), (d) => around.weekdays.includes(d)) &&
     fits(said.names, shown.names, (n) => quoteWords.has(n), (n) => passageWords.has(n)) &&
-    fits(said.labels, shown.labels, (l) => quotePhrase.includes(` ${l} `), (l) => passagePhrase.includes(` ${l} `)) &&
+    fits(said.labels, shown.labels, (l) => quotePhrase.includes(` ${l} `) || labelled(l), (l) => passagePhrase.includes(` ${l} `)) &&
     fits(said.codes, shown.codes, (c) => quoteWords.has(c), (c) => passageWords.has(c)) &&
     said.numbers.every((n) => known.has(n))
   );

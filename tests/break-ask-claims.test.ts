@@ -69,3 +69,15 @@ test("B1 live: codes, labels, heading dates and shown arithmetic pass; contradic
   const sections = "302 meets Thursday 9:55 AM in 1261 Sterling Hall with Omar Haddad. 303 meets Thursday 1:20 PM in 2241 Chamberlin with Priya Nair.";
   assert.ok(!claimsMatch("Priya Nair runs the section in 1261 Sterling Hall.", "302 meets Thursday 9:55 AM in 1261 Sterling Hall with Omar Haddad.", { passages: sections }), "a neighbour's name");
 });
+
+test("B1 live, second run: punctuation in labels, a label word from the passage, and shown date arithmetic", () => {
+  assert.ok(claimsMatch("The MATH 222 Midterm 1 is on Wednesday, October 8, from 5:45 to 7:15 PM.", "MATH 222: Midterm 1 is Wednesday, October 8, 5:45 to 7:15 PM."));
+  assert.ok(!claimsMatch("The MATH 222 Midterm 2 is on Wednesday, October 8.", "MATH 222: Midterm 1 is Wednesday, October 8, 5:45 to 7:15 PM."));
+  const sections = "Discussion sections: 302 meets Thursday 9:55 AM in 1261 Sterling Hall with Omar Haddad. 303 meets Thursday 1:20 PM in 2241 Chamberlin with Priya Nair.";
+  assert.ok(claimsMatch("Section 303 also meets on Thursday, at 1:20 PM in 2241 Chamberlin, run by Priya Nair.", "303 meets Thursday 1:20 PM in 2241 Chamberlin with Priya Nair", { passages: sections }));
+  assert.ok(!claimsMatch("Section 302 meets at 1:20 PM.", "303 meets Thursday 1:20 PM in 2241 Chamberlin with Priya Nair", { passages: sections }));
+  const lab = "Lab 3 runs the week of October 13";
+  assert.ok(claimsMatch("The next session falls the week of October 20 (October 13 + 7 days).", lab));
+  assert.ok(!claimsMatch("The report is due the week of October 27 (October 13 + 7 days).", lab), "wrong date arithmetic");
+  assert.ok(!claimsMatch("The report is due the week of October 20.", lab), "an unexplained date");
+});
