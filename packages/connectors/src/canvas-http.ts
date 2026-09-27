@@ -284,6 +284,7 @@ export function classifyCanvasAuth(
   body: string,
 ): CanvasAuthVerdict {
   if (status === 429) return "rate_limited";
+  if (status === 403 && canvasErrorStatus(body) === "unauthenticated") return "suspect";
   if (status === 403)
     return /rate.?limit|too many requests|throttl/i.test(body)
       ? "rate_limited"
@@ -404,7 +405,10 @@ export class CanvasHttp {
   }
   // owner: T05c. One shared profile read confirms a suspected expiry for every concurrent scope.
   private confirming: Promise<boolean> | undefined;
+  private confirmations = 0;
   private async confirmSignedOut(own?: CanvasProfileFacts): Promise<never> {
+    if (!own && !this.confirming && this.confirmations >= 3)
+      throw new CanvasFailure("partial", "confirmation_budget");
     const signedOut = own
       ? canvasProfileSignedOut(own, this.origin)
       : await (this.confirming ??= this.profileSignedOut().finally(() => {
@@ -415,6 +419,7 @@ export class CanvasHttp {
     throw new CanvasFailure("partial", "sign_in_not_confirmed");
   }
   private async profileSignedOut(): Promise<boolean> {
+    this.confirmations++;
     // The same fetch path, credentials and no-redirect policy as every other Canvas read.
     const signal = AbortSignal.any([
       AbortSignal.timeout(this.options.requestTimeoutMs ?? 15_000),
@@ -427,7 +432,7 @@ export class CanvasHttp {
           method: "GET",
           credentials: "include",
           redirect: "manual",
-          headers: { Accept: "application/json" },
+          headers: { Accept: "application/json+canvas-string-ids" },
           signal,
         }),
         signal,
@@ -447,17 +452,30 @@ export class CanvasHttp {
     signal?: AbortSignal,
     scopeStats?: { requests: number },
     priority = 0,
+    options: { fresh?: boolean } = {},
   ): Promise<{ data: unknown; link: string | null }> {
     const url = checkedCanvasUrl(input, this.origin);
     signal?.throwIfAborted();
     if (this.needsSignIn) throw new CanvasFailure("needs_sign_in");
-    const { value, shared } = await this.scheduler.once(
-      url,
-      (leader) => this.read(url, leader, scopeStats, priority),
-      signal,
-    );
-    // A shared result is copied, so no caller can change the records another caller parses.
-    return shared ? { data: structuredClone(value.data), link: value.link } : value;
+    try {
+      // Identity, authorization and explicit revalidation must observe the server now.
+      // read() still applies the shared host's concurrency and rate-limit policy.
+      if (options.fresh) return await this.read(url, signal, scopeStats, priority);
+      const { value, shared } = await this.scheduler.once(
+        url,
+        (leader) => this.read(url, leader, scopeStats, priority),
+        signal,
+      );
+      if (this.needsSignIn) throw new CanvasFailure("needs_sign_in");
+      // A shared result is copied, so no caller can change the records another caller parses.
+      return shared ? { data: structuredClone(value.data), link: value.link } : value;
+    } catch (error) {
+      // Singleflight can be led by another CanvasHttp using this run's scheduler.
+      // Every follower must record confirmed expiry, not just receive its rejection.
+      if (error instanceof CanvasFailure && error.status === "needs_sign_in")
+        this.auth.abort();
+      throw error;
+    }
   }
   /** One attempt's exchange, inside a scheduler slot: the slot covers the whole body transfer. */
   private async exchange(
@@ -490,7 +508,7 @@ export class CanvasHttp {
         method: "GET",
         credentials: "include",
         redirect: "manual",
-        headers: { Accept: "application/json" },
+        headers: { Accept: "application/json+canvas-string-ids" },
         signal: requestSignal,
       }),
       requestSignal,

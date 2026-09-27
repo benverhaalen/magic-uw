@@ -54,6 +54,10 @@ import {
   type TopicStateView,
 } from "./router-types";
 // end owner: study-backend
+// owner: analytics. Practice analytics ops (additive): code-only rollups, 0 tokens.
+import { createAnalytics, refreshTopics, type ReferencesPort } from "./analytics";
+import type { AnalyticsOp, AnalyticsResult } from "./router-types";
+// end owner: analytics
 
 export interface StudyResource {
   id: string;
@@ -80,6 +84,9 @@ export interface LearningRouterDependencies {
   store: LearningStore;
   resolveContext(resourceId: string): StudyContext | null;
   now?: () => Date;
+  // owner: analytics. A fresh references port per analytics request (the pipeline's, or the current adapter).
+  analyticsReferences?: () => ReferencesPort;
+  // end owner: analytics
 }
 export interface LearningRouter {
   handle(
@@ -87,6 +94,12 @@ export interface LearningRouter {
     signal: AbortSignal,
   ): Promise<LearningResult>;
 }
+// owner: analytics. The analytics ops through `handle`, or directly through `analytics` (same request shape).
+export interface AnalyticsRouter {
+  analytics(request: unknown, signal: AbortSignal): Promise<AnalyticsResult>;
+}
+const ANALYTICS_OPS: readonly AnalyticsOp[] = ["analytics.assignment", "analytics.course", "analytics.agendaHints"];
+// end owner: analytics
 export function eligibleStudySource(
   resource: Resource,
   at = Date.now(),
@@ -248,7 +261,7 @@ function familyPool(pool: StoredItem[], ordered: string[]): LearnFamily[] {
 }
 export function createLearningRouter(
   deps?: LearningRouterDependencies,
-): LearningRouter {
+): LearningRouter & AnalyticsRouter {
   const time = () => deps?.now?.() ?? new Date();
   const fail = (
     op: LearningRequest["op"],
@@ -773,7 +786,62 @@ export function createLearningRouter(
   const sessionOperations = (s: LearningSession) =>
     state(s)?.operations ?? cardState(s)?.operations ?? null;
   // end owner: study-backend
+  // owner: analytics. After practice commits, recompute the touched topics' cached state. The cache is
+  // rebuildable: if this refresh fails, the next analytics read finds those rows stale and recomputes
+  // them, so the committed practice result is never turned into a failure here.
+  function refreshAnalytics(ref: string, conceptIds: string[]) {
+    try {
+      refreshTopics(deps!.store, ref, conceptIds, time());
+    } catch {
+      // Stale rows are detected by their evidence mark on the next read.
+    }
+  }
+  async function analytics(raw: unknown, signal: AbortSignal): Promise<AnalyticsResult> {
+    const guess = typeof raw === "object" && raw !== null && "op" in raw ? raw.op : undefined;
+    const named = ANALYTICS_OPS.find((o) => o === guess) ?? "analytics.course";
+    const parsed = learningRequestSchema.safeParse(raw);
+    if (!parsed.success) return { op: named, status: "failed", message: "Invalid analytics request." };
+    const request = parsed.data;
+    if (
+      request.op !== "analytics.assignment" &&
+      request.op !== "analytics.course" &&
+      request.op !== "analytics.agendaHints"
+    )
+      return { op: named, status: "failed", message: "Invalid analytics request." };
+    const op = request.op;
+    if (!deps) return { op, status: "not_built", message: "This study feature isn't built yet." };
+    if (!deps.analyticsReferences)
+      return { op, status: "not_built", message: "Course references aren't connected yet." };
+    if (signal.aborted) return { op, status: "unavailable", message: "Analytics request cancelled." };
+    const scope = practiceScope(request.courseId, request.anchorIds);
+    if (typeof scope === "string") return { op, status: "unavailable", message: scope };
+    try {
+      const pool = new Map<string, StoredItem>();
+      for (const x of [...currentPool(scope.c, scope.ref), ...cardPool(scope.c, scope.ref)]) pool.set(x.item.id, x);
+      const a = createAnalytics({
+        store: deps.store,
+        ref: scope.ref,
+        courseId: scope.c.courseId,
+        references: deps.analyticsReferences(),
+        now: time(),
+        practiceItems: [...pool.values()],
+      });
+      if (op === "analytics.assignment") {
+        const data = a.assignment(request.assignmentId);
+        return data
+          ? { op, status: "ok", data }
+          : { op, status: "unavailable", message: "That assignment isn't in this course." };
+      }
+      if (op === "analytics.course")
+        return { op, status: "ok", data: a.course(request.sessions ? { sessions: request.sessions } : {}) };
+      return { op, status: "ok", data: a.agendaHints() };
+    } catch {
+      return { op, status: "failed", message: "Analytics could not be computed. Try again after the course refreshes." };
+    }
+  }
+  // end owner: analytics
   return {
+    analytics,
     async handle(raw, signal) {
       const parsed = learningRequestSchema.safeParse(raw);
       if (!parsed.success)
@@ -783,6 +851,10 @@ export function createLearningRouter(
       if (!deps)
         return fail(op, "This study feature isn't built yet.", "not_built");
       if (signal.aborted) return fail(op, "Study request cancelled.");
+      // owner: analytics
+      if (op === "analytics.assignment" || op === "analytics.course" || op === "analytics.agendaHints")
+        return analytics(request, signal);
+      // end owner: analytics
       const store = deps.store;
       try {
         if (op === "study.sessions") {
@@ -1434,6 +1506,7 @@ export function createLearningRouter(
           store.addReview(written.review);
           if (!store.commitSession(updated, request.revision))
             return fail(op, "Flashcard session changed. Reload it before continuing.");
+          refreshAnalytics(ref, [written.card.conceptId]); // owner: analytics
           return { op, status: "ok", data: { flashcards: flashView(updated, next, c) } };
         }
         if (op === "study.submit") {
@@ -1441,6 +1514,7 @@ export function createLearningRouter(
           const scope = session && scoped(session);
           if (!session || !scope || !scope.p.anchorIds)
             return fail(op, "Results are available for course practice sessions.");
+          refreshAnalytics(session.courseRef!, []); // owner: analytics: settle any topic left stale
           return { op, status: "ok", data: { results: practiceResults(session, scope.p) } };
         }
         // end owner: study-backend
@@ -1692,6 +1766,8 @@ export function createLearningRouter(
             op,
             "Study session changed. Reload it before continuing.",
           );
+        // owner: analytics
+        if (attempt) refreshAnalytics(session.courseRef!, attempt.conceptTags.map((t) => t.conceptId));
         return {
           op,
           status: "ok",

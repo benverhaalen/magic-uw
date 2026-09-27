@@ -909,10 +909,23 @@ export function createCore(store: Store, options: CoreOptions) {
         break;
       case "outlook-disconnect": {
         // Only the student's Outlook calendar; coursework and other feeds are never touched here.
+        // owner: T30: the published-ICS link only; the Microsoft (Graph) calendar has its own disconnect.
         for (const s of store.sources())
-          if (s.kind === "calendar" && s.courseId === OUTLOOK_CALENDAR_COURSE_ID)
+          if (
+            s.kind === "calendar" &&
+            s.courseId === OUTLOOK_CALENDAR_COURSE_ID &&
+            !s.scope.startsWith("graph_")
+          )
             store.removeSource(s.id);
         message = "Outlook calendar disconnected; its meetings were removed from this device.";
+        break;
+      }
+      // owner: T30. Every record read through Microsoft Graph: mail, calendar, OneNote, OneDrive.
+      // Main deletes the tokens and delta links; coursework, planning and audit data are untouched.
+      case "outlook-disconnect-graph": {
+        for (const s of store.sources())
+          if (s.scope.startsWith("graph_")) store.removeSource(s.id);
+        message = "Outlook disconnected; its mail, calendar and notes were removed from this device.";
         break;
       }
       case "purge":

@@ -395,7 +395,14 @@ export function externalCourseConnector(
       );
       const robots = new Map<string, string>();
       let attention = false;
-      let pages = 0;
+      let pages = 0, attempts = 0;
+      const pageLimit = Math.max(1, Math.min(options.maxPages ?? 300, 1000));
+      const queued = new Set<string>();
+      const enqueue = (item: { url: string; from: string; depth: number }) => {
+        if (queued.has(item.url)) return;
+        if (queued.size >= 10000) { issue("frontier_limit"); return; }
+        queued.add(item.url); queue.push(item);
+      };
       const issue = (code: string) => {
         if (diagnostics.length < 2000)
           diagnostics.push({ code, path: [], severity: "warning" });
@@ -412,7 +419,7 @@ export function externalCourseConnector(
         }
         if (isBlockedContentHost(new URL(url).hostname)) continue;
         roots.add(folder(url));
-        queue.push({ url, from: url, depth: 0 });
+        enqueue({ url, from: url, depth: 0 });
       }
       async function allowed(url: string): Promise<boolean> {
         const origin = new URL(url).origin;
@@ -436,8 +443,9 @@ export function externalCourseConnector(
         return robotsAllows(robots.get(origin)!, url);
       }
       // A single in-flight page per course keeps every host below the external two-request ceiling.
-      while (queue.length && pages < Math.min(options.maxPages ?? 300, 2000)) {
+      while (queue.length && pages < pageLimit && attempts < pageLimit * 2 && Date.now() - started < 120000) {
         signal?.throwIfAborted();
+        queue.sort((a,b) => a.depth - b.depth || Number(previous.has(a.url)) - Number(previous.has(b.url)));
         const next = queue.shift()!;
         if (seen.has(next.url)) continue;
         seen.add(next.url);
@@ -455,8 +463,7 @@ export function externalCourseConnector(
             now.getTime() >= Date.parse(fetchedAt) &&
             now.getTime() - Date.parse(fetchedAt) < 6 * 60 * 60 * 1000
           ) {
-            resources.push(cached);
-            pages++;
+            resources.push(cached); // Cached traversal does not consume the new-page budget.
             for (const link of cached.links ?? []) {
               const url = typeof link === "string" ? link : link.url;
               if (options.client.isCanvas(url)) {
@@ -473,10 +480,13 @@ export function externalCourseConnector(
                 issue("depth_limit");
                 continue;
               }
-              queue.push({ url, from: next.url, depth: next.depth + 1 });
+              enqueue({ url, from: next.url, depth: next.depth + 1 });
             }
             continue;
           }
+          // Walking saved ancestors is local continuation work, not a new page request.
+          // The deduplicated frontier and elapsed-time limits still bound that traversal.
+          attempts++;
           const fetched = await options.client.get(next.url, {
             signal,
             onRedirect: async (target) => {
@@ -594,7 +604,7 @@ export function externalCourseConnector(
               issue("depth_limit");
               continue;
             }
-            queue.push({ url, from: fetched.url, depth: next.depth + 1 });
+            enqueue({ url, from: fetched.url, depth: next.depth + 1 });
           }
         } catch (error) {
           if (signal?.aborted) throw error;
@@ -603,7 +613,7 @@ export function externalCourseConnector(
           );
         }
       }
-      if (queue.some((item) => !seen.has(item.url))) issue("page_limit");
+      if (queue.some((item) => !seen.has(item.url))) issue(attempts >= pageLimit * 2 ? "attempt_limit" : Date.now() - started >= 120000 ? "time_limit" : "page_limit");
       yield captureBatchSchema.parse({
         source,
         observedAt: now.toISOString(),

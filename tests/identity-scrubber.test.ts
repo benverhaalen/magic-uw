@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { createCore, scrubText, rosterFor, toOriginalSpan, validateCitations } from "@magic/core";
 import { gatewayClient } from "@magic/ai";
 import { captureBatchSchema, defaultPrivacy, type CaptureBatch } from "@magic/contracts";
+import { CONSENT_DISCLOSURE_VERSION } from "@magic/domain";
 import { canvasConnector } from "../packages/connectors/src/canvas";
 import { courseResource, courseSchema, profileIdentity } from "../packages/connectors/src/canvas-models";
 import { createSyntheticCanvasUniversity } from "../packages/connectors/src/canvas-fixture";
@@ -54,7 +55,7 @@ const judgment = {
 };
 async function setup(gateway?: Parameters<typeof createCore>[1]["gateway"]) {
   const store = createStore(":memory:");
-  for (const recipient of ["jev", "claude"] as const) store.setConsent!({ action: "grant", recipient, disclosureVersion: "setup-2026-09-26" }, "2026-09-26T12:00:00Z");
+  for (const recipient of ["jev", "claude"] as const) store.setConsent!({ action: "grant", recipient, disclosureVersion: CONSENT_DISCLOSURE_VERSION }, "2026-09-26T12:00:00Z");
   const core = createCore(store, { fixture: batch(), ...(gateway ? { gateway } : {}) });
   await core.execute({ type: "fixture" });
   await core.execute({ type: "identity-roster", value: roster });
@@ -284,7 +285,7 @@ test("a fresh Canvas sync with zero manual setup scrubs the student's own name, 
   }) as typeof globalThis.fetch;
   const gateway = gatewayClient("http://127.0.0.1:9/", { read: async () => token, write: async (t) => void (token = t) }, fetcher);
   // Real clock: jobs queued during ingest use the store's wall-clock time.
-  for (const recipient of ["jev", "claude"] as const) store.setConsent!({ action: "grant", recipient, disclosureVersion: "setup-2026-09-26" }, "2026-09-26T12:00:00Z");
+  for (const recipient of ["jev", "claude"] as const) store.setConsent!({ action: "grant", recipient, disclosureVersion: CONSENT_DISCLOSURE_VERSION }, "2026-09-26T12:00:00Z");
   const core = createCore(store, { fixture: batch(), gateway });
   const essay = core.snapshot().resources.find((r) => r.text.includes("Avery Quinlan"));
   assert.ok(essay, "injected assignment captured");
@@ -331,7 +332,7 @@ test("MCP output is scrubbed, keeps teacher names, and its citations resolve to 
     courses: [{ accountScope: "acct", courseId: course }], categories: ["course_text", "grades", "comments", "communications"],
     tokenHash: createHash("sha256").update(token).digest("hex"),
   });
-  store.setConsent!({ action: "grant", recipient: "claude", disclosureVersion: "setup-2026-09-26" }, "2026-09-26T12:00:00Z");
+  store.setConsent!({ action: "grant", recipient: "claude", disclosureVersion: CONSENT_DISCLOSURE_VERSION }, "2026-09-26T12:00:00Z");
   const service = createMcpService(store, "claude-desktop", token, syncNow);
   const d = store.resources().find((r) => r.title === "Week 3: tariffs")!;
   const essay = store.resources().find((r) => r.title === "Tariff essay")!;

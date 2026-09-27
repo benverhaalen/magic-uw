@@ -30,7 +30,7 @@ export interface RailEvent {
   endMin: number | null;
   startOnly: boolean;
   location?: string;
-  onlineMeeting?: "teams";
+  onlineMeeting?: "teams" | "zoom" | "webex" | "meet"; // T30: Graph meetings add zoom, webex, meet
 }
 export interface RailDue {
   id: string;
