@@ -12,6 +12,7 @@ import { AnalyticsPreview } from "./AnalyticsPreview";
 import { NotesPreview } from "./NotesPreview";
 import { OutlookPreview } from "./OutlookPreview";
 import { CourseFactsPreview } from "./CourseFactsPreview";
+import { PageViewsPreview } from "./PageViewsPreview"; // owner: page-views
 import { Empty, Loaded, PreviewLabel } from "./ui";
 import "./backend.css";
 
@@ -35,10 +36,11 @@ const tabs = [
   ["notes", "Notes"],
   ["outlook", "Outlook"],
   ["facts", "Course facts"],
+  ["pages", "Page views"], // owner: page-views
 ] as const;
 type Tab = (typeof tabs)[number][0];
 /** Views that need a course; Agenda and Outlook span every course. */
-const courseScoped = new Set<Tab>(["references", "guides", "practice", "analytics", "notes", "facts"]);
+const courseScoped = new Set<Tab>(["references", "guides", "practice", "analytics", "notes", "facts", "pages" /* owner: page-views */]);
 /** Pseudo-courses the summary lists that are not classes. */
 const notCourses = new Set(["outlook-mail", "outlook-calendar"]);
 
@@ -157,6 +159,9 @@ export function WorkspaceTools({ snapshot }: { snapshot: Snapshot | null }) {
         />
       ) : tab === "notes" ? (
         <NotesPreview key={`${course.accountScope}:${course.courseId}`} course={course} />
+      ) : tab === "pages" ? (
+        // owner: page-views
+        <PageViewsPreview key={`${course.accountScope}:${course.courseId}`} course={course} assignments={assignments} assignmentId={resolvedAssignment} onChoose={chooseAssignment} />
       ) : (
         <CourseFactsPreview
           course={course}
