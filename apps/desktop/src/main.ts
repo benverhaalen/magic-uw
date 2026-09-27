@@ -9,6 +9,7 @@ import {
   utilityProcess,
   safeStorage,
   powerMonitor,
+  net,
   type IpcMainInvokeEvent,
 } from "electron";
 import { readFile, writeFile, mkdir, stat, rm, appendFile } from "node:fs/promises";
@@ -31,6 +32,7 @@ import {
   canvasFileDownloadUrl,
   causeHeaders,
   fetchCanvasFile,
+  sessionHopFetch,
 } from "../../../packages/connectors/src/canvas-file-download";
 import { MaterialReadError } from "../../../packages/connectors/src/network";
 // end owner: acquisition
@@ -635,7 +637,11 @@ app
           try {
             const file = await fetchCanvasFile(fileUrl, {
               origin: "https://canvas.wisc.edu",
-              session: (url, init) => studentSession.fetch(url, init),
+              // Not studentSession.fetch: its redirect "manual" rejects every redirect
+              // ("Redirect was cancelled"), and every file download is one (sessionHopFetch).
+              session: sessionHopFetch((url, headers) =>
+                net.request({ url, method: "GET", session: studentSession, credentials: "include", redirect: "manual", headers }),
+              ),
               plain: (url, init) => fetch(url, init),
               signal,
             });

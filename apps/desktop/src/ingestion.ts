@@ -114,6 +114,7 @@ import {
 // extraction pool, cheap skips, text-first order and the first-sync budget.
 import {
   canvasFileDownloadPath,
+  retryTransientFile,
   throwIfCause,
 } from "../../../packages/connectors/src/canvas-file-download";
 import {
@@ -156,6 +157,9 @@ export interface AcquisitionOptions {
   retainBytes?: "all" | "ocr-pending";
   /** Background OCR of `needs_ocr` documents with the OS engine; pages per run. 0 turns it off. */
   ocrPagesPerRun?: number;
+  /** Waits before retrying a session download after a transient failure (canvas-file-download.ts,
+   * FILE_RETRY_DELAYS_MS when unset); tests pass short ones. */
+  downloadRetryMs?: number[];
 }
 export const ACQUISITION_DEFAULTS: AcquisitionOptions = {
   download: "signed",
@@ -885,13 +889,21 @@ export function createIngestion(
                 ...(acquisition.download === "session"
                   ? {
                       // owner: acquisition: through the shared scheduler, not the 2-per-host cap.
+                      // A transient failure (connection, main's time limit, a busy file
+                      // service) is tried again after a backoff, outside the scheduler's slot.
                       download: async () => {
-                        const response = await scheduler().run(
-                          origin,
-                          () => host.canvasFetch(sessionUrl, { signal }),
-                          { priority: job.urgent ? 0 : 1, signal },
+                        const response = await retryTransientFile(
+                          async () => {
+                            const answer = await scheduler().run(
+                              origin,
+                              () => host.canvasFetch(sessionUrl, { signal }),
+                              { priority: job.urgent ? 0 : 1, signal },
+                            );
+                            throwIfCause(answer);
+                            return answer;
+                          },
+                          { signal, ...(acquisition.downloadRetryMs ? { delaysMs: acquisition.downloadRetryMs } : {}) },
                         );
-                        throwIfCause(response);
                         hostClass =
                           (response.headers.get("x-magic-host-class") as DocumentHostClass | null) ??
                           "canvas";
@@ -976,8 +988,10 @@ export function createIngestion(
               );
               const status = http.needsSignIn
                 ? "needs_sign_in"
-                : error instanceof CanvasFailure &&
-                    error.status === "inaccessible"
+                : (error instanceof CanvasFailure &&
+                      error.status === "inaccessible") ||
+                    // owner: acquisition: Canvas refused the download itself (canvas-file-download.ts)
+                    (error instanceof MaterialReadError && error.code === "inaccessible")
                   ? "inaccessible"
                   : "partial";
               for (const source of [job.source, documentSource])
