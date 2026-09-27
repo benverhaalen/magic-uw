@@ -53,3 +53,31 @@ Not in these steps: a due date outside the to-do/upcoming window is still only c
 backstop or a course's warm read (the change-event queue and targeted reads, drafted, would read
 each current course's assignment list on a manual refresh); a moved to-do item still warm-reads
 its whole course (39 requests) instead of the one assignment.
+
+## After the review fixes (`487de20`)
+
+Same suite and latency model, clean tree. A manual refresh now also reads the course lists (with
+syllabi) and each current course's assignment list, and ICS feeds are read on every run.
+
+| Scenario | Requests | Wall (ms) |
+|---|---|---|
+| First sync after sign-in | 721 | 30,411 (agenda usable 2,368; files done 21,601) |
+| Manual refresh within a minute | 56 (no full read) | 11,437 |
+| Second launch within the window | 8 (2 Canvas + 6 ICS) | 2,869 |
+| Steady hot tick | 8 (2 Canvas + 6 ICS) | 2,874 |
+| App focus (content probe) | 47 | 8,219 |
+| A due date moves (to-do item) | 45 (1 course) | 5,508 |
+| Manual refresh (steady) | 56 | 12,000 |
+| Six-hour backstop | 177 | 15,750 |
+| URLs read twice in one run | 0 | |
+
+Changes a probe can miss, each followed by one manual refresh (`runChangeChecks`, 150 ms):
+
+| Change | Stored after one refresh | Requests | Full read |
+|---|---|---|---|
+| A new course this term | yes | 175 | no (course read) |
+| A new file | yes | 87 | no |
+| A page edit | yes | 76 | no |
+| A syllabus edit | yes | 62 | no |
+| A due date moved outside the to-do window | yes | 62 | no |
+| A new announcement | yes | 95 | no |
