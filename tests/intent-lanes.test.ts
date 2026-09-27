@@ -8,61 +8,18 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { z } from "zod";
 import { createCore } from "@magic/core";
 import { CONSENT_DISCLOSURE_VERSION } from "@magic/domain";
 import type { IntentCommandResult, LearningRequest } from "@magic/contracts";
 import { createClaudeBackend, createModelRunner, createSessionPool, type CliCommand } from "../packages/runner/src/index";
 import { askPack, classifyPack } from "../packages/packs/intent/src/index";
-import { createIntentRouter, fromNotes, type AnyAction, type NotesSeam } from "../packages/core/src/intent/index";
+import { createIntentRouter, fromNotes, type NotesSeam } from "../packages/core/src/intent/index";
+import { notesActions } from "../packages/notes/src/actions";
 import { NOW, TZ, workspace } from "./intent-fixtures";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fake: CliCommand = { file: process.execPath, prefixArgs: [join(here, "fixtures", "fake-cli", "fake-cli.mjs"), "claude"] };
 const slots = (over: Record<string, unknown> = {}) => ({ course: null, assignment: null, topics: null, date: null, time: null, query: null, kind: null, count: null, scope: null, ...over });
-
-// A synthetic stand-in with the same shape as packages/notes/src/actions.ts `notesActions` (#16).
-const sessionType = z.enum(["lecture", "discussion", "lab"]).default("lecture");
-type NotesCtx = {
-  notes: NotesSeam;
-  resolve: {
-    course(ref: string): Promise<{ status: string; courseId?: string; accountScope?: string; message?: string }>;
-    when(text: string, courseId: string): Promise<{ status: string; date?: string; message?: string }>;
-  };
-  currentNoteId?: string;
-  signal?: AbortSignal;
-};
-const notesModule = {
-  notesActions: [
-    {
-      name: "notes.open",
-      description: "Open or create the note for a class session",
-      argsSchema: z.object({ courseRef: z.string().min(1).max(200), when: z.string().min(1).max(100), type: sessionType }),
-      examples: ["notes for today's CS 400 lecture"],
-      patterns: [/^notes for (.+)$/i],
-      run: async (args: { courseRef: string; when: string; type: string }, ctx: NotesCtx) => {
-        const course = await ctx.resolve.course(args.courseRef);
-        if (course.status !== "resolved") return { op: "notes.open", status: "needs_clarification", message: course.message };
-        const day = await ctx.resolve.when(args.when, course.courseId!);
-        if (day.status !== "resolved") return { op: "notes.open", status: "needs_clarification", message: day.message };
-        const session = ctx.notes.sessionOn(course.courseId!, day.date!, args.type);
-        return session ? ctx.notes.handle({ op: "notes.open", sessionId: session.id }) : { op: "notes.open", status: "needs_clarification" };
-      },
-    },
-    {
-      name: "notes.append",
-      description: "Add a line to the current or next session's note",
-      argsSchema: z.object({ courseRef: z.string().min(1).max(200).optional(), text: z.string().trim().min(1).max(20000) }),
-      examples: ["add to my CS 400 notes: hash tables resize at load factor 0.75"],
-      patterns: [/^add to my (.+?) notes?\s*:\s*(.+)$/is],
-      run: async (args: { courseRef?: string; text: string }, ctx: NotesCtx) => {
-        const course = args.courseRef ? await ctx.resolve.course(args.courseRef) : null;
-        const session = course?.courseId ? ctx.notes.sessionOn(course.courseId, "today") : null;
-        return ctx.notes.handle({ op: "notes.append", noteId: ctx.currentNoteId ?? `note-${session?.id}`, text: args.text });
-      },
-    },
-  ],
-};
 
 async function setup(responses: unknown[] = [{}], opts: { pool?: boolean } = {}) {
   const { store, batches } = workspace();
@@ -77,7 +34,11 @@ async function setup(responses: unknown[] = [{}], opts: { pool?: boolean } = {})
   const learning: LearningRequest[] = [];
   const notesCalls: { request: unknown; session?: [string, string, string | undefined] }[] = [];
   const notesSeam: NotesSeam = {
-    handle: async (request) => (notesCalls.push({ request }), { status: "ok", request }),
+    handle: async (request) => {
+      notesCalls.push({ request });
+      const r = request as { op: string; sessionId?: string };
+      return r.op === "notes.open" ? { op: r.op, status: "ok", note: { id: `note-${r.sessionId}` } } : { op: r.op, status: "ok" };
+    },
     sessionOn: (courseId, date, type) => (notesCalls.push({ request: null, session: [courseId, date, type] }), { id: `s-${courseId}-${date}` }),
   };
   const router = createIntentRouter({
@@ -85,7 +46,7 @@ async function setup(responses: unknown[] = [{}], opts: { pool?: boolean } = {})
     runner: () => runner,
     now: () => NOW,
     timeZone: TZ,
-    actions: fromNotes(notesModule, notesSeam) as AnyAction[],
+    actions: fromNotes({ notesActions }, notesSeam),
     ...(pool ? { warm: (r) => pool.warm(r) } : {}),
   });
   const core = createCore(store, {
@@ -161,7 +122,7 @@ test("guides, analytics and the pipeline's references and overview run from the 
   assert.equal((await h.events()).length, 0);
 });
 
-test("notes: the notes lane's plain actions run from patterns and from the model's slots", async () => {
+test("notes: the notes lane's notesActions (#16) run from their patterns and from the model's slots", async () => {
   const h = await setup([{ output: { action: "notes.open", args: slots({ course: "COMPSCI 400", date: "tuesday" }), confidence: "high", alternatives: null, question: null } }]);
   const open = ran(await h.run("notes for today's CS 400 lecture"));
   assert.equal(open.action, "notes.open");
@@ -171,9 +132,10 @@ test("notes: the notes lane's plain actions run from patterns and from the model
     { request: { op: "notes.open", sessionId: "s-c400-2026-09-28" } },
   ]);
   h.notesCalls.length = 0;
-  const append = ran(await h.run("add to my CS 400 notes: Hash tables resize at load factor 0.75", { noteId: "n1" }));
+  const append = ran(await h.run("add to my CS 400 notes: Hash tables resize at load factor 0.75"));
   assert.equal(append.action, "notes.append");
-  assert.deepEqual(h.notesCalls.at(-1), { request: { op: "notes.append", noteId: "n1", text: "Hash tables resize at load factor 0.75" } });
+  // The text keeps the student's casing; the notes service resolves "today" to its session.
+  assert.deepEqual(h.notesCalls.at(-1), { request: { op: "notes.append", noteId: "note-s-c400-today", text: "Hash tables resize at load factor 0.75" } });
   h.notesCalls.length = 0;
   const ai = ran(await h.run("pull up what I wrote in class for the tuesday session of programming three"));
   assert.equal(ai.path, "ai");

@@ -203,7 +203,7 @@ export function createIntentRouter(deps: IntentRouterDeps) {
     const contextCourse = command.context?.courseId ? resolve.courseById(command.context.courseId) : null;
     const raced = speculation === "race" ? classify(text, {}, contextCourse, runnerP, aiAbort.signal).catch((): ClassifyAttempt => ({ status: "failed", reason: "Cancelled." })) : null;
     try {
-      const code: CodeOutcome = deps.codePath === false ? { status: "miss", slots: {} } : resolveCode(text, command.context?.courseId, { registry, resolve, index, budgetMs: deps.resolverBudgetMs, clock });
+      const code: CodeOutcome = deps.codePath === false ? { status: "miss", slots: {} } : resolveCode(text, command.context?.courseId, { registry, resolve, index, budgetMs: deps.resolverBudgetMs });
       if (code.status === "hit") {
         aiAbort.abort();
         const spec = registry.get(code.action)!;
@@ -249,7 +249,7 @@ export function createIntentRouter(deps: IntentRouterDeps) {
   /** The live hint while typing or dictating: the code resolver only, 0 tokens, never the model. */
   function preview(text: string, courseId?: string): IntentCommandResult {
     const t0 = clock();
-    const code = resolveCode(text, courseId, { registry, resolve, index, budgetMs: deps.resolverBudgetMs, clock });
+    const code = resolveCode(text, courseId, { registry, resolve, index, budgetMs: deps.resolverBudgetMs });
     const base = { path: "code" as const, tokens: zero() };
     if (code.status === "hit") {
       const spec = registry.get(code.action)!;

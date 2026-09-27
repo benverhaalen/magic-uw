@@ -122,7 +122,7 @@ export interface ResolverDeps {
   registry: ActionRegistry;
   resolve: Resolve;
   index: () => IntentIndex;
-  /** Hard budget for the whole code path (the lead's ≤20 ms). */
+  /** Hard budget for the whole code path (≤20 ms of CPU time). */
   budgetMs?: number;
   clock?: () => number;
 }
@@ -156,7 +156,9 @@ export function extractSlots(index: IntentIndex, n: string, deadline: () => void
 }
 
 export function resolveCode(text: string, contextCourseId: string | undefined, deps: ResolverDeps): CodeOutcome {
-  const clock = deps.clock ?? (() => performance.now());
+  // The budget bounds the resolver's own work, so it counts this process's CPU time: a machine
+  // under load that preempts the (synchronous) resolver doesn't turn a code hit into a model call.
+  const clock = deps.clock ?? cpuMs;
   const budget = deps.budgetMs ?? 20;
   let slots: IntentSlots = {};
   let started = clock();
@@ -210,6 +212,10 @@ export function resolveCode(text: string, contextCourseId: string | undefined, d
   }
 }
 
+const cpuMs = () => {
+  const u = process.cpuUsage();
+  return (u.user + u.system) / 1000;
+};
 class BudgetError extends Error {
   constructor() {
     super("resolver budget");

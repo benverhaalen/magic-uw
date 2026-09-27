@@ -75,7 +75,9 @@ const generation = createPackHandler({ store, runner: generationRunner });
 // owner: intent. The command bar's router. Claude answers through a warm session pool (lane
 // interactive:intent, tools off, the byte-stable catalogue prefix) so the AI fallback skips the
 // CLI's start-up after the first call; Codex stays one-shot (its app-server is unmeasured, S9).
-import { createIntentRouter } from "../../../packages/core/src/intent/index";
+import { createIntentRouter, fromNotes, type NotesSeam } from "../../../packages/core/src/intent/index";
+import { notesActions } from "../../../packages/notes/src/actions";
+import { notesRequestSchema } from "@magic/contracts";
 import { createModelRunner, createSessionPool, type SessionPool } from "../../../packages/runner/src/index";
 import { askPack, classifyPack } from "../../../packages/packs/intent/src/index";
 let intentRuntime: { client: string; runner: ModelRunner; pool: SessionPool | null } | null = null;
@@ -101,7 +103,18 @@ async function intentRunner(): Promise<ModelRunner | null> {
   return intentRuntime.runner;
 }
 // prewarm (the bar opened) finds the client, then starts its pooled session with the catalogue prefix.
-const intent = createIntentRouter({ store, runner: intentRunner, warm: (request) => intentRuntime?.pool?.warm(request) ?? Promise.resolve(false) });
+// The notes lane's plain actions (packages/notes/src/actions.ts) run through the notes service,
+// which is created below; the seam reads it at call time.
+const intentNotes: NotesSeam = {
+  handle: (request, signal) => notes.handle(notesRequestSchema.parse(request), signal),
+  sessionOn: (courseId, date, type) => notes.sessionOn(courseId, date, type === "discussion" || type === "lab" ? type : "lecture"),
+};
+const intent = createIntentRouter({
+  store,
+  runner: intentRunner,
+  actions: fromNotes({ notesActions }, intentNotes),
+  warm: (request) => intentRuntime?.pool?.warm(request) ?? Promise.resolve(false),
+});
 // end owner: intent
 // owner: notes. Session notes: batch scaffolds on the tick, "fill from slides" through the same
 // runner, and Google Docs sync through main (which alone holds the token). Microsoft waits for graph.ts.
