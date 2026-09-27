@@ -104,3 +104,24 @@ test("corrupt or foreign saved state is ignored", () => {
   assert.equal(parseRefreshSnapshot({ version: 1, fingerprint: "x", fullAt: 1, contentAt: 0, componentBaseline: { a: { m: 3 } } }), undefined);
   assert.ok(parseRefreshSnapshot({ version: 1, fingerprint: "x", fullAt: 1, contentAt: 0, componentBaseline: { a: { m: "h" } } }));
 });
+
+test("a manual refresh probes first and reads only the courses that moved; never two full reads in a row", async () => {
+  const saved: { value?: RefreshSnapshot } = {};
+  const time = { at: new Date(2026, 8, 28, 12) };
+  const calls: string[] = [];
+  let content: Record<string, string> = { a: "1", b: "1" };
+  const c = coordinator({ saved, fingerprint: () => "inventory-1", time, calls, hot: () => ({ a: "1", b: "1" }), content: () => content });
+  await c.tick("manual");
+  assert.ok(calls.includes("full"), "the first sync is a full read");
+  time.at = new Date(time.at.getTime() + minutes(1));
+  calls.length = 0;
+  const unchanged = await c.tick("manual");
+  assert.deepEqual(calls, ["hot", "content"], "nothing moved: probes only");
+  assert.equal(unchanged?.action, "unchanged");
+  content = { a: "1", b: "2" };
+  time.at = new Date(time.at.getTime() + minutes(1));
+  calls.length = 0;
+  const moved = await c.tick("manual");
+  assert.deepEqual(calls, ["hot", "content", "warm:b"]);
+  assert.deepEqual(moved?.warmCourses, ["b"]);
+});

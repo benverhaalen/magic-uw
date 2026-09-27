@@ -282,8 +282,10 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
     // they no longer describe it, so the next read is a full one.
     if (deps.fingerprint && fingerprintAt !== undefined && deps.fingerprint() !== fingerprintAt)
       clearBaselines();
+    // fix/sync-events: a full read only on the first sync (no baselines), after the backstop, or
+    // when the stored inventory changed. A manual refresh probes both ways and reads the courses
+    // that moved, so pressing refresh twice never reads everything twice.
     const needFull =
-      trigger === "manual" ||
       !hotBaseline ||
       !contentBaseline ||
       date.getTime() - fullAt >= cadenceMinutes.backstop * 60_000;
@@ -296,6 +298,7 @@ export function createRefreshCoordinator(deps: RefreshDependencies) {
     }
     const contentDue =
       needFull ||
+      trigger === "manual" ||
       focusRequested ||
       date.getTime() - contentAt >= cadenceMinutes.content * 60_000;
     let content: CourseProbe | undefined;
