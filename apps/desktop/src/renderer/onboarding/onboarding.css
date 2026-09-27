@@ -9,7 +9,7 @@
   display: grid;
   grid-template-rows: 44px minmax(0, 1fr);
   padding: 0 10px 10px;
-  background: var(--magic-fill-shell);
+  background: var(--magic-accent-frame); /* styles.css maps data-accent to this frame */
   color: var(--magic-ink);
   font-family: var(--magic-font-interface);
   font-size: 14px;

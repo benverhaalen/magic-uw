@@ -1,3 +1,23 @@
+@import "../../../../docs/design/tokens.css";
+
+/* Accent frame: Sean's interim choice (2026-09-27), pending Ben's design system (DESIGN.md/tokens.css).
+   The chosen accent colours only the frame outside the white content; "warm" is today's shell. */
+:root {
+  --magic-accent-frame: var(--magic-fill-shell);
+}
+:root[data-accent="rose"] {
+  --magic-accent-frame: var(--magic-fill-identity-rose);
+}
+:root[data-accent="blue"] {
+  --magic-accent-frame: var(--magic-fill-identity-blue);
+}
+:root[data-accent="coral"] {
+  --magic-accent-frame: var(--magic-fill-identity-coral);
+}
+:root:has(.app-shell) {
+  height: 100%;
+  background: var(--magic-accent-frame);
+}
 :root {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: #262625;
@@ -86,9 +106,13 @@ a {
   margin-bottom: 12px;
 }
 .app-shell {
-  min-height: 100vh;
+  position: fixed;
+  inset: 10px;
+  overflow: auto;
   display: grid;
   grid-template-columns: 212px minmax(0, 1fr);
+  background: #fff;
+  border-radius: var(--magic-radius-workspace);
 }
 .sidebar {
   background: #f7f7f5;
@@ -97,8 +121,9 @@ a {
   display: flex;
   flex-direction: column;
   position: fixed;
-  inset: 0 auto 0 0;
+  inset: 10px auto 10px 10px;
   width: 212px;
+  border-radius: var(--magic-radius-workspace) 0 0 var(--magic-radius-workspace);
 }
 .brand {
   display: flex;
