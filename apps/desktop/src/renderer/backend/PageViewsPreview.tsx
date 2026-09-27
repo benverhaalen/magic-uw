@@ -1,3 +1,4 @@
+import { SHOW_DATE_CONFLICT_UI } from '../date-conflict-policy';
 // owner: page-views. Wiring previews of the four page views, each one composite read-only query:
 // assignment.workspace, assessment.page, lecture.session and study.offers. Every row shows code's
 // reason and the first quote behind it; what's missing is listed as missing. Links open in the
@@ -158,7 +159,7 @@ export function PageViewsPreview({
             <>
               <h3>{w.header.title}</h3>
               <ul className="backend-list">
-                <li>Due: {w.header.due ? formatWhen(w.header.due.at) : w.header.deadline.reason}</li>
+                <li>Due: {w.header.due ? formatWhen(w.header.due.at) : w.header.deadline.conflict && !SHOW_DATE_CONFLICT_UI ? 'Date in saved sources' : w.header.deadline.reason}</li>
                 <li>Points: {w.header.points?.value ?? "not posted"} · Grade: {w.header.gradeWeight.text ?? "unknown"}</li>
                 <li>Status: {w.header.status.state.replaceAll("_", " ")} · Submit as: {w.header.submissionTypes.join(", ") || "not posted"}</li>
                 <li>{w.header.aiPolicy.text}</li>

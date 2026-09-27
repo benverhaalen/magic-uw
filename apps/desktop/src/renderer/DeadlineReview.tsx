@@ -1,6 +1,7 @@
 import {useEffect, useRef, useState} from 'react';
 import type {Command, CommandResult, ResourceView} from '@magic/contracts';
 import {DateChoicePopover} from './date-choice/DateChoicePopover';
+import { SHOW_DATE_CONFLICT_UI } from './date-conflict-policy';
 import {presentDateChoices, dateChoiceOptions, type CanonicalDateOption} from './date-choice/model';
 
 /** Structural seam also permits compilation against a contracts build that has not
@@ -29,6 +30,7 @@ export function DeadlineReview({resource, run, onInspect}: {
     if(uncertain.current && state && state.revision>uncertain.current.revision){uncertain.current=null;setError('');}
   },[state?.revision]);
   const unavailable = resource.scheduleDeadline?.choiceUnavailable ?? (!state ? 'Refresh sources to make a planning choice.' : state.options.length<2 ? 'The current sources do not show two different dates to resolve.' : undefined);
+  if (!SHOW_DATE_CONFLICT_UI) return null;
   return <DateChoicePopover options={options} focusKey={`date-review-${resource.id}`} sourceVersion={state?.sourceVersion ?? viewKey} savedKey={state?.selected?.optionId ?? null}
     needsReview={state?.needsReview} pending={pending} error={error} unavailable={unavailable}
     unresolvedCount={resource.deadline.unresolved?.length ?? 0} onInspect={onInspect} onCommit={async option=>{

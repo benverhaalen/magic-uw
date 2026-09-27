@@ -248,6 +248,11 @@ export function featuresToDisable(listText: string): string[] {
 }
 
 const featureCache = new Map<string, string[] | null>();
+/** owner: reconfigure. Forgets what was learned about installed clients, so the next check starts fresh. */
+export function clearInstantCaches(): void {
+  cache.clear();
+  featureCache.clear();
+}
 /**
  * The features to turn off for this Codex, read from `codex features list` once per detected
  * version (cached). Null (don't run) when `--disable` isn't in its `exec --help`, the list can't

@@ -34,7 +34,7 @@ test('full inventory preserves old overdue, undated and locked work and later te
 test('one shared canonical family joins module and feed assignment copies while retaining date conflicts',()=>{
  const a=resource('77');const module=resource('m77',{kind:'material',sourceId:'module',externalId:'m77',moduleItem:{type:'Assignment',contentId:'77'},deadline:resolveDeadline([])});
  const feed=resource('f77',{kind:'event',sourceId:'feed',calendar:{uid:'event-assignment-77',start:'2026-09-29T18:00:00Z',allDay:false},deadline:resolveDeadline([])});
- const result=model([a,module,feed]);assert.equal(result.rows.length,1);assert.equal(result.rows[0]?.resourceId,'77');assert.deepEqual(result.rows[0]?.evidenceIds,['77','f77','m77']);assert.equal(result.rows[0]?.time.state,'conflict');assert.equal(result.rows[0]?.action?.kind,'review-dates');
+ const result=model([a,module,feed]);assert.equal(result.rows.length,1);assert.equal(result.rows[0]?.resourceId,'77');assert.deepEqual(result.rows[0]?.evidenceIds,['77','f77','m77']);assert.equal(result.rows[0]?.time.state,'conflict');assert.equal(result.rows[0]?.action?.kind,'open-work-set');
 });
 test('a valid personal day remains day precision; new contributors make it Dates to confirm',()=>{
  const a=resource('77');const claim={kind:'due' as const,value:'2026-09-29T05:00:00Z',quote:'calendar day',authority:'structured' as const,scopeConfirmed:true,precision:'day' as const};

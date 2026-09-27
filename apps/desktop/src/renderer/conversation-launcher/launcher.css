@@ -51,7 +51,7 @@
 .cl-mic > .cl-glyph { position: relative; z-index: 1; }
 /* Explicit color properties keep focus outlines immediate and reversals interruptible. */
 .cl-field, .cl-field::placeholder, .cl-text-button, .cl-origin, .cl-error, .cl-note,
-.cl-voice-text, .cl-levels > span, .cl-draft-dot { transition: var(--cl-color); }
+.cl-voice-text, .cl-draft-dot { transition: var(--cl-color); }
 /* Inset: the surface clips overflow while it animates. */
 .cl-icon:focus-visible { outline: 2px solid var(--magic-focus); outline-offset: -2px; }
 .cl-text-button:focus-visible { outline: 2px solid var(--magic-focus); outline-offset: 1px; border-radius: 2px; }
@@ -92,11 +92,13 @@
 }
 
 /* Voice: colored only while a session the student started is active. */
+[data-voice]:not([data-open]) { width: min(34rem, 100%); }
 [data-voice] > .cl-mic { color: var(--magic-ink-identity-coral); }
 [data-voice] > .cl-mic::after { opacity: 1; }
-.cl-voice-text { flex: none; align-self: center; padding: 0 4px 0 2px; font-size: var(--magic-type-meta); color: var(--magic-ink-identity-coral); }
-.cl-levels { flex: none; align-self: center; display: flex; align-items: center; gap: 2px; height: 18px; padding: 0 4px 0 2px; }
-.cl-levels > span { width: 3px; height: 18px; border-radius: 2px; background: var(--magic-accent-current-time); }
+.cl-voice-status { flex: 1 1 auto; min-width: 0; align-self: center; display: flex; align-items: baseline; gap: 8px; padding: 0 4px 0 2px; }
+.cl-voice-text { flex: none; font-size: var(--magic-type-meta); color: var(--magic-ink-identity-coral); }
+.cl-voice-transcript { flex: 1 1 auto; min-width: 0; display: flex; justify-content: flex-end; overflow: hidden; white-space: nowrap; font-size: var(--magic-type-meta); color: var(--magic-ink-muted-strong); }
+.cl-voice-transcript > span { flex: none; }
 
 @media (hover: hover) {
   .cl-icon:not([aria-disabled=true]):not(.cl-send):hover { background: var(--magic-fill-secondary); color: var(--magic-ink-secondary); }

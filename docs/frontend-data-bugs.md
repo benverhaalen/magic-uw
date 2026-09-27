@@ -162,3 +162,15 @@ Chat now propagates preview transport, authorization and cancellation errors int
 The actual original workspace on `f5a2df5` still displays 14 Sunday obligations: five assignment records, six module quiz records and three feed-only deadlines. Similar titles do not establish exact identity. The authorized app-owned quiz read returned 401 and stopped; refresh requires a valid session. Provider quiz/assignment relation retention remains a prospective repair, not a demonstrated saved-count correction. Do not cap the count to the student's reported six.
 
 Lecture 7's captured Participation category must remain distinct from its actual delivery/submission instructions. A Canvas group label cannot establish Canvas submission when source instructions require GitLab. The next task-workspace adapter must use evidenced instructions/destinations and preserve the raw category in provenance; no installed-app readiness or restored work state is implied by a destination link.
+
+### September 27, 12:19 UTC — current populated runtime residuals
+
+The actual same-profile `5f79bb0` Home screenshot still shows Today **14**, against Ben's reported six Canvas items; a Class 8 entry has “Time not provided”; CS540 remains in the sidebar. This is a fresh visible observation, not proof that the older 5+6+3 decomposition still describes every current row. The earlier exact quiz/assignment identity probe stopped on 401; no title-based pairing or count cap is accepted. Calendar/enrollment and deadline projection owners are rechecking the residuals against current source/account/term evidence. The new Calendar projection and successful startup do not establish these issues are resolved.
+
+Lecture 7 still displays the captured Participation category. Keep that raw category as provenance; it cannot imply Canvas submission or override verified GitLab instructions. Task setup's “No Canvas submission” is scoped to Canvas, not an assertion that no external online submission exists. Connected investigation of actual instructions/destinations remains pending.
+
+Ben temporarily requested hiding all date-conflict notices and actions. The renderer's `SHOW_DATE_CONFLICT_UI` switch suppresses presentation only; source claims, conservative planning dates, saved choices and backend resolution remain unchanged. Restore notices only after the explicit product decision to revisit this temporary suppression. This does not repair FDB-007 or establish that conflicts are false.
+
+### Brief pixel review · September 27, 12:42 UTC
+
+The corrected copied-data Brief is denser and excludes the noncurrent-course announcement, but its generic attendance quote and directory-suppression URL are still weak proactive selections. They are faithful extracted information, not a completed intelligent synthesis. Next producer work should select supported useful implications rather than optimize announcement density alone. The same screenshot still shows the long official course titles/CS540 sidebar, Today 14 and missing time, neutral feed-only Upcoming row, and Lecture 7 raw Participation category. Seven passing interaction checks do not establish complete Home quality.

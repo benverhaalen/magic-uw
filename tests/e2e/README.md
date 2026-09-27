@@ -44,7 +44,7 @@ Messages are the clients' own, as listed in `apps/desktop/src/clients/health.ts`
 
 | File | What it drives and checks |
 | --- | --- |
-| `journey.e2e.ts` | Agreement checkbox, then UW sign-in (refused headless, no window), then the tiles (real status and version), selecting Codex (its AGENTS.md note), Advanced and the separate sign-in toggle, connecting Claude Code in instant mode with its own agreement, appearance (dark, blue; checks `data-theme`, `data-accent` and the saved value), connections, Open workspace, the sample course from Home, a plain-language command (code path, 0 tokens, no model call), then Data & AI (radio, the "Preferred AI" select, the Course text switch; the saved values read back). Next, Workspace tools → Practice (the course select), **Generate flashcards** with Claude Code while the Agenda tab loads through the worker (timed, 1.5 s budget); the result line is read back, and a second click is a cache hit. Last, Codex's cards (its "done … tokens" line, then a cache hit: 0 tokens, no call). It then checks both clients' argv, the app's working folders, that no sign-in was started, and that the home's `.claude`, `.claude.json` and `.codex` hold only the clients' own writes. |
+| `journey.e2e.ts` | Agreement checkbox, then UW sign-in (refused headless, no window), then the tiles (real status and version), selecting Codex (its AGENTS.md note), Advanced and the separate sign-in toggle, connecting Claude Code in instant mode with its own agreement, appearance (dark, blue; checks `data-theme`, `data-accent` and the saved value), connections, Open workspace, the sample course from Home, a plain-language command (code path, 0 tokens, no model call), then Data & AI (the "Your AI" radio and the Course materials switch; the saved values read back, and "Your AI" offers Codex). Next, Workspace tools → Practice (the course select), **Generate flashcards** with Claude Code while the Agenda tab loads through the worker (timed, 1.5 s budget); the result line is read back, and a second click is a cache hit. Last, Codex's cards (its "done … tokens" line, then a cache hit: 0 tokens, no call). It then checks both clients' argv, the app's working folders, that no sign-in was started, and that the home's `.claude`, `.claude.json` and `.codex` hold only the clients' own writes. |
 | `health.e2e.ts` | Each onboarding health state: tile text, notice (`data-health-state`, title, next step, the command shown, actions), Continue enabled or disabled, "Choose another AI". Run-time states (usage limit, model unavailable, offline, a free ChatGPT account) go through a pack call. States the pre-run gate refuses (signed out, free Claude plan) are checked to send nothing. Recovery closes the file. |
 | `onboarding-sample.e2e.ts` | "Load sample course" on onboarding's last step (known bug, below). |
 | `notes.e2e.ts` | Session notes, read in Workspace tools → Notes: a scaffold for every lecture and discussion in the rolling window ("Class sessions", then "Open note"; titles and first blocks read from the DOM). A student edit survives a schedule change, and an untouched note is rebuilt (revision 2, the new title on screen). The synthetic schedule is dated from today (`harness/schedule.ts`) and imported as its own source. Each check waits for the worker's 30 s notes tick. |
@@ -53,7 +53,7 @@ A few steps have no control yet, so they call the renderer's own bridge (`window
 
 - the command bar (WorkspaceTools and App.tsx mount null stubs);
 - the note edit (the Notes preview has no editor);
-- choosing Codex after onboarding, with its agreement and sharing (the "Preferred AI" select has no Codex option; see below);
+- choosing Codex after onboarding, with its agreement and sharing;
 - in `health.e2e.ts`, the run-time failures, which read the pack result.
 
 ### Known failures, stated as `todo` tests
@@ -63,7 +63,6 @@ Each `todo` test asserts the correct behaviour. It reports its failure without f
 | Test | Cause |
 | --- | --- |
 | journey: no `ANTHROPIC_*` / `OPENAI_*` in a client's environment | `cliEnvironment(options.env)` (packages/runner/src/process.ts) spreads the worker's whole `process.env` under the instant-mode allowlist, and the worker is forked with main's full env. The canaries reach Claude Code's session. |
-| journey: "Preferred AI" offers Codex | A Codex run's recipient is `codex`, which `maySend` allows only when `hostedProvider` is `codex`, but App.tsx's select offers none, chatgpt, claude and gemini. A student who chose Codex can't allow it from the UI. |
 | onboarding-sample: stays on the last step / mode stays instant | `loadSample()` (Onboarding.tsx) always calls `setStep("client")`. Back on "Your AI", ConnectClient's `mode ?? "isolated"` fallback saves isolated mode for a student who chose instant; runs then use the app's own profile without `--safe-mode`. |
 | health: the usage-limit reset time reaches the student | `RunnerError.resetsAt` is dropped: the pack result carries only the generic message, and no screen shows run-time health. |
 

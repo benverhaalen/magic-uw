@@ -2199,6 +2199,12 @@ export interface WorkItem {
   resourceId: string;
   title: string;
   role: "instructions" | "material";
+  /**
+   * Why a material is here: listed directly in the saved assignment (including
+   * pages Magic hasn't saved, whose `resourceId` is `<assignmentId>:link:<hash>`)
+   * or connected through accepted supporting evidence.
+   */
+  provenance?: "assignment_link" | "supporting_evidence";
   reason: string;
   target: WorkTarget;
 }
@@ -2218,6 +2224,67 @@ export interface WorkSet {
   /** Related items deliberately not opened (suggested matches, overflow). */
   held: WorkHeldItem[];
   notes: string[];
+  /** What the saved assignment does and doesn't say, with provisional same-course context. */
+  context?: AssignmentContext;
+}
+// owner: task-workspace (assignment-context). Produced by core `resolveAssignmentContext`.
+export interface AssignmentContextLink {
+  url: string;
+  host: string;
+  text: string | null;
+  /** A saved copy with text; null means link only, contents unread. */
+  captured: { resourceId: string; title: string; chars: number; contentHash: string } | null;
+  note: string;
+}
+export interface AssignmentContextSection {
+  resourceId: string;
+  title: string;
+  url: string;
+  sourceId: string;
+  /** Version of the page the span was cut from. */
+  contentHash: string;
+  observedAt: string;
+  start: number;
+  end: number;
+  quote: string;
+  /** Dates written near this section's heading, verbatim. */
+  dates: string[];
+  links: { url: string; text: string | null }[];
+  /** True only through an accepted `specifies` link; otherwise the section is provisional. */
+  linkedToAssignment: boolean;
+  provisional: boolean;
+  reason: string;
+  dateConflict: string | null;
+}
+export interface AssignmentContextSource {
+  sourceId: string;
+  label: string;
+  kind: SourceHealth["kind"];
+  status: SourceHealth["status"];
+  complete: boolean;
+  lastSuccessAt: string | null;
+  stale: boolean;
+  note: string | null;
+}
+export interface AssignmentContext {
+  version: number;
+  assignmentId: string;
+  accountScope: string;
+  courseId: string;
+  title: string;
+  contentHash: string;
+  observedAt: string;
+  url: string;
+  canvas: { dueAt: string | null; lockAt: string | null };
+  /** The numbered unit named in the title ("Lecture 7"), if any. */
+  anchor: string | null;
+  instructions: { status: "captured" | "empty"; chars: number; text: string };
+  /** Canvas submission types verbatim; "none" is not proof that nothing is due. */
+  submission: { types: string[]; status: "listed" | "none_listed" | "unknown"; text: string };
+  links: AssignmentContextLink[];
+  sections: AssignmentContextSection[];
+  unknowns: string[];
+  sources: AssignmentContextSource[];
 }
 export interface WorkLaunchReceipt {
   assignmentId: string;
@@ -2234,6 +2301,56 @@ export interface WorkLaunchReceipt {
   held: WorkHeldItem[];
   notes: string[];
 }
+// owner: task-workspace. Task-owned windows in the student's default browser.
+/** Left: instructions. Right: the page the task is worked in. Support: extra pages, not placed. */
+export type TaskWindowRole = "instructions" | "work" | "support";
+export interface TaskWindowPage {
+  key: string;
+  role: TaskWindowRole;
+  url: string;
+  title: string;
+  /** Where the URL came from; main re-derives every non-student URL from the store. */
+  origin: "work_set" | "gitlab" | "student";
+}
+/** A window Magic saw appear for the browser process after asking for a new one. */
+export interface TaskWindowRef {
+  key: string;
+  role: TaskWindowRole;
+  url: string;
+  bundleId: string;
+  pid: number;
+  windowNumber: number;
+  placed: boolean;
+  openedAt: string;
+}
+export interface TaskWindowCapability {
+  browser: string | null;
+  bundleId: string | null;
+  family: "firefox" | "chromium" | "safari" | "other" | "unknown";
+  /** The browser has a documented new-window switch Magic uses. */
+  newWindow: boolean;
+  /** Needed to place, bring forward and close task windows. */
+  accessibility: boolean;
+  reason?: string;
+}
+export type TaskWindowOutcomeState =
+  | "new_window" | "new_window_unplaced" | "not_observed" | "focused" | "present" | "closed"
+  | "still_open" | "missing" | "ambiguous" | "not_sent" | "test_only";
+export interface TaskWindowOutcome { key: string; state: TaskWindowOutcomeState; detail?: string }
+export type TaskWindowRequest =
+  | { action: "status" }
+  | { action: "request-access" }
+  | { action: "open"; accountScope: string; resourceId: string; pages: TaskWindowPage[] }
+  | { action: "continue"; accountScope: string; resourceId: string; pages: TaskWindowPage[]; windows: TaskWindowRef[] }
+  | { action: "close"; accountScope: string; resourceId: string; windows: TaskWindowRef[] };
+export interface TaskWindowResult {
+  mode: "live" | "test_only";
+  capability: TaskWindowCapability;
+  /** Owned windows after this action (open: only the new ones). */
+  windows: TaskWindowRef[];
+  outcomes: TaskWindowOutcome[];
+}
+// end owner: task-workspace
 export type CommandResult = {
   personalWorkReceipt?: PersonalWorkState;
   workSet?: WorkSet;
@@ -2343,6 +2460,8 @@ export interface AppBridge {
   query?(request: QueryRequest): Promise<QueryResult>;
   /** Reviewed destination hash is mandatory; `only` retries previously failed IDs. */
   startWork?(id: string, previewHash: string, only?: string[]): Promise<WorkLaunchReceipt>;
+  /** owner: task-workspace. Fresh, identified default-browser windows for one task. */
+  taskWindows?(request: TaskWindowRequest): Promise<TaskWindowResult>;
   /** owner: pipeline. Graph reads: an assignment's references, the agenda, a course's graph and coverage. */
   graph?<Q extends GraphQuery>(request: Q): Promise<GraphResult<Q>>;
   importFile(): Promise<CommandResult | null>;
@@ -2384,8 +2503,18 @@ export interface AppBridge {
   keepSignedIn?(value?: boolean): Promise<boolean>;
   /** T05e: Remember my sign-in's status, or forget it. The NetID and password never cross. */
   rememberSignIn?(op: "status" | "forget"): Promise<RememberSignInStatus>;
+  /**
+   * owner: data-ai. "Your data on this computer": the space the app's saved data takes, showing its
+   * folder, and exporting what the app shows as a JSON file the student places (a save dialog).
+   */
+  localData?(op: "status" | "show" | "export"): Promise<LocalDataStatus>;
   /** T80: the student's AI command-line clients, each in an app-owned profile. */
   clients?: ClientsBridge;
+}
+/** owner: data-ai. Sizes only; the folder path stays in main. `exported` is set after an export. */
+export interface LocalDataStatus {
+  bytes: number;
+  exported?: "saved" | "cancelled";
 }
 /**
  * T05e (plan D39). `offered: false` in a build with the feature switched off (a UW licence).
@@ -2424,6 +2553,8 @@ export interface ClientsBridge {
   prepare(id: ClientId): Promise<ClientStatus>;
   authStatus(id: ClientId): Promise<ClientStatus>;
   choose(id: ClientId): Promise<void>;
+  /** owner: reconfigure. Removes the app's client setup (chosen client, modes, separate profiles) so setup starts fresh. */
+  reset?(): Promise<void>;
   // owner: client-health (D50). Optional so an older main still satisfies the bridge.
   /** Checks the client in the given mode (default: its saved mode), before offering or running it. */
   health?(id: ClientId, mode?: ClientMode): Promise<ClientHealth>;

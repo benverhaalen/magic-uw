@@ -1,6 +1,16 @@
 import { installDesktopVoice } from './voice/desktop-host';
 import { createInteractiveDispatch, createVoiceTrialDispatch } from './voice/intent-dispatch';
-import type { VoiceContext } from './voice/types';
+import type { VoiceContext, VoiceRequestContext } from './voice/types';
+// owner: voice-plan
+import { createVoicePlanHost } from './voice/plan-protocol';
+import { createConnectedVoiceDispatch } from './voice/connected-dispatch';
+import { createRunExecutor, gatedJudge, voiceActionCapability } from './voice/observed-executor';
+import { createJevActionJudge, NativeObservedActions, ObservedActionController, type ActionJudge } from './voice/observed-actions';
+import { DefaultBrowserTransport } from './voice/default-browser';
+import { embeddedJevKey } from './embedded-jev';
+import type { AgentReadiness } from './voice/agent-warmup';
+import { access as accessFile, constants as fsConstants } from 'node:fs/promises';
+// end owner: voice-plan
 import { intentCommandSchema, type Snapshot } from '@magic/contracts';
 import { judgmentFailure } from "./judgment-errors";
 import {
@@ -14,6 +24,7 @@ import {
   safeStorage,
   powerMonitor,
   net,
+  systemPreferences, // owner: voice-plan
   type IpcMainInvokeEvent,
   type Session,
 } from "electron";
@@ -59,6 +70,7 @@ import { MadgradesHttp, madgradesRequestSchema } from "../../../packages/connect
 import sampleFixture from "../../../fixtures/course.json";
 // owner: T05c
 import { Tray, Menu, nativeImage } from "electron";
+import { clearUwLoginCookies } from "./sign-in-cookies";
 import {
   closeAction,
   launchSession,
@@ -103,6 +115,7 @@ import { logLine, redactForLog } from "../../../packages/core/src/privacy/log"; 
 import { consentRecordSchema, type ConsentRecord } from "@magic/contracts"; // owner: T06
 import { launchWorkSet, materializeCopy, selectWorkRetry } from "../../../packages/core/src/work-set";
 import { startEmbeddedJev } from "./embedded-jev"; // owner: embedded-jev
+import { createTaskWindows, helperRunner, taskContextFrom } from "./task-windows/controller"; // owner: task-workspace
 import {
   commandSchema,
   captureBatchSchema,
@@ -179,6 +192,14 @@ function trialLog(event: Record<string, unknown>) {
   if (!file) return;
   // owner: privacy: every line is redacted (URL → host + path class, no query, no identifiers).
   void appendFile(file, logLine({ at: new Date().toISOString(), ...event })).catch(() => {});
+}
+/** Trial-log text from a sign-in page: no emails, long numbers, or URLs; short. */
+function trialText(input: unknown): string {
+  return String(input ?? "")
+    .replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, "[email]")
+    .replace(/https?:\/\/\S+/g, "[url]")
+    .replace(/\d{5,}/g, "[n]")
+    .slice(0, 120);
 }
 function allowedLogin(input: string) {
   try {
@@ -320,10 +341,15 @@ app
       consented: () => consentGate("source-fetch"),
     });
     // end owner: T30
-    studentSession.setPermissionRequestHandler((_wc, _permission, callback) =>
-      callback(false),
-    );
-    studentSession.setPermissionCheckHandler(() => false);
+    // Every permission stays refused; the trial log records which ones a sign-in page asked for.
+    studentSession.setPermissionRequestHandler((_wc, permission, callback, details) => {
+      trialLog({ event: "permission.request", permission, origin: trialPath(details?.requestingUrl ?? "") });
+      callback(false);
+    });
+    studentSession.setPermissionCheckHandler((_wc, permission, origin) => {
+      trialLog({ event: "permission.check", permission, origin: trialPath(origin ?? "") });
+      return false;
+    });
     // owner: doc-window. Only a document window may download (the save prompt, Downloads only).
     const docWindows = createDocWindows({
       openExternal: (url) => shell.openExternal(url),
@@ -351,6 +377,22 @@ app
       stdio: "pipe",
       serviceName: "My Magic UW local workspace",
     });
+    // owner: voice-plan. One observed executor per spoken run (the observed-executor lane's controller over
+    // the product-owned native helpers). Jev Choice runs here with the build's key, re-checking Jev consent
+    // on every choice; the key never reaches the worker or renderer. The run's voice fence (Stop, account,
+    // consent revision) is checked before every observation and action.
+    const voicePlanHost = createVoicePlanHost({
+      post: (message) => worker.postMessage(message),
+      executor: (planId, operation) => {
+        const native = new NativeObservedActions(join(root, 'observed-action-helper'));
+        const browser = new DefaultBrowserTransport<{ planId: string }>(join(root, 'default-browser-helper'));
+        const key = embeddedJevKey();
+        const judge: ActionJudge = key ? createJevActionJudge(key) : { choose: async () => { throw new Error('Jev is unavailable.'); } };
+        const controller = new ObservedActionController(native, browser, gatedJudge(judge, () => consentGate('evaluate')));
+        return createRunExecutor({ observe: (signal, current) => native.run({ action: 'observe' }, signal, current), controller, context: { planId }, current: operation.current, now: () => new Date() });
+      },
+    });
+    // end owner: voice-plan
     // owner: privacy. The install secret: 32 random bytes wrapped by safeStorage in
     // privacy-key.enc, sent to the worker over its channel (never env, argv or a log). The worker
     // derives the at-rest and pseudonym keys from it. Purge deletes the file and sends a new one.
@@ -454,6 +496,8 @@ app
       worker.postMessage({ kind: "planning-scope", accountScope: planningAccountScope });
     }
     worker.on("message", async (message: any) => {
+      if (voicePlanHost.handle(message)) return; // owner: voice-plan
+      if (message?.kind === "voice-agent") { voiceAgent = message.agent; desktopVoice?.announceAgent(voiceAgent); return; } // owner: voice-plan
       if (message.kind === "source-abort") {
         sourceReads.get(message.id)?.abort();
         return;
@@ -918,15 +962,43 @@ app
     let voiceAuthority: VoiceContext = { account: '', revision: '', allowed: false };
     let voiceSnapshot: Snapshot | null = null;
     const interactiveCalls = new Map<string, AbortController>();
+    // owner: voice-plan. Speech reaches the planner only when every part of the path is present.
+    const voiceCapability = () => voiceActionCapability({
+      platform: process.platform,
+      helpers: async () => (await Promise.all(['observed-action-helper', 'default-browser-helper'].map((name) => accessFile(join(root, name), fsConstants.X_OK).then(() => true, () => false)))).every(Boolean),
+      jevKey: () => !!embeddedJevKey(),
+      jevAllowed: () => consentGate('evaluate'),
+      accessibility: () => process.platform === 'darwin' && systemPreferences.isTrustedAccessibilityClient(false),
+    });
+    // A planner's course question goes to the grounded ask only (course AI policy enforced in the producer).
+    const voiceAsk = async (question: string, context: VoiceRequestContext, operation: { signal: AbortSignal; current(): boolean }) => {
+      const value = intentCommandSchema.parse({ text: question, context, mode: 'run', allowedActions: ['ask'] });
+      const result = await execute({ type: 'command', value }, operation.signal);
+      operation.signal.throwIfAborted();
+      if (!operation.current()) throw new Error('Request context changed.');
+      if (!result.command) throw new Error('The app returned no result for this request.');
+      return result.command;
+    };
+    // end owner: voice-plan
+    // owner: voice-plan. The connected agent's launch session (worker: voice/agent-warmup.ts). Readiness is
+    // what the worker observed; main only forwards it to the voice host and asks again after a failure.
+    let voiceAgent: AgentReadiness = { state: "idle" };
+    const refreshVoiceAgent = () => worker.postMessage({ kind: "voice-agent-refresh" });
+    const voiceAgentHooks = {
+      status: () => voiceAgent,
+      activate: () => { if (!["ready", "starting", "per_request"].includes(voiceAgent.state)) worker.postMessage({ kind: "voice-agent-warm" }); },
+    };
+    // end owner: voice-plan
     const stopInteractive = () => {
       desktopVoice?.stop('context-changed');
+      voicePlanHost.stopAll(); // owner: voice-plan
       for (const controller of interactiveCalls.values()) controller.abort();
       interactiveCalls.clear();
     };
     async function execute(command: unknown, signal?: AbortSignal): Promise<CommandResult> {
       signal?.throwIfAborted();
       const parsed = commandSchema.parse(command);
-      if (['purge', 'privacy', 'consent', 'course-override', 'ingestion-settings'].includes(parsed.type)) stopInteractive();
+      if (['purge', 'privacy', 'consent', 'course-override', 'ingestion-settings'].includes(parsed.type)) { stopInteractive(); refreshVoiceAgent(); } // owner: voice-plan: + agent session
       await ready;
       signal?.throwIfAborted();
       if (parsed.type === "madgrades-token") {
@@ -978,7 +1050,7 @@ app
         voiceSnapshot = snapshot;
         const accounts = [...new Set((snapshot.sources ?? []).map((source: {accountScope: string}) => source.accountScope))].sort();
         const authority = { account: JSON.stringify(accounts), revision: JSON.stringify([snapshot.consents, snapshot.privacy, snapshot.courseOverrides, snapshot.ingestionSettings, accounts]), allowed: true };
-        if (voiceAuthority.allowed && (authority.account !== voiceAuthority.account || authority.revision !== voiceAuthority.revision)) stopInteractive();
+        if (voiceAuthority.allowed && (authority.account !== voiceAuthority.account || authority.revision !== voiceAuthority.revision)) { stopInteractive(); refreshVoiceAgent(); } // owner: voice-plan: + agent session
         if (!voiceAuthority.allowed || authority.account !== voiceAuthority.account || authority.revision !== voiceAuthority.revision) voiceAuthority = authority;
       }
       const records = snapshot?.consents;
@@ -1153,6 +1225,7 @@ app
     ipcMain.handle("magic:clients-choose", async (event, id: unknown) => {
       validateSender(event);
       await (await clients()).choose(id);
+      refreshVoiceAgent(); // owner: voice-plan: the old provider's session ends; the new one starts
     });
     ipcMain.handle("magic:terminal-open", async (event, ...args: unknown[]) => {
       validateSender(event);
@@ -1196,9 +1269,17 @@ app
       validateSender(event);
       return (await clientHealth()).health(id, mode);
     });
+    // owner: reconfigure. Setup starts fresh: client config, modes, separate profiles, health answers.
+    ipcMain.handle("magic:clients-reset", async (event) => {
+      validateSender(event);
+      await (await clients()).reset();
+      healthRuntime = undefined;
+    });
     ipcMain.handle("magic:clients-set-mode", async (event, id: unknown, mode: unknown) => {
       validateSender(event);
-      return (await clientHealth()).setMode(id, mode);
+      const changed = await (await clientHealth()).setMode(id, mode);
+      refreshVoiceAgent(); // owner: voice-plan
+      return changed;
     });
     ipcMain.handle("magic:clients-gemini-key", async (event, op: unknown, key?: unknown) => {
       validateSender(event);
@@ -1256,6 +1337,23 @@ app
       } finally {
         if (purging) planningClears--;
       }
+    });
+    // owner: data-ai. Space used, Show in folder and Export for "Your data on this computer".
+    ipcMain.handle("magic:local-data", async (event, op: unknown) => {
+      validateSender(event);
+      const { localDataBytes } = await import("./local-data");
+      if (op === "show") shell.showItemInFolder(join(data, "workspace.sqlite"));
+      if (op === "export") {
+        const owner = BrowserWindow.fromWebContents(event.sender);
+        const options = { title: "Export My Magic UW data", defaultPath: "my-magic-uw-export.json", filters: [{ name: "JSON", extensions: ["json"] }] };
+        const choice = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options);
+        if (choice.canceled || !choice.filePath) return { bytes: await localDataBytes(data), exported: "cancelled" };
+        const snapshot = (await execute({ type: "snapshot" })).snapshot;
+        await writeFile(choice.filePath, JSON.stringify({ exportedAt: new Date().toISOString(), snapshot }, null, 2), { mode: 0o600 });
+        return { bytes: await localDataBytes(data), exported: "saved" };
+      }
+      if (op !== "status" && op !== "show") throw new Error("Unknown operation.");
+      return { bytes: await localDataBytes(data) };
     });
     ipcMain.handle("magic:mcp-export", async (event, id) => {
       validateSender(event);
@@ -1463,6 +1561,21 @@ app
       });
     });
     // end owner: doc-window
+    // owner: task-workspace. Fresh default-browser windows for one task; URLs are
+    // re-derived from the saved assignment and only observed windows are touched.
+    const taskWindows = createTaskWindows({
+      run: helperRunner(join(__dirname, "task-window-helper")),
+      headless,
+      beforeOpen: async () => { if (!(await consentGate("source-fetch"))) throw new Error(consentRefused); },
+      context: async (accountScope, resourceId) =>
+        taskContextFrom(await execute({ type: "work-set", id: resourceId }), accountScope, resourceId, "https://git.doit.wisc.edu"),
+      now: () => new Date(),
+    });
+    ipcMain.handle("magic:task-windows", async (event, request) => {
+      validateSender(event);
+      return taskWindows.handle(request);
+    });
+    // end owner: task-workspace
     ipcMain.handle("magic:import", async (event) => {
       validateSender(event);
       if (headless)
@@ -1713,19 +1826,41 @@ app
         },
       });
       const login = signIn;
-      login.webContents.on("page-title-updated", (event) =>
-        event.preventDefault(),
+      login.webContents.on("page-title-updated", (event, title) => {
+        event.preventDefault();
+        // A page title such as "Stale Request" or "Login" says which step the window is on.
+        trialLog({ event: "signin.title", title: trialText(title), page: trialPath(login.webContents.getURL()) });
+      });
+      login.webContents.on("did-frame-navigate", (_event, url, code, _text, isMainFrame) => {
+        if (!isMainFrame) trialLog({ event: "signin.frame-navigate", to: trialPath(url), status: code, allowed: allowedLogin(url) });
+      });
+      login.webContents.on("did-navigate-in-page", (_event, url, isMainFrame) =>
+        trialLog({ event: "signin.in-page", to: trialPath(url), mainFrame: isMainFrame }),
       );
+      login.webContents.on("did-fail-provisional-load", (_event, code, description, url, isMainFrame) =>
+        trialLog({ event: "signin.provisional-failed", code, description: trialText(description), to: trialPath(url), mainFrame: isMainFrame }),
+      );
+      login.webContents.on("render-process-gone", (_event, details) =>
+        trialLog({ event: "signin.renderer-gone", reason: details.reason, exitCode: details.exitCode }),
+      );
+      login.on("unresponsive", () => trialLog({ event: "signin.unresponsive" }));
+      login.webContents.on("console-message", (details) => {
+        const d = details as unknown as { level?: string | number; message?: string };
+        if (d.level === "error" || d.level === "warning" || d.level === 3 || d.level === 2)
+          trialLog({ event: "signin.console", level: String(d.level), message: trialText(d.message) });
+      });
       const guard = (event: Electron.Event, url: string) => {
         if (!allowedLogin(url)) {
           trialLog({ event: "signin.blocked", to: trialPath(url) });
           event.preventDefault();
-        }
+        } else trialLog({ event: "signin.hop", to: trialPath(url) });
       };
       login.webContents.on("will-navigate", guard);
       login.webContents.on("will-redirect", guard);
-      login.webContents.on("did-navigate", (_event, url) => {
-        trialLog({ event: "signin.navigate", to: trialPath(url), allowed: allowedLogin(url) });
+      let lastSignInAt = "";
+      login.webContents.on("did-navigate", (_event, url, code) => {
+        lastSignInAt = trialPath(url);
+        trialLog({ event: "signin.navigate", to: trialPath(url), status: code, allowed: allowedLogin(url) });
         if (allowedLogin(url))
           login.setTitle(`UW sign in · ${new URL(url).hostname}`);
       });
@@ -1740,7 +1875,12 @@ app
       let confirmed = false;
       const closed = new Promise<void>((resolve) => {
         login.once("closed", () => {
-          trialLog({ event: "signin.closed", confirmed });
+          trialLog({ event: "signin.closed", confirmed, lastAt: lastSignInAt });
+          // Remember an unfinished sign-in (even across a restart) so the next one starts clean.
+          if (Boolean(sessionSettings.loginUnfinished) !== !confirmed) {
+            sessionSettings = { ...sessionSettings, loginUnfinished: !confirmed };
+            void writeSessionSettings(sessionSettingsPath, sessionSettings).catch(() => {});
+          }
           if (signIn === login) signIn = null;
           resolve();
         });
@@ -1816,6 +1956,12 @@ app
           checking = false;
         }
       });
+      // After a sign-in that did not finish, clear only UW's login-page cookies first, so a
+      // half-finished login flow can't answer "Stale Request" (see sign-in-cookies.ts).
+      if (sessionSettings.loginUnfinished) {
+        const cleared = await clearUwLoginCookies(loginSession.cookies).catch(() => -1);
+        trialLog({ event: "signin.cleared-stale-login", cookies: cleared });
+      }
       try {
         await login.loadURL(`${loginOrigin}/`);
       } catch {
@@ -2028,6 +2174,7 @@ app
     ipcMain.handle("magic:signout", async (event) => {
       validateSender(event);
       stopInteractive();
+      refreshVoiceAgent(); // owner: voice-plan
       planningClears++;
       try {
         sync?.abort();
@@ -2106,7 +2253,7 @@ app
     });
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", (event) => event.preventDefault());
-    desktopVoice = await installDesktopVoice({ window, rendererURL, headless, context: () => voiceAuthority, dispatch: createVoiceTrialDispatch(() => voiceSnapshot) });
+    desktopVoice = await installDesktopVoice({ window, rendererURL, headless, context: () => voiceAuthority, agent: voiceAgentHooks, streamingHelper: join(root, 'native-streaming-stt'), dispatch: createConnectedVoiceDispatch({ trial: createVoiceTrialDispatch(() => voiceSnapshot), capability: voiceCapability, plan: voicePlanHost.plan, ask: voiceAsk }) }); // owner: voice-plan
     window.webContents.session.setPermissionRequestHandler(
       (sender, permission, callback, details) => callback(desktopVoice?.allowsPermission(sender, permission, details) ?? false),
     );
@@ -2117,6 +2264,7 @@ app
     });
     await window.loadURL(rendererURL);
     await ready;
+    worker.postMessage({ kind: "voice-agent-warm" }); // owner: voice-plan: after first paint, before any voice; no microphone
     powerMonitor.on("suspend", () => worker.postMessage({ kind: "suspend" }));
     powerMonitor.on("resume", () => {
       worker.postMessage({ kind: "resume" });

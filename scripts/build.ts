@@ -35,6 +35,9 @@ await build({
 console.log(embeddedKey
   ? "Embedded Jev: this build carries the TypeSafe key. Do not commit or publish dist/ publicly."
   : "Embedded Jev: no key embedded; Jev needs MAGIC_GATEWAY_URL.");
+// Compile the product-owned macOS default-browser observer beside main.cjs.
+// Unsupported platforms retain the typed unavailable result from the caller.
+execFileSync(process.execPath, ["scripts/build-native-browser.mjs"], { stdio: "inherit" });
 // Runtime window/Dock icon; editable vector and packaging assets stay in source.
 for (const extension of ["png", "icns", "ico"])
   await copyFile(join("apps/desktop/assets", `app-icon.${extension}`), join("apps/desktop/dist", `app-icon.${extension}`));
@@ -73,6 +76,7 @@ const geistFiles = (await readdir(rendererAssets)).filter(name => /^Geist-Variab
 if (geistFiles.length !== 1 || !(await readFile(join(fonts, "Geist-Variable.woff2"))).equals(await readFile(join(rendererAssets, geistFiles[0]))))
   throw new Error("Emitted desktop Geist font differs from the supplied file.");
 await copyFile(join(fonts, "Geist-OFL.txt"), join(rendererAssets, "Geist-OFL.txt"));
+execFileSync(process.execPath, ["scripts/build-task-window-helper.mjs"], { stdio: "inherit" }); // owner: task-workspace
 execFileSync(process.execPath, ["scripts/build-web.mjs"], { stdio: "inherit" });
 console.log(
   "Built desktop main, isolated preload, local worker, renderer, and informational website.",

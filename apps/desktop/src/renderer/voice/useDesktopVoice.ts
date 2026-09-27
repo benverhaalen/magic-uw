@@ -2,19 +2,28 @@ import { useEffect, useRef, useState } from 'react';
 import { VoiceMicrophone, type MicrophoneView } from './microphone';
 import type { VoiceBridge, VoiceRequestContext, VoiceEvent } from '../../voice/types';
 import { launcherVoice } from './launcher-voice';
+import { rollingTranscript, visibleTranscript } from './rolling-transcript';
 declare global { interface Window { magicVoice?: VoiceBridge } }
 /** Route changes preserve the session; each utterance captures its context on first speech. */
 export function useDesktopVoice<T>(accountIdentity: string, capture: () => {origin: T; context: VoiceRequestContext}, result: (origin: T, event: Extract<VoiceEvent, {type: 'result'}>) => string | void) {
  const [view, setView] = useState<MicrophoneView>({phase:'idle',token:null,levels:[]});
  const [available,setAvailable]=useState(false), [missing,setMissing]=useState<string|undefined>(undefined), [feedback,setFeedback]=useState('');
+ const [transcript,setTranscript]=useState(''), [streamingSpeech,setStreamingSpeech]=useState(false);
+ const [partial,setPartial]=useState<{operationId:string;text:string}|null>(null);
  const controller=useRef<VoiceMicrophone|null>(null), handlers=useRef({capture,result}); handlers.current={capture,result};
  useEffect(()=>{
-  let live=true; const origins=new Map<string,T>();
-  setFeedback(''); setAvailable(false); setMissing(undefined); setView({phase:'idle',token:null,levels:[]});
+  let live=true, lastPhase:MicrophoneView['phase']='idle'; const origins=new Map<string,T>(), finalizedOperations=new Set<string>();
+  setFeedback(''); setTranscript(''); setPartial(null); setStreamingSpeech(false); setAvailable(false); setMissing(undefined); setView({phase:'idle',token:null,levels:[]});
   const bridge=window.magicVoice; if(!bridge)return;
-  const microphone=new VoiceMicrophone(bridge,state=>{if(live){setView(state);if(!state.token)origins.clear();}},event=>{
+  const microphone=new VoiceMicrophone(bridge,state=>{if(live){setView(state);if(!state.token)origins.clear();if(state.phase==='listening'&&lastPhase!=='listening')void bridge.capabilities().then(value=>{if(live)setStreamingSpeech(value.streamingSpeech);}).catch(()=>{});lastPhase=state.phase;}},event=>{
    if(!live)return;
-   if(event.type==='transcript')setFeedback(`Heard: ${event.text}`);
+   if(event.type==='transcript-partial' && !finalizedOperations.has(event.operationId))setPartial({operationId:event.operationId,text:event.text});
+   if(event.type==='transcript'){
+    finalizedOperations.add(event.operationId);
+    if(finalizedOperations.size>256)finalizedOperations.delete(finalizedOperations.values().next().value!);
+    setTranscript(previous=>rollingTranscript(previous,event.text));
+    setPartial(previous=>previous?.operationId===event.operationId?null:previous);
+   }
    if(event.type==='result'){
     const origin=origins.get(event.operationId);origins.delete(event.operationId);
     const applied=origin!==undefined ? handlers.current.result(origin,event) : undefined;
@@ -27,10 +36,10 @@ export function useDesktopVoice<T>(accountIdentity: string, capture: () => {orig
    }
   },undefined,()=>{const {origin,context}=handlers.current.capture();const operationId=crypto.randomUUID(); origins.set(operationId,origin); if(origins.size>256)origins.delete(origins.keys().next().value!); return {operationId,context};});
   controller.current=microphone;
-  void bridge.capabilities().then(value=>{if(!live)return;setAvailable(value.microphone&&value.transcription==='local-whisper');setMissing(!value.microphone?'No microphone is available to Magic on this Mac. You can type instead.':value.transcription!=='local-whisper'?'Local speech recognition is not set up on this Mac. You can type instead.':undefined);}).catch(()=>{if(live)setMissing('Magic could not check voice on this Mac. You can type instead.');});
+  void bridge.capabilities().then(value=>{if(!live)return;setAvailable(value.microphone&&!!value.transcription);setStreamingSpeech(value.streamingSpeech);setMissing(!value.microphone?'No microphone is available to Magic on this Mac. You can type instead.':!value.transcription?'Local speech recognition is not set up on this Mac. You can type instead.':undefined);}).catch(()=>{if(live)setMissing('Magic could not check voice on this Mac. You can type instead.');});
   return()=>{live=false;microphone.dispose();if(controller.current===microphone)controller.current=null;};
  },[accountIdentity]);
  // Error vs unavailable mapping lives in launcher-voice.ts: a failed session stays retryable.
- const voice=launcherVoice(available,view,{onStart:()=>{setFeedback('');void controller.current?.start();},onStop:()=>{setFeedback('Stopped.');void controller.current?.stop();}});
+ const voice={...launcherVoice(available,view,{onStart:()=>{setFeedback('');setTranscript('');setPartial(null);void controller.current?.start();},onStop:()=>{setFeedback('Stopped.');setPartial(null);void controller.current?.stop();}}),transcript:visibleTranscript(transcript,partial?.text??''),transcriptVolatile:!!partial?.text,streamingSpeech};
  return {voice:!available&&missing?{...voice,reason:missing}:voice, feedback};
 }

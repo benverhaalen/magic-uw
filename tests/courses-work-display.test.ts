@@ -12,9 +12,9 @@ test('personally checked graded unknown, unsubmitted and missing stay active whi
   assert.equal(workPlacement(row('x',{kind:'prep'}),today).section,'done');
 });
 test('conflicting dates have no day placement and personal choice remains explicitly personal',()=>{
-  assert.deepEqual(workPlacement(row('x',{time:{state:'conflict',needsReview:false}}),today),{section:'conflict',date:null});
+  assert.deepEqual(workPlacement(row('x',{time:{state:'conflict',needsReview:false}}),today),{section:'undated',date:null});
   const chosen=row('x'); chosen.time={state:'dated',date:today,minute:null,at:today,timeZone:'America/Chicago',role:'planning',personal:true,sourceConflict:true};
-  assert.equal(workTimeLabel(chosen,today),'Your plan that day · source dates disagree');
+  assert.equal(workTimeLabel(chosen,today),'Your plan that day');
   assert(!workTimeLabel(chosen,today).includes('12:00'));
 });
 test('no arbitrary overdue cutoff and full-term future rows remain in reachable Later',()=>{
@@ -51,7 +51,7 @@ test('day arithmetic survives year transition without invented clock time',()=>{
 test('new unresolved conflict overrides a previous date pin, including submitted work',()=>{
   const state=initialWorkListState();state.pins.x={section:'current',date:today};
   const conflict=row('x',{sourceState:'submitted',time:{state:'conflict',needsReview:true}});
-  assert.equal(groupCourseWork([conflict],today,state).find(b=>b.section==='conflict')?.count,1);
+  assert.equal(groupCourseWork([conflict],today,state).find(b=>b.section==='undated')?.count,1);
 });
 
 

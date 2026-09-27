@@ -4,6 +4,7 @@ import { personalWorkState, type PersonalWorkDescriptor, type PersonalWorkState 
 import { addDays, startOfDate } from '../calendar/model';
 import { localTime } from '@magic/domain';
 import { projectScheduleResources, schedulePlanning, type ScheduleResource } from '../schedule-projection';
+import { SHOW_DATE_CONFLICT_UI } from '../date-conflict-policy';
 
 export type CourseWorkScope = {
   key: string; selectedTerm: string | null;
@@ -157,7 +158,7 @@ export function projectCourseWork(input: CourseWorkInput): CourseWorkModel {
       scheduleChanged:personal.scheduleChanged,
       changeLabel:personal.changes.length ? uniq(personal.changes.map(change => ({instructionHash:'Instructions changed',requirementsHash:'Requirements changed',title:'Title changed',points:'Points changed',submissionTypes:'Submission requirements changed',evidence:'Supporting requirements changed',dueAt:'Due date changed',lockAt:'Availability changed',unlockAt:'Availability changed',moduleDueAt:'Module date changed',deadlines:'Dates changed'}[change.field]))).join(' · ') : undefined,descriptor,
     } : null;
-    const action: CourseWorkAction = time.state === 'conflict' ? {kind:'review-dates',label:'Review dates',resourceId:resource.id}
+    const action: CourseWorkAction = SHOW_DATE_CONFLICT_UI && time.state === 'conflict' ? {kind:'review-dates',label:'Review dates',resourceId:resource.id}
       : {kind:resource.kind === 'assignment' && state !== 'submitted' && state !== 'excused' ? 'open-work-set' : 'open-resource',
         label:state === 'submitted' ? 'View submission' : meaning.kind === 'prep' ? 'Open material' : feedOnly || meaning.mode === 'commitment' ? 'Open details' : `Open ${meaning.kind}`,resourceId:resource.id};
     rows.push({key:JSON.stringify([resource.accountScope,resource.courseId,resource.scheduleDeadline?.family ?? resource.id,binding?.occurrenceKey ?? 'work']),

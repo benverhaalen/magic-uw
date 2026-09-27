@@ -41,6 +41,7 @@ const clients: ClientsBridge = {
   prepare: (id) => ipcRenderer.invoke("magic:clients-prepare", id),
   authStatus: (id) => ipcRenderer.invoke("magic:clients-auth", id),
   choose: (id) => ipcRenderer.invoke("magic:clients-choose", id),
+  reset: () => ipcRenderer.invoke("magic:clients-reset"), // owner: reconfigure
   // owner: client-health (D50)
   health: (id, mode) => ipcRenderer.invoke("magic:clients-health", id, mode),
   setMode: (id, mode) => ipcRenderer.invoke("magic:clients-set-mode", id, mode),
@@ -92,6 +93,7 @@ const bridge: AppBridge = {
   openDocument: (url) => ipcRenderer.invoke("magic:open-document", url), // owner: doc-window
   query: (request) => ipcRenderer.invoke("magic:query", request), // owner: T15
   startWork: (id, previewHash, only) => ipcRenderer.invoke("magic:start-work", id, previewHash, only),
+  taskWindows: (request) => ipcRenderer.invoke("magic:task-windows", request), // owner: task-workspace
   graph: (request) => ipcRenderer.invoke("magic:graph", request), // owner: pipeline
   importFile: () => ipcRenderer.invoke("magic:import"),
   signInUW: (service) => ipcRenderer.invoke("magic:signin", service),
@@ -109,6 +111,7 @@ const bridge: AppBridge = {
   exportMcp: (id) => ipcRenderer.invoke("magic:mcp-export", id),
   keepSignedIn: (value) => ipcRenderer.invoke("magic:keep-signed-in", value),
   rememberSignIn: (op) => ipcRenderer.invoke("magic:remember-signin", op), // owner: T05e
+  localData: (op) => ipcRenderer.invoke("magic:local-data", op), // owner: data-ai
   clients,
   setOutlookCalendar: (url) => ipcRenderer.invoke("magic:outlook-calendar", url),
   outlookCalendarStatus: () => ipcRenderer.invoke("magic:outlook-calendar-status"),

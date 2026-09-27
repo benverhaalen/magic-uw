@@ -14,7 +14,8 @@ import { contentCategories } from "../access";
 import { runPack } from "../jobs/pack";
 import { authorizer } from "./consent";
 import { coursePackCatalogue, type CoursePrefixSource } from "../course-facts/prefix"; // owner: course-facts
-import { BRIEF_POLICY_POINTER, briefHoldsPolicy } from "../course-facts/brief"; // owner: course-facts
+import { intelligenceView } from "../../../domain/src/course-intelligence";
+import { LEARNING_CONTRACT, decideLearning, learningSource, selectTaskMode } from "../../../domain/src/learning-request";
 import type { AskResult, IntentStore, ResolvedCourse } from "./types";
 import { originalQuote, passageClass, type IntentProtection } from "../privacy/intent"; // owner: privacy
 
@@ -30,6 +31,11 @@ export interface AskDeps {
   now: () => Date;
   tokenBudget?: number;
   resourceId?: string;
+  /**
+   * The student's raw words. With the question, code chooses the task mode from them; there is no
+   * caller-supplied mode, so a frontend or model instruction cannot grant direct help.
+   */
+  utterance?: string;
   /** owner: privacy. The router's protection; absent means none (a direct caller). */
   protection?: IntentProtection;
   /** owner: course-facts. The course prefix (brief + pack catalogue): used when the ask names one course. */
@@ -39,6 +45,9 @@ export interface AskDeps {
 }
 
 const zero = () => ({ in: 0, cached: 0, out: 0 });
+const CONTEXT_CHANGED = "Your course sources or AI rules changed while Magic was answering, so it didn't show that answer. Ask again.";
+/** Thrown from the runner's pre-dispatch and post-call hooks; it is not a RunnerError, so it stops the job. */
+class LearningContextChanged extends Error {}
 
 /** Words that can open a question before the thing it is about ("what does", "explain", "tell me more about"). */
 const LEAD_WORDS = new Set(
@@ -152,6 +161,11 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
   const budget = deps.tokenBudget ?? ASK_TOKEN_BUDGET;
   const passages: Passage[] = [];
   const meta = new Map<string, { resourceId: string; title: string; url: string }>();
+  // Every source whose passage text goes into the prompt, fixed when that text was read: its account and
+  // content hash. The set is never rebuilt from what still resolves later, so a source that disappears
+  // while the runner is acquired can't drop out of the policy decision while its passage stays in the prompt.
+  const accountOf = (sourceId: string) => store.sources().find((s) => s.id === sourceId)?.accountScope;
+  const expected = new Map<string, { accountScope: string | undefined; contentHash: string | undefined }>();
   let used = 0;
   for (const f of facts.facts) {
     if (deps.resourceId && f.resourceId !== deps.resourceId) continue; // an item-scoped ask stays within that item
@@ -176,16 +190,27 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
     const sourceId = `p${h.pid}`;
     passages.push({ sourceId, text: p.text });
     meta.set(sourceId, { resourceId: h.resourceId, title: h.title, url: h.url });
+    if (!expected.has(h.resourceId)) {
+      const r = store.resource(h.resourceId);
+      expected.set(h.resourceId, { accountScope: r ? accountOf(r.sourceId) : undefined, contentHash: r?.contentHash });
+    }
   }
-  if (!passages.length) return none(NOT_IN_MATERIALS);
+  if (!passages.length) return none(deps.resourceId ? "I could not find matching passages in this selected item. Try naming the section you want to discuss." : NOT_IN_MATERIALS);
   const runner = await deps.runner();
   if (!runner)
     return none("", { notFound: false, unavailable: "Answering needs your AI: choose Claude or Codex in Settings and sign in. Search still works without it." });
 
-  const resources = [...new Set([...meta.values()].map((m) => m.resourceId))].flatMap((id) => {
-    const r = store.resource(id);
-    return r ? [r] : [];
-  });
+  /** Every expected source, still present under its original account and content; null if any is not. */
+  const expectedResources = () => {
+    const rows = [...expected].flatMap(([id, at]) => {
+      const r = store.resource(id);
+      return r && !r.deleted && at.contentHash && at.accountScope && r.contentHash === at.contentHash && accountOf(r.sourceId) === at.accountScope ? [r] : [];
+    });
+    return rows.length === expected.size ? rows : null;
+  };
+  const UNCONFIRMED = "Magic couldn't confirm the course and account for every source, so it didn't answer.";
+  const resources = expectedResources();
+  if (!resources) return none("", { notFound: false, unavailable: UNCONFIRMED });
   // owner: course-facts. One course: the shared course prefix opens the prompt, as for packs and guides;
   // the brief's sources are sent too, so their categories are checked and receipted.
   const prefix = courses.length === 1 ? deps.coursePrefix?.(courses[0]!.ref) : undefined;
@@ -193,23 +218,34 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
   const categories = [...new Set([...resources, ...briefResources].flatMap((r) => contentCategories(r)))].sort();
   const pack = { ...askPack, categories };
   const label = courses.length === 1 ? (courses[0]!.code ?? courses[0]!.name) : "Your courses";
-  const policy = resources.find((r) => r.policy.mode !== "unknown")?.policy;
+  // Every course whose passages are sent gets its own effective policy; the strictest applies and a
+  // withheld course stops the request before any model call. Never "first policy found". An open graded
+  // item in scope makes the request graded work whatever the words asked; an unclear use case is never direct help.
+  const requested = selectTaskMode([deps.utterance, question]);
+  const decide = () => {
+    const rows = expectedResources();
+    if (!rows) return null;
+    const sources = store.sources(), at = deps.now().toISOString();
+    const profiles = store.courseIntelligence().map((p) => ({ ...p, freshness: intelligenceView(p, sources, at).freshness }));
+    const selected = rows.flatMap((r) => { const s = learningSource(r, sources, profiles); return s ? [s] : []; });
+    return selected.length === expected.size ? decideLearning(requested, selected, { learningContract: LEARNING_CONTRACT }) : null;
+  };
+  const decision = decide();
+  if (!decision) return none("", { notFound: false, unavailable: UNCONFIRMED });
+  if (decision.status !== "ready") return none("", { notFound: false, unavailable: decision.reason });
   const frame: CourseFrame = {
     courseId: courses.length === 1 ? courses[0]!.ref : "all",
     course: label,
     skeleton: courses.map((c) => `Course: ${c.code ? `${c.code}: ` : ""}${c.name}`).join("\n"),
-    policy: policy ? `${policy.mode}: ${policy.evidence}` : "",
+    // The system prompt's "Course AI policy" section: task mode, help boundary, exact scope and each course's quoted rule.
+    policy: decision.request.system,
   };
   // owner: course-facts
-  if (prefix) {
-    frame.brief = prefix.text;
-    if (policy && briefHoldsPolicy(policy.evidence, prefix.text)) frame.policy = `${policy.mode}: ${BRIEF_POLICY_POINTER}`;
-  } else {
-    // No brief (several courses, or a course with no syllabus found): the pack catalogue alone is
-    // the system prompt. It holds this pack's instructions, is the same bytes for every course, and
-    // with the pool's protocol and schema passes the prompt-cache minimum (pool.ts promptCacheMinimum).
-    frame.brief = coursePackCatalogue();
-  }
+  // The learning decision's policy text (task mode, help boundary, each course's quotes) stays whole;
+  // the brief-pointer shortening (BRIEF_POLICY_POINTER) would drop the mode and boundary, so it isn't applied here.
+  if (prefix) frame.brief = prefix.text;
+  // No brief: the byte-stable pack catalogue is the system prompt (pool.ts promptCacheMinimum).
+  else frame.brief = coursePackCatalogue();
   // end owner: course-facts
   // owner: privacy: the question is the student's; each passage is its resource's class.
   const p = deps.protection?.request("ask");
@@ -240,17 +276,45 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
     () => deps.now().toISOString(),
     receiptIds,
   );
-  const result = await runPack(
-    { runner, artifacts: deps.artifacts, ledger: deps.ledger, authorize, now: () => deps.now().getTime() },
-    pack,
-    frame,
-    input,
-    sent, // owner: privacy
-    { lane: "interactive", scope: courses.length === 1 ? "course" : "all", signal },
-  );
+  // The decision is rebuilt from current data immediately before every provider dispatch (a queued or
+  // retried call under a changed rule never goes out) and after every model call and before the artifact
+  // is stored (an answer produced under a changed rule is neither cached nor shown).
+  const unchanged = () => {
+    const now = decide();
+    if (now?.status !== "ready" || now.request.system !== decision.request.system) throw new LearningContextChanged(CONTEXT_CHANGED);
+  };
+  let result: Awaited<ReturnType<typeof runPack<{ question: string }, AskOutput>>>;
+  try {
+    result = await runPack(
+      {
+        runner,
+        artifacts: deps.artifacts,
+        ledger: deps.ledger,
+        authorize,
+        now: () => deps.now().getTime(),
+        beforeCall: (call) => (unchanged(), call),
+        validate: unchanged,
+      },
+      pack,
+      frame,
+      input,
+      sent, // owner: privacy
+      { lane: "interactive", scope: courses.length === 1 ? "course" : "all", signal },
+    );
+  } catch (error) {
+    if (error instanceof LearningContextChanged) return none("", { notFound: false, unavailable: CONTEXT_CHANGED });
+    throw error;
+  }
   if (result.status === "blocked") return none("", { notFound: false, unavailable: result.reason });
   if (result.status === "needs_student") return none("", { notFound: false, unavailable: "The answer didn't pass the app's checks. Try asking more specifically." });
   if (result.status !== "done") return none("", { notFound: false, unavailable: result.message });
+  // The system text states every source's content hash and each policy revision, so the cache key binds
+  // them: a cache hit (which skips the runner hooks) matches the current decision. Confirm once more.
+  try {
+    unchanged();
+  } catch {
+    return none("", { notFound: false, unavailable: CONTEXT_CHANGED });
+  }
   const tokens = result.cached ? zero() : result.artifact.usage;
   const path = result.cached ? "cache" : "ai";
   // owner: privacy: quotes and sentences back in the original words before code checks the quotes.

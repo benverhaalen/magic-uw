@@ -21,6 +21,7 @@ export type PreparedWorkProps = {
   /** Route to the saved assignment detail, used when nothing can be launched or the list changed. */
   onInspect?: () => void;
   /** Home Upcoming tile: the whole card starts work; `trailing` holds sibling controls, never nested. */
+  openTask?: boolean;
   compact?: { className: string; summary: ReactNode; description?: string; trailing?: ReactNode;
     /** Data attributes for the card surface (e.g. packages/ui deadlineSurface), spread onto the card. */
     surface?: Readonly<Record<`data-${string}`, string>> };
@@ -77,18 +78,19 @@ function tileTarget(work: PreparedWorkController, onInspect?: () => void) {
   return { label: set ? launchLabel(set) : "Start work", run: () => void work.launch(), disabled: pending || !canLaunch };
 }
 
-function Tile({ resource, work, anchor, container, compact, action, onInspect, onSetup, info }: PreparedWorkProps & { work: PreparedWorkController; anchor: string; container?: RefObject<HTMLElement | null> }) {
+function Tile({ resource, work, anchor, container, compact, action, onInspect, onSetup, info, openTask }: PreparedWorkProps & { work: PreparedWorkController; anchor: string; container?: RefObject<HTMLElement | null> }) {
   const described = useId();
   const { set, pending } = work;
-  const target = tileTarget(work, onInspect);
-  const activate = () => { if (!target.disabled && !pending) target.run(); };
+  const inspectTask = !!compact && openTask && !!onInspect;
+  const target = inspectTask ? { label: "Open task", run: onInspect!, disabled: false } : tileTarget(work, onInspect);
+  const activate = () => { if (!target.disabled && (inspectTask || !pending)) target.run(); };
   const facts = [compact?.description, set ? sendsLine(set) : null, set && pageViewApplies(set) ? "Canvas may record a page view" : null].filter(Boolean).join(". ");
   const titles = set ? `${target.label}. ${sendsLine(set)}. ${set.items.map(item => item.title).join(" + ")}${pageViewApplies(set) ? ". Canvas may record a page view." : ""}` : undefined;
   const slot = <StatusSlot work={work} anchor={anchor} onSetup={onSetup} onInspect={onInspect} info={info}/>;
   if (compact) return <section ref={container as RefObject<HTMLElement>} className="magic-start-work magic-start-work--compact magic-prepared-tile" aria-label={`Prepared work: ${resource.title}`} data-place-anchor={anchor}>
     <div className={`home-work-card magic-prepared-card ${compact.className}`} {...compact.surface}>
       <button className="home-work-row magic-prepared-target" data-focus-key={anchor} aria-label={`${target.label}: ${resource.title}`} aria-describedby={described} title={titles}
-        aria-busy={pending || undefined} aria-disabled={target.disabled || undefined} onClick={activate}>
+        aria-busy={!inspectTask && pending || undefined} aria-disabled={target.disabled || undefined} onClick={activate}>
         {compact.summary}
       </button>
       {slot}

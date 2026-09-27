@@ -15,13 +15,13 @@ test('Calendar and Home share one canonical conflict, preserving all raw claims 
  const direct=resource('assignment',{deadline:resolveDeadline([claim(first),claim(later)])}); const original=JSON.stringify(direct);
  const todo=resource('todo',{sourceScope:'account-todo',externalId:'todo-77'}), f=feed('feed');
  const home=canonicalHomeResources([f,todo,direct],sources); const cal=calendarItems([f,todo,direct],[],'2026-10-01',tz);
- assert.equal(home.length,1);assert.equal(cal.length,1);assert.equal(home[0].id,'assignment');assert.equal(cal[0].resourceId,'assignment');assert.equal(cal[0].conflict,true);assert.equal(calendarItemLabel(cal[0],true),'Dates disagree');assert.equal(homeWork(home,sources,now,tz).upcoming[0].day,'2026-10-01');assert.equal(calendarItems([f,todo,direct],[],'2026-10-16',tz).length,0);assert.equal(JSON.stringify(direct),original);
+ assert.equal(home.length,1);assert.equal(cal.length,1);assert.equal(home[0].id,'assignment');assert.equal(cal[0].resourceId,'assignment');assert.equal(cal[0].conflict,true);assert.match(calendarItemLabel(cal[0],true),/^Planning date ·/);assert.doesNotMatch(calendarItemLabel(cal[0],true),/Dates disagree|Review date/);assert.equal(homeWork(home,sources,now,tz).upcoming[0].day,'2026-10-01');assert.equal(calendarItems([f,todo,direct],[],'2026-10-16',tz).length,0);assert.equal(JSON.stringify(direct),original);
 });
 test('valid personal selection moves the single deadline; stale selection returns to uncertainty',()=>{
  const selected=choice(resource('assignment',{deadline:resolveDeadline([claim(first),claim(later)])}));
  for(const r of [selected,{...selected,personalDeadline:{...selected.personalDeadline,selected:null,needsReview:true}}]) {
   const home=canonicalHomeResources([r],sources);const expected=r.personalDeadline.selected?'2026-10-16':'2026-10-01';const cal=calendarItems([r],[],expected,tz);
-  assert.equal(homeWork(home,sources,now,tz).upcoming[0].day,expected);assert.equal(cal.length,1);assert.equal(cal[0].personal,!!r.personalDeadline.selected);assert.equal(cal[0].conflict,!r.personalDeadline.selected);assert.equal(home[0].deadline.conflict,true);
+  assert.equal(homeWork(home,sources,now,tz).upcoming[0].day,expected);assert.equal(cal.length,1);assert.equal(cal[0].personal,!!r.personalDeadline.selected);assert.equal(cal[0].conflict,!r.personalDeadline.selected);assert.equal(home[0].deadline.conflict,true);assert.match(calendarItemLabel(cal[0],true),r.personalDeadline.selected?/^Your date ·/:/^Planning date ·/);
  }
 });
 test('new feed contributor invalidates frontend choice until backend options cover the evidence',()=>{

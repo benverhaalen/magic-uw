@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { ResourceView } from "@magic/contracts";
+import { SHOW_DATE_CONFLICT_UI } from '../date-conflict-policy';
 import {
   isDone,
   courseDeadlineDisplay,
@@ -83,7 +84,7 @@ export function CoursesOverview({
             {card.code ? <span className="course-card-code">{card.code}</span> : null}
             <span className="course-card-cue">
               {card.cue}
-              {card.next ? <span className="muted"> · {(card.nextDeadline ?? courseDeadlineDisplay(card.next)).cue ?? when((card.nextDeadline ?? courseDeadlineDisplay(card.next)).displayAt)}</span> : null}
+              {card.next ? <span className="muted"> · {(() => { const date = card.nextDeadline ?? courseDeadlineDisplay(card.next); return date.conflict && !SHOW_DATE_CONFLICT_UI ? date.sortAt ? `Planning date ${when(date.sortAt)}` : 'Date in saved sources' : date.cue ?? when(date.displayAt); })()}</span> : null}
             </span>
             {card.freshness === "stale" || card.freshness === "partial" ? (
               <span className="course-card-note">
@@ -247,7 +248,7 @@ function WorkRow({
         <span className="resource-title">{resource.title}</span>
         <span className="resource-subline">
           {[
-            deadline.cue ?? (deadline.displayAt ? `Due ${when(deadline.displayAt)}` : "No due date"),
+            deadline.conflict && !SHOW_DATE_CONFLICT_UI ? deadline.sortAt ? `Planning date ${when(deadline.sortAt)}` : 'Date in saved sources' : deadline.cue ?? (deadline.displayAt ? `Due ${when(deadline.displayAt)}` : "No due date"),
             resource.points != null ? `${resource.points} pts` : "",
             resource.submitted === true ? "Submitted" : resource.completed ? "Marked done" : "",
             resource.submission?.grade ? `Canvas grade ${resource.submission.grade}` : "",
@@ -347,9 +348,9 @@ function NextRow({
         <span className="course-next-due">
           <strong>
             {emphasis.label && emphasis.bin !== "unknown" ? <em>{emphasis.label}</em> : null}
-            {deadline.cue ?? (due ? new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" }).format(due) : "No due date")}
+            {deadline.conflict && !SHOW_DATE_CONFLICT_UI ? deadline.sortAt ? `Planning date ${new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" }).format(new Date(deadline.sortAt))}` : 'Date in saved sources' : deadline.cue ?? (due ? new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" }).format(due) : "No due date")}
           </strong>
-          <span>{deadline.conflict ? "Review dates" : due ? new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(due) : null}</span>
+          <span>{deadline.conflict && SHOW_DATE_CONFLICT_UI ? "Review dates" : due ? new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(due) : null}</span>
         </span>
         <Glyph name="chevron" />
       </button>

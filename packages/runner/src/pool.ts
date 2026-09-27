@@ -47,6 +47,8 @@ export type ActivityEvent =
       prefixTokens: number;
       /** Whether that prefix reaches the model's prompt-cache minimum. */
       cacheable: boolean;
+      /** owner: voice-plan: the session process id, for the voice readiness receipt. */
+      pid?: number;
     }
   | { type: "ask_start"; lane: string; session: string; pack: string; at: number }
   | { type: "ask_end"; lane: string; session: string; pack: string; ok: boolean; usage: Usage; ms: number; at: number }
@@ -62,6 +64,8 @@ export interface LaneStatus {
   spare: boolean;
   failures: number;
   oneShot: boolean;
+  /** owner: voice-plan. The live session's OS process id (receipts only). */
+  pid: number | null;
 }
 
 export interface PoolOptions {
@@ -115,6 +119,11 @@ export interface SessionPool extends ModelBackend {
    * when a session for that prefix is live; false for an unpooled pack or a one-shot lane.
    */
   warm(request: WarmRequest): Promise<boolean>;
+  /**
+   * owner: voice-plan. Ends the lane's sessions once any ask in flight on it finishes, so the next task
+   * on that lane starts with no earlier conversation (a spoken request's page text stays with its run).
+   */
+  end(request: Pick<WarmRequest, "lane" | "courseId">): Promise<void>;
   onActivity(listener: (event: ActivityEvent) => void): () => void;
   lanes(): LaneStatus[];
   close(): Promise<void>;
@@ -376,7 +385,7 @@ export function createSessionPool(options: PoolOptions): SessionPool {
       (s) => emit({ type: "session_exit", lane: s.laneKey, session: s.id, at: now() }),
     );
     const prefixTokens = Math.ceil((prefixChars + schemaJson.length) / 4);
-    emit({ type: "session_start", lane: lane.key, session: session.id, model, at: now(), prefixTokens, cacheable: prefixTokens >= promptCacheMinimum(model) });
+    emit({ type: "session_start", lane: lane.key, session: session.id, model, at: now(), prefixTokens, cacheable: prefixTokens >= promptCacheMinimum(model), pid: session.child.pid });
     return session;
   }
 
@@ -513,6 +522,19 @@ export function createSessionPool(options: PoolOptions): SessionPool {
       lane.queue = started.catch(() => undefined);
       return started;
     },
+    // owner: voice-plan
+    end(request) {
+      const lane = lanes.get(laneKeyOf({ lane: request.lane ?? "interactive", courseId: request.courseId } as BackendCall));
+      if (!lane) return Promise.resolve();
+      const ended = lane.queue.then(() => {
+        lane.session?.kill();
+        lane.spare?.kill();
+        lane.session = null;
+        lane.spare = null;
+      });
+      lane.queue = ended.catch(() => undefined);
+      return ended;
+    },
     call(call: BackendCall): Promise<BackendResult> {
       sweepIdle();
       const key = laneKeyOf(call);
@@ -547,6 +569,7 @@ export function createSessionPool(options: PoolOptions): SessionPool {
         spare: !!l.spare?.alive,
         failures: l.failures,
         oneShot: l.oneShot,
+        pid: l.session?.alive ? (l.session.child.pid ?? null) : null, // owner: voice-plan
       }));
     },
     async close() {

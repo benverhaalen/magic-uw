@@ -40,12 +40,13 @@ function value(input: unknown): string {
       ? String(input.val)
       : "";
 }
+/** An all-day (DATE) value is a calendar day, parsed as local midnight: read the local day,
+ * because toISOString() moves it to the previous day anywhere east of UTC. */
 function date(input: Date | undefined, allDay = false): string | undefined {
-  return input && Number.isFinite(input.getTime())
-    ? allDay
-      ? input.toISOString().slice(0, 10)
-      : input.toISOString()
-    : undefined;
+  if (!input || !Number.isFinite(input.getTime())) return undefined;
+  if (!allDay) return input.toISOString();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${input.getFullYear()}-${pad(input.getMonth() + 1)}-${pad(input.getDate())}`;
 }
 /** RFC parser is invoked on a string only; its fromURL helper is intentionally never used. */
 export async function parseCalendar(
