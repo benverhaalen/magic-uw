@@ -38,13 +38,13 @@ export async function graph<Q extends GraphQuery>(request: Q): Promise<GraphResu
 
 /** A learning-router op. Returns the router's own answer; the caller renders every status. */
 export async function learning(request: LearningRequest): Promise<LearningResult> {
-  const result = await bridge().execute({ type: "learning", request });
+  const result = await bridge().execute({ type: "learning", request, reply: "result" });
   if (!result.learning) throw new Error("The learning router gave no answer.");
   return result.learning;
 }
 
 export async function notes(request: NotesRequest): Promise<NotesResult> {
-  const result = await bridge().execute({ type: "notes", request });
+  const result = await bridge().execute({ type: "notes", request, reply: "result" });
   if (!result.notes) throw new Error("The notes service gave no answer.");
   return result.notes;
 }
@@ -81,20 +81,38 @@ export type Load<T> =
   | { state: "ready"; value: T };
 
 /**
+ * The last answer per key for this window's life: reopening a view paints it at once while the
+ * fresh read runs (stale-while-revalidate). Bounded; the oldest key goes first.
+ */
+const lastAnswers = new Map<string, unknown>();
+const LAST_ANSWERS_MAX = 64;
+function remember(key: string, value: unknown) {
+  lastAnswers.delete(key);
+  lastAnswers.set(key, value);
+  if (lastAnswers.size > LAST_ANSWERS_MAX) lastAnswers.delete(lastAnswers.keys().next().value!);
+}
+
+/**
  * One read keyed by `key`. A new key or unmount drops the in-flight answer (the IPC channels have
  * no abort, so a late answer is ignored rather than cancelled). No polling: `reload` reads again.
+ * A key read before shows its last answer immediately, then the fresh answer replaces it.
  */
 export function useLoad<T>(key: string | null, read: () => Promise<T>): [Load<T>, () => void] {
-  const [load, setLoad] = useState<Load<T>>({ state: "loading" });
+  const cached = (k: string | null): Load<T> =>
+    k !== null && lastAnswers.has(k) ? { state: "ready", value: lastAnswers.get(k) as T } : { state: "loading" };
+  const [load, setLoad] = useState<Load<T>>(() => cached(key));
   const [nonce, setNonce] = useState(0);
   const readRef = useRef(read);
   readRef.current = read;
   useEffect(() => {
     if (key === null) return;
     let live = true;
-    setLoad({ state: "loading" });
+    setLoad(cached(key));
     readRef.current().then(
-      (value) => live && setLoad({ state: "ready", value }),
+      (value) => {
+        remember(key, value);
+        if (live) setLoad({ state: "ready", value });
+      },
       (cause: unknown) =>
         live && setLoad({ state: "error", message: cause instanceof Error ? cause.message : "The read failed." }),
     );

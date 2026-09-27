@@ -172,7 +172,7 @@ export function App() {
   const mounted = useRef(true);
   // Opening an item tells the worker, which reads the item's `read_once` links once.
   useEffect(() => {
-    if (selectedId) void window.magic.execute({ type: "ui_event", value: { kind: "open", subject: selectedId } }).catch(() => {});
+    if (selectedId) void window.magic.execute({ type: "ui_event", value: { kind: "open", subject: selectedId }, reply: "result" }).catch(() => {});
   }, [selectedId]);
 
   const refresh = useCallback(async () => {
@@ -198,8 +198,15 @@ export function App() {
   useEffect(() => {
     mounted.current = true;
     void refresh();
+    // A poll never queues behind one still in flight: the worker answers one message at a time,
+    // so stacked snapshot reads would delay every view's own read behind them.
+    let polling = false;
     const timer = window.setInterval(() => {
-      if (!document.hidden) void refresh();
+      if (document.hidden || polling) return;
+      polling = true;
+      void refresh().finally(() => {
+        polling = false;
+      });
     }, 2000);
     return () => {
       mounted.current = false;
