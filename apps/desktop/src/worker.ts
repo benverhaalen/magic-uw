@@ -1,3 +1,4 @@
+import { judgmentFailureError } from "./judgment-errors";
 import { createLocalCourseExtractor } from "@magic/ai";
 import { createStore } from "@magic/storage";
 import { createCore } from "@magic/core";
@@ -341,7 +342,7 @@ port.on("message", async ({ data }: { data: any }) => {
     const p = pending.get(data.id);
     pending.delete(data.id);
     if (p) {
-      if (data.error) p.reject(new Error("Judgment unavailable"));
+      if (data.error) p.reject(judgmentFailureError(data));
       else p.resolve(data.result);
     }
     return;

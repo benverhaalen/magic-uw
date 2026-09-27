@@ -1646,8 +1646,10 @@ export function createStore(
         for (;;) {
           const row = prepare(
             `SELECT * FROM jobs WHERE ((status = 'pending' AND run_after <= ?) OR (status = 'running' AND lease_until <= ?))
-             ${filter} ORDER BY run_after, rowid LIMIT 1`,
-          ).get(time, time, ...params) as Row | undefined;
+             ${filter} AND NOT EXISTS (
+               SELECT 1 FROM preferences WHERE key = 'jobCooldown:' || jobs.kind AND value > ?
+             ) ORDER BY run_after, rowid LIMIT 1`,
+          ).get(time, time, ...params, time) as Row | undefined;
           if (!row) return undefined;
           const error =
             Number(row.attempts) >= MAX_ATTEMPTS
@@ -1676,6 +1678,27 @@ export function createStore(
             error: null,
           });
         }
+      });
+    },
+    jobCooldown(kind) {
+      return (prepare("SELECT value FROM preferences WHERE key = ?").get(`jobCooldown:${kind}`) as Row | undefined)?.value as string | undefined;
+    },
+    defer(job, runAfter, reason, now = new Date().toISOString()) {
+      const time = timestamp(now), until = timestamp(runAfter);
+      if (until <= time) throw new Error("Job deferral must be in the future.");
+      return transaction(() => {
+        const row = prepare(
+          `SELECT * FROM jobs WHERE id = ? AND status = 'running' AND lease_token = ?
+           AND input_hash = ? AND kind = ? AND lease_until > ?`,
+        ).get(job.id, job.leaseToken, job.inputHash, job.kind, time) as Row | undefined;
+        if (!row || (row.resource_id ?? "") !== job.resourceId || !isFresh(row)) return false;
+        prepare(`INSERT INTO preferences (key, value) VALUES (?, ?)
+          ON CONFLICT(key) DO UPDATE SET value = MAX(value, excluded.value)`)
+          .run(`jobCooldown:${job.kind}`, until);
+        prepare(`UPDATE jobs SET status = 'pending', attempts = MAX(0, attempts - 1),
+          run_after = ?, lease_until = NULL, lease_token = NULL, error = ? WHERE id = ?`)
+          .run(until, reason.slice(0, 2000), job.id);
+        return true;
       });
     },
     finish(job, error, now = new Date().toISOString()) {

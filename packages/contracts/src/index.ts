@@ -924,6 +924,9 @@ export interface Store {
   ): void;
   lease(now: string, leaseMs: number): Job | undefined;
   finish(job: Job, error?: string, now?: string): boolean;
+  /** Defer this leased job and its kind without spending an attempt; survives restart. */
+  defer(job: Job, runAfter: string, reason: string, now?: string): boolean;
+  jobCooldown(kind: string): string | undefined;
   jobs(): Job[];
   judgment(key: string): Judgment | undefined;
   putJudgment(value: Judgment): boolean;

@@ -1,3 +1,4 @@
+import { judgmentFailure } from "./judgment-errors";
 import {
   app,
   BrowserWindow,
@@ -553,11 +554,11 @@ app
             controller.signal,
           );
           worker.postMessage({ kind: "evaluation", id: message.id, result });
-        } catch {
+        } catch (error) {
           worker.postMessage({
             kind: "evaluation",
             id: message.id,
-            error: true,
+            ...judgmentFailure(error),
           });
         } finally {
           evaluations.delete(message.id);

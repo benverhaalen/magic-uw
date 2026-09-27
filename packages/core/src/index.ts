@@ -1,3 +1,4 @@
+import type { CourseCoreStore } from "../../contracts/src/course-core";
 import {
   effectiveCoursePolicy,
   intelligenceView,
@@ -21,7 +22,7 @@ import {
   type Job,
 } from "@magic/contracts";
 import { maySend, resolveDeadline } from "@magic/domain";
-import { judgmentResultSchema, type JudgmentGateway } from "@magic/ai";
+import { JudgmentBudgetError, judgmentResultSchema, type JudgmentGateway } from "@magic/ai";
 import { contentCategories, courseIncluded } from "./access";
 import { evidenceFor } from "./evidence";
 import { rebaseFixture } from "./fixture-dates";
@@ -415,17 +416,31 @@ export function createCore(store: Store, options: CoreOptions) {
       if (generation !== version) break;
     }
   }
+  let budgetTimer: ReturnType<typeof setTimeout> | undefined;
+  function scheduleBudgetWake() {
+    clearTimeout(budgetTimer);
+    const until = store.jobCooldown("enrich.resource");
+    const delay = until ? Date.parse(until) - Date.parse(now()) : 0;
+    if (!closed && delay > 0) {
+      budgetTimer = setTimeout(wake, Math.min(delay, 2_147_483_647));
+      budgetTimer.unref?.();
+    }
+  }
   async function drain() {
-    if (
-      closed ||
-      !options.gateway ||
-      !maySend(store.privacy(), "jev", ["course_text"]).allowed
-    )
-      return;
+    if (closed) return;
+    scheduleBudgetWake();
     let job: Job | undefined;
-    while (!closed && (job = store.lease(now(), 60000))) {
+    while (!closed) {
+      // Each registered handler retains its own egress checks. Jev availability only
+      // controls assignment enrichment; storage excludes kinds with durable cooldowns.
+      const kinds = jobs.readyKinds().filter((kind) => kind !== "enrich.resource");
+      if (options.gateway && maySend(store.privacy(), "jev", ["course_text"]).allowed)
+        kinds.push("enrich.resource");
+      if (!kinds.length) break;
+      job = (store as Store & Pick<CourseCoreStore, "lease">).lease(now(), 60000, kinds);
+      if (!job) break;
       if (job.kind !== "enrich.resource") {
-        // owner: T05b. Registered kinds run through their handler; unknown kinds fail as before.
+        // Registered kinds retain their handler-specific refusal and consent checks.
         const version = generation;
         active = new AbortController();
         try {
@@ -459,7 +474,7 @@ export function createCore(store: Store, options: CoreOptions) {
         // Log the attempt before crossing the boundary. This does not claim delivery.
         receipt(manifest, "sent");
         const result = judgmentResultSchema.parse(
-          await options.gateway.evaluate(manifest.payload, active.signal),
+          await options.gateway!.evaluate(manifest.payload, active.signal),
         );
         if (
           !current(job, version) ||
@@ -479,9 +494,15 @@ export function createCore(store: Store, options: CoreOptions) {
           createdAt: now(),
         });
         store.finish(job, undefined, now());
-      } catch {
+      } catch (error) {
         if (!closed && generation === version) {
           receipt(manifest, "failed");
+          if (error instanceof JudgmentBudgetError && !active.signal.aborted) {
+            store.defer(job, new Date(Date.parse(now()) + error.retryAfterMs).toISOString(),
+              "Judgment budget reached; waiting to retry. Local data is still usable.", now());
+            scheduleBudgetWake();
+            continue;
+          }
           store.finish(
             job,
             "Judgment unavailable; local data is still usable",
@@ -976,6 +997,7 @@ export function createCore(store: Store, options: CoreOptions) {
     },
     async close() {
       closed = true;
+      clearTimeout(budgetTimer);
       interrupt();
       await working;
       store.close();
