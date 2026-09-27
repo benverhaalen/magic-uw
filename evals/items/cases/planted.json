@@ -1,0 +1,26 @@
+{
+  "synthetic": true,
+  "note": "Pre-registered planted defects for the item-quality harness. The harness mutates a clean item the offline model wrote into each defect and appends it to the same model response, so the defect travels the real pack path (runner, pack check, N06 pipeline, LearningStore). `caughtWhen` is what counts as caught: `dropped` means the pipeline dropped the item (at `expectedStage` for an exact match); `not_revealed` means the stored item no longer shows its answer. `requiresJudge` defects need Jev or a separate model pass (N06 stage 7); offline no judge runs, so they are reported apart and excluded from the code catch rate. Written by the harness builder, not independent.",
+  "defects": [
+    { "id": "q-fabricated-quote", "pack": "quiz", "expectedStage": "quote", "caughtWhen": "dropped", "requiresJudge": false, "description": "One word of the quote changed, so it is no longer verbatim in the passage." },
+    { "id": "q-foreign-source", "pack": "quiz", "expectedStage": "quote", "caughtWhen": "dropped", "requiresJudge": false, "description": "The item cites a passage id that was never sent." },
+    { "id": "q-two-keys", "pack": "quiz", "expectedStage": "schema", "caughtWhen": "dropped", "requiresJudge": false, "description": "Two options marked correct." },
+    { "id": "q-three-options", "pack": "quiz", "expectedStage": "schema", "caughtWhen": "dropped", "requiresJudge": false, "description": "A multiple-choice item with 3 options instead of 4." },
+    { "id": "q-all-of-the-above", "pack": "quiz", "expectedStage": "flaws", "caughtWhen": "dropped", "requiresJudge": false, "description": "A distractor replaced by \"All of the above\"." },
+    { "id": "q-longest-key", "pack": "quiz", "expectedStage": "flaws", "caughtWhen": "dropped", "requiresJudge": false, "description": "The key padded so it is far longer than every distractor." },
+    { "id": "q-negation-unemphasised", "pack": "quiz", "expectedStage": "flaws", "caughtWhen": "dropped", "requiresJudge": false, "description": "A negative stem (\"not\") without emphasis." },
+    { "id": "q-near-duplicate", "pack": "quiz", "expectedStage": "near_duplicate", "caughtWhen": "dropped", "requiresJudge": false, "description": "A second copy of an earlier item's stem with a trailing change." },
+    { "id": "q-bad-formula", "pack": "quiz", "expectedStage": "executed", "caughtWhen": "dropped", "requiresJudge": false, "description": "A numeric item whose value disagrees with its own formula." },
+    { "id": "q-tf-no-truth", "pack": "quiz", "expectedStage": "schema", "caughtWhen": "dropped", "requiresJudge": false, "description": "A true/false item without statementIsTrue." },
+    { "id": "q-wrong-key", "pack": "quiz", "expectedStage": "support", "caughtWhen": "dropped", "requiresJudge": true, "description": "A multiple-choice item keyed on a distractor; only a support judge can see it." },
+    { "id": "c-fabricated-quote", "pack": "cards", "expectedStage": "quote", "caughtWhen": "dropped", "requiresJudge": false, "description": "One word of the quote changed." },
+    { "id": "c-cloze-answer-absent", "pack": "cards", "expectedStage": "schema", "caughtWhen": "dropped", "requiresJudge": false, "description": "A cloze whose answer is not in its sentence." },
+    { "id": "c-cloze-answer-leak", "pack": "cards", "expectedStage": null, "caughtWhen": "not_revealed", "requiresJudge": false, "description": "A cloze whose answer occurs twice in its sentence, so blanking one occurrence leaves the answer visible." },
+    { "id": "c-cloze-whole-sentence", "pack": "cards", "expectedStage": "schema", "caughtWhen": "dropped", "requiresJudge": false, "description": "A cloze that blanks most of its sentence, leaving nothing to recall from." },
+    { "id": "c-cloze-function-word", "pack": "cards", "expectedStage": "schema", "caughtWhen": "dropped", "requiresJudge": false, "description": "A cloze that blanks a function word (\"the\")." },
+    { "id": "c-cloze-altered-sentence", "pack": "cards", "expectedStage": "schema", "caughtWhen": "dropped", "requiresJudge": false, "description": "A cloze sentence with one word changed (a false statement) while its quote is the true sentence." },
+    { "id": "c-term-same-front-back", "pack": "cards", "expectedStage": "schema", "caughtWhen": "dropped", "requiresJudge": false, "description": "A term card whose back only repeats its front." },
+    { "id": "c-near-duplicate", "pack": "cards", "expectedStage": "near_duplicate", "caughtWhen": "dropped", "requiresJudge": false, "description": "A second copy of an earlier card's front." },
+    { "id": "c-term-altered-definition", "pack": "cards", "expectedStage": "support", "caughtWhen": "dropped", "requiresJudge": true, "description": "A term card whose definition was changed to a false one while the quote stays true; only a support judge can see it." }
+  ]
+}
