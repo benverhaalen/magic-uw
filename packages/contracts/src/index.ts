@@ -1413,6 +1413,16 @@ export const correctionSchema = z.discriminatedUnion("subject", [
       tier: z.enum(["core", "supporting", "practice"]).optional(),
     })
     .strict(),
+  // owner: agenda. D49: the student's own effort estimate for an item (5 min–40 h); it wins
+  // over code's and the model's, and teaches the course's calibration.
+  z
+    .object({
+      subject: z.literal("estimate"),
+      resourceId: id,
+      minutes: z.number().int().min(5).max(2400),
+    })
+    .strict(),
+  // end owner: agenda
 ]);
 export type Correction = z.infer<typeof correctionSchema>;
 export const packScopeSchema = z
@@ -1510,8 +1520,148 @@ export const queryRequestSchema = z.discriminatedUnion("view", [
     })
     .strict(),
   // end owner: guides
+  // owner: agenda. D49: the critical-action agenda and the launch view, read from the local
+  // database only (no network, 0 model calls). `timeZone` is an IANA name for the display dates.
+  z
+    .object({
+      view: z.literal("agenda.ranked"),
+      limit: z.number().int().min(1).max(50).optional(),
+      accountScope: id.optional(),
+      courseId: id.optional(),
+      timeZone: z.string().min(1).max(64).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      view: z.literal("workspace.bootstrap"),
+      top: z.number().int().min(1).max(20).optional(),
+      timeZone: z.string().min(1).max(64).optional(),
+    })
+    .strict(),
+  // end owner: agenda
 ]);
 export type QueryRequest = z.infer<typeof queryRequestSchema>;
+// owner: agenda. D49 result shapes; the ranking and every number in them are code's.
+export type AgendaItemKind = "assignment" | "quiz" | "exam" | "discussion";
+/** Slack bands for display: overdue (past due, still accepted), start_now (the latest start has passed). */
+export type AgendaBand = "overdue" | "start_now" | "today" | "soon" | "week" | "later";
+export interface AgendaEstimate {
+  /** Bounded to 5 min–40 h. */
+  minutes: number;
+  /** student: the student's correction (wins); model: their AI refined it; code: the app's rule. */
+  method: "code" | "model" | "student";
+  label: "estimate";
+  /** A per-course calibration from the student's corrections was applied. */
+  calibrated: boolean;
+}
+export interface AgendaWeight {
+  points: number | null;
+  /**
+   * The grade weight and how complete it is (FDB-001): `listed` is the Canvas group weight or the
+   * syllabus's stated weight; `computed` is this item's share, only with complete coverage. The
+   * ranking uses listed or computed only; unknown falls back to points.
+   */
+  grade: { basis: "listed" | "computed"; percent: number; source: "canvas_group" | "syllabus" } | null;
+}
+export interface AgendaItem {
+  /** A resource ID, or `assessment:<id>` for a syllabus-only exam. */
+  id: string;
+  resourceId: string | null;
+  kind: AgendaItemKind;
+  title: string;
+  accountScope: string;
+  courseId: string;
+  courseName: string;
+  url: string | null;
+  /** The due date, or the lock date when there's no due date (`dateKind: "closes"`). */
+  dueAt: string;
+  dateKind: "due" | "closes";
+  lockAt: string | null;
+  unlockAt: string | null;
+  estimate: AgendaEstimate;
+  /** dueAt − estimate − buffer. */
+  latestStartAt: string;
+  /** latestStartAt − now, in minutes (negative: behind). */
+  slackMinutes: number;
+  band: AgendaBand;
+  weight: AgendaWeight;
+  flags: {
+    /** Canvas says missing, or past due with nothing submitted. */
+    missing: boolean;
+    /** Past due and still accepted. */
+    late: boolean;
+    /** Not unlocked yet. */
+    notYetOpen: boolean;
+  };
+  /** One line on why it matters now: the student's AI over code's facts (checked), or code's line. */
+  why: { text: string; source: "model" | "code" };
+  /** 1-based position among ranked items; 0 for a flagged item that isn't ranked. */
+  rank: number;
+}
+export interface AgendaCounts {
+  /** Open items with a date (ranked plus flagged). */
+  open: number;
+  ranked: number;
+  overdue: number;
+  missing: number;
+  dueToday: number;
+  dueThisWeek: number;
+  /** Open items with no due or lock date: not ranked. */
+  undated: number;
+  notYetOpen: number;
+  estimatedBy: { code: number; model: number; student: number };
+}
+export interface AgendaClassMeeting {
+  key: string;
+  courseKey: string;
+  title: string;
+  startsAt: string;
+}
+export interface AgendaNarration {
+  /** model: every shown line is the model's; partial: some fell back to code; code: none cached. */
+  status: "model" | "partial" | "code";
+  /** The hash the narration is cached under; it changes when the top items' facts or the day change. */
+  factHash: string;
+  /** Model lines code dropped because a number or date didn't match the facts. */
+  dropped: number;
+}
+export interface BootstrapCourse {
+  accountScope: string;
+  courseId: string;
+  courseName: string;
+  included: boolean;
+  open: number;
+  missing: number;
+  nextDueAt: string | null;
+}
+export type AgendaQueryResult =
+  | {
+      view: "agenda.ranked";
+      generatedAt: string;
+      timeZone: string;
+      items: AgendaItem[];
+      /** Ranked items in scope (items holds the first `limit`). */
+      total: number;
+      /** Flagged and not ranked: closed without a submission, or overdue past the window. Never hidden. */
+      missing: AgendaItem[];
+      counts: AgendaCounts;
+      /** Class meetings for display only; never ranked. */
+      classes: AgendaClassMeeting[];
+      narration: AgendaNarration;
+      modelCalls: 0;
+    }
+  | {
+      view: "workspace.bootstrap";
+      generatedAt: string;
+      timeZone: string;
+      fixtureMode: boolean;
+      lastSyncAt: string | null;
+      sources: { total: number; ok: number; attention: number };
+      courses: BootstrapCourse[];
+      agenda: { items: AgendaItem[]; total: number; missing: number; counts: AgendaCounts; classes: AgendaClassMeeting[]; narration: AgendaNarration };
+      modelCalls: 0;
+    };
+// end owner: agenda
 /** A list row: a resource without its bodies (text, raw HTML, parts, document pages). */
 export type ResourceSummary = Omit<
   ResourceView,
@@ -1579,8 +1729,9 @@ export type QueryResult =
       message: string | null;
       modelCalls: 0;
       guide: unknown;
-    };
-// end owner: guides
+    }
+  // end owner: guides
+  | AgendaQueryResult; // owner: agenda
 // end owner: T15
 export const commandSchema = z.discriminatedUnion("type", [
   z
