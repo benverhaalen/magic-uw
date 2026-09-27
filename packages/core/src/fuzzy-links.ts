@@ -3,6 +3,7 @@ import type {
   Store,
   Resource,
   Link,
+  SourceHealth,
   LinkCandidate,
   LinkCandidateFeatures,
   LinkCandidateListing,
@@ -102,6 +103,8 @@ function isAssignment(r: Resource) {
 function isCandidateTarget(r: Resource) {
   if (r.kind !== "material" && r.kind !== "message") return false;
   if (r.module || r.assignmentGroup) return false;
+  // The student's own submissions, feedback, and repositories are not course material.
+  if (r.submission || r.gitlab) return false;
   if (/\/files\/folder\//.test(r.url)) return false;
   const type = r.moduleItem?.type;
   // An Assignment/Quiz/Discussion module item *is* an assignment pointer (identity, not support).
@@ -113,38 +116,43 @@ function bodyText(r: Resource) {
   return `${r.text}\n${pages}`.slice(0, 50000);
 }
 
-/** Compute scored candidates for one assignment without writing anything. */
-export function scoreEvidenceCandidates(
-  store: Store,
-  assignmentId: string,
-  params: FuzzyLinkParams = defaultFuzzyLinkParams,
-): { assignment: Resource; scored: (LinkCandidate & { target: Resource })[]; considered: number } {
-  const assignment = store.resource(assignmentId);
-  if (!assignment || assignment.deleted || !isAssignment(assignment))
-    throw new Error("Choose an available assignment to find supporting material.");
-  const sources = new Map(store.sources().map((s) => [s.id, s]));
-  const account = sources.get(assignment.sourceId)?.accountScope;
-  if (!account) throw new Error("This assignment has no source scope.");
+/** Read-once view of the store, shared by every assignment in one suggestion pass. */
+export interface SuggestionContext {
+  resources: Resource[];
+  sources: Map<string, SourceHealth>;
+  links: Link[];
+  indexes: Map<string, CourseIndex>;
+}
+interface CourseIndex {
+  course: Resource[];
+  docTokens: Map<string, string[]>;
+  idf: (t: string) => number;
+  moduleOf: Map<string, Set<string>>;
+  resolvedItems: Set<string>;
+  /** Hash of rule version, parameters, and this course's candidate documents. */
+  fingerprint: string;
+}
+export function suggestionContext(store: Store): SuggestionContext {
+  return {
+    resources: store.resources().filter((r) => !r.deleted),
+    sources: new Map(store.sources().map((s) => [s.id, s])),
+    links: store.links(),
+    indexes: new Map(),
+  };
+}
+function courseIndex(
+  ctx: SuggestionContext,
+  account: string,
+  courseId: string,
+  params: FuzzyLinkParams,
+): CourseIndex {
+  const cacheKey = JSON.stringify([account, courseId]);
+  const cached = ctx.indexes.get(cacheKey);
+  if (cached) return cached;
   // Scope before scoring: same account AND same course, never across terms or sections.
-  const course = store
-    .resources()
-    .filter(
-      (r) =>
-        !r.deleted &&
-        r.courseId === assignment.courseId &&
-        sources.get(r.sourceId)?.accountScope === account,
-    );
-  const exactOrIdentity = new Set(
-    store
-      .links()
-      .filter(
-        (l) =>
-          (l.type === "specifies" || l.type === "same_as") &&
-          (l.fromId === assignment.id || l.toId === assignment.id),
-      )
-      .map((l) => (l.fromId === assignment.id ? l.toId : l.fromId)),
+  const course = ctx.resources.filter(
+    (r) => r.courseId === courseId && ctx.sources.get(r.sourceId)?.accountScope === account,
   );
-
   // Course-local idf over every document in this course so common words ("homework") weigh little.
   const docTokens = new Map(course.map((r) => [r.id, tokens(`${r.title}\n${bodyText(r)}`)]));
   const df = new Map<string, number>();
@@ -152,6 +160,85 @@ export function scoreEvidenceCandidates(
     for (const t of new Set(list)) df.set(t, (df.get(t) ?? 0) + 1);
   const n = Math.max(course.length, 1);
   const idf = (t: string) => Math.log(1 + n / (1 + (df.get(t) ?? 0))) || 0.01;
+  // Module membership from module-item captures (scope `module-items:<moduleId>`).
+  const moduleOf = new Map<string, Set<string>>();
+  const addModule = (id: string, moduleId: string) =>
+    moduleOf.set(id, new Set([...(moduleOf.get(id) ?? []), moduleId]));
+  const byUrl = new Map<string, Resource[]>();
+  for (const r of course) {
+    const k = normalizedUrl(r.url);
+    byUrl.set(k, [...(byUrl.get(k) ?? []), r]);
+  }
+  const byExternalId = new Map<string, Resource[]>();
+  for (const r of course)
+    if (!r.moduleItem) byExternalId.set(r.externalId, [...(byExternalId.get(r.externalId) ?? []), r]);
+  // A module item whose content was captured separately is a pointer; suggest the content, not both.
+  const resolvedItems = new Set<string>();
+  for (const item of course) {
+    if (!item.moduleItem) continue;
+    const moduleId = ctx.sources.get(item.sourceId)?.scope.match(/^module-items:(.+)$/)?.[1];
+    if (moduleId) addModule(item.id, moduleId);
+    const contentId = item.moduleItem.contentId;
+    const pointed = [
+      ...(contentId ? (byExternalId.get(contentId) ?? []) : []),
+      ...(item.links ?? []).flatMap(
+        (pointer) => byUrl.get(normalizedUrl(typeof pointer === "string" ? pointer : pointer.url)) ?? [],
+      ),
+    ].filter((r) => r.id !== item.id);
+    if (pointed.length) resolvedItems.add(item.id);
+    if (moduleId) for (const r of pointed) addModule(r.id, moduleId);
+  }
+  // One document captured twice (a listing row and its fetched body) is suggested once: keep the fullest.
+  for (const same of byUrl.values()) {
+    const targets = same.filter((r) => isCandidateTarget(r) && !resolvedItems.has(r.id));
+    if (targets.length < 2) continue;
+    const keep = targets.reduce((a, b) =>
+      bodyText(b).length > bodyText(a).length || (bodyText(b).length === bodyText(a).length && b.id < a.id) ? b : a,
+    );
+    for (const r of targets) if (r.id !== keep.id) resolvedItems.add(r.id);
+  }
+  const fingerprint = hash(
+    JSON.stringify([
+      FUZZY_LINK_VERSION,
+      params,
+      course
+        .filter((r) => isCandidateTarget(r) || r.moduleItem)
+        .map((r) => `${r.id}:${r.contentHash}`)
+        .sort(),
+    ]),
+  );
+  const index = { course, docTokens, idf, moduleOf, resolvedItems, fingerprint };
+  ctx.indexes.set(cacheKey, index);
+  return index;
+}
+
+/** Compute scored candidates for one assignment without writing anything. */
+export function scoreEvidenceCandidates(
+  store: Store,
+  assignmentId: string,
+  params: FuzzyLinkParams = defaultFuzzyLinkParams,
+  ctx: SuggestionContext = suggestionContext(store),
+): { assignment: Resource; scored: (LinkCandidate & { target: Resource })[]; considered: number } {
+  const assignment = ctx.resources.find((r) => r.id === assignmentId);
+  if (!assignment || assignment.deleted || !isAssignment(assignment))
+    throw new Error("Choose an available assignment to find supporting material.");
+  const account = ctx.sources.get(assignment.sourceId)?.accountScope;
+  if (!account) throw new Error("This assignment has no source scope.");
+  const { course, docTokens, idf, moduleOf, resolvedItems } = courseIndex(
+    ctx,
+    account,
+    assignment.courseId,
+    params,
+  );
+  const exactOrIdentity = new Set(
+    ctx.links
+      .filter(
+        (l) =>
+          (l.type === "specifies" || l.type === "same_as") &&
+          (l.fromId === assignment.id || l.toId === assignment.id),
+      )
+      .map((l) => (l.fromId === assignment.id ? l.toId : l.fromId)),
+  );
   function vector(list: string[]) {
     const tf = new Map<string, number>();
     for (const t of list) tf.set(t, (tf.get(t) ?? 0) + 1);
@@ -170,31 +257,6 @@ export function scoreEvidenceCandidates(
   const assignmentPhrase = phrase(bodyText(assignment));
   const assignmentNumbers = smallNumbers(assignment.title);
 
-  // Module membership from module-item captures (scope `module-items:<moduleId>`).
-  const moduleOf = new Map<string, Set<string>>();
-  const addModule = (id: string, moduleId: string) =>
-    moduleOf.set(id, new Set([...(moduleOf.get(id) ?? []), moduleId]));
-  const byUrl = new Map<string, Resource[]>();
-  for (const r of course) {
-    const k = normalizedUrl(r.url);
-    byUrl.set(k, [...(byUrl.get(k) ?? []), r]);
-  }
-  // A module item whose content was captured separately is a pointer; suggest the content, not both.
-  const resolvedItems = new Set<string>();
-  for (const item of course) {
-    if (!item.moduleItem) continue;
-    const moduleId = sources.get(item.sourceId)?.scope.match(/^module-items:(.+)$/)?.[1];
-    if (moduleId) addModule(item.id, moduleId);
-    const contentId = item.moduleItem.contentId;
-    const pointed = [
-      ...course.filter((r) => r.id !== item.id && !r.moduleItem && !!contentId && r.externalId === contentId),
-      ...(item.links ?? []).flatMap(
-        (pointer) => byUrl.get(normalizedUrl(typeof pointer === "string" ? pointer : pointer.url)) ?? [],
-      ),
-    ].filter((r) => r.id !== item.id);
-    if (pointed.length) resolvedItems.add(item.id);
-    if (moduleId) for (const r of pointed) addModule(r.id, moduleId);
-  }
   const targets = course.filter(
     (r) =>
       r.id !== assignment.id &&
@@ -306,33 +368,39 @@ function explain(f: LinkCandidateFeatures, score: number) {
  * with a versioned judgment of their features, then list them together with any earlier decisions
  * that still apply to the current evidence. Below the threshold nothing is recorded: abstain.
  */
-export function suggestEvidenceLinks(
-  store: Store,
-  assignmentId: string,
-  now: string,
-  overrides: Partial<Omit<FuzzyLinkParams, "weights">> & { weights?: Partial<FuzzyLinkParams["weights"]> } = {},
-): LinkCandidateListing {
-  const params: FuzzyLinkParams = {
+export type FuzzyLinkOverrides = Partial<Omit<FuzzyLinkParams, "weights">> & {
+  weights?: Partial<FuzzyLinkParams["weights"]>;
+};
+function resolveParams(overrides: FuzzyLinkOverrides): FuzzyLinkParams {
+  return {
     ...defaultFuzzyLinkParams,
     ...overrides,
     weights: { ...defaultFuzzyLinkParams.weights, ...overrides.weights },
   };
-  const { assignment, scored, considered } = scoreEvidenceCandidates(store, assignmentId, params);
+}
+export function suggestEvidenceLinks(
+  store: Store,
+  assignmentId: string,
+  now: string,
+  overrides: FuzzyLinkOverrides = {},
+  ctx: SuggestionContext = suggestionContext(store),
+): LinkCandidateListing {
+  const params = resolveParams(overrides);
+  const { assignment, scored, considered } = scoreEvidenceCandidates(store, assignmentId, params, ctx);
   const current = new Map(
-    store
-      .links()
+    ctx.links
       .filter((l) => l.id.startsWith("fuzzy:") && l.toId === assignment.id)
       .map((l) => [l.id, l]),
   );
   const listed: LinkCandidate[] = [];
+  let proposed = 0;
   for (const candidate of scored) {
     const existing = current.get(candidate.linkId);
-    const decided = existing && existing.status !== "proposed";
-    const above =
-      candidate.score >= params.minScore &&
-      listed.filter((c) => c.status === "proposed").length < params.maxCandidates;
+    const decided = !!existing && existing.status !== "proposed";
+    const above = candidate.score >= params.minScore && proposed < params.maxCandidates;
     // Student decisions on unchanged evidence stay visible even if parameters changed since.
     if (!above && !decided) continue;
+    if (!decided) proposed++;
     const { target, ...rest } = candidate;
     // Re-proposal keeps a rejection (storage never overwrites it) so it is not silently restored.
     store.putLink({
@@ -360,8 +428,12 @@ export function suggestEvidenceLinks(
       },
       createdAt: now,
     });
-    const stored = store.links().find((l) => l.id === candidate.linkId);
-    listed.push({ ...rest, status: stored?.status ?? "proposed" });
+    listed.push(rest);
+  }
+  if (listed.length) {
+    // One read after writing: a stale rejection re-attached by putLink comes back as rejected.
+    const status = new Map(store.links().map((l) => [l.id, l.status]));
+    for (const c of listed) c.status = status.get(c.linkId) ?? "proposed";
   }
   const top = scored[0]?.score ?? null,
     runnerUp = scored[1]?.score ?? null;
@@ -375,6 +447,112 @@ export function suggestEvidenceLinks(
     runnerUpMargin: top !== null && runnerUp !== null ? round(top - runnerUp) : null,
     candidates: listed,
   };
+}
+
+export interface SuggestionPassOptions {
+  now: string;
+  /** Stop starting new assignments after this much wall time; the rest wait for the next sync. */
+  budgetMs?: number;
+  /** At most this many assignments are rescored per pass. */
+  maxAssignments?: number;
+  /** Courses the student excluded are skipped. */
+  include?: (r: Resource) => boolean;
+  overrides?: FuzzyLinkOverrides;
+  clock?: () => number;
+}
+export interface SuggestionPassReport {
+  assignments: number;
+  unchanged: number;
+  rescored: number;
+  deferred: number;
+  failed: number;
+  suggested: number;
+}
+export const SUGGESTION_PASS_LIMITS = { budgetMs: 250, maxAssignments: 100 };
+const scanKey = (r: Resource) => `${FUZZY_LINK_VERSION}:scan:${r.id}:${r.contentHash}`;
+
+/**
+ * Background pass after ingestion. Incremental: an assignment is rescored only when its own
+ * content hash changed (its scan marker no longer matches) or its course's candidate-document
+ * fingerprint differs from the one recorded in that marker. Bounded by time and count; skipped
+ * work is picked up by the next pass. Per-assignment failures are counted, never thrown.
+ */
+export function refreshEvidenceSuggestions(
+  store: Store,
+  options: SuggestionPassOptions,
+): SuggestionPassReport {
+  const clock = options.clock ?? (() => performance.now());
+  const started = clock();
+  const budgetMs = options.budgetMs ?? SUGGESTION_PASS_LIMITS.budgetMs;
+  const maxAssignments = options.maxAssignments ?? SUGGESTION_PASS_LIMITS.maxAssignments;
+  const params = resolveParams(options.overrides ?? {});
+  const ctx = suggestionContext(store);
+  const markers = new Map(
+    store
+      .judgments()
+      .filter((j) => j.questionVersion === FUZZY_LINK_VERSION && j.key.includes(":scan:"))
+      .map((j) => [j.key, j]),
+  );
+  // Account-level to-do/upcoming rows are summary copies of course assignments; scan the originals.
+  const assignments = ctx.resources.filter(
+    (r) =>
+      isAssignment(r) &&
+      !ctx.sources.get(r.sourceId)?.scope.startsWith("account-") &&
+      (options.include?.(r) ?? true),
+  );
+  const report: SuggestionPassReport = {
+    assignments: assignments.length,
+    unchanged: 0,
+    rescored: 0,
+    deferred: 0,
+    failed: 0,
+    suggested: 0,
+  };
+  const pending: { r: Resource; fingerprint: string }[] = [];
+  for (const r of assignments) {
+    const account = ctx.sources.get(r.sourceId)?.accountScope;
+    if (!account) continue;
+    const fingerprint = courseIndex(ctx, account, r.courseId, params).fingerprint;
+    const marker = markers.get(scanKey(r));
+    if (
+      marker?.inputHash === r.contentHash &&
+      (marker.result as { courseFingerprint?: string }).courseFingerprint === fingerprint
+    )
+      report.unchanged++;
+    else pending.push({ r, fingerprint });
+  }
+  // Most useful first: incomplete work due soonest, then undated, then past or completed.
+  const nowMs = Date.parse(options.now);
+  const priority = (r: Resource) => {
+    const due = time(r.dueAt) ?? time(r.deadlines.find((d) => d.kind === "due")?.value);
+    if (r.completed) return 4e15;
+    if (due === null) return 2e15;
+    return due >= nowMs ? due : 3e15 - due;
+  };
+  pending.sort((a, b) => priority(a.r) - priority(b.r));
+  for (const { r, fingerprint } of pending) {
+    if (report.rescored + report.failed >= maxAssignments || clock() - started >= budgetMs) {
+      report.deferred++;
+      continue;
+    }
+    try {
+      const listing = suggestEvidenceLinks(store, r.id, options.now, options.overrides ?? {}, ctx);
+      store.putJudgment({
+        key: scanKey(r),
+        resourceId: r.id,
+        inputHash: r.contentHash,
+        model: FUZZY_LINK_MODEL,
+        questionVersion: FUZZY_LINK_VERSION,
+        result: { courseFingerprint: fingerprint, candidates: listing.candidates.length },
+        createdAt: options.now,
+      });
+      report.rescored++;
+      report.suggested += listing.candidates.filter((c) => c.status === "proposed").length;
+    } catch {
+      report.failed++;
+    }
+  }
+  return report;
 }
 
 /** Stored fuzzy-link judgments whose assignment AND target evidence are both still current. */

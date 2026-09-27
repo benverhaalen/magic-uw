@@ -6,6 +6,7 @@ import {
   type CaptureBatch,
   type Resource,
   type ResourceInput,
+  type CaptureDiagnostic,
 } from "@magic/contracts";
 import {
   canvasConnector,
@@ -36,6 +37,7 @@ import {
   linkExactEvidence,
   evidenceFor,
 } from "../../../packages/core/src/evidence";
+import { refreshEvidenceSuggestions } from "../../../packages/core/src/fuzzy-links";
 import { canvasContent } from "../../../packages/connectors/src/canvas-content";
 
 export interface IngestionHost {
@@ -73,6 +75,37 @@ export function createIngestion(store: Store, host: IngestionHost) {
     nextWeekInstructionsMs: number | undefined;
   let rateLimitRemaining: number | undefined, requestCost: number | undefined;
   const sourceIds = new Set<string>();
+  let suggestionDiagnostics: CaptureDiagnostic[] = [];
+  /**
+   * Proposed-only supporting-material suggestions, so they appear after a normal sync with no
+   * student action. Incremental and bounded (see refreshEvidenceSuggestions); a failure here is a
+   * recorded diagnostic and never fails or delays the saved capture.
+   */
+  function suggestSupportingMaterial() {
+    try {
+      const report = refreshEvidenceSuggestions(store, {
+        now: now().toISOString(),
+        include: courseInclusion(store),
+      });
+      if (report.failed)
+        suggestionDiagnostics.push({
+          code: "evidence_suggestions_failed",
+          path: ["evidence", "suggestions", String(report.failed)],
+          severity: "warning",
+        });
+      if (report.deferred)
+        suggestionDiagnostics.push({
+          code: "evidence_suggestions_deferred",
+          path: ["evidence", "suggestions", String(report.deferred)],
+        });
+    } catch {
+      suggestionDiagnostics.push({
+        code: "evidence_suggestions_failed",
+        path: ["evidence", "suggestions"],
+        severity: "warning",
+      });
+    }
+  }
   function hasIncompleteRead() {
     const included = courseInclusion(store);
     return store
@@ -494,6 +527,7 @@ export function createIngestion(store: Store, host: IngestionHost) {
           save(batch);
     }
     linkExactEvidence(store);
+    suggestSupportingMaterial();
     const included = courseInclusion(store),
       evidence = evidenceFor(store);
     const nextWeek = store
@@ -527,6 +561,7 @@ export function createIngestion(store: Store, host: IngestionHost) {
       firstValueMs = undefined;
       nextWeekInstructionsMs = undefined;
       sourceIds.clear();
+      suggestionDiagnostics = [];
       rateLimitRemaining = undefined;
       requestCost = undefined;
     },
@@ -605,7 +640,7 @@ export function createIngestion(store: Store, host: IngestionHost) {
           rateLimitRemaining,
           requestCost,
         },
-        diagnostics: [],
+        diagnostics: suggestionDiagnostics.slice(0, 20),
       });
     },
   });
