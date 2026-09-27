@@ -8,26 +8,49 @@ The student outcome is that Refresh captures accessible instructions and linked 
 
 ## Implementation handoff — September 26, 2026
 
-Human owner: Ben. Driver: Codex. Local implementation branch: `codex/sync-resilience` (code not pushed). Latest inspected main: `3561a34`; Nathaniel’s backend landed in `780aaed` while this work was underway. The local implementation began from `f850ea7` with the earlier main changes reconciled; rebasing the implementation onto the newly integrated main is the next integration step.
+Human owner: Ben. Driver: Codex. Implementation is local on `codex/sync-resilience-integrated`, based on main `abe8b3a`; product code is **not pushed or released**. The preceding worktrees are preserved. Nate's T17 scheduler, latest study generation/practice integration, and product rename are included in the new base. T17 conflict reconciliation is in progress: preserve request pacing and reuse while bypassing cached responses for identity, file authorization and explicit page freshness. Reconnect must abort/drain the previous run before a new-session refresh. Learning retains **v8**, and access observations use **v9**.
 
-**Student journey:** Refresh an included course → capture accessible module/page/file evidence despite restricted listings → search/read captured material → inspect Sources for current access separately from a saved copy → restart or retry without losing earlier evidence or falsely requiring sign-in.
+**Student journey:** Refresh an included course → capture accessible module/page/file evidence despite restricted listings → search/read captured material → inspect Sources for access separately from a saved copy → restart or retry without losing earlier evidence or falsely requiring sign-in.
 
-**Implemented locally, still under verification:**
+### Implemented locally
 
-- One bounded, validated module reader shared by normalization, inventory and content fingerprints; reuse is account/run scoped.
-- Typed Canvas file references, including module-only and body-linked files; fresh authenticated metadata authorizes download through the existing document pipeline. Bounded page traversal and direct page/file revalidation cover changes that leave module membership unchanged.
-- Durable course-space observations and a scoped `courseSpaces` query, shown in the existing Sources view. Storage migration **8** adds honest `unknown` access and nullable `checkedAt`; saved content does not itself establish current access.
-- String-safe Canvas identifiers, bounded authentication confirmation, fair file scheduling, and external crawl continuation that does not repeatedly consume its budget on cached pages. Existing external default remains 300 pages, capped at 1,000.
+- One validated module reader shared by normalization, inventory and content fingerprints. Inline items use checked pagination fallback when absent or untrustworthy; partial neighbors survive. Reuse is account/run scoped and cancellation invalidates it.
+- Typed Canvas file references, including module-only and body-linked files and global/course-scoped download/preview aliases. Fresh authenticated metadata authorizes the existing document pipeline; capability URLs never become source identity. Current extraction failures replace current extracted text honestly, while history remains retained.
+- Bounded nested page discovery and direct page/file revalidation cover changes that leave module membership unchanged. Successful probe components remain comparable when other components fail. A missing body cannot replace saved content with an empty success.
+- Durable course-space observations and a scoped `courseSpaces` query in the existing Sources view. **Migration 9** adds `unknown` access and nullable `checkedAt`; cached content and unchanged-page reuse cannot fabricate a new successful check. Saved-copy identity follows scoped file aliases.
+- String-safe Canvas requests, bounded authentication confirmation, and file scheduling that mixes urgent with older undated work. Stable denied coverage does not force a full read on every hot tick.
+- External continuation traverses cached ancestors without charging them against new-page/network-attempt budgets. Default remains **300**, hard cap **1,000**. Exact evidence links retain independent uses, enforce account/course identity, and invalidate when either endpoint changes.
 
-**Shared interfaces:** `canvas-modules.ts` supplies run-local acquisition results to `canvas.ts`, `canvas-inventory.ts`, and `canvas-selection.ts`; `canvas-references.ts` resolves exact scoped file identities. Desktop ingestion uses the existing document manager and storage. `course-space-storage.ts` adapts inventory/access observations to existing course-space storage; contracts/core add the scoped query. `App.tsx` only mounts course-space details in Sources. Coordinate migration numbering before another schema change. The separate course-page/notebook lane should reuse these observations rather than infer access from cached text or duplicate the reader.
+### Interfaces and limits
 
-**Evidence so far:** targeted module/inventory tests passed (33); persistence tests passed (16); three synthetic sync-resilience tests passed, including listed-vs-linked file deduplication, changed files, locked files retaining saved evidence, and unreadable replacement content. These results precede the newest edits. A subsequent typecheck found a nullable page-body issue awaiting correction. Refresh request-count expectations and the latest page/external-drain changes need rerunning. Full suite, rendered Sources journey, and latest-main reconciliation remain unfinished. No live UW verification or production performance claim.
+`canvas-modules.ts` supplies run-local acquisition results to `canvas.ts`, `canvas-inventory.ts`, and `canvas-selection.ts`. `canvas-references.ts` resolves exact scoped file identities. Content probes additionally expose successful per-course `components`; the refresh coordinator merges these against prior observations without treating missing signals as deletion. Desktop ingestion uses the existing document manager and storage. `course-space-storage.ts` adapts inventory/access observations; contracts/core add the scoped query. `App.tsx` mounts course-space details only in Sources.
 
-**Next work:** reconcile against integrated main while preserving other teams’ changes; fix the outstanding type error; verify bounded late discovery, partial/denied recovery, stale evidence, restart persistence and request budgets; run appropriate full checks and a headless rendered journey; update this handoff with final results. Code remains local until published explicitly. Historical research below records how the plan was derived; statements about older branch availability are dated observations, not current release status.
+File work starts at most 100 distinct account/course/file jobs per run, with a 120-second scheduling budget shared across initial and late-discovery drains. Page revalidation is bounded to 20 starts/60 seconds per pass. Deferred material remains discoverable from persisted links and rotates ahead of recently attempted work; these bounds do **not** guarantee every item is fresh within 15 minutes. Existing extraction/network limits still govern in-flight work. External traversal retains a 10,000-entry frontier and 120-second guard; failed network attempts stop at twice the page cap.
+
+The course-page/notebook lane should reuse these observations rather than infer access from cached text or duplicate acquisition. Coordinate migration numbering before another schema change. Catalog-role selection and optional classifier fallback policy remain the existing implementation; this work does not add a new classifier, scheduler, login mechanism or hosted data path.
+
+### Verification and measured tradeoff
+
+On the preceding `18a8486` base, the full suite completed with **665 tests: 664 passed, one skipped**. Type checking and the hidden Electron renderer → preload → worker → SQLite smoke check passed, including synthetic import and local purge. The final shared-file-budget regression also passed separately. These checks do not establish the new T17 integration; its checks and request measurements are pending.
+
+A headless browser drove normal sample onboarding → Sources → material access → opening a saved reading. An unavailable item retained its saved-copy timestamp; an unchecked item had no check timestamp. A deliberately injected query failure showed recovery instructions, and closing/reopening recovered. This uses the actual scoped core query and temporary SQLite through the preview bridge. Reproduce with `MAGIC_PREVIEW_SYNC_FIXTURE=1 pnpm preview` after `pnpm build`, then load the sample course. It is explicitly synthetic, with no live UW or hosted AI connections.
+
+Synthetic five-course request measurements **before T17 integration**:
+
+| Fixture | Full read | Unchanged hot tick | Content tick including direct revalidation |
+| --- | ---: | ---: | ---: |
+| Base university | 123 | 2 | 38 |
+| Eight modules / twelve pages per course | 188 | 2 | 48 |
+
+Direct content checks intentionally increase the content tick above the old metadata-only budget: about 26–31% of a full read in these fixtures. The hot tick remains two requests. The two-hot-plus-one-content average is about 9–11% of repeated full reads. This is request-count evidence, not live latency or UW coverage. Tests also cover 602 cached crawl ancestors, the 1,000-page maximum, bounded failures, actual v8→v9 migration preserving learning rows, restart/account separation and endpoint-version invalidation. Existing real local PDF extraction tests run in the full suite; the new restricted-index integration test uses a synthetic text extractor.
+
+**Remaining delivery boundary:** code is local, not on a remote branch or main. No live UW compatibility, production latency, representative OCR quality or account-switch usability claim is made. Documentation is published for coordination. Historical research below preserves the reasoning and dated branch observations; use this handoff for current implementation status.
+
+**Current integration checkpoint:** T17 reconciliation and session-boundary regression checks are underway. Request measurements below describe the preceding implementation and must be rerun against the integrated scheduler. No live UW verification is claimed.
 
 ## Implementation architecture after independent review
 
-**Proposed, not implemented.** This section supersedes earlier recommendations below where they differ. Baseline: Nate's pushed `f850ea7`. A fresh agent received the original request, planning skill, backend specifications and pushed code without this report or a preferred answer. Its independent review supported a shared acquisition pipeline and challenged three assumptions: increasing the crawl cap is not inherently better; an unchanged module signature does not prove linked content is unchanged; cached content does not prove current access. The driver checked the relevant code seams. Agreement is not execution evidence.
+**Accepted architecture, implemented locally as described above; not released.** This section supersedes earlier recommendations below where they differ. Baseline: Nate's pushed `f850ea7`. A fresh agent received the original request, planning skill, backend specifications and pushed code without this report or a preferred answer. Its independent review supported a shared acquisition pipeline and challenged three assumptions: increasing the crawl cap is not inherently better; an unchanged module signature does not prove linked content is unchanged; cached content does not prove current access. The driver checked the relevant code seams. Agreement is not execution evidence.
 
 ### Outcome and representative slice
 
