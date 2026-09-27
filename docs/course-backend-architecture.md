@@ -1,6 +1,6 @@
 # My Magic UW course backend: architecture
 
-**Status:** state as of 2026-09-26 late, branch `feat/course-backend` at `b496d0a`. The branch is local for now. It gets pushed after the team's release cleanup, so its commits are re-applied onto the cleaned `main`. The commit IDs below will change when that happens; the commit subjects won't.
+**Status:** the course backend is on `main`: it landed through PR #6 and the PRs after it, and main is at schema v13 as of `699e386`, 2026-09-27. The current status of each part is in [How My Magic UW works](how-it-works.md). Sections 6–8 below keep the build-time record, and the commit IDs there refer to the original lane branches.
 **Companion:** [My Magic UW: product direction](magic-canvas-direction.md) holds the product facts: what the student gets, the surfaces, pricing and the roadmap. This document holds the technical facts. The build itself is specified in [the course-backend plan folder](plans/2026-09-26-course-backend/): [spec](plans/2026-09-26-course-backend/spec.md), [plan](plans/2026-09-26-course-backend/plan.md), [tasks](plans/2026-09-26-course-backend/tasks.md) and [execution](plans/2026-09-26-course-backend/execution.md). Where this summary and the plan folder differ, the plan folder wins.
 
 ## 1. Summary
@@ -14,86 +14,11 @@ The course backend is the local system behind every My Magic UW feature:
 
 **The principle: AI writes, code decides.** Code does whatever has one right answer (dates, IDs, permissions, quotes). Jev makes small typed judgments. The student's AI gets one checked call only where language has to be read or written ([spec §2](plans/2026-09-26-course-backend/spec.md)).
 
-**Status in one sentence:** sign-in, session, consent and the egress gate are integrated on the branch; the AI runtime is tested in isolation; the data layer, per-course sync and learning engines are built on lane branches; nothing has been demonstrated on a real account yet.
-
-**Status labels used here.** This document uses a stricter "integrated" than [spec §1c](plans/2026-09-26-course-backend/spec.md):
-
-| Label | Meaning |
-|---|---|
-| researched | evidence gathered; no specification or code |
-| proposed | specified in the plan folder; no code |
-| built | code exists on a lane branch, not yet merged into `feat/course-backend` |
-| tested in isolation | merged into `feat/course-backend` with passing tests, but the running app doesn't call it yet |
-| integrated | merged, and wired into the running app's path, with the whole suite passing |
-| demonstrated | shown working on a real student account. **Nothing is demonstrated yet.** |
+**Status in one sentence:** see [How My Magic UW works](how-it-works.md). It holds the status of every step, with the same labels (demonstrated live, integrated, tested in isolation, in progress, planned), and this document does not repeat it. Where a table below still reads "proposed" or "not started", how-it-works and `main` are authoritative.
 
 ## 2. Where we are
 
-*This section is updated at each piece boundary. Last update: 2026-09-26 late, `33b1827`. The whole suite passes 540/540 on this branch at that commit (Windows 11), across 67 test files. Full detail, per-file test counts, measurements and the live-trial record are in [the build record](course-backend-build-record.md); this section states only statuses.*
-
-### 2.1 Stage: pieces and lanes
-
-The build ran piece by piece (P0–P14, [execution.md](plans/2026-09-26-course-backend/execution.md)), then as long-lived lanes from about 22:00 CT on 2026-09-26. Every wave-A and wave-B lane named below has since merged into `feat/course-backend`.
-
-| Piece or lane | Scope | Status | Evidence | Next step |
-|---|---|---|---|---|
-| P0 test harness | T05a: Windows-safe suite, per-test-file checks | **integrated (tested in the suite)** | `6199250`; `tests/harness.test.ts` 8/8 | none |
-| P1 sign-in, session, consent | T05d seams, T05c session state and "Keep me signed in", T06 one-checkbox consent and egress | **integrated (tested in the suite)**; one live trial run | `e5430e0`, `d63a515`, `b7fb439`, `b67ab04`, `08af173`, `cb70b7a`, `eb2a033`; tests 8 + 16 + 13 | T05e "Remember my sign-in" waits on H2; re-measure the live trial's sync-efficiency fixes |
-| P2 local database | MT1 baseline; T11a, T10 (schema v6), T10L (v7), T11b; T14 | **merged and tested**: schema v7 migrations run in the app; passage search is not yet called by the app; MT1 "after" measured and thresholds met | merge `39bb062`; `f365af7` (T14); build-record §5.1 | none for the primary thresholds; two secondary MT1 rows (zero-change re-sync growth, ingest slope) still miss their target |
-| P3 Canvas sync and freshness | T05b seams, D32 inventory, D41 access check, D37/T33 per-course freshness, T15 scoped queries | **integrated (tested in the suite)** | merge `bb80f53`; `ec2d61b` (T15) | live-sync efficiency fixes found in the trial (build record §6) |
-| P4 extraction and passages | T11a/T11b (merged); T16 extraction cache, T32 Kaltura, T65 summary tier | T11a/T11b **integrated**; T16, T32, T65 **not started** | see P2 | T16, T32, T65 remain proposed |
-| P5 jobs, Jev, organising | T20 batched item cards, T20b gateway endpoints | **not started** (the drain's job subjects and the pack job's cache/ledger wiring are integrated) | build record §3.4, §7 | T20/T20b after T10 (done) |
-| P6 other sources | T00 probes, T01, T30/T35 Outlook, T36, T31, T34 | **not started**; probes E1 and K1 not run | none | T34 (teachers and TAs); the probes need the operator present |
-| P7 typed academic API | T50a in-process handlers | **not started** | none | after T10 (done) |
-| P8 backend benchmark | MT2, MT7a | **not started** | MT1 done (P2) | after P2–P4 |
-| P9 model runtime and packs | T12 runner, D38 session pool, T40 onboarding detection, T13 pack core, T80 client manager, T81 onboarding screens | **merged and tested (client manager and onboarding screens are wired into the app; runner, session pool and pack core are not yet wired into the worker) (tested in the suite)**; not demonstrated on a real pack run | merges `efc6604`, `9a08a6b`, `a826f41`; build record §3.5, §4 | wire a real, non-synthetic pack run through the worker; D38's pool spikes S1–S10 before it's the default |
-| Learning engines lane | N00, N05–N12, N14, N29, P01, P05, P07, P08, P11, P13, P14, P16 | **merged, tested in isolation** (the app's learning router still answers "not built") | merge `e161b13`; build record §8 | study UI surfaces (P12/P10) |
-| P10 course pass and mapping | T21, T22 | **not started** | none | needs T11b (done), T13 (done), T20 |
-| P11 generation | T57, T58, T64, T45, T53, T41, T44, T46, T42, T48, T52 | **not started** (engines N05, N06, N12 are integrated) | none | after P10 |
-| P12 study system | engines, then T54, T47, T59, T43, P17 | engines **merged, tested in isolation**; UI **not started** | build record §8 | after P11's first packs |
-| P13 platform and secondary | T50b, T55, T51, T38, T56, T62, T63 | **not started** | none | after P7 |
-| P14 close | T60 legal, T61 acceptance | **not started** | none | last (plan §8) |
-
-**Gates:** T02 (the operator signs off the AI boundary, spec §2) is still open. G0 (nothing is pushed until the team's release cleanup is done) holds; no push to `main` has happened.
-
-### 2.2 Progress by area
-
-| Area | Status |
-|---|---|
-| Sign-in and session | **integrated (tested in the suite); demonstrated** in one live trial on the operator's account (sign-in, Duo remember-me, a live bug found and fixed). "Remember my sign-in": proposed (H2) |
-| Consent and egress | **integrated (tested in the suite)** (T06); zero requests before the checkbox held in the live trial; the per-provider onboarding screen is integrated (T81) |
-| Storage and retrieval | **merged and tested**; v7 migrations run in the app, passage search not yet called by the app; MT1 "after" measured, every primary threshold met (build record §5.1) |
-| Sync and freshness | **integrated (tested in the suite)**; live-trial sync ran 65 s / 125 requests for the first sync; efficiency fixes identified, not yet re-measured |
-| Course map and inventory | inventory and access check **integrated (tested in the suite)**; course pass and mapping **proposed** |
-| AI runtime and onboarding | runner, session pool, pack core, client detection, isolated client profiles and the built-in terminal **merged and tested**; client profiles, terminal and onboarding are wired into the app, while runner, pool and packs are not yet wired into the worker (tested in the suite)**; not demonstrated on a real pack run |
-| Generation | **proposed** (verifier and guide engines integrated on the learning lane) |
-| Study and analytics | engines **merged, tested in isolation**; surfaces **proposed** |
-| Platform (D42) | **proposed** |
-| Dictation (D43) | **proposed** |
-| Outlook (D44) | **researched and proposed**; probe E1 not run |
-
-### 2.3 What's left, in build order
-
-**Next:**
-
-| Item | Depends on | Finishing it enables |
-|---|---|---|
-| Wire a real pack run (non-synthetic content) through the worker into the ledger and artifact store | pack job integrated; data lane merged | the first real prompt-pack run, recorded in the ledger |
-| Canvas sync efficiency fixes (`include[]=items`, request pacing, one sync on sign-in) | found live (build record §6) | first full sync in ≤10 s (currently 65 s) |
-| T05e "Remember my sign-in" | H2 | the opt-in encrypted NetID save |
-
-**After:**
-
-| Item | Depends on | Finishing it enables |
-|---|---|---|
-| T20 item cards and T20b gateway endpoints (a PR; the deploy is the operator's say) | T10 (done) | code-first classification with one Jev request per item |
-| T21 course pass, T22 mapping | T11b (done), T13 (done), T20, N05 (done) | settled assessment scopes and the dossier |
-| T57 analyzers, T58 planner, T64 verifiers, then T45, T53, T41, T44, T42 | T21/T22, T13 (done) | quizzes, flashcards, guides and chat, all checked by code |
-| T50a typed academic API | T10 (done) | in-app handlers with caps; the base for the course bank and the platform |
-| T34, T31, T36, T32, then T30 or T35 | probes E1 and K1 | teachers and TAs, feeds, calendar, Kaltura, Outlook |
-| T16, T65, T17 optimizations; MT2 and MT7a | the merged data layer | before-and-after numbers; the first public comparison rows |
-
-**Later:** the study surfaces (T54 levels and the mastery display, T47 "Quiz me on", T59 notes, T43 notebook UI, P17 journey), offline validation (P18–P21), dictation (D43), the course bank and platform (T50b, T55), licence and signed installers (T62, T63), then legal and acceptance (T60, T61).
+Current status, step by step and labelled demonstrated live, integrated, tested in isolation, in progress or planned, is kept in one place: **[How My Magic UW works](how-it-works.md)**. It is checked against `main` (schema v13) and lists the open PRs and branches still in flight ([What is in flight](how-it-works.md#what-is-in-flight)). Tests, measurements and the live trial are in [the build record](course-backend-build-record.md). The piece-by-piece build order (P0–P14) and its remaining tasks are in [execution.md](plans/2026-09-26-course-backend/execution.md) and [tasks.md](plans/2026-09-26-course-backend/tasks.md).
 
 ## 3. System map
 
@@ -107,8 +32,8 @@ flowchart LR
     M <-->|"utilityProcess messages: command, source-fetch, evaluate, presence"| W
     W["Utility worker: Store, ingestion, refresh, job drain, runner"]
     W --> DB[("One SQLite file")]
-    W -->|"spawn, stdin/stdout, tools off"| C["Student's CLI client in an app-owned profile (D45, proposed)"]
-    T["Built-in terminal: the student's own client session (proposed)"] -.-> C
+    W -->|"spawn, stdin/stdout, tools off"| C["Student's Claude Code or Codex: instant mode (flags only) or an app-owned profile (D45, D50)"]
+    T["Built-in terminal: signs in the app-owned profile (main)"] -.-> C
     MCP["mcp-server.cjs: optional course bank"] -.->|"reads"| DB
   end
   M -->|"signed-in reads for the worker"| UW["UW: Canvas, My UW, Enroll, GitLab, Kaltura"]
@@ -120,7 +45,7 @@ flowchart LR
 - **Only main touches the UW session.** The worker asks main for every signed-in read (`source-fetch`) and for every Jev call (`evaluate`); main holds the device credential.
 - **Main's consent gate** checks every channel that can reach the network (§6).
 - **The worker's own public sockets** (course-site crawl, document downloads, calendar feeds, Registrar reads) are wrapped by the same consent check (`apps/desktop/src/worker-clients.ts`).
-- **The MCP server** is a separate, optional process and a read-only reader (T50b, `fix/platform-mcp`): it opens the database with `node:sqlite` `readOnly: true`, never migrates it or takes a `VACUUM INTO` backup, and refuses a database older than its schema ("Open Magic Canvas once"). Its receipts go to an append-only log beside the database (`workspace.sqlite.reader-receipts.jsonl`), which the app imports into `receipts` when it next opens the store. New connection files carry no database path; the reader derives it from the file's folder (`<data>/mcp/<id>.json` → `<data>/workspace.sqlite`); files exported earlier keep working until re-exported. Its tools are an adapter over `@magic/agent-api`'s grant session: search runs on `passage_fts` (BM25, OR) within the grant's account × course pairs, only returned items are scrubbed, and each tool trims to a token budget instead of refusing.
+- **The MCP server** is a separate, optional process and a read-only reader (T50b, `fix/platform-mcp`): it opens the database with `node:sqlite` `readOnly: true`, never migrates it or takes a `VACUUM INTO` backup, and refuses a database older than its schema ("Open My Magic UW once"). Its receipts go to an append-only log beside the database (`workspace.sqlite.reader-receipts.jsonl`), which the app imports into `receipts` when it next opens the store. New connection files carry no database path; the reader derives it from the file's folder (`<data>/mcp/<id>.json` → `<data>/workspace.sqlite`); files exported earlier keep working until re-exported. Its tools are an adapter over `@magic/agent-api`'s grant session: search runs on `passage_fts` (BM25, OR) within the grant's account × course pairs, only returned items are scrubbed, and each tool trims to a token budget instead of refusing.
 
 ### 3.2 Data flow
 
@@ -146,11 +71,17 @@ flowchart TB
     V4["v4 planning: planning_sources, planning_captures, planning_records, planning_versions"]
     V5["v5 course intelligence: course_intelligence"]
   end
-  subgraph OURS["Ours: built on the data lane, not merged"]
+  subgraph OURS["Course backend, on main since PR #6"]
     V6["v6 course core: passages, passage_fts (contentless), course_sessions, assessments, assessment_scope, map_links, life_items, course_spaces, extraction_recipes, course_briefs, material_facts, compile_runs, ledger, ui_events; jobs gain subjects; resource_search dropped"]
     V7["v7 learning and practice: learning_concepts, items, cards, reviews, attempts, artifacts, coverage, sessions, concept state, stars, option tags, views, and the rest of the learning spec's tables"]
+    V8["v8 learning aligned with the canonical engine (learning_cards_v8, learning_reviews_v8)"]
+    V9["v9 course-space access observations"]
+    V10["v10 course graph: external_refs, resource_refs, basis and quote on material_facts"]
+    V11["v11 notes: notes, note_versions, note_links, note_remotes, note_sync_settings"]
+    V12["v12 planning index and capture pruning"]
+    V13b["v13 receipts index for the retention sweep (current)"]
   end
-  V13 --> V4 --> V5 --> V6 --> V7
+  V13 --> V4 --> V5 --> V6 --> V7 --> V8 --> V9 --> V10 --> V11 --> V12 --> V13b
 ```
 
 - Every new table is keyed to `sources(id) ON DELETE CASCADE`, directly or through `resources`. A course is `sources.course_id`; there's no `courses` table.
@@ -166,7 +97,7 @@ The map of what exists is [the backend map](notes/backend-map.md).
 
 | Part on `main` | How the course backend uses it |
 |---|---|
-| **Refresh coordinator** (`packages/core/src/refresh.ts`): a probe before any full read, quiet hours, jitter | kept. We add a cadence table and presence gating (integrated), and per-course probes (built on a lane) |
+| **Refresh coordinator** (`packages/core/src/refresh.ts`): a probe before any full read, quiet hours, jitter | kept. We add a cadence table and presence gating (integrated), and per-course probes that re-read only a course that moved (integrated) |
 | **Job queue and drain** | extended, not replaced: jobs gain a subject and `lease(kinds[])`, and only kinds with a consumer are queued (data lane) |
 | **Judgments cache** (input hash, model, question version) | reused for every Jev judgment. A text hash (O5) lets text judgments survive a submission change |
 | **Links with reasons** | kept for exact links. Jev and course-pass links live in `map_links` with their rung (code, Jev, pass, student) |
@@ -242,7 +173,7 @@ The UI will change with the team's design direction ([DESIGN.md](../DESIGN.md)).
 **Commands** through `magic:execute` (`packages/contracts/src/index.ts`, `commandSchema`):
 - **On `main`:** `snapshot`, `import`, `ingestion-settings`, `course-override`, `mcp-grant`, `fixture`, `complete`, `privacy`, `context`, `enrich`, `link`, `purge`, `planning-guide`, `planning-search`, `planning-sections`, `planning-compare`, `planning-import`.
 - **Ours, integrated:** `consent` (grant or revoke per recipient; the only writer of consent records) and `preview.ack` (the answer to a blocking preview, bound to the payload's hash).
-- **Ours, built on the seams lane (stubs answer `not_built` until their task lands):** `map`, `correct`, `pack`, `ui_event`, `workspace` (the command bar's resolved verb: open, quiz, cards, explain, due), and `learning` with the ops `notebook.*`, `study.*`, `knowledge.*` and `practice.*`.
+- **Ours, added by the course backend** (which of these the running app calls today is in [How My Magic UW works](how-it-works.md); an operation whose task has not landed still answers `not_built`): `map`, `correct`, `pack`, `ui_event`, `workspace` (the command bar's resolved verb: open, quiz, cards, explain, due), and `learning` with the ops `notebook.*`, `study.*`, `knowledge.*` and `practice.*`.
 
 | Surface | Calls |
 |---|---|
@@ -416,7 +347,7 @@ Node 24, pnpm 10.29.2.
 
 ## 11. What's next
 
-The build order is in [§2.3](#23-whats-left-in-build-order). The dependencies between the main pieces:
+The build order is in [execution.md](plans/2026-09-26-course-backend/execution.md) and [tasks.md](plans/2026-09-26-course-backend/tasks.md). The dependencies between the main pieces:
 
 ```mermaid
 flowchart LR
