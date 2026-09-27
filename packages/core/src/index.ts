@@ -22,7 +22,7 @@ import {
 } from "@magic/contracts";
 import { maySend, resolveDeadline } from "@magic/domain";
 import { judgmentResultSchema, type JudgmentGateway } from "@magic/ai";
-import { contentCategories, courseIncluded } from "./access";
+import { contentCategories, courseIncluded, courseInclusion } from "./access";
 import { evidenceFor, linkExactEvidence } from "./evidence";
 import { rebaseFixture } from "./fixture-dates";
 export { rebaseFixture } from "./fixture-dates";
@@ -306,6 +306,9 @@ export function createCore(store: Store, options: CoreOptions) {
   async function extractCourses() {
     if (!options.courseExtractor || closed) return;
     for (const profile of store.courseIntelligence()) {
+      // Let interactive IPC run between profiles; reuse access lookup within this synchronous batch.
+      await new Promise<void>(resolve => setImmediate(resolve));
+      if (closed) return;
       const key = `${profile.id}:${profile.inputHash}:${options.courseExtractor.version ?? "v1"}`;
       if (
         options.courseExtractor.version &&
@@ -323,15 +326,16 @@ export function createCore(store: Store, options: CoreOptions) {
         continue;
       const attemptedAt = now();
       semanticAttempts.set(key, { status: "running", attemptedAt });
+      const included = courseInclusion(store);
       const resources = profile.dependencies
         .map((d) => store.resource(d.resourceId))
         .filter(
           (r): r is Resource =>
             !!r &&
             !r.deleted &&
-            courseIncluded(store, r) &&
             !r.gitlab &&
-            (r.externalId === "syllabus" || r.kind === "assignment"),
+            (r.externalId === "syllabus" || r.kind === "assignment") &&
+            included(r),
         );
       if (!resources.length) {
         semanticAttempts.set(key, { status: "unavailable", attemptedAt });
