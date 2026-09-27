@@ -12,6 +12,14 @@ export function normaliseText(s: string): string {
 
 const words = (s: string) => normaliseText(s).split(" ").filter(Boolean);
 
+/**
+ * What makes two options the same answer. Maths (TeX, or symbols such as - + = ^ / *) is compared
+ * with its symbols kept, so e^{-j\omega n} and e^{j\omega n} stay two different options; other
+ * text compares by its words, as before. (owner: study-prep)
+ */
+const MATHS = /[$\\^_=+\-*/<>]/;
+export const optionKey = (s: string): string => (MATHS.test(s) ? s.toLowerCase().replace(/\s+/g, "") : normaliseText(s));
+
 export interface SchemaInput {
   kind: ItemKind;
   stem: string;
@@ -28,7 +36,7 @@ export function schemaProblem(i: SchemaInput): string | null {
     if (opts.length < lo || opts.length > hi) return `${i.kind === "mc" ? "a multiple-choice item needs 3–5" : "a true/false item needs 2"} options, not ${opts.length}`;
     if (new Set(opts.map((o) => o.id)).size !== opts.length) return "duplicate option IDs";
     if (opts.some((o) => !normaliseText(o.text))) return "an empty option";
-    if (new Set(opts.map((o) => normaliseText(o.text))).size !== opts.length) return "duplicate options";
+    if (new Set(opts.map((o) => optionKey(o.text))).size !== opts.length) return "duplicate options";
     if (typeof i.key !== "string" || opts.filter((o) => o.id === i.key).length !== 1) return "exactly one key is needed";
     return null;
   }
@@ -55,7 +63,7 @@ export function flawProblems(i: SchemaInput, runLength = 4): string[] {
   if (i.kind !== "mc" || !i.options) return problems;
   const opts = i.options;
   if (opts.some((o) => ABOVE.test(o.text))) problems.push('"all/none of the above" option');
-  if (new Set(opts.map((o) => normaliseText(o.text))).size !== opts.length) problems.push("duplicate options");
+  if (new Set(opts.map((o) => optionKey(o.text))).size !== opts.length) problems.push("duplicate options");
   const key = opts.find((o) => o.id === i.key);
   if (!key) return problems;
   const distractors = opts.filter((o) => o.id !== key.id);

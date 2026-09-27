@@ -66,6 +66,8 @@ export interface AskOptions {
   previous?: PreviousExchange | null;
   /** The words to search with: the question without the course it names ("in cs 400"), which no passage contains. */
   searchText?: string;
+  /** owner: study-prep. Only these sources (the Study prepper's ticked Sources); absent: the whole course. */
+  resourceIds?: readonly string[];
 }
 
 const ASSESSMENT_WORD = /\b(exams?|midterms?|finals?|quiz(?:zes)?|tests?)\b/i;
@@ -137,9 +139,13 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
   // A question that refers back is searched with the question it refers to, so "why does it resize" finds its passages.
   const words = options.searchText?.trim() || question;
   const query = previous ? `${previous.question} ${words}` : words;
-  const found = store.searchPassages({ query, courses: courses.map((c) => ({ accountScope: c.accountScope, courseId: c.courseId })), k: 12 });
+  // owner: study-prep: an ask scoped to ticked sources searches wider, then keeps only those sources.
+  const allowed = options.resourceIds ? new Set(options.resourceIds) : null;
+  const wide = store.searchPassages({ query, courses: courses.map((c) => ({ accountScope: c.accountScope, courseId: c.courseId })), k: allowed ? 20 : 12 });
+  const found = allowed ? { ...wide, hits: wide.hits.filter((h) => allowed.has(h.resourceId)).slice(0, 12) } : wide;
   // A one-course exam question also reads what code holds about that course's exams.
-  const facts = courses.length === 1 ? assessmentFacts(store, courses[0]!, question, deps.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone) : { facts: [], pids: [] };
+  const allFacts = courses.length === 1 ? assessmentFacts(store, courses[0]!, question, deps.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone) : { facts: [], pids: [] };
+  const facts = allowed ? { facts: allFacts.facts.filter((f) => allowed.has(f.resourceId)), pids: allFacts.pids } : allFacts;
   // The coverage gate: nothing in the materials or the exam facts supports the question, so no model call.
   const searched = found.notFound ? [] : found.hits;
   if (!searched.length && !facts.facts.length && !facts.pids.length) return none(NOT_IN_MATERIALS);

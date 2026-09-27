@@ -40,6 +40,7 @@ import {
   type WorkGroup,
 } from "./course-view";
 import "./courses.css";
+import { CourseStudyPrep } from "../study-prep"; // owner: study-prep
 
 // owner: course page. The frame the notebook (T43) fills later: its Sources/Notes/Studio replace
 // the Materials section below for the same course key. Everything here renders from saved evidence.
@@ -618,6 +619,9 @@ export function CoursePageView({
         </section>
 
         {selectedId ? null : overview}
+
+        {/* owner: study-prep: one entry per upcoming exam or quiz; renders nothing when there is none */}
+        <CourseStudyPrep courseId={page.courseId} />
 
         {/* T43: the notebook replaces this section with its tiers for the same course key. */}
         <section className="course-section course-materials" aria-labelledby="course-materials">
