@@ -61,12 +61,20 @@ export function createPipelineLoop(options: PipelineLoopOptions): PipelineLoop {
     kinds.map((kind) => [
       kind,
       (job: CourseJob, context: DrainContext) =>
-        options.registry.get(kind)!.run(job, { store: options.store, now: context.now, signal: context.signal }),
+        options.registry.get(kind)!.run(job, { store: options.store, now: context.now, signal: context.signal, heartbeat: context.heartbeat }),
     ]),
   );
+  // owner: course-facts
+  const leaseMsByKind = Object.fromEntries(
+    kinds.flatMap((kind) => {
+      const ms = options.registry.get(kind)!.leaseMs;
+      return ms ? [[kind, ms]] : [];
+    }),
+  );
+  // end owner: course-facts
   const available = (kind: string) => options.registry.get(kind)?.available?.({ store: options.store }) ?? true;
-  const present = createDrain({ store: options.store, handlers, available, now, maxJobs: options.presentSlice ?? 20 });
-  const away = createDrain({ store: options.store, handlers, available, now, maxJobs: options.awaySlice ?? 200 });
+  const present = createDrain({ store: options.store, handlers, available, now, leaseMsByKind, maxJobs: options.presentSlice ?? 20 });
+  const away = createDrain({ store: options.store, handlers, available, now, leaseMsByKind, maxJobs: options.awaySlice ?? 200 });
   const totals: DrainReport = { done: 0, failed: 0, skipped: 0 };
   let isPresent = true,
     syncing = 0,

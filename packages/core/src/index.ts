@@ -197,7 +197,7 @@ export function createCore(store: Store, options: CoreOptions) {
       store
         .jobs()
         .filter((j) => j.kind === "course.facts" && (j.status === "pending" || j.status === "running"))
-        .map((j) => (j as Job & { subjectId?: string }).subjectId ?? ""),
+        .map((j) => (j as { subjectId?: string }).subjectId ?? ""),
     );
     // end owner: course-facts
     return {

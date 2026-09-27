@@ -20,6 +20,7 @@ import { classifyPack, SLOT_GLOSSARY, type ClassifyInput, type ClassifyOutput, t
 import { readPackArtifact, runPack } from "../jobs/pack";
 import { defaultActions } from "./adapters";
 import { groundedAsk } from "./ask";
+import type { CoursePrefixSource } from "../course-facts/prefix"; // owner: course-facts
 import { authorizer } from "./consent";
 import { buildIndex, createResolve, indexSignature, refreshTopics, type IntentIndex } from "./courses";
 import { createRegistry, type ActionRegistry, type AnyAction } from "./registry";
@@ -45,6 +46,8 @@ export interface IntentRouterDeps {
   codePath?: boolean;
   resolverBudgetMs?: number;
   clock?: () => number;
+  /** owner: course-facts. The course prefix (brief + pack catalogue) for a one-course ask. */
+  coursePrefix?: CoursePrefixSource;
 }
 
 const zero = () => ({ in: 0, cached: 0, out: 0 });
@@ -151,7 +154,7 @@ export function createIntentRouter(deps: IntentRouterDeps) {
       signal,
       ask: async (question, courses, s): Promise<AskResult> => {
         const list = courses === "all" ? resolve.courses() : courses;
-        const r = await groundedAsk({ store, runner: () => runnerP, artifacts, ledger, now }, question, list, s);
+        const r = await groundedAsk({ store, runner: () => runnerP, artifacts, ledger, now, ...(deps.coursePrefix ? { coursePrefix: deps.coursePrefix } : {}) /* owner: course-facts */ }, question, list, s);
         spent.tokens = add(spent.tokens, r.tokens);
         return r;
       },

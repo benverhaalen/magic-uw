@@ -14,7 +14,8 @@ import { createClaudeBackend, createSessionPool, type CliCommand, type PoolOptio
 import { GUIDE_PACKS } from "../../packs/guide/src/index";
 // end owner: ai-paths
 import { courseFactsPack } from "./course-facts/extractor"; // owner: course-facts
-import { briefPrompt, createCourseBriefs, type CourseBriefSource } from "./course-facts/brief"; // owner: course-facts
+import { createCourseBriefs, type CourseBriefSource } from "./course-facts/brief"; // owner: course-facts
+import { coursePrefixes } from "./course-facts/prefix"; // owner: course-facts
 import { buildPrompt, packCacheKey, type ArtifactStore, type CourseFrame, type LedgerStore, type PackSpec, type Passage } from "../../packs/core/src/index";
 import { learningArtifactStore, sqlLedgerStore } from "../../packs/core/src/learning-stores";
 import { quizDrafts, quizPack, type Draft, type GenerationInput } from "../../packs/items/src/index";
@@ -202,6 +203,7 @@ export function createPackHandler(deps: PackHandlerDeps) {
   const artifacts = deps.artifacts ?? learningArtifactStore(store.learning, sourceOf);
   // owner: course-facts
   const courseBrief: CourseBriefSource | null = deps.brief === undefined ? createCourseBriefs({ store }).courseBrief : deps.brief;
+  const coursePrefix = coursePrefixes(courseBrief);
   // end owner: course-facts
   const ledger = deps.ledger ?? sqlLedgerStore(store, courseOf);
 
@@ -337,8 +339,14 @@ export function createPackHandler(deps: PackHandlerDeps) {
       topics: concepts.filter((c) => c.kind === "concept").map((c) => c.studentLabel ?? c.label).slice(0, 60),
       focus,
     };
-    const brief = courseBrief?.(s.courseRef); // owner: course-facts
-    const frame: CourseFrame = { ...frameFor(s, units), ...(brief ? { brief: briefPrompt(brief) } : {}) };
+    // owner: course-facts. The course prefix (brief + pack catalogue); the policy line then points at
+    // the brief's AI section instead of repeating every quote.
+    const prefix = coursePrefix(s.courseRef);
+    const base = frameFor(s, units);
+    const frame: CourseFrame = prefix
+      ? { ...base, brief: prefix.text, policy: s.policy ? `${s.policy.mode}: the quotes are in the course brief's AI and collaboration policy section.` : "" }
+      : base;
+    // end owner: course-facts
     return name === "quiz"
       ? execute(quizPack, quizDrafts, name, scope, s, passages, resourceOf, input, frame, signal, options)
       : execute(cardsPack, cardDrafts, name, scope, s, passages, resourceOf, input, frame, signal, options);
@@ -483,7 +491,7 @@ export function createPackHandler(deps: PackHandlerDeps) {
   }
   // owner: guides. The study-guide kinds (guide, briefing, faq, timeline, compare, conceptmap)
   // and `<kind>-view`, the 0-token personalised view (op "guide.view"), answer through this seam.
-  const guideDeps = { store, runner: deps.runner, artifacts, ledger, now, brief: courseBrief /* owner: course-facts */ };
+  const guideDeps = { store, runner: deps.runner, artifacts, ledger, now, prefix: coursePrefix /* owner: course-facts */ };
   function guides(packName: string, scope: PackScope, signal?: AbortSignal): Promise<GuideRunResult | GuideViewResult> | null {
     if (isGuideKind(packName)) return generateGuide(guideDeps, packName, scope, signal ? { signal } : {});
     const viewOf = /^([a-z]+)-view$/.exec(packName)?.[1];
@@ -494,6 +502,7 @@ export function createPackHandler(deps: PackHandlerDeps) {
   return {
     run,
     guides, // owner: guides
+    coursePrefix, // owner: course-facts: the same prefix for ask
     /** The CoreSeams.pack signature. */
     pack: (packName: string, scope: PackScope, signal: AbortSignal) => guides(packName, scope, signal) /* owner: guides */ ?? run(packName, scope, signal),
   };

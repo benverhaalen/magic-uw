@@ -1914,6 +1914,19 @@ export function createStore(
         }
       });
     },
+    // owner: course-facts. The heartbeat for long (model-backed) jobs: only the live holder renews.
+    renewLease(job, now, leaseMs) {
+      const time = timestamp(now);
+      if (!Number.isSafeInteger(leaseMs) || leaseMs < 1 || leaseMs > 3_600_000)
+        throw new Error("Invalid job lease duration.");
+      const until = new Date(Date.parse(time) + leaseMs).toISOString();
+      const changed = prepare(
+        `UPDATE jobs SET lease_until = MAX(lease_until, ?) WHERE id = ? AND status = 'running'
+         AND lease_token = ? AND lease_until > ?`,
+      ).run(until, job.id, job.leaseToken, time).changes;
+      return Number(changed) > 0 ? until : false;
+    },
+    // end owner: course-facts
     jobCooldown(kind) {
       return (prepare("SELECT value FROM preferences WHERE key = ?").get(`jobCooldown:${kind}`) as Row | undefined)?.value as string | undefined;
     },

@@ -13,6 +13,7 @@ import { findQuote } from "../../../retrieval/src/quotes";
 import { contentCategories } from "../access";
 import { runPack } from "../jobs/pack";
 import { authorizer } from "./consent";
+import type { CoursePrefixSource } from "../course-facts/prefix"; // owner: course-facts
 import type { AskResult, IntentStore, ResolvedCourse } from "./types";
 
 export const ASK_TOKEN_BUDGET = 3000;
@@ -26,6 +27,8 @@ export interface AskDeps {
   ledger: LedgerStore;
   now: () => Date;
   tokenBudget?: number;
+  /** owner: course-facts. The course prefix (brief + pack catalogue): used when the ask names one course. */
+  coursePrefix?: CoursePrefixSource;
 }
 
 const zero = () => ({ in: 0, cached: 0, out: 0 });
@@ -70,6 +73,13 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
     skeleton: courses.map((c) => `Course: ${c.code ? `${c.code}: ` : ""}${c.name}`).join("\n"),
     policy: policy ? `${policy.mode}: ${policy.evidence}` : "",
   };
+  // owner: course-facts. One course: the shared course prefix opens the prompt, as for packs and guides.
+  const prefix = courses.length === 1 ? deps.coursePrefix?.(courses[0]!.ref) : undefined;
+  if (prefix) {
+    frame.brief = prefix.text;
+    frame.policy = policy ? `${policy.mode}: the quotes are in the course brief's AI and collaboration policy section.` : "";
+  }
+  // end owner: course-facts
   const input = { question: question.trim().slice(0, 2000) };
   const prompt = buildPrompt(pack, frame, input, passages);
   const receiptIds: string[] = [];
@@ -81,7 +91,7 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
       title: "ask",
       text: prompt.input,
       policy: frame.policy,
-      resourceIds: resources.map((r) => r.id),
+      resourceIds: [...new Set([...resources.map((r) => r.id), ...(prefix?.resourceIds ?? [])])], // owner: course-facts: + the brief's sources
       characters: prompt.systemPrompt.length + prompt.input.length,
     },
     () => deps.now().toISOString(),

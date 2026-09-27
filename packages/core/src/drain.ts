@@ -26,18 +26,25 @@ export type DrainOutcome =
 export interface DrainContext {
   signal: AbortSignal;
   now: () => string;
+  /**
+   * owner: course-facts. Renews this job's lease for its kind's duration from now. False when the
+   * lease was lost (another worker may hold the job): the handler should stop and not write.
+   */
+  heartbeat: () => boolean;
 }
 export type DrainHandler = (
   job: CourseJob,
   context: DrainContext,
 ) => void | DrainOutcome | Promise<void | DrainOutcome>;
 export interface DrainOptions {
-  store: Pick<CourseCoreStore, "lease"> & Pick<Store, "finish" | "defer">;
+  store: Pick<CourseCoreStore, "lease" | "renewLease"> & Pick<Store, "finish" | "defer">;
   handlers: Readonly<Record<string, DrainHandler>>;
   /** Checked before every lease: a kind is leased only while this answers true (default: always). */
   available?: (kind: string) => boolean;
   now?: () => string;
   leaseMs?: number;
+  /** owner: course-facts. Longer leases for slow (model-backed) kinds; the rest use `leaseMs`. */
+  leaseMsByKind?: Readonly<Record<string, number>>;
   /** At most this many jobs per run; the next wake continues. */
   maxJobs?: number;
 }
@@ -75,9 +82,20 @@ export function createDrain(options: DrainOptions): Drain {
       if (!job) break;
       served++;
       const handler = options.handlers[job.kind]!;
+      // owner: course-facts. A slow kind's lease is extended right after the lease (same order of
+      // work), and its handler may renew it while it runs.
+      const kindMs = options.leaseMsByKind?.[job.kind];
+      const heartbeat = () => {
+        const until = options.store.renewLease?.(job, now(), kindMs ?? leaseMs);
+        if (!until) return false;
+        job.leaseUntil = until;
+        return true;
+      };
+      if (kindMs && kindMs > leaseMs) heartbeat();
+      // end owner: course-facts
       let outcome: DrainOutcome;
       try {
-        outcome = (await handler(job, { signal, now })) ?? { status: "done" };
+        outcome = (await handler(job, { signal, now, heartbeat })) ?? { status: "done" };
       } catch (cause) {
         // The cause is recorded on the job, not swallowed.
         outcome = { status: "retry", error: cause instanceof Error ? cause.message : String(cause) };

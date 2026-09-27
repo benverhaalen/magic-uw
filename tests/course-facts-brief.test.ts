@@ -13,7 +13,7 @@ import { CONSENT_DISCLOSURE_VERSION } from "@magic/domain";
 import { createReadApi } from "@magic/agent-api";
 import { createModelRunner, type BackendCall } from "../packages/runner/src/index";
 import { createPackHandler } from "../packages/core/src/pack-handler";
-import { memoryArtifactStore } from "../packages/packs/core/src/index";
+import { buildPrompt, memoryArtifactStore, packCatalogue } from "../packages/packs/core/src/index";
 import { BRIEF_PREAMBLE, briefPath, createCourseBriefs, renderCourseBrief } from "../packages/core/src/course-facts/brief";
 
 const at = "2026-09-26T12:00:00.000Z";
@@ -129,6 +129,12 @@ test("packs send the brief first, byte-identical across packs; purge removes the
     assert.ok(call.input.startsWith("[ctx") || call.input.includes("## Task"), "the pack's own role text moves to the input");
   }
   assert.equal(new Set(calls.map((c) => c.systemPrompt)).size, 1, "one byte-identical prefix for every pack on the course");
+  // The prefix is the brief, then the pack catalogue; the request names its pack.
+  const system = calls[0]!.systemPrompt;
+  assert.ok(system.indexOf("## Pack catalogue") > system.indexOf("<!-- course-brief.v1"));
+  for (const id of ["cards@v1", "quiz@v1", "guide@v1", "intent-ask@v1"]) assert.ok(system.includes(`### ${id}`), id);
+  assert.ok(calls.some((c) => c.input.includes("## Task\nPack cards@v1: follow its instructions in the pack catalogue.")));
+  assert.ok(calls.some((c) => c.input.includes("## Task\nPack quiz@v1:")));
   assert.ok(existsSync(briefPath(x.dir, course)));
   briefs.purge();
   assert.ok(!existsSync(join(x.dir, "courses")));
@@ -149,4 +155,19 @@ test("agent API courseBrief: through the grant, scrubbed, with one receipt", () 
   assert.equal(receipts[0]!.purpose, "agent-api v1 courseBrief");
   assert.throws(() => api.courseBrief({ courseId: "other" }), /unavailable/);
   x.done();
+});
+
+test("buildPrompt: a listed pack is named, an unlisted one brings its own instructions; no brief keeps the old prompt", () => {
+  const listed = { id: "listed", version: "v1", system: "Listed instructions." };
+  const other = { id: "other", version: "v1", system: "Other instructions." };
+  const pack = (p: typeof listed) => ({ ...p, tier: "pass" as const, template: () => "Go.", schema: null as never, cacheKey: () => null, categories: [] });
+  const frame = { courseId: "a:c", course: "C", skeleton: "Course: C", policy: "unknown", brief: `Brief.\n\n${packCatalogue([listed])}` };
+  const a = buildPrompt(pack(listed), frame, {}, []);
+  assert.equal(a.systemPrompt, frame.brief);
+  assert.match(a.input, /^## Task\nPack listed@v1: follow its instructions/);
+  const b = buildPrompt(pack(other), frame, {}, []);
+  assert.equal(b.systemPrompt, frame.brief);
+  assert.match(b.input, /^## Task\nOther instructions\./);
+  const { brief: _drop, ...plain } = frame;
+  assert.ok(buildPrompt(pack(other), plain, {}, []).systemPrompt.startsWith("Other instructions."));
 });

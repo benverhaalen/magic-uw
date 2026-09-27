@@ -20,7 +20,7 @@ import { GUIDE_PACKS } from "./packs";
 import { reviewAny, type ConceptMapDoc, type DropCode, type GuideDoc, type GuideDrop, type ReviewStats } from "./review";
 import { personalize, type ConceptMapView, type GuideView, type PersonalSignals } from "./personalize";
 import { selectGuideInputs, type GuideSelection, type GuideStore } from "./inputs";
-import type { CourseBriefSource } from "../../../core/src/course-facts/brief"; // owner: course-facts
+import type { CoursePrefixSource } from "../../../core/src/course-facts/prefix"; // owner: course-facts
 import { changedSources, putLatest, readLatest, withoutChangedSpans, type SourceChange } from "./latest";
 import type { ConceptMapOutput, GuideInput, GuideKind, GuideOutput } from "./schema";
 
@@ -49,8 +49,8 @@ export interface GuideDeps {
   artifacts: ArtifactStore;
   ledger: LedgerStore;
   now?: () => Date;
-  /** owner: course-facts. The course brief that opens the prompt; absent or null: the old prefix. */
-  brief?: CourseBriefSource | null;
+  /** owner: course-facts. The course prefix (brief + pack catalogue); absent: the old prefix. */
+  prefix?: CoursePrefixSource | null;
 }
 
 const empty = (pack: GuideKind, status: GuideRunStatus, message: string, courseRef: string | null = null): GuideRunResult => ({
@@ -103,7 +103,7 @@ export async function generateGuide(
   const now = deps.now ?? (() => new Date());
   const at = () => now().toISOString();
   const signal = options.signal;
-  const picked = selectGuideInputs(store, kind, scope, options.passageTokenBudget, deps.brief ?? null); // owner: course-facts: brief
+  const picked = selectGuideInputs(store, kind, scope, options.passageTokenBudget, deps.prefix ?? null); // owner: course-facts: prefix
   if (!picked.ok) return empty(kind, picked.status, picked.message, picked.courseRef);
   const sel = picked.selection;
   store.learning.course(sel.accountScope, sel.courseId, sel.label);

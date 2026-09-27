@@ -17,6 +17,9 @@ import { selectSyllabus } from "./select";
 import { courseKeyOf, type CourseBriefSource } from "./brief";
 
 export const COURSE_FACTS_JOB = "course.facts";
+/** Model-backed kinds lease for 180 s and renew every 60 s while the call runs. */
+export const COURSE_FACTS_LEASE_MS = 180_000;
+export const COURSE_FACTS_HEARTBEAT_MS = 60_000;
 
 /** The local extractor's shape (`createLocalCourseExtractor` in @magic/ai). */
 export interface LocalCourseExtractor {
@@ -36,6 +39,8 @@ export interface CourseFactsJobDeps {
   artifacts?: ClientExtractorDeps["artifacts"];
   ledger?: ClientExtractorDeps["ledger"];
   now?: () => Date;
+  /** Heartbeat interval (tests shorten it). */
+  heartbeatMs?: number;
   /** Keeps the course's `syllabus.md` current after each pass (it is rewritten only when its bytes change). */
   brief?: CourseBriefSource;
 }
@@ -73,6 +78,7 @@ export async function runCourseFacts(
   if (!chosen.some((r) => r.text.trim())) return { route: "none", status: "empty", syllabusResourceIds };
   // False when the same result is already applied (or the course changed since; its own job follows).
   const apply = (batch: CourseExtractionBatch) =>
+    !signal?.aborted &&
     store.applyCourseExtraction(course.accountScope, course.courseId, batch, (deps.now?.() ?? new Date()).toISOString());
   const localOnly = store.privacy().mode === "local_only";
   const runner = localOnly ? null : await deps.runner();
@@ -108,13 +114,30 @@ export function createCourseFactsJob(deps: CourseFactsJobDeps): JobHandler {
     subject: "course",
     owner: "course-facts",
     ready: true,
-    async run(job, { store, signal }): Promise<JobOutcome> {
+    leaseMs: COURSE_FACTS_LEASE_MS,
+    async run(job, { store, signal, heartbeat }): Promise<JobOutcome> {
       const subject = (job as Partial<CourseJob>).subjectId ?? "";
       const split = subject.lastIndexOf(":");
       if (split <= 0) return { status: "done" };
       const course = { accountScope: subject.slice(0, split), courseId: subject.slice(split + 1) };
-      const run = await runCourseFacts(store, course, deps, signal);
-      if (!signal.aborted) deps.brief?.(courseKeyOf(course));
+      // A model call takes 20–60 s (or more): renew the 180 s lease every minute while it runs. A lost
+      // lease (another worker holds the job) aborts this run; nothing from it is applied.
+      const lost = new AbortController();
+      const stop = () => lost.abort();
+      signal.addEventListener("abort", stop, { once: true });
+      const beat = setInterval(() => {
+        if (heartbeat && !heartbeat()) lost.abort();
+      }, deps.heartbeatMs ?? COURSE_FACTS_HEARTBEAT_MS);
+      beat.unref?.();
+      let run: CourseFactsRun;
+      try {
+        run = await runCourseFacts(store, course, deps, lost.signal);
+      } finally {
+        clearInterval(beat);
+        signal.removeEventListener("abort", stop);
+      }
+      if (lost.signal.aborted) return { status: "retry", error: "Interrupted." };
+      deps.brief?.(courseKeyOf(course));
       // Paused (usage limit or the daily budget) and failed calls retry with the store's backoff; a
       // held preview or a refused grant waits for the student and the next course change.
       if (run.status === "paused" || run.status === "failed")

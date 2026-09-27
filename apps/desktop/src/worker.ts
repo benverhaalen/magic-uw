@@ -127,6 +127,7 @@ const intent = createIntentRouter({
   runner: intentRunner,
   actions: fromNotes({ notesActions }, intentNotes),
   warm: (request) => intentRuntime?.pool?.warm(request) ?? Promise.resolve(false),
+  coursePrefix: generation.coursePrefix, // owner: course-facts: a one-course ask opens with the course prefix
 });
 // end owner: intent
 // owner: notes. Session notes: batch scaffolds on the tick, "fill from slides" through the same
