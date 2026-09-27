@@ -190,6 +190,8 @@ export const planningGradeDistributionSchema = z.object({
   ...common, kind: z.literal("grade_distribution"), courseKey: canonicalCourseKeySchema,
   termCode: uwTermCodeSchema, section: z.string().max(50).nullable(),
   instructorNames: z.array(z.string().max(200)).max(30),
+  // Source-scoped instructor identifiers (for example Madgrades numeric IDs). Names never group instructors.
+  instructorIds: z.array(z.string().regex(/^[A-Za-z0-9_-]{1,64}$/)).max(30).optional(),
   counts: z.array(z.object({ grade: z.string().min(1).max(20), count }).strict()).max(50),
   coverage: z.enum(["published", "partial", "suppressed", "unknown"]),
 }).strict().refine((row) => new Set(row.counts.map((item) => item.grade.trim().toUpperCase())).size === row.counts.length, "Grade counts must be unique.");

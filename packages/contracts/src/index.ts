@@ -743,6 +743,10 @@ export const commandSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("planning-sections"), recordId: z.string().max(200) }).strict(),
   z.object({ type: z.literal("planning-compare"), termCode: z.string().regex(/^1\d{2}[246]$/), style: z.enum(["balanced", "mornings", "compact", "lighter"]) }).strict(),
   z.object({ type: z.literal("planning-import"), batch: planningCaptureSchema }).strict(),
+  // Historical grade evidence for one course; refresh reads Madgrades through the desktop host.
+  z.object({ type: z.literal("planning-grades"), courseKey: z.string().regex(/^uw:\d{1,6}:[A-Z0-9]{1,12}$/), refresh: z.boolean().default(false) }).strict(),
+  // Handled by the desktop host's protected secret vault; never forwarded to the workspace or stored in records.
+  z.object({ type: z.literal("madgrades-token"), token: z.string().regex(/^[A-Za-z0-9_-]{16,128}$/).nullable() }).strict(),
   z
     .object({
       type: z.literal("snapshot"),
@@ -792,6 +796,7 @@ export const commandSchema = z.discriminatedUnion("type", [
 export type Command = z.infer<typeof commandSchema>;
 export type CommandResult = {
   planningComparison?: PlanningComparison;
+  planningGrades?: PlanningGradeSummary;
   snapshot: Snapshot;
   manifest?: ContextManifest;
   message?: string;
@@ -886,6 +891,20 @@ export interface PlanningComparison {
     evidence: { label: string; url: string; observedAt: string }[];
     historicalAverage: number | null; historicalCount: number | null;
   }[];
+}
+/** Count-weighted historical grade evidence for one course. Never a prediction or ranking input. */
+export interface PlanningGradeAggregate {
+  average: number | null; includedCount: number; excludedCount: number; totalCount: number;
+  status: "known" | "partial" | "unknown";
+}
+export interface PlanningGradeSummary {
+  courseKey: string;
+  createdAt: string;
+  refresh: { status: string; message: string } | null;
+  warnings: string[];
+  terms: (PlanningGradeAggregate & { termCode: string; label: string; sourceUrl: string; observedAt: string })[];
+  instructors: (PlanningGradeAggregate & { instructorId: string; names: string[]; termCodes: string[]; sectionCount: number; coTaughtSectionsExcluded: number })[];
+  overall: (PlanningGradeAggregate & { termCount: number }) | null;
 }
 export interface Connector {
   id: string;

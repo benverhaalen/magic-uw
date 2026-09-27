@@ -22,6 +22,7 @@ import {
 import { syncUwPlanning } from "../../../packages/connectors/src/uw-planning-sync";
 import { readBounded } from "../../../packages/connectors/src/network";
 import { createSecretVault } from "./secrets";
+import { MadgradesHttp, madgradesRequestSchema } from "../../../packages/connectors/src/madgrades";
 import {
   commandSchema,
   captureBatchSchema,
@@ -113,6 +114,11 @@ app
       available: () => safeStorage.isEncryptionAvailable(),
       encrypt: (value) => safeStorage.encryptString(value),
       decrypt: (value) => safeStorage.decryptString(Buffer.from(value)),
+    });
+    // The Madgrades token stays in the main-process vault; the workspace sends only fixed request shapes.
+    const madgradesHttp = new MadgradesHttp({
+      fetch: (url, init) => fetch(url, init),
+      token: () => vault.get("madgrades:token"),
     });
     const sourceReads = new Map<string, AbortController>();
     studentSession.setPermissionRequestHandler((_wc, _permission, callback) =>
@@ -258,6 +264,20 @@ app
         } catch {
           worker.postMessage({ kind: "source-response", id: message.id, error: true });
         } finally { planningReads.delete(message.id); sourceReads.delete(message.id); }
+        return;
+      }
+      if (message.kind === "madgrades-read") {
+        const controller = new AbortController();
+        sourceReads.set(message.id, controller);
+        try {
+          const request = madgradesRequestSchema.parse(message.payload?.request);
+          if (planningClears > 0) throw new Error("Madgrades read cancelled");
+          const result = await madgradesHttp.read(request, controller.signal);
+          controller.signal.throwIfAborted();
+          worker.postMessage({ kind: "source-response", id: message.id, result });
+        } catch {
+          worker.postMessage({ kind: "source-response", id: message.id, error: true });
+        } finally { sourceReads.delete(message.id); }
         return;
       }
       if (message.kind === "planning-refresh") {
@@ -435,6 +455,13 @@ app
     async function execute(command: unknown): Promise<CommandResult> {
       const parsed = commandSchema.parse(command);
       await ready;
+      if (parsed.type === "madgrades-token") {
+        // Stored only in the OS-protected vault; the workspace, records, and logs never receive it.
+        if (parsed.token === null) await vault.deletePrefix("madgrades:");
+        else await vault.set("madgrades:token", parsed.token);
+        const result = await execute({ type: "snapshot" });
+        return { ...result, message: parsed.token === null ? "Madgrades token removed from this device." : "Madgrades token saved on this device." };
+      }
       if (parsed.type === "purge") {
         sync?.abort();
         cancelPlanning();

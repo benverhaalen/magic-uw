@@ -112,8 +112,11 @@ export function comparePlanning(store: Store, termCode: string, style: "balanced
     const latestGradeTerm = historicalRows.map((grade) => grade.termCode).sort().at(-1);
     const latestGrades = historicalRows.filter((grade) => grade.termCode === latestGradeTerm);
     // Section IDs repeat across terms. Do not pick or combine an arbitrary row, including cross-list duplicates.
-    const previousGrade = latestGrades.length === 1 ? latestGrades[0] : null;
-    if (latestGrades.length > 1) ambiguousGrades = true;
+    // A source that saves one course-level row beside its section rows (Madgrades) supplies that row;
+    // two course-level rows for the term remain ambiguous.
+    const courseLevelGrades = latestGrades.filter((grade) => grade.section === null);
+    const previousGrade = courseLevelGrades.length === 1 ? courseLevelGrades[0] : latestGrades.length === 1 ? latestGrades[0] : null;
+    if (!previousGrade && latestGrades.length > 1) ambiguousGrades = true;
     const prerequisiteFresh = fresh(course.prerequisiteCheckedAt, 7 * DAY);
     if (course.prerequisite !== null && !prerequisiteFresh) stalePrerequisites = true;
     for (const pkg of available.length ? available : [null]) {
