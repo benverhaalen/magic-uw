@@ -320,7 +320,7 @@ test("local route: Ollama through packages/ai's verified selection, the schema a
   assert.equal(chats[0].messages[0].content, SYSTEM);
 });
 
-test("Windows shims: codex resolves to its native binary; another npm shim to node plus its script", async () => {
+test("Windows shims: codex resolves to its native binary; another npm shim to node plus its script", { skip: process.platform !== "win32" && "npm .cmd shims exist only on Windows" }, async () => {
   const dir = await mkdtemp(join(tmpdir(), "shim-"));
   const shim = (target: string) =>
     `@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\${target}" %*\r\n`;
