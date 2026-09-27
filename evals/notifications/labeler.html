@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notification Labeler</title>
+<!-- Local-only labeling tool for the notification benchmark's PRIVATE-labeling-sheet.csv.
+     No network requests: the file is read in the browser and exported as a download.
+     Progress is kept in this browser's localStorage under the file's name. -->
+<style>
+  :root {
+    --bg: #faf8f4; --surface: #fffdf9; --ink: #29231f; --muted: #746d66; --line: #dfd7ce;
+    --accent: #325c90; --urgent: #7b2927; --urgent-bg: #f9e7e5; --important-bg: #e8eef8;
+    --info-bg: #f1ede6; --ignore-bg: #eeeeea; --focus: #3c70ac;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1c1a18; --surface: #252220; --ink: #efe9e2; --muted: #a79f97; --line: #3a3531;
+      --accent: #8fb1dd; --urgent: #f0a9a2; --urgent-bg: #3a2322; --important-bg: #22304a;
+      --info-bg: #2e2a25; --ignore-bg: #2a2a28; --focus: #8fb1dd;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.lead { color: var(--muted); margin: 0 0 20px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .meta { color: var(--muted); font-size: 13px; display: flex; gap: 12px; flex-wrap: wrap; }
+  .title { font-size: 18px; font-weight: 600; margin: 8px 0; overflow-wrap: anywhere; }
+  .text { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .labels { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 16px; }
+  button { font: inherit; border: 1px solid var(--line); border-radius: 8px; padding: 10px 8px; background: var(--surface); color: var(--ink); cursor: pointer; min-height: 44px; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  button[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
+  .urgent { background: var(--urgent-bg); color: var(--urgent); }
+  .important { background: var(--important-bg); }
+  .info { background: var(--info-bg); }
+  .ignore { background: var(--ignore-bg); }
+  kbd { font: 12px ui-monospace, monospace; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+  .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 16px 0; }
+  .progress { flex: 1; min-width: 160px; height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
+  .progress > span { display: block; height: 100%; background: var(--accent); width: 0; }
+  .hint { color: var(--muted); font-size: 13px; }
+  .model { margin-top: 12px; font-size: 13px; color: var(--muted); }
+  @media (max-width: 520px) { .labels { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Notification labeler</h1>
+  <p class="lead">For each announcement, choose what a busy student's bell should do if it arrived today. Everything stays in this browser.</p>
+  <div class="bar">
+    <label>Open labeling sheet <input id="file" type="file" accept=".csv,text/csv"></label>
+    <button id="export" disabled>Export labeled CSV</button>
+  </div>
+  <div id="app" hidden>
+    <div class="bar">
+      <div class="progress" aria-hidden="true"><span id="fill"></span></div>
+      <span id="count" class="hint" role="status"></span>
+    </div>
+    <article class="card" aria-live="polite">
+      <div class="meta"><span id="course"></span><span id="age"></span><span id="pos"></span></div>
+      <div class="title" id="title"></div>
+      <div class="text" id="text"></div>
+      <div class="labels" role="group" aria-label="Label">
+        <button class="urgent" data-label="urgent">Urgent <kbd>1</kbd></button>
+        <button class="important" data-label="important">Important <kbd>2</kbd></button>
+        <button class="info" data-label="info">Info <kbd>3</kbd></button>
+        <button class="ignore" data-label="ignore">Ignore <kbd>4</kbd></button>
+      </div>
+      <details class="model"><summary>Show what the rules chose (after you label)</summary><p id="model"></p></details>
+    </article>
+    <div class="bar">
+      <button id="prev">← Previous</button>
+      <button id="next">Next →</button>
+      <button id="nextOpen">Next unlabeled</button>
+      <span class="hint">Keys: <kbd>1</kbd>–<kbd>4</kbd> label and advance, <kbd>←</kbd>/<kbd>→</kbd> move.</span>
+    </div>
+    <p class="hint"><b>Urgent</b>: needs attention within ~2 days or a change could make them miss something. <b>Important</b>: see soon, not urgent. <b>Info</b>: fine to list quietly. <b>Ignore</b>: shouldn't appear.</p>
+  </div>
+</main>
+<script>
+(() => {
+  let rows = [], cols = [], i = 0, key = "";
+  const $ = (id) => document.getElementById(id);
+  function parseCsv(text) {
+    const out = []; let row = [], cell = "", q = false;
+    for (let k = 0; k < text.length; k++) {
+      const c = text[k];
+      if (q) { if (c === '"' && text[k + 1] === '"') { cell += '"'; k++; } else if (c === '"') q = false; else cell += c; }
+      else if (c === '"') q = true;
+      else if (c === ",") { row.push(cell); cell = ""; }
+      else if (c === "\n" || c === "\r") { if (c === "\r" && text[k + 1] === "\n") k++; row.push(cell); out.push(row); row = []; cell = ""; }
+      else cell += c;
+    }
+    if (cell || row.length) { row.push(cell); out.push(row); }
+    return out.filter((r) => r.length > 1 || r[0]);
+  }
+  const esc = (v) => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+  function save() { try { localStorage.setItem(key, JSON.stringify(rows.map((r) => r.your_label || ""))); } catch {} }
+  function restore() {
+    try { const saved = JSON.parse(localStorage.getItem(key) || "[]"); saved.forEach((l, k) => { if (l && rows[k] && !rows[k].your_label) rows[k].your_label = l; }); } catch {}
+  }
+  function render() {
+    const r = rows[i]; if (!r) return;
+    $("course").textContent = r.course ? `Course ${r.course}` : "";
+    $("age").textContent = r.age_days ? `${r.age_days} days before capture` : "";
+    $("pos").textContent = `${i + 1} of ${rows.length}`;
+    $("title").textContent = r.title || "(no title)";
+    $("text").textContent = r.text_excerpt || "";
+    document.querySelectorAll("[data-label]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.label === r.your_label)));
+    $("model").textContent = r.your_label ? `Rules: ${r.code_level || "?"} · With Jev: ${r.jev_level || "not run"}` : "Label this one first.";
+    const done = rows.filter((x) => x.your_label).length;
+    $("count").textContent = `${done} of ${rows.length} labeled`;
+    $("fill").style.width = `${(100 * done) / rows.length}%`;
+    $("export").disabled = done === 0;
+  }
+  function label(l) { rows[i].your_label = l; save(); if (i < rows.length - 1) i++; render(); }
+  $("file").addEventListener("change", async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    const table = parseCsv(await f.text()); cols = table[0];
+    if (!cols.includes("bench_id") || !cols.includes("your_label")) { alert("This doesn't look like a labeling sheet (needs bench_id and your_label)."); return; }
+    rows = table.slice(1).map((cells) => Object.fromEntries(cols.map((c, k) => [c, cells[k] ?? ""])));
+    key = `notif-labels:${f.name}:${rows.length}`; restore(); i = Math.max(0, rows.findIndex((r) => !r.your_label)); if (i < 0) i = 0;
+    $("app").hidden = false; render(); document.querySelector('[data-label="urgent"]').focus();
+  });
+  document.querySelectorAll("[data-label]").forEach((b) => b.addEventListener("click", () => label(b.dataset.label)));
+  $("prev").addEventListener("click", () => { i = Math.max(0, i - 1); render(); });
+  $("next").addEventListener("click", () => { i = Math.min(rows.length - 1, i + 1); render(); });
+  $("nextOpen").addEventListener("click", () => { const k = rows.findIndex((r, n) => n > i && !r.your_label); if (k >= 0) { i = k; render(); } });
+  document.addEventListener("keydown", (e) => {
+    if (!rows.length || e.target.tagName === "INPUT" || e.metaKey || e.ctrlKey) return;
+    const map = { "1": "urgent", "2": "important", "3": "info", "4": "ignore" };
+    if (map[e.key]) { e.preventDefault(); label(map[e.key]); }
+    else if (e.key === "ArrowLeft") { i = Math.max(0, i - 1); render(); }
+    else if (e.key === "ArrowRight") { i = Math.min(rows.length - 1, i + 1); render(); }
+  });
+  $("export").addEventListener("click", () => {
+    const csv = [cols.join(","), ...rows.map((r) => cols.map((c) => esc(r[c] ?? "")).join(","))].join("\n") + "\n";
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    a.download = "PRIVATE-labeling-sheet.labeled.csv"; a.click(); URL.revokeObjectURL(a.href);
+  });
+})();
+</script>
+</body>
+</html>
