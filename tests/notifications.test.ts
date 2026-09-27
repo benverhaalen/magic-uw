@@ -885,10 +885,11 @@ function mailJudgment(kind: MailKind, p: number, extra: { actionRequired?: numbe
 const mailJevTable: { name: string; mail: MailOver; judgment: MailTriageJudgment; level: string | null; raised: boolean; kind?: MailKind }[] = [
   { name: "interview kind raises general mail to important", mail: { category: "general", subject: "Quick question" }, judgment: mailJudgment("interview_or_job", 0.9), level: "important", raised: true, kind: "interview_or_job" },
   {
-    name: "deadline kind affecting a task due soon is urgent",
+    // Break card B3: a raise moves one level at most and stops at important for a non-staff sender.
+    name: "deadline kind affecting a task due soon raises a list sender one level, to important",
     mail: { category: "org", subject: "Heads up" },
     judgment: mailJudgment("deadline_or_action_required", 0.85, { affects: { a0: 0.9 }, upcoming: [{ key: "a0", resourceId: "cs-a1", title: "Project 2" }] }),
-    level: "urgent",
+    level: "important",
     raised: true,
   },
   { name: "action required alone raises a strong kind", mail: { category: "admin", subject: "Notice" }, judgment: mailJudgment("advisor_or_academic_standing", 0.5, { actionRequired: 0.9 }), level: "important", raised: true },

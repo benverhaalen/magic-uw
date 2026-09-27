@@ -49,6 +49,7 @@ import { suggestTemplate, templateBlocks, templateInfo, TEMPLATES } from "./temp
 import { blocksText, docxToHtml, htmlToBlocks, noteToDocx, sameContent } from "./docx";
 import type { NotesRemote } from "./remote";
 import { fillFromSlides } from "./fill";
+import type { LocalNotesDrivePort } from "./local-drive";
 
 export type NotesWorkspaceStore = Store & CourseCoreStore & { learning: LearningStore; notes: SqlNotesStore };
 export interface NotesServiceDeps {
@@ -56,6 +57,8 @@ export interface NotesServiceDeps {
   sessions?: SessionsPort & { course(courseId: string, accountScope?: string): CanvasCourseInfo | null };
   runner?: () => ModelRunner | null | Promise<ModelRunner | null>;
   remotes?: Partial<Record<NoteSyncProvider, NotesRemote>>;
+  /** OneDrive/Google Drive/iCloud folders detected on this device (see packages/notes/src/local-drive.ts). */
+  localDrive?: LocalNotesDrivePort;
   now?: () => Date;
 }
 const HEAD = new Set(["context", "sources", "terms", "due"]);
@@ -597,6 +600,11 @@ export function createNotesService(deps: NotesServiceDeps) {
   }
   async function syncTick(options: { force?: boolean } = {}) {
     const stats = { checked: 0, pulled: 0, pushed: 0, conflicts: 0, errors: 0 };
+    try {
+      await exportLocal();
+    } catch {
+      /* the local folder retries on the next tick; the two-way providers below are unaffected */
+    }
     for (const provider of PROVIDERS) {
       const setting = notes.syncSetting(provider);
       const remote = remotes[provider];
@@ -646,6 +654,24 @@ export function createNotesService(deps: NotesServiceDeps) {
       });
     }
     return { providers };
+  }
+
+  // ---------- the local folder (OneDrive/Google Drive/iCloud, one way, zero setup) ----------
+  function localStatus() {
+    return { folder: deps.localDrive?.folder() ?? null, folders: deps.localDrive?.detect() ?? [], lastError: deps.localDrive?.lastError() ?? null };
+  }
+  /** Every edited note, re-exported to the chosen folder (skipped when its content hasn't changed). */
+  async function exportLocal(): Promise<void> {
+    const drive = deps.localDrive;
+    if (!drive || !drive.folder()) return;
+    const items = notes
+      .notes({})
+      .filter((n) => n.state === "edited")
+      .map((n) => {
+        const course = port.course(n.courseId, n.accountScope);
+        return { id: n.id, course: course?.courseName ?? n.courseId, title: n.title, blocks: exportBlocks(notes.blocks(n.id) ?? []) };
+      });
+    await drive.exportAll(items);
   }
 
   // ---------- commands ----------
@@ -863,6 +889,16 @@ export function createNotesService(deps: NotesServiceDeps) {
         } catch (error) {
           return fail(request.op, "failed", error instanceof Error ? error.message.slice(0, 300) : "Export failed.");
         }
+      }
+      case "notes.localFolders.detect":
+        return { op: request.op, status: "ok", folders: deps.localDrive?.detect() ?? [] };
+      case "notes.localFolders.status":
+        return { op: request.op, status: "ok", local: localStatus() };
+      case "notes.localFolders.choose": {
+        if (!deps.localDrive) return fail(request.op, "not_connected", "Local folder detection isn't available here.");
+        deps.localDrive.choose(request.folder);
+        if (request.folder) await exportLocal();
+        return { op: request.op, status: "ok", local: localStatus() };
       }
     }
   }

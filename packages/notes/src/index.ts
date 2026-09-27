@@ -4,6 +4,7 @@ export * from "./scaffold";
 export * from "./sql-store";
 export * from "./docx";
 export * from "./remote";
+export * from "./local-drive";
 export * from "./fill";
 export * from "./service";
 export * from "./actions";

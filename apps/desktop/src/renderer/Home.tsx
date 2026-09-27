@@ -1,3 +1,4 @@
+import { HomeStudyCard, openStudyLearn } from "./study-prep"; // owner: study-prep
 import { schedulePlanning, type ScheduleResource, type ScheduleAlias } from './schedule-projection';
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Command, ResourceView, Snapshot } from '@magic/contracts';
@@ -135,7 +136,7 @@ export function Home({ snapshot, resources, onSelect, onCourses, onSources, onMy
       {remaining>0 && <button className="home-show-next magic-fb-pill" data-focus-key="upcoming-next" onClick={showNext}>Show next {Math.min(UPCOMING_BATCH,remaining)}</button>}
       {upcomingCount>UPCOMING_BATCH && <button className="home-show-next magic-fb-pill" data-focus-key="upcoming-less" onClick={()=>{onUpcomingCountChange?.(UPCOMING_BATCH);requestAnimationFrame(()=>{const button=document.querySelector<HTMLElement>('[data-focus-key="upcoming-next"]');button?.focus({preventScroll:true});button?.scrollIntoView({block:"nearest"});});}}>Show less</button>}
     </section>
-    <section className="home-study" aria-labelledby="study-title" data-place-anchor="study"><h2 id="study-title">Study &amp; Learn</h2><div className="home-study-grid">{study.map(({material,context})=><a className="home-study-action" href={resourceHref(material.id)} data-focus-key={`study-${material.id}`} key={material.id}><span title={label(material).raw}>{course(material)}</span><h3>Review {material.title}</h3><p>Referenced in {context.title}</p><div><span>Open saved material</span><Glyph name="forward"/></div></a>)}</div>
+    <section className="home-study" aria-labelledby="study-title" data-place-anchor="study"><h2 id="study-title">Study &amp; Learn</h2><HomeStudyCard onSeeAll={openStudyLearn}/>{/* owner: study-prep */}<div className="home-study-grid">{study.map(({material,context})=><a className="home-study-action" href={resourceHref(material.id)} data-focus-key={`study-${material.id}`} key={material.id}><span title={label(material).raw}>{course(material)}</span><h3>Review {material.title}</h3><p>Referenced in {context.title}</p><div><span>Open saved material</span><Glyph name="forward"/></div></a>)}</div>
       {!study.length && <p className="home-empty">No specific review material is supported by the current saved instructions.</p>}
     </section>
     <section className="home-enrollment-holds" aria-labelledby="home-enrollment-holds-title" data-place-anchor="enrollment-holds">

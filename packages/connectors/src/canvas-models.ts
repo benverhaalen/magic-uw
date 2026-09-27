@@ -141,15 +141,29 @@ export const moduleSchema = z.object({
   items_count: z.number().int().nonnegative().optional(),
   prerequisite_module_ids: z.array(canvasId).max(1000).optional(),
 });
+// owner: acquisition. Valid Canvas module items the schema used to reject (canvas-lms
+// app/models/context_module.rb add_item; lib/api/v1/context_module.rb module_item_json):
+// - content_id 0: ExternalUrl and SubHeader tags store 0, and a tool item whose URL matches no
+//   installed tool gets a placeholder tool with id 0; the API emits content_id for tool items.
+// - content_id or external_url null: both come straight from nullable content_tag columns.
+// "No content" is absent, not an invalid item that makes the whole module partial.
+const itemContentId = z.preprocess(
+  (value) => (value === 0 || value === "0" || value === null ? undefined : value),
+  canvasId.optional(),
+);
 export const itemSchema = z.object({
   id: canvasId,
   module_id: canvasId.optional(),
   title: short.min(1),
   type: state,
   position: z.number().int().optional(),
-  content_id: canvasId.optional(),
+  content_id: itemContentId,
   page_url: z.string().max(300).optional(),
-  external_url: z.string().max(4000).optional(),
+  external_url: z
+    .string()
+    .max(4000)
+    .nullish()
+    .transform((value) => value ?? undefined),
   html_url: z.string().max(4000).optional(),
   completion_requirement: z
     .object({
@@ -168,9 +182,18 @@ export const itemSchema = z.object({
     })
     .optional(),
 });
+// owner: acquisition. A page's url is a slug Canvas makes from its title (canvas-lms
+// app/models/wiki_page.rb url_for): usually ASCII from stringex, but a title in a kept script
+// (Katakana) keeps its Unicode letters and spaces, so the old ASCII-only pattern refused valid pages.
+// Every use encodes it (encodeURIComponent); a separator or control character is still refused.
+const pageSlug = z
+  .string()
+  .min(1)
+  .max(512)
+  .regex(/^[^\/\\?#\s\p{Cc}](?:[^\/\\?#\p{Cc}]*[^\/\\?#\s\p{Cc}])?$/u);
 export const pageSchema = z.object({
   page_id: canvasId,
-  url: z.string().regex(/^[a-zA-Z0-9_%.-]{1,256}$/),
+  url: pageSlug,
   title: short.min(1),
   body: html,
   ...common,

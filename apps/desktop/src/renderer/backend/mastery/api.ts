@@ -22,7 +22,7 @@ export interface MasteryApi {
 
 export const bridgeApi: MasteryApi = {
   async learning(request) {
-    const response = await window.magic.execute({ type: "learning", request });
+    const response = await window.magic.execute({ type: "learning", request, reply: "result" });
     return response.learning ?? { op: request.op, status: "failed", message: "The study service didn't answer." };
   },
   async pack(pack, scope) {

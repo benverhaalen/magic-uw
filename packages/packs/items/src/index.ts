@@ -6,7 +6,8 @@
 import { z } from "zod";
 import { definePack } from "../../core/src/index";
 import { evaluate } from "../../../learning/src/arith";
-import { batchCheck, OPTION_IDS, sharedRules, type Draft, type GenerationInput } from "./draft";
+import type { Passage } from "../../core/src/index";
+import { batchCheck, citedQuote, OPTION_IDS, sharedRules, type Draft, type GenerationInput } from "./draft";
 
 export * from "./draft";
 
@@ -33,8 +34,8 @@ export const quizOutputSchema = z.object({ items: z.array(quizItemSchema).max(30
 export type QuizOutput = z.infer<typeof quizOutputSchema>;
 export type QuizItemOutput = z.infer<typeof quizItemSchema>;
 
-/** Code reads each item into a draft; a structural fault becomes the draft's `problem`. */
-export function quizDrafts(output: QuizOutput): Draft[] {
+/** Code reads each item into a draft; a structural fault becomes the draft's `problem`. An abbreviated quote is restored from `passages`. */
+export function quizDrafts(output: QuizOutput, passages?: readonly Passage[]): Draft[] {
   return output.items.map((it, index): Draft => {
     const base = {
       index,
@@ -47,7 +48,7 @@ export function quizDrafts(output: QuizOutput): Draft[] {
       section: it.section.trim(),
       bloom: it.bloom,
       sourceId: it.sourceId,
-      quote: it.quote,
+      quote: citedQuote(passages, it.sourceId, it.quote),
       problem: null as string | null,
     };
     if (it.kind === "mc") {

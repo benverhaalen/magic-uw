@@ -81,6 +81,12 @@ const bridge: AppBridge = {
   intentRun: request => ipcRenderer.invoke("magic:intent-run", request),
   cancelIntent: operationId => ipcRenderer.invoke("magic:intent-cancel", operationId),
   execute: (command) => ipcRenderer.invoke("magic:execute", command),
+  // owner: stall-audit. The workspace changed (at most once a second); the window re-reads then.
+  onChanged(listener) {
+    const forward = () => listener();
+    ipcRenderer.on("magic:changed", forward);
+    return () => void ipcRenderer.removeListener("magic:changed", forward);
+  },
   openExternal: (url) => ipcRenderer.invoke("magic:open", url),
   openLink: (url) => ipcRenderer.invoke("magic:open-link", url), // owner: T05b
   openDocument: (url) => ipcRenderer.invoke("magic:open-document", url), // owner: doc-window

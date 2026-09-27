@@ -54,7 +54,9 @@ await viteBuild({
   configFile: false,
   root: "apps/desktop",
   base: "./",
-  build: { outDir: "dist/renderer", emptyOutDir: true },
+  // owner: study-prep. Fonts are always emitted as files: the renderer's CSP (default-src 'self')
+  // blocks data: fonts, and Vite would otherwise inline a small one (KaTeX_Size3 is 3.6 KB).
+  build: { outDir: "dist/renderer", emptyOutDir: true, assetsInlineLimit: (file: string) => (/\.(woff2?|ttf|otf)$/i.test(file) ? false : undefined) },
   logLevel: "warn",
 });
 // Vite emits the CSS-referenced Karma file; ship its OFL beside it.

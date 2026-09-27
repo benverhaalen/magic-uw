@@ -156,6 +156,7 @@ async function workspace(size: number): Promise<Workspace> {
   const router = createLearningRouter({
     store: store.learning,
     resolveContext: (id) => resolve(id),
+    resolveContexts: (ids) => resolve.many(ids),
     analyticsReferences: () => createPipelineReferences(store),
     now: () => new Date(NOW),
   });

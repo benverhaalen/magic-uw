@@ -42,6 +42,10 @@ import { generateGuide, guideView, isGuideKind, type GuideRunResult, type GuideV
 // owner: mastery
 import { buildStrategy } from "../../packs/strategy/src/index";
 // end owner: mastery
+// owner: study-prep. The Studio's combined pack (`study-prep-<kinds>`) and the Sources panel's ask.
+import { studyPrepKinds } from "@magic/contracts";
+import { createStudyPrep } from "./study-prep/generate";
+// end owner: study-prep
 
 export type GenerationPackName = "quiz" | "cards" | "problems";
 /** Command pack names the handler answers to. */
@@ -267,7 +271,7 @@ export function createPackHandler(deps: PackHandlerDeps) {
 
   /** N06 on every draft; accepted versions go to the LearningStore (idempotent for a cache hit). */
   function accept(
-    s: Scoped,
+    s: Pick<Scoped, "courseRef" | "resources" | "restricted">, // owner: study-prep: only these are read
     packId: string,
     cacheKey: string,
     drafts: Draft[],
@@ -410,7 +414,7 @@ export function createPackHandler(deps: PackHandlerDeps) {
 
   async function execute<O>(
     pack: PackSpec<GenerationInput, O>,
-    toDrafts: (output: O) => Draft[],
+    toDrafts: (output: O, passages?: readonly Passage[]) => Draft[],
     name: GenerationPackName,
     scope: PackScope,
     s: Scoped,
@@ -442,7 +446,9 @@ export function createPackHandler(deps: PackHandlerDeps) {
     const frozen = new Map(passages.map((p) => [p.sourceId, {
       original: p.text, result: scrubber.text(p.text, s.courseId, passageClass(p.sourceId)),
     }]));
-    const draftsOf = (output: O) => toDrafts(output).slice(0, input.count).map((d) => {
+    // The passages as the model saw them: an abbreviated quote is restored against these.
+    const seen = [...frozen].map(([sourceId, f]) => ({ sourceId, text: f.result.text }));
+    const draftsOf = (output: O) => toDrafts(output, seen).slice(0, input.count).map((d) => {
       const p = frozen.get(d.sourceId);
       const start = p?.result.text.indexOf(d.quote) ?? -1;
       if (!p || !d.quote || start < 0 || p.result.text.indexOf(d.quote, start + 1) >= 0)
@@ -566,13 +572,21 @@ export function createPackHandler(deps: PackHandlerDeps) {
   // owner: mastery (D57). "Build my strategy": one checked call over code-derived observations.
   const strategy = (scope: PackScope, signal?: AbortSignal) => buildStrategy({ store, runner: deps.runner, artifacts, ledger, now }, scope, signal);
   // end owner: mastery
+  // owner: study-prep. Same runner, cache, ledger, prefix and checked-item pipeline as the packs above.
+  const studyPrep = createStudyPrep({ store, runner: deps.runner, artifacts, ledger, now, prefix: coursePrefix, accept });
+  const prepPack = (packName: string, scope: PackScope, signal?: AbortSignal) => {
+    const kinds = studyPrepKinds(packName);
+    return kinds ? studyPrep.generate(kinds, scope, signal) : null;
+  };
+  // end owner: study-prep
   return {
     run,
+    studyPrep, // owner: study-prep: generate(kinds, scope) and ask (notebook.ask)
     guides, // owner: guides
     coursePrefix, // owner: course-facts: the same prefix for ask
     /** The CoreSeams.pack signature. */
-    pack: (packName: string, scope: PackScope, signal: AbortSignal) =>
-      (packName === "strategy" ? strategy(scope, signal) /* owner: mastery */ : null) ?? guides(packName, scope, signal) /* owner: guides */ ?? run(packName, scope, signal),
+    pack: (packName: string, scope: PackScope, signal: AbortSignal, options?: { count?: number }) =>
+      (packName === "strategy" ? strategy(scope, signal) /* owner: mastery */ : null) ?? prepPack(packName, scope, signal) /* owner: study-prep */ ?? guides(packName, scope, signal) /* owner: guides */ ?? run(packName, scope, signal, options?.count ? { count: options.count } : {}),
   };
 }
 
@@ -592,6 +606,8 @@ export function generatePack(
 // owner: ai-paths
 /** Pack id → output schema for every generation pack: the warm pool's union schema. */
 export function generationKinds(): PoolOptions["kinds"] {
+  // owner: study-prep: the study-prep pack is not in the pool: its schema would push the union past the
+  // command-line limit ("schema too large"), so it runs one-shot like any unlisted pack.
   return Object.fromEntries([quizPack, cardsPack, problemsPack, ...Object.values(GUIDE_PACKS), courseFactsPack /* owner: course-facts */].map((p) => [p.id, p.schema as PoolOptions["kinds"][string]]));
 }
 /**
@@ -601,7 +617,9 @@ export function generationKinds(): PoolOptions["kinds"] {
 export function pooledClaudeBackend(options: { command: CliCommand; workDir: string; env?: Record<string, string>; extraArgs?: readonly string[] /* owner: client-health */ }): SessionPool {
   // One pool per process: a new one (a client or profile change) closes the previous sessions.
   void currentPool?.close();
-  currentPool = createSessionPool({ ...options, kinds: generationKinds(), fallback: createClaudeBackend(options) });
+  // Generation keeps its session's turns (the pool's behaviour before `turns: "fresh"` became the
+  // command bar's default); whether earlier generations should be re-sent is a separate decision.
+  currentPool = createSessionPool({ ...options, kinds: generationKinds(), fallback: createClaudeBackend(options), turns: "conversation" });
   return currentPool;
 }
 let currentPool: SessionPool | null = null;

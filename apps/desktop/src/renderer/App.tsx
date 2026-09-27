@@ -1,4 +1,5 @@
 import { MagicGlyph } from '../../../../packages/ui/src/glyph';
+import { ItemSpaceHost, PrepFirstPrompt, StudyLearnPage, STUDY_LEARN_EVENT } from "./study-prep"; // owner: study-prep
 import { CoursesViewHeader } from './courses/CoursesViewToggle';
 import { CoursesWorkList, type WorkReportResult } from './courses/CoursesWorkView';
 import { projectCourseWork, isCourseWorkActionCurrent, type CourseWorkRow } from './courses/course-work-model';
@@ -25,6 +26,7 @@ import { createAssignmentTypeHues } from "../../../../packages/ui/src/deadline-e
 import { SourcesPage } from "./sources";
 import { MyUw } from "./MyUw";
 import { CoursePageView } from "./courses/CoursePage";
+import { CourseAnalyticsPanel, CourseTabs, type CourseTab } from "./analytics/CourseTabs"; // owner: course-analytics
 import { CoursesIndex } from "./courses/CoursesIndex";
 import { compactCourseTerm } from "./courses/course-index-view";
 import { buildCourseCards, buildCoursePage, courseKey } from "../../../../packages/domain/src/course-page";
@@ -162,7 +164,14 @@ export function App() {
   const navigation = useDesktopNavigation();
   const { view, selectedId } = navigation;
   const setView = (next: View) => navigation.navigate(next);
+  // owner: study-prep: Home's Study card "See all" opens Study & Learn.
+  useEffect(() => {
+    const on = () => navigation.navigate("study");
+    window.addEventListener(STUDY_LEARN_EVENT, on);
+    return () => window.removeEventListener(STUDY_LEARN_EVENT, on);
+  });
   const setSelectedId = (id: string | null) => id ? navigation.navigate("resource", id) : navigation.back();
+  const [courseTab, setCourseTab] = useState<CourseTab>("overview"); // owner: course-analytics
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const chatAccountKey = snapshot ? `${snapshot.fixtureMode ? 'sample' : 'live'}:${[...new Set(snapshot.sources.map(source => source.accountScope ?? source.id))].sort().join('|')}` : 'loading';
   const previousChatAccount = useRef(chatAccountKey);
@@ -184,7 +193,7 @@ export function App() {
   const mounted = useRef(true);
   // Opening an item tells the worker, which reads the item's `read_once` links once.
   useEffect(() => {
-    if (selectedId) void window.magic.execute({ type: "ui_event", value: { kind: "open", subject: selectedId } }).catch(() => {});
+    if (selectedId) void window.magic.execute({ type: "ui_event", value: { kind: "open", subject: selectedId }, reply: "result" }).catch(() => {});
   }, [selectedId]);
 
   useEffect(() => {
@@ -221,15 +230,51 @@ export function App() {
 
   useEffect(() => {
     mounted.current = true;
-    const stopPolling = startSnapshotPolling(() => refresh(false), {
-      hidden: () => document.hidden,
-      schedule: callback => window.setTimeout(callback, 2000),
-      cancel: timer => window.clearTimeout(timer),
-      onVisibility: callback => {
-        document.addEventListener('visibilitychange', callback);
-        return () => document.removeEventListener('visibilitychange', callback);
-      },
-    });
+    let stopPolling: () => void;
+    const onChanged = window.magic?.onChanged;
+    if (onChanged) {
+      // owner: stall-audit. The worker says when the workspace changed; read then, at most every
+      // 2 s (the gate keeps one read at a time and queues one behind it). Hidden, a change is read
+      // on return. Idle, nothing is read. Without onChanged, the idle-time poll below stays.
+      let pending = false,
+        lastRead = Date.now(),
+        trailing: number | undefined;
+      const pull = () => {
+        pending = true;
+        if (document.hidden || trailing !== undefined) return;
+        const wait = lastRead + 2000 - Date.now();
+        if (wait > 0) {
+          trailing = window.setTimeout(() => {
+            trailing = undefined;
+            if (pending) pull();
+          }, wait);
+          return;
+        }
+        pending = false;
+        lastRead = Date.now();
+        void refresh();
+      };
+      const onVisible = () => {
+        if (!document.hidden && pending) pull();
+      };
+      const unsubscribe = onChanged(pull);
+      document.addEventListener('visibilitychange', onVisible);
+      void refresh();
+      stopPolling = () => {
+        unsubscribe();
+        document.removeEventListener('visibilitychange', onVisible);
+        window.clearTimeout(trailing);
+      };
+    } else
+      stopPolling = startSnapshotPolling(() => refresh(false), {
+        hidden: () => document.hidden,
+        schedule: callback => window.setTimeout(callback, 2000),
+        cancel: timer => window.clearTimeout(timer),
+        onVisibility: callback => {
+          document.addEventListener('visibilitychange', callback);
+          return () => document.removeEventListener('visibilitychange', callback);
+        },
+      });
     return () => {
       mounted.current = false;
       snapshotGate.current.invalidate();
@@ -442,7 +487,7 @@ export function App() {
   const needsSignIn = unavailableSources.some(
     (source) => source.status === "needs_sign_in",
   );
-  const pageTitle = view === "chat" ? "Chat" : view === "resource" ? selected?.kind === "assignment" ? "Assignment" : selected?.kind === "material" ? "Saved material" : "Saved item" : view === "courses" && coursePage ? coursePage.code || coursePage.courseName : ({today:"Home", courses:"Courses", myuw:"My UW", calendar:"Calendar", sources:"Connected sources", privacy:"Data & AI", consent:"Agreements"} as Partial<Record<View,string>>)[view] ?? "Workspace";
+  const pageTitle = view === "chat" ? "Chat" : view === "resource" ? selected?.kind === "assignment" ? "Assignment" : selected?.kind === "material" ? "Saved material" : "Saved item" : view === "courses" && coursePage ? coursePage.code || coursePage.courseName : ({today:"Home", courses:"Courses", myuw:"My UW", calendar:"Calendar", sources:"Connected sources", privacy:"Data & AI", consent:"Agreements", study:"Study & Learn"} as Partial<Record<View,string>>)[view] ?? "Workspace";
   const captureChatOrigin = (): ChatOrigin => {
     const place = navigation.capturePlace();
     return { view, resourceId: selectedId, courseKey: navigation.courseKey, label: pageTitle, focusKey: place.focus, anchor: place.anchor, offset: place.offset, scroll: place.scroll,
@@ -559,6 +604,8 @@ export function App() {
         ) : view === "resource" ? (
           selected ? <ResourceDetail key={selected.id} resource={selected} snapshot={snapshot} busy={busy} run={run} open={open} onClose={navigation.back} onSetup={() => openConsent()} onNotice={setNotice} />
             : <section className="initial-state"><h1 tabIndex={-1}>This item is no longer available.</h1><p>The saved item may have been removed or excluded. Your previous page is still available.</p><button className="button" onClick={navigation.back}>Go back</button></section>
+        ) : /* owner: study-prep */ view === "study" ? (
+          <StudyLearnPage />
         ) : view === "calendar" ? (
           <section className="desktop-calendar"><CalendarPage resources={resources} sources={snapshot.sources} links={snapshot.links} aliases={snapshot.courseWorkAdmission?.aliases} plan={snapshot.dayPlan ?? []} planning={snapshot.planning} personalEvents={snapshot.personalCalendarEvents ?? []}
             state={navigation.calendarState} onStateChange={navigation.updateCalendar} restoreFocusId={navigation.calendarFocus}
@@ -569,7 +616,9 @@ export function App() {
             signIn={(service) => uwConsented /* owner: T06 */ ? void perform(async () => { const outcome = await window.magic.signInUW?.(service); if (outcome?.status !== "confirmed") { setNotice(outcome ? signInMessage(outcome) : "Sign-in was not confirmed. Try again."); return; } return window.magic.syncPlanning?.(); }) : openConsent()} />
         ) : view === "courses" ? (
           <section className="desktop-courses">
-            {navigation.courseKey ? coursePage ? <CoursePageView typeHueOf={typeHueOf} key={coursePage.key} page={coursePage} selectedId={null} onSelect={setSelectedId} onBack={() => navigation.navigate("courses")} open={open} detail={null}/> : <><h1 tabIndex={-1}>Course unavailable</h1><p>This course is no longer included in the saved workspace.</p><Action onClick={() => navigation.navigate("courses")}>View courses</Action></> : <><CoursesViewHeader termLabel={compactCourseTerm(courseWorkModel?.scope.term.label ?? "Courses")} mode={navigation.coursesMode} onChange={navigation.switchCoursesMode}/>{navigation.coursesMode === 'list' && courseWorkModel ? <CoursesWorkList model={courseWorkModel} state={navigation.courseWorkState} onStateChange={navigation.updateCourseWorkState} timeZone={Intl.DateTimeFormat().resolvedOptions().timeZone} onOpen={openCourseWork} onAction={openCourseWork} onReport={reportCourseWork} onSources={()=>setView('sources')}/> : <CoursesIndex showHeader={false} resources={resources} sources={snapshot.sources} cards={courseCards} now={courseInput.now} typeHueOf={typeHueOf} onOpen={key => navigation.navigate("courses", null, key)} onSources={() => setView("sources")}/>}</>}
+            {navigation.courseKey ? coursePage ? <CoursePageView typeHueOf={typeHueOf} key={coursePage.key} page={coursePage} selectedId={null} onSelect={setSelectedId} onBack={() => navigation.navigate("courses")} open={open} detail={null}
+              tabs={<CourseTabs tab={courseTab} onTab={setCourseTab}/>} /* owner: course-analytics */
+              tabBody={courseTab === "analytics" ? <CourseAnalyticsPanel snapshot={snapshot} course={{ accountScope: coursePage.accountScope, courseId: coursePage.courseId, courseName: coursePage.code || coursePage.courseName }} onOpenItem={setSelectedId} onOverview={() => setCourseTab("overview")}/> : null}/> : <><h1 tabIndex={-1}>Course unavailable</h1><p>This course is no longer included in the saved workspace.</p><Action onClick={() => navigation.navigate("courses")}>View courses</Action></> : <><CoursesViewHeader termLabel={compactCourseTerm(courseWorkModel?.scope.term.label ?? "Courses")} mode={navigation.coursesMode} onChange={navigation.switchCoursesMode}/>{navigation.coursesMode === 'list' && courseWorkModel ? <CoursesWorkList model={courseWorkModel} state={navigation.courseWorkState} onStateChange={navigation.updateCourseWorkState} timeZone={Intl.DateTimeFormat().resolvedOptions().timeZone} onOpen={openCourseWork} onAction={openCourseWork} onReport={reportCourseWork} onSources={()=>setView('sources')}/> : <CoursesIndex showHeader={false} resources={resources} sources={snapshot.sources} cards={courseCards} now={courseInput.now} typeHueOf={typeHueOf} onOpen={key => navigation.navigate("courses", null, key)} onSources={() => setView("sources")}/>}</>}
           </section>
         ) : view === "consent" ? (
           // owner: T06. Consent route: setup, a new recipient's consent, or Agreements.
@@ -627,6 +676,8 @@ export function App() {
             }}
           />
         )}
+      <ItemSpaceHost />{/* owner: study-prep */}
+      <PrepFirstPrompt />{/* owner: study-prep */}
     </DesktopShell>
   );
 }

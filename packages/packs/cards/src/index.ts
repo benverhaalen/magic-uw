@@ -7,7 +7,8 @@
  */
 import { z } from "zod";
 import { definePack } from "../../core/src/index";
-import { batchCheck, sharedRules, type Draft, type GenerationInput } from "../../items/src/draft";
+import type { Passage } from "../../core/src/index";
+import { batchCheck, citedQuote, sharedRules, type Draft, type GenerationInput } from "../../items/src/draft";
 
 export const cardSchema = z
   .object({
@@ -45,8 +46,10 @@ export const MAX_BLANK_SHARE = 0.6;
  */
 const NEGATION = /(?<![\p{L}\p{N}])(not|except|never|least|incorrect)(?![\p{L}\p{N}])/giu;
 
-export function cardDrafts(output: CardsOutput): Draft[] {
-  return output.cards.map((c, index): Draft => {
+export function cardDrafts(output: CardsOutput, passages?: readonly Passage[]): Draft[] {
+  return output.cards.map((input, index): Draft => {
+    // An abbreviated quote is restored from the passage it cites (expandQuote).
+    const c = { ...input, quote: citedQuote(passages, input.sourceId, input.quote) };
     const back = c.back.trim();
     const base = {
       index,

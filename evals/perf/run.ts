@@ -13,11 +13,13 @@ import { canvasFirstSync, runBaseline } from "./baseline";
 import { renderMarkdown } from "./report";
 import { documentStage } from "./documents"; // owner: acquisition
 import { privacyStage } from "./privacy"; // owner: privacy
+import { runChangeChecks, runSyncAccount } from "./sync-account";
 
 /** `canvas`: only the first full Canvas sync (T17), for quick before/after runs. */
 /** `documents` (owner: acquisition): the course-file stage, earlier loop against the app's. */
 /** `privacy` (owner: privacy): the protection pass against its absolute budgets on this machine. */
-const SUITES = ["baseline", "canvas", "documents", "privacy"] as const;
+/** `sync`: the whole ingestion on a live-shaped account: first sync, relaunch, probes, change signals. */
+const SUITES = ["baseline", "canvas", "documents", "privacy", "sync"] as const;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 function parseSuite(argv: string[]): string | undefined {
@@ -75,7 +77,9 @@ async function main() {
         ? { metrics: { documentStage: await documentStage() }, recording: undefined }
         : suite === "privacy"
           ? { metrics: { privacy: privacyStage() }, recording: undefined }
-        : await runBaseline();
+        : suite === "sync"
+          ? { metrics: { syncAccount: await runSyncAccount(), changeChecks: await runChangeChecks({ latencyMs: 150 }) }, recording: undefined }
+          : await runBaseline();
   const report = {
     schema: "magic-perf/1",
     suite,

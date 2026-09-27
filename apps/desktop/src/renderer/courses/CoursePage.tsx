@@ -40,6 +40,7 @@ import {
   type WorkGroup,
 } from "./course-view";
 import "./courses.css";
+import { CourseStudyPrep } from "../study-prep"; // owner: study-prep
 
 // owner: course page. The frame the notebook (T43) fills later: its Sources/Notes/Studio replace
 // the Materials section below for the same course key. Everything here renders from saved evidence.
@@ -415,6 +416,8 @@ export function CoursePageView({
   detail,
   schedule,
   typeHueOf,
+  tabs,
+  tabBody,
 }: {
   page: CoursePageModel;
   selectedId: string | null;
@@ -434,6 +437,9 @@ export function CoursePageView({
    * mapper from its own verified groups (identical for rows from the groups' own source).
    */
   typeHueOf?: (r: { sourceId: string; courseId: string; assignmentGroupId?: string | null }) => AssignmentTypeHue | null;
+  /** owner: course-analytics. A tab strip under the heading, and the active tab's body in place of the layout. */
+  tabs?: ReactNode;
+  tabBody?: ReactNode;
 }) {
   const syllabus = page.syllabus;
   const work = courseWork(page);
@@ -566,6 +572,8 @@ export function CoursePageView({
           </span>
         </p>
       </div>
+      {tabs}
+      {tabBody ?? (
       <div className={`course-layout ${selectedId ? "has-detail" : overview ? "has-overview" : ""}`}>
         <section className="course-section course-next-section" aria-labelledby="course-next">
           <h2 id="course-next">Next up</h2>
@@ -611,6 +619,9 @@ export function CoursePageView({
         </section>
 
         {selectedId ? null : overview}
+
+        {/* owner: study-prep: one entry per upcoming exam or quiz; renders nothing when there is none */}
+        <CourseStudyPrep courseId={page.courseId} />
 
         {/* T43: the notebook replaces this section with its tiers for the same course key. */}
         <section className="course-section course-materials" aria-labelledby="course-materials">
@@ -664,6 +675,7 @@ export function CoursePageView({
         </section>
         {selectedId ? detail : null}
       </div>
+      )}
     </>
   );
 }
