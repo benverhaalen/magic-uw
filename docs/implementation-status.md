@@ -40,6 +40,8 @@ Outlook calendar events are classed as communications, so hosted sharing, Jev, a
 
 Deleting local data removes coursework/history, planning, day-plan decisions, cached documents, feed secrets, app-owned UW sessions, and MCP access files. Clearing only the UW session retains coursework. Neither action removes UW records, provider-retained data, or OS backups. Reading may cause access logs, viewed status, or must-view completion on the source system. The app provides no submit, post, enroll, or explicit completion command to UW.
 
+Personal briefing reports have a typed local command and SQLite persistence for “I’ve handled this” and Undo, scoped to semantic issue, account and exact source version. They preserve history and reopen when source evidence changes; they never alter Canvas submission, generic completion, or learning evidence. Only the latest display state enters snapshots; history stays local and all reports are excluded from AI/MCP context and cleared by local-data purge. Storage/core tests cover restart, stale views, duplicate retry, access boundaries and privacy. Desktop Home binding and complete interaction verification remain integration work. See [the report contract](design/personal-reports.md).
+
 ## Evidence and context
 
 Only a complete successful scope can establish removal. Malformed records are isolated; restricted, unpublished, stale, empty, partial, and unavailable states remain distinct. Excluded courses remain visible with reasons and cannot enter enrichment or MCP output. An inaccessible course cannot be reopened by a local inclusion override.

@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { personalReportChangeSchema, type PersonalReportChange, type PersonalReportState, type PersonalReportEvent } from "./personal-reports";
+export * from "./personal-reports";
 import {
   planningCaptureSchema,
   type PlanningCapture,
@@ -856,6 +858,9 @@ export interface Store {
   /** Consent seams (T06 implements): read-only records, and the only writer. */
   consents?(): ConsentRecord[];
   setConsent?(change: ConsentChange, at: string): void;
+  personalReports(): PersonalReportState[];
+  personalReportHistory(issueId: string, limit?: number): PersonalReportEvent[];
+  setPersonalReport(change: PersonalReportChange): PersonalReportState;
   setCompleted(id: string, completed: boolean): void;
   links(): Link[];
   putLink(link: Link): void;
@@ -913,6 +918,8 @@ export interface Snapshot {
   mcpGrants?: McpGrant[];
   consents?: ConsentRecord[];
   dayPlan?: DayPlanEntry[];
+  /** Local display only; excluded from AI/MCP contexts. Latest choice per issue, not the journal. */
+  personalReports?: PersonalReportState[];
 }
 // owner: T05b. The integration seams: the learning channel (spec §8.1 of the learning spec,
 // its practice addendum, and T47/T53's practice.target and practice.assessmentQuiz), the
@@ -1353,6 +1360,7 @@ export const commandSchema = z.discriminatedUnion("type", [
       date: z.iso.date(),
     })
     .strict(),
+  z.object({ type: z.literal("personal-report"), value: personalReportChangeSchema }).strict(),
   z.object({ type: z.literal("fixture") }).strict(),
   // Removes only the Outlook calendar and its meetings from this device. Used by disconnect and sign-out.
   z.object({ type: z.literal("outlook-disconnect") }).strict(),

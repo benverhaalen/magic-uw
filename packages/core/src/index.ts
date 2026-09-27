@@ -177,6 +177,7 @@ export function createCore(store: Store, options: CoreOptions) {
       // owner: T06: the renderer routes on these and main's consent gate mirrors them.
       consents: store.consents?.() ?? [],
       dayPlan: store.dayPlan(),
+      personalReports: store.personalReports(),
     };
   }
   function context(
@@ -764,6 +765,9 @@ export function createCore(store: Store, options: CoreOptions) {
         message = "Loaded a synthetic sample course.";
         break;
       }
+      case "personal-report":
+        store.setPersonalReport(command.value);
+        break;
       case "complete":
         store.setCompleted(command.id, command.completed);
         break;
