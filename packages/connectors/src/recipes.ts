@@ -140,6 +140,41 @@ function find(root: SiteNode, path: string): SiteNode | undefined {
   return node;
 }
 
+/** Link text per target (no query or fragment), for the host triage. Parse only. */
+export function anchorTexts(html: string, base: string): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  let href: string | null = null;
+  let text = "";
+  new Parser(
+    {
+      onopentag(name: string, attrs: Record<string, string>) {
+        if (name === "a" && attrs.href) {
+          href = attrs.href;
+          text = "";
+        }
+      },
+      ontext(t: string) {
+        if (href !== null) text += t;
+      },
+      onclosetag(name: string) {
+        if (name !== "a" || href === null) return;
+        try {
+          const u = new URL(href, base);
+          u.search = "";
+          u.hash = "";
+          const url = u.href;
+          const label = text.replace(/\s+/g, " ").trim().slice(0, 80);
+          if (label) out.set(url, [...(out.get(url) ?? []), label]);
+        } catch {
+          /* not a URL */
+        }
+        href = null;
+      },
+    },
+    { decodeEntities: true },
+  ).end(html);
+  return out;
+}
 // ---------------------------------------------------------------- tables, lists, sections
 interface TableShape {
   header: string[] | null;

@@ -213,6 +213,9 @@ const notes = createNotesService({ store, runner: generationRunner, remotes: not
 // course's stored site pages: stored recipes replay as code; only a new layout calls the
 // student's client (background lane, consent and receipts); leftovers go to Jev when configured.
 import { siteRecipeJob } from "../../../packages/core/src/site-recipes";
+import { createSiteTriage } from "../../../packages/core/src/site-triage";
+// Host triage before any crawl: code from Canvas evidence, one batched call for ambiguous hosts.
+const siteTriage = createSiteTriage({ store, runner: generationRunner });
 const jobs = pipelineJobRegistry();
 jobs.register(
   siteRecipeJob({
@@ -239,7 +242,12 @@ const core = createCore(store, {
     // and course-map assessment rows).
     analyticsReferences: () => createPipelineReferences(store),
     // end owner: analytics
-  }), pack: generation.pack /* owner: generation */, notes /* owner: notes */, intent /* owner: intent */ },
+  }), pack: generation.pack /* owner: generation */, notes /* owner: notes */, intent /* owner: intent */,
+    // owner: site-recipes. Opening an item reads its `read_once` links (the renderer's "open" event).
+    uiEvent: (event) => {
+      if (event.kind === "open") void ingestion.readLinked(event.subject).catch(() => {});
+    },
+  },
   ...(process.env.MAGIC_GATEWAY_URL
     ? {
         gateway: {
@@ -346,6 +354,9 @@ const graphHost = {
 };
 // end owner: T30
 const ingestion = createIngestion(store, {
+  // owner: site-recipes: the crawler reads only hosts triage decided `sync`.
+  triage: async (accountScope, courseId, signal) =>
+    new Map((await siteTriage.decide({ accountScope, courseId }, signal)).hosts.map((h) => [h.host, h])),
   directory: dirname(process.env.MAGIC_DB_PATH!),
   extractor,
   client: publicClients.ingestion, // owner: T06

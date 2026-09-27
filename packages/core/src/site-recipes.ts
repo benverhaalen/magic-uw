@@ -159,6 +159,121 @@ function placeFromJev(j: KindJudgment): SiteItemKind | null {
   return j.kind === "other" ? null : "assignment";
 }
 
+const RECIPE_FRAME = {
+  skeleton: "A course website page, outlined by code.",
+  policy: "Not applicable: this call maps page structure and writes no coursework.",
+};
+export interface SiteSendContext {
+  store: SiteStore;
+  now: () => Date;
+  artifacts: ArtifactStore;
+  ledger: LedgerStore;
+}
+/** One checked, consented, receipted call for the course-website packs (recipes, rows, host triage). */
+export function createSiteSender(ctx: SiteSendContext) {
+  const { store, now, artifacts, ledger } = ctx;
+/** The shared send path's steps: permission, the held-preview policy, a receipt per send. */
+function authorizer(resourceIds: string[], purpose: string, receiptIds: string[]) {
+  return (recipient: string, categories: string[], payload?: unknown) => {
+    const parsed = aiRecipientSchema.safeParse(recipient);
+    if (!parsed.success) return { allowed: false, reason: "This recipient is not supported." };
+    const permission = maySend(store.privacy(), recipient, categories);
+    if (payload === undefined) return permission;
+    const m = {
+      recipient: parsed.data,
+      purpose,
+      categories,
+      resourceIds,
+      characters: JSON.stringify(payload).length,
+      allowed: permission.allowed,
+      reason: permission.reason,
+      payload,
+    };
+    const at = now().toISOString();
+    const decision = egressFor(store).check(m, { at, background: true });
+    if (decision.status === "blocked") {
+      receiptIds.push(decision.receiptId);
+      return { allowed: false, reason: decision.reason };
+    }
+    if (decision.status === "preview_required") {
+      receiptIds.push(decision.previewId);
+      return { allowed: false, reason: decision.reason };
+    }
+    const receipt = buildReceipt(m, "sent", at);
+    store.addReceipt(receipt);
+    receiptIds.push(receipt.id);
+    return { allowed: true, reason: permission.reason };
+  };
+}
+
+/** One checked call through the student's client; retries once on failed checks, never escalates. */
+async function sendPack<I, O>(
+  runner: ModelRunner,
+  pack: PackSpec<I, O>,
+  from: Resource[],
+  course: { accountScope: string; courseId: string },
+  input: I,
+  passage: { sourceId: string; text: string },
+  purpose: string,
+  receiptIds: string[],
+  signal?: AbortSignal,
+  frameText: { skeleton: string; policy: string } = RECIPE_FRAME,
+) {
+  const hosted = runner.client !== "local";
+  const scrubber = payloadScrubber(store, hosted, course.accountScope);
+  const scrub = (v: string) => scrubber.field(v, course.courseId);
+  const categories = [...new Set([...pack.categories, ...from.flatMap(contentCategories)])];
+  const authorize = authorizer(from.map((r) => r.id).slice(0, 200), purpose, receiptIds);
+  const frame: CourseFrame = {
+    courseId: `${course.accountScope}:${course.courseId}`,
+    course: "Course website",
+    skeleton: frameText.skeleton,
+    policy: frameText.policy,
+  };
+  const passages = [{ sourceId: passage.sourceId, text: passage.text }];
+  const prompt = buildPrompt(pack, frame, input, passages);
+  let calls = 0;
+  let usage = zero();
+  const counting: LedgerStore = {
+    append(r: LedgerRecord) {
+      // Every attempt's provider usage, including a retry and an answer that failed the checks.
+      if (!("outcome" in r && r.outcome === "cache_hit")) {
+        calls++;
+        usage = add(usage, r.usage);
+      }
+      ledger.append(r);
+    },
+    list: (f) => ledger.list(f),
+  };
+  const beforeCall = (call: BackendCall): BackendCall => {
+    // Retry once at the pass tier with the failed checks, then give up (no escalation).
+    if (call.tier !== pack.tier) throw new GiveUp();
+    const outgoing = { ...call, courseId: hosted ? undefined : call.courseId, systemPrompt: scrub(call.systemPrompt), input: scrub(call.input) };
+    const permission = authorize(recipientOf[runner.client], categories, { systemPrompt: outgoing.systemPrompt, input: outgoing.input, jsonSchema: outgoing.jsonSchema });
+    if (!permission.allowed) throw new Blocked(permission.reason);
+    return outgoing;
+  };
+  const promptTokens = Math.ceil((prompt.systemPrompt.length + prompt.input.length) / 4);
+  try {
+    const result = await runPack(
+      { runner, artifacts, ledger: counting, authorize: (r, c) => authorize(r, [...new Set([...c, ...categories])]), beforeCall, now: () => now().getTime() },
+      { ...pack, categories },
+      frame,
+      input,
+      passages,
+      { lane: "background", scope: "site", ...(signal ? { signal } : {}) },
+    );
+    return { result, calls, usage, promptTokens };
+  } catch (error) {
+    if (error instanceof GiveUp) return { result: { status: "gave_up" as const }, calls, usage, promptTokens };
+    if (error instanceof Blocked) return { result: { status: "blocked" as const, reason: error.message }, calls, usage, promptTokens };
+    if (error instanceof RunnerError) return { result: { status: "failed" as const, message: error.studentMessage }, calls, usage, promptTokens };
+    throw error;
+  }
+}
+  return { authorizer, sendPack };
+}
+
 export function createSiteRecipes(deps: SiteRecipeDeps) {
   const { store } = deps;
   const now = deps.now ?? (() => new Date());
@@ -170,6 +285,7 @@ export function createSiteRecipes(deps: SiteRecipeDeps) {
   };
   const ledger =
     deps.ledger ?? (store.addLedgerEntry && store.ledger ? sqlLedgerStore(store as Pick<CourseCoreStore, "addLedgerEntry" | "ledger">, courseOf) : memoryLedgerStore());
+  const { authorizer, sendPack } = createSiteSender({ store, now, artifacts, ledger });
 
   async function ingestCourse(course: { accountScope: string; courseId: string }, signal?: AbortSignal): Promise<SiteRunReport> {
     const started = Date.now();
@@ -190,7 +306,8 @@ export function createSiteRecipes(deps: SiteRecipeDeps) {
     const sources = new Map(store.sources().map((s) => [s.id, s]));
     const all = store.resources();
     const inCourse = (r: Resource) => r.courseId === course.courseId && sources.get(r.sourceId)?.accountScope === course.accountScope;
-    const pages = all.filter((r) => inCourse(r) && sources.get(r.sourceId)?.kind === "web" && isSitePage(r));
+    // The crawler's own source only: pages read once on demand (triage `read_once`) never get recipes.
+    const pages = all.filter((r) => inCourse(r) && sources.get(r.sourceId)?.kind === "web" && sources.get(r.sourceId)?.scope === "course_websites" && isSitePage(r));
     if (!pages.length) return { ...report, durationMs: Date.now() - started };
 
     // Only hosts the course itself points at: the crawler's seeds and the inventory's readable spaces.
@@ -397,105 +514,6 @@ export function createSiteRecipes(deps: SiteRecipeDeps) {
     deps.onSaved?.(batch.source.id);
   }
 
-  /** The shared send path's steps: permission, the held-preview policy, a receipt per send. */
-  function authorizer(page: Resource, purpose: string, receiptIds: string[]) {
-    return (recipient: string, categories: string[], payload?: unknown) => {
-      const parsed = aiRecipientSchema.safeParse(recipient);
-      if (!parsed.success) return { allowed: false, reason: "This recipient is not supported." };
-      const permission = maySend(store.privacy(), recipient, categories);
-      if (payload === undefined) return permission;
-      const m = {
-        recipient: parsed.data,
-        purpose,
-        categories,
-        resourceIds: [page.id],
-        characters: JSON.stringify(payload).length,
-        allowed: permission.allowed,
-        reason: permission.reason,
-        payload,
-      };
-      const at = now().toISOString();
-      const decision = egressFor(store).check(m, { at, background: true });
-      if (decision.status === "blocked") {
-        receiptIds.push(decision.receiptId);
-        return { allowed: false, reason: decision.reason };
-      }
-      if (decision.status === "preview_required") {
-        receiptIds.push(decision.previewId);
-        return { allowed: false, reason: decision.reason };
-      }
-      const receipt = buildReceipt(m, "sent", at);
-      store.addReceipt(receipt);
-      receiptIds.push(receipt.id);
-      return { allowed: true, reason: permission.reason };
-    };
-  }
-
-  /** One checked call through the student's client; retries once on failed checks, never escalates. */
-  async function sendPack<I, O>(
-    runner: ModelRunner,
-    pack: PackSpec<I, O>,
-    page: Resource,
-    course: { accountScope: string; courseId: string },
-    input: I,
-    passage: { sourceId: string; text: string },
-    purpose: string,
-    receiptIds: string[],
-    signal?: AbortSignal,
-  ) {
-    const hosted = runner.client !== "local";
-    const scrubber = payloadScrubber(store, hosted, course.accountScope);
-    const scrub = (v: string) => scrubber.field(v, course.courseId);
-    const categories = [...new Set([...pack.categories, ...contentCategories(page)])];
-    const authorize = authorizer(page, purpose, receiptIds);
-    const frame: CourseFrame = {
-      courseId: `${course.accountScope}:${course.courseId}`,
-      course: "Course website",
-      skeleton: "A course website page, outlined by code.",
-      policy: "Not applicable: this call maps page structure and writes no coursework.",
-    };
-    const passages = [{ sourceId: passage.sourceId, text: passage.text }];
-    const prompt = buildPrompt(pack, frame, input, passages);
-    let calls = 0;
-    let usage = zero();
-    const counting: LedgerStore = {
-      append(r: LedgerRecord) {
-        // Every attempt's provider usage, including a retry and an answer that failed the checks.
-        if (!("outcome" in r && r.outcome === "cache_hit")) {
-          calls++;
-          usage = add(usage, r.usage);
-        }
-        ledger.append(r);
-      },
-      list: (f) => ledger.list(f),
-    };
-    const beforeCall = (call: BackendCall): BackendCall => {
-      // Retry once at the pass tier with the failed checks, then give up (no escalation).
-      if (call.tier !== pack.tier) throw new GiveUp();
-      const outgoing = { ...call, courseId: hosted ? undefined : call.courseId, systemPrompt: scrub(call.systemPrompt), input: scrub(call.input) };
-      const permission = authorize(recipientOf[runner.client], categories, { systemPrompt: outgoing.systemPrompt, input: outgoing.input, jsonSchema: outgoing.jsonSchema });
-      if (!permission.allowed) throw new Blocked(permission.reason);
-      return outgoing;
-    };
-    const promptTokens = Math.ceil((prompt.systemPrompt.length + prompt.input.length) / 4);
-    try {
-      const result = await runPack(
-        { runner, artifacts, ledger: counting, authorize: (r, c) => authorize(r, [...new Set([...c, ...categories])]), beforeCall, now: () => now().getTime() },
-        { ...pack, categories },
-        frame,
-        input,
-        passages,
-        { lane: "background", scope: "site", ...(signal ? { signal } : {}) },
-      );
-      return { result, calls, usage, promptTokens };
-    } catch (error) {
-      if (error instanceof GiveUp) return { result: { status: "gave_up" as const }, calls, usage, promptTokens };
-      if (error instanceof Blocked) return { result: { status: "blocked" as const, reason: error.message }, calls, usage, promptTokens };
-      if (error instanceof RunnerError) return { result: { status: "failed" as const, message: error.studentMessage }, calls, usage, promptTokens };
-      throw error;
-    }
-  }
-
   async function generate(
     runner: ModelRunner,
     page: Resource,
@@ -517,7 +535,7 @@ export function createSiteRecipes(deps: SiteRecipeDeps) {
       return (lastErrors = applyRecipe(snap.root, compiled.recipe, anchors).errors);
     };
     const pack = { ...recipePack, checks: [(o: RecipeAnswer) => check(o)] };
-    const sent = await sendPack(runner, pack, page, course, { outline: snap.text }, { sourceId: "page", text: snap.text }, "Map a course website page's layout to a reusable extraction recipe", receiptIds, signal);
+    const sent = await sendPack(runner, pack, [page], course, { outline: snap.text }, { sourceId: "page", text: snap.text }, "Map a course website page's layout to a reusable extraction recipe", receiptIds, signal);
     const id = `rcp_${sha(`${host}|${snap.layoutHash}|${version}`).slice(0, 24)}`;
     const r = sent.result;
     const tokens = sent.usage;
@@ -587,7 +605,7 @@ export function createSiteRecipes(deps: SiteRecipeDeps) {
     let pending = open.filter((i) => !placed.has(i)).slice(0, budgets.leftoversPerPage);
     const hostedScrub = payloadScrubber(store, true, course.accountScope);
     if (pending.length && deps.jev && maySend(store.privacy(), "jev", ["course_text"]).allowed) {
-      const authorize = authorizer(page, "Place a course website row (assignment, reading or other)", report.receiptIds);
+      const authorize = authorizer([page.id], "Place a course website row (assignment, reading or other)", report.receiptIds);
       for (const item of pending) {
         signal?.throwIfAborted();
         const payload = {
@@ -629,7 +647,7 @@ export function createSiteRecipes(deps: SiteRecipeDeps) {
     if (pending.length && runner) {
       const ids = pending.map((_, i) => `r${i}`);
       const text = pending.map((item, i) => `r${i}: ${item.text.replace(/\s+/g, " ").slice(0, 300)}`).join("\n");
-      const sent = await sendPack(runner, rowsPack, page, course, { ids }, { sourceId: "rows", text }, "Place course website rows that code could not", report.receiptIds, signal);
+      const sent = await sendPack(runner, rowsPack, [page], course, { ids }, { sourceId: "rows", text }, "Place course website rows that code could not", report.receiptIds, signal);
       report.modelCalls += sent.calls;
       report.tokens = add(report.tokens, sent.usage);
       const r = sent.result;
@@ -822,7 +840,7 @@ export function siteRecipeJob(deps: Omit<SiteRecipeDeps, "store">): JobHandler {
       const r = store.resource(job.resourceId);
       if (!r || r.deleted || r.contentHash !== job.inputHash || !isSitePage(r)) return { status: "done" };
       const source = store.sources().find((s) => s.id === r.sourceId);
-      if (!source || source.kind !== "web") return { status: "done" };
+      if (!source || source.kind !== "web" || source.scope !== "course_websites") return { status: "done" };
       if (!("extractionRecipe" in store)) return { status: "done" };
       await createSiteRecipes({ ...deps, store: store as SiteStore }).ingestCourse({ accountScope: source.accountScope, courseId: r.courseId }, signal);
       return { status: "done" };
