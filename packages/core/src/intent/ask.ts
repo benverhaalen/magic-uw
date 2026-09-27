@@ -13,7 +13,7 @@ import { findQuote } from "../../../retrieval/src/quotes";
 import { contentCategories } from "../access";
 import { runPack } from "../jobs/pack";
 import { authorizer } from "./consent";
-import type { CoursePrefixSource } from "../course-facts/prefix"; // owner: course-facts
+import { coursePackCatalogue, type CoursePrefixSource } from "../course-facts/prefix"; // owner: course-facts
 import { BRIEF_POLICY_POINTER, briefHoldsPolicy } from "../course-facts/brief"; // owner: course-facts
 import type { AskResult, IntentStore, ResolvedCourse } from "./types";
 import { originalQuote, passageClass, type IntentProtection } from "../privacy/intent"; // owner: privacy
@@ -85,13 +85,20 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
   if (prefix) {
     frame.brief = prefix.text;
     if (policy && briefHoldsPolicy(policy.evidence, prefix.text)) frame.policy = `${policy.mode}: ${BRIEF_POLICY_POINTER}`;
+  } else {
+    // No brief (several courses, or a course with no syllabus found): the pack catalogue alone is
+    // the system prompt. It holds this pack's instructions, is the same bytes for every course, and
+    // with the pool's protocol and schema passes the prompt-cache minimum (pool.ts promptCacheMinimum).
+    frame.brief = coursePackCatalogue();
   }
   // end owner: course-facts
   // owner: privacy: the question is the student's; each passage is its resource's class.
   const p = deps.protection?.request("ask");
   const frozen = new Map(passages.map((x) => [x.sourceId, p ? p.frozen(x.text, passageClass(store.resource(meta.get(x.sourceId)!.resourceId))) : { text: x.text, spans: [] }]));
   const sent = passages.map((x) => ({ ...x, text: frozen.get(x.sourceId)!.text }));
-  if (p) Object.assign(frame, { course: p.text(frame.course, "teaching"), skeleton: p.text(frame.skeleton, "teaching"), policy: p.text(frame.policy, "teaching"), ...(frame.brief !== undefined ? { brief: p.text(frame.brief, "teaching") } : {}) });
+  // The brief is the byte-stable system prompt: protected once per content (the stable prefix's
+  // protection), so every ask on the course sends the same bytes and the provider's cache holds.
+  if (p) Object.assign(frame, { course: p.text(frame.course, "teaching"), skeleton: p.text(frame.skeleton, "teaching"), policy: p.text(frame.policy, "teaching"), ...(frame.brief !== undefined ? { brief: deps.protection?.prefix(frame.brief) ?? frame.brief } : {}) });
   const input = { question: p ? p.text(question.trim().slice(0, 2000), "personal") : question.trim().slice(0, 2000) };
   const prompt = buildPrompt(pack, frame, input, sent);
   const receiptIds: string[] = [];

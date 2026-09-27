@@ -20,7 +20,8 @@ import { classifyPack, SLOT_GLOSSARY, type ClassifyInput, type ClassifyOutput, t
 import { readPackArtifact, runPack } from "../jobs/pack";
 import { defaultActions } from "./adapters";
 import { groundedAsk } from "./ask";
-import type { CoursePrefixSource } from "../course-facts/prefix"; // owner: course-facts
+import { coursePrefixes, type CoursePrefixSource } from "../course-facts/prefix"; // owner: course-facts
+import { createCourseBriefs } from "../course-facts/brief";
 import { authorizer } from "./consent";
 import { buildIndex, createResolve, indexSignature, refreshTopics, type IntentIndex } from "./courses";
 import { createRegistry, type ActionRegistry, type AnyAction } from "./registry";
@@ -87,6 +88,10 @@ export function createIntentRouter(deps: IntentRouterDeps) {
   const speculation = deps.speculation ?? "gate";
   // owner: privacy: runs only in classify (after a code miss) and in ask; warmed with the index.
   const protection = intentProtection(store, deps.protect !== false);
+  // The course prefix (brief + pack catalogue) opens every one-course ask, so the pooled session's
+  // prefix is byte-stable and past the prompt-cache minimum. Built in memory when the host passes
+  // none, the same default as the pack handler's.
+  const coursePrefix = deps.coursePrefix ?? coursePrefixes(createCourseBriefs({ store }).courseBrief);
 
   let cached: IntentIndex | null = null;
   let checkedAt = -Infinity;
@@ -175,7 +180,7 @@ export function createIntentRouter(deps: IntentRouterDeps) {
       signal,
       ask: async (question, courses, s): Promise<AskResult> => {
         const list = courses === "all" ? resolve.courses() : courses;
-        const r = await groundedAsk({ store, runner: () => runnerP, artifacts, ledger, now, protection, ...(deps.coursePrefix ? { coursePrefix: deps.coursePrefix } : {}) /* owner: course-facts */ }, question, list, s); // owner: privacy
+        const r = await groundedAsk({ store, runner: () => runnerP, artifacts, ledger, now, protection, coursePrefix /* owner: course-facts */ }, question, list, s); // owner: privacy
         spent.tokens = add(spent.tokens, r.tokens);
         return r;
       },
