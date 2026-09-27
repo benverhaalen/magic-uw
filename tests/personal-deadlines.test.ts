@@ -11,6 +11,7 @@ import { captureBatchSchema, personalPlanningAt, type PersonalDeadlineChange, ty
 import { resourceViews } from "../packages/core/src/queries";
 import { currentPersonalDeadlineSource, personalDeadlineSource } from "../packages/core/src/personal-deadlines";
 import { resolveDeadline } from "@magic/domain";
+import { projectScheduleResources, schedulePlanning } from "../apps/desktop/src/renderer/schedule-projection";
 import fixture from "../fixtures/course.json";
 
 const stamp = "2026-09-27T12:00:00.000Z";
@@ -148,4 +149,79 @@ test("account binding, exclusion, typed core latest snapshots and local purge", 
     await core.execute({type: "purge", confirmation: "DELETE LOCAL DATA"});
     assert.deepEqual(store.personalDeadlineChoices(), []);
   } finally {await core.close();}
+});
+
+test("exact calendar and module evidence participates in persisted choices and invalidates changed dates", () => {
+  const store = createStore(":memory:", { now: () => new Date(stamp) });
+  const batch = captureBatchSchema.parse(fixture);
+  const assignment = batch.resources.find(row => row.externalId === "essay-1")!;
+  assignment.externalId = "77";
+  assignment.url = "https://canvas.wisc.edu/courses/sample-101/assignments/77";
+  assignment.deadlines = [
+    {value:"2026-10-01T05:00:00Z",kind:"due",quote:"Syllabus date",authority:"document",scopeConfirmed:true},
+    {value:"2026-10-17T04:59:59Z",kind:"due",quote:"Canvas due_at",authority:"structured",scopeConfirmed:true},
+  ];
+  const feed = captureBatchSchema.parse({
+    source:{...batch.source,id:"sample-feed",kind:"calendar",scope:"calendar_feed"}, observedAt:stamp, complete:true,status:"ok",
+    resources:[{...batch.resources.find(row=>row.externalId==="workshop-sat")!,externalId:"feed-77",url:"https://canvas.wisc.edu/calendar",deadlines:[],
+      calendar:{uid:"event-assignment-77",start:"2026-10-16",end:"2026-10-17",allDay:true}}],
+  });
+  const module = captureBatchSchema.parse({
+    source:{...batch.source,id:"sample-module",scope:"module-items:1"}, observedAt:stamp, complete:true,status:"ok",
+    resources:[{...assignment,kind:"material",externalId:"module-77",url:"https://canvas.wisc.edu/courses/sample-101/modules/items/77",
+      moduleItem:{type:"Assignment",contentId:"77",title:"Synthetic assignment",position:1,moduleId:"1"}}],
+  });
+  try {
+    store.ingest(batch); store.ingest(feed); store.ingest(module);
+    store.ingest(captureBatchSchema.parse({...feed,source:{...feed.source,id:"other-account-feed",accountScope:"other-account"}}));
+    store.ingest(captureBatchSchema.parse({...feed,source:{...feed.source,id:"foreign-host-feed"},resources:feed.resources.map(row=>({...row,url:"https://lookalike.example/calendar"}))}));
+    store.ingest(captureBatchSchema.parse({...feed,source:{...feed.source,id:"contradictory-id-feed"},resources:feed.resources.map(row=>({...row,calendar:{...row.calendar!,assignmentExternalId:"88"}}))}));
+    const id=store.resources().find(row=>row.externalId==="77" && row.kind==="assignment")!.id;
+    const original=view(store,id);
+    assert.equal(original.personalDeadline!.options.length,2);
+    assert.ok(original.personalDeadline!.options.find(option=>option.value==="2026-10-17T04:59:59.000Z")!.claims.some(claim=>claim.origin==="calendar"));
+    assert.equal(original.deadlineContributors!.length,3);
+    const chosen=original.personalDeadline!.options.find(option=>option.value==="2026-10-17T04:59:59.000Z")!;
+    save(store,{operationId:"feed-choice",resourceId:id,sourceVersion:original.personalDeadline!.sourceVersion,optionId:chosen.id,expectedRevision:0});
+    const sources=new Map(store.sources().map(source=>[source.id,source]));
+    const projected=projectScheduleResources(resourceViews(store,store.resources()).map(row=>({...row,
+      accountScope:sources.get(row.sourceId)?.accountScope,sourceScope:sources.get(row.sourceId)?.scope,sourceKind:sources.get(row.sourceId)?.kind})),store.links()).find(row=>row.id===id)!;
+    assert.equal(projected.scheduleDeadline?.choiceUnavailable,undefined);
+    assert.equal(projected.personalDeadline?.selected?.optionId,chosen.id);
+    assert.equal(schedulePlanning(projected,"America/Chicago")?.date,"2026-10-16");
+    save(store,{operationId:"feed-undo",resourceId:id,sourceVersion:original.personalDeadline!.sourceVersion,optionId:null,expectedRevision:1});
+    const afterUndo=projectScheduleResources(resourceViews(store,store.resources()).map(row=>({...row,
+      accountScope:sources.get(row.sourceId)?.accountScope,sourceScope:sources.get(row.sourceId)?.scope,sourceKind:sources.get(row.sourceId)?.kind})),store.links()).find(row=>row.id===id)!;
+    assert.equal(afterUndo.personalDeadline?.selected,null);
+    assert.equal(schedulePlanning(afterUndo,"America/Chicago")?.date,"2026-10-01");
+    save(store,{operationId:"feed-choice-again",resourceId:id,sourceVersion:original.personalDeadline!.sourceVersion,optionId:chosen.id,expectedRevision:2});
+    const changed={...feed,observedAt:"2026-09-28T12:00:00Z",resources:feed.resources.map(row=>({...row,calendar:{...row.calendar!,start:"2026-10-02",end:"2026-10-03"}}))};
+    store.ingest(changed);
+    assert.equal(view(store,id).personalDeadline?.needsReview,true);
+    assert.equal(view(store,id).personalDeadline?.selected,null);
+    assert.throws(()=>save(store,{operationId:"stale-feed",resourceId:id,sourceVersion:original.personalDeadline!.sourceVersion,optionId:chosen.id,expectedRevision:3}),/source changed/);
+  } finally {store.close();}
+});
+
+test("a day-only feed claim stays separate when two timed claims share its day", () => {
+  const store = createStore(":memory:", { now: () => new Date(stamp) });
+  const batch = captureBatchSchema.parse(fixture);
+  const assignment = batch.resources.find(row => row.externalId === "essay-1")!;
+  assignment.externalId = "77";
+  assignment.url = "https://canvas.wisc.edu/courses/sample-101/assignments/77";
+  assignment.deadlines = [
+    {value:"2026-10-17T03:00:00Z",kind:"due",quote:"Canvas 10 PM",authority:"structured",scopeConfirmed:true},
+    {value:"2026-10-17T04:59:59Z",kind:"due",quote:"Canvas 11:59 PM",authority:"structured",scopeConfirmed:true},
+  ];
+  const feed = captureBatchSchema.parse({source:{...batch.source,id:"sample-feed",kind:"calendar",scope:"calendar_feed"},
+    observedAt:stamp,complete:true,status:"ok",resources:[{...batch.resources.find(row=>row.externalId==="workshop-sat")!,externalId:"feed-77",
+      url:"https://canvas.wisc.edu/calendar",deadlines:[],calendar:{uid:"event-assignment-77",start:"2026-10-16",end:"2026-10-17",allDay:true}}]});
+  try {
+    store.ingest(batch);store.ingest(feed);
+    const id=store.resources().find(row=>row.externalId==="77" && row.kind==="assignment")!.id;
+    const options=view(store,id).personalDeadline!.options;
+    assert.equal(options.length,3);
+    assert.equal(options.filter(option=>option.precision==="minute").length,2);
+    assert.equal(options.filter(option=>option.precision==="day").length,1);
+  } finally {store.close();}
 });

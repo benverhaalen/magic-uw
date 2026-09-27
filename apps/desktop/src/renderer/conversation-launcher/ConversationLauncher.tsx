@@ -4,6 +4,7 @@ import {
   beginSubmit, collapse, edit, expand, initialLauncher, isBlank, rebase, settleSubmit,
   type LauncherDestination, type LauncherEntry, type LauncherState, type SubmitOutcome,
 } from "./model";
+import { voiceAnnouncement } from "../voice/launcher-voice";
 import "./launcher.css";
 
 // owner: conversation-launcher leaf. One shell-level instance; the integrator keeps it mounted across pages.
@@ -14,11 +15,13 @@ const Glyph = ({ name }: { name: LauncherGlyphName }) =>
 /** Where the student is now. Cheap and reactive; the full origin is only captured when a draft starts. */
 export interface LauncherHere { key: string; label: string }
 
-export type LauncherVoiceState = "unavailable" | "ready" | "starting" | "listening" | "processing";
+/** `unavailable`: this Mac cannot do voice, the mic only explains. `error`: the last session ended with a
+ * problem; the reason is shown and pressing the mic tries again. */
+export type LauncherVoiceState = "unavailable" | "error" | "ready" | "starting" | "listening" | "processing";
 /** Supplied by the voice owner. The launcher never records, simulates or animates audio on its own. */
 export interface LauncherVoice {
   state: LauncherVoiceState;
-  /** Shown when the student presses an unavailable mic, or when an active session ends unavailable. */
+  /** Shown when the student presses an unavailable mic, or when an active session ends in error or unavailable. */
   reason?: string;
   /** Recent levels in 0..1 from the actual input analyser, newest last. Only drawn while listening. */
   levels?: readonly number[];
@@ -40,17 +43,23 @@ export interface ConversationLauncherProps<O extends { label: string }> {
   chatId?: string;
   placeholder?: string;
   voice?: LauncherVoice;
+  /** Voice owner feedback, e.g. the heard transcript. Shown when no other note is up. */
+  feedback?: string;
   newKey?: () => string;
 }
 
 export function ConversationLauncher<O extends { label: string }>({
-  here, captureOrigin, onSubmit, mode = "new-chat", chatId, placeholder, voice = NO_VOICE, newKey = () => crypto.randomUUID(),
+  here, captureOrigin, onSubmit, mode = "new-chat", chatId, placeholder, voice = NO_VOICE, feedback, newKey = () => crypto.randomUUID(),
 }: ConversationLauncherProps<O>) {
   const [state, setState] = useState<LauncherState<O>>(initialLauncher);
   // Transitions read and write the ref synchronously so a double press in one tick cannot send twice.
   const live = useRef(state);
   const apply = (next: LauncherState<O>) => { live.current = next; setState(next); };
   const [note, setNote] = useState<string | null>(null);
+  // Voice problems carry their own recovery actions, so they are kept apart from the plain status note.
+  const [voiceProblem, setVoiceProblem] = useState<{ text: string; retry: boolean } | null>(null);
+  const [voiceLive, setVoiceLive] = useState("");
+  const dock = useRef<HTMLDivElement>(null), mic = useRef<HTMLButtonElement>(null);
   const root = useRef<HTMLDivElement>(null), toggle = useRef<HTMLButtonElement>(null), field = useRef<HTMLTextAreaElement>(null);
   const focusAfter = useRef<"field" | "toggle" | null>(null);
   const mounted = useRef(true);
@@ -88,10 +97,12 @@ export function ConversationLauncher<O extends { label: string }>({
   // An outside press or focus arriving elsewhere (Tab, including wrap-around) dismisses without redirecting it.
   // Switching apps moves no focus inside the document, so the composer stays open.
   useEffect(() => {
-    if (!open && !note) return;
+    if (!open && !note && !voiceProblem) return;
     const outside = (event: Event) => {
-      if (root.current?.contains(event.target as Node)) return;
+      // The voice problem's own buttons sit outside the pill; pressing them is not an outside press.
+      if (root.current?.contains(event.target as Node) || (voiceProblem && dock.current?.contains(event.target as Node))) return;
       setNote(null);
+      setVoiceProblem(null);
       close(false);
     };
     document.addEventListener("pointerdown", outside, true);
@@ -102,12 +113,17 @@ export function ConversationLauncher<O extends { label: string }>({
     };
   });
 
-  // An active voice session that ends unavailable (denied, device removed) explains itself once.
+  // A session that ends in error (denied, device removed, too long) or becomes unavailable explains itself once,
+  // with a keyboard route to retry or type. Ordinary transitions are announced politely, never animated here.
   const lastVoice = useRef(voice.state);
   useEffect(() => {
     const was = lastVoice.current;
     lastVoice.current = voice.state;
-    if (voice.state === "unavailable" && was !== "unavailable" && was !== "ready") setNote(voice.reason ?? NO_VOICE.reason!);
+    const said = voiceAnnouncement(was, voice.state);
+    if (said) setVoiceLive(said);
+    if (voice.state === "starting") setVoiceProblem(null);
+    if ((voice.state === "error" || voice.state === "unavailable") && was !== voice.state && was !== "ready" && was !== "unavailable")
+      setVoiceProblem({ text: voice.reason ?? NO_VOICE.reason!, retry: voice.state === "error" });
   }, [voice.state, voice.reason]);
 
   const submit = async () => {
@@ -139,15 +155,16 @@ export function ConversationLauncher<O extends { label: string }>({
     if (event.key !== "Escape" || event.nativeEvent.isComposing) return;
     if (live.current.open) close(true);
     else if (note) setNote(null);
-    else if (voice.state !== "unavailable" && voice.state !== "ready") voice.onStop?.();
+    else if (voiceProblem) setVoiceProblem(null);
+    else if (voice.state === "starting" || voice.state === "listening" || voice.state === "processing") voice.onStop?.();
     else return;
     event.stopPropagation();
   };
 
   const voiceActive = voice.state === "starting" || voice.state === "listening" || voice.state === "processing";
   const pressVoice = () => {
-    if (voice.state === "unavailable") setNote(voice.reason ?? NO_VOICE.reason!);
-    else if (voice.state === "ready") { setNote(null); voice.onStart?.(); }
+    if (voice.state === "unavailable") setVoiceProblem({ text: voice.reason ?? NO_VOICE.reason!, retry: false });
+    else if (voice.state === "ready" || voice.state === "error") { setNote(null); setVoiceProblem(null); voice.onStart?.(); }
     else voice.onStop?.();
   };
 
@@ -158,8 +175,20 @@ export function ConversationLauncher<O extends { label: string }>({
   const blank = !draft || isBlank(draft.text);
   const sendBlocked = blank || !!sending;
 
-  return <div className="conversation-launcher-dock">
-    <p className="cl-note" role="status">{note}</p>
+  const typeInstead = () => { setVoiceProblem(null); if (!live.current.open) openComposer(); else field.current?.focus(); };
+  const retryVoice = () => { setVoiceProblem(null); voice.onStart?.(); };
+
+  return <div ref={dock} className="conversation-launcher-dock">
+    <span className="cl-voice-live" role="status" aria-live="polite">{voiceLive}</span>
+    {voiceProblem && <div className="cl-voice-problem" role="alert"
+      onKeyDown={event => { if (event.key !== "Escape") return; event.stopPropagation(); setVoiceProblem(null); mic.current?.focus({ preventScroll: true }); }}>
+      <p>{voiceProblem.text}</p>
+      <p className="cl-voice-actions">
+        {voiceProblem.retry && <button type="button" className="cl-text-button" onClick={retryVoice}>Try voice again</button>}
+        <button type="button" className="cl-text-button" onClick={typeInstead}>Type instead</button>
+      </p>
+    </div>}
+    <p className="cl-note" role="status">{note ?? feedback}</p>
     <div ref={root} className="conversation-launcher" data-open={open || undefined} data-voice={voiceActive ? voice.state : undefined}
       onKeyDown={onRootKey}
       // A press on the surface itself (padding, not yet revealed area) keeps focus where it was.
@@ -188,7 +217,7 @@ export function ConversationLauncher<O extends { label: string }>({
       </div>
       {/* While typing, the colored Stop control carries the active voice state; levels return when collapsed. */}
       {!open && <VoiceStatus voice={voice}/>}
-      <button type="button" className="cl-icon cl-mic" aria-disabled={voice.state === "unavailable" || undefined}
+      <button ref={mic} type="button" className="cl-icon cl-mic"
         aria-busy={voice.state === "starting" || voice.state === "processing" || undefined}
         aria-label={voice.state === "unavailable" ? "Voice unavailable" : voiceActive ? "Stop voice" : "Start voice"}
         title={voice.state === "unavailable" ? "Voice unavailable" : undefined} onClick={pressVoice}>

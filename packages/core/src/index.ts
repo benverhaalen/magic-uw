@@ -613,7 +613,8 @@ export function createCore(store: Store, options: CoreOptions) {
     return { verb, status: "ok" };
   }
   // end owner: T05b
-  async function execute(raw: unknown): Promise<CommandResult> {
+  async function execute(raw: unknown, requestSignal?: AbortSignal): Promise<CommandResult> {
+    requestSignal?.throwIfAborted();
     if (closed) throw new Error("Workspace is closed.");
     const command = commandSchema.parse(raw);
     let message: string | undefined, manifest: ContextManifest | undefined;
@@ -1019,7 +1020,7 @@ export function createCore(store: Store, options: CoreOptions) {
         };
         const mode = command.value.mode ?? "run";
         seamResult = {
-          command: mode === "run" ? await seamCall((signal) => intent.handle(command.value, host, signal)) : await intent.handle(command.value, host, new AbortController().signal),
+          command: mode === "run" ? await seamCall((signal) => intent.handle(command.value, host, requestSignal ? AbortSignal.any([signal, requestSignal]) : signal)) : await intent.handle(command.value, host, new AbortController().signal),
         };
         break;
       }

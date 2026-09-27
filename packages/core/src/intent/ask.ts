@@ -26,6 +26,7 @@ export interface AskDeps {
   ledger: LedgerStore;
   now: () => Date;
   tokenBudget?: number;
+  resourceId?: string;
 }
 
 const zero = () => ({ in: 0, cached: 0, out: 0 });
@@ -42,6 +43,7 @@ export async function groundedAsk(deps: AskDeps, question: string, courses: Reso
   const meta = new Map<string, { resourceId: string; title: string; url: string }>();
   let used = 0;
   for (const h of found.hits) {
+    if (deps.resourceId && h.resourceId !== deps.resourceId) continue;
     if (passages.length >= ASK_MAX_PASSAGES) break;
     const p = store.passage(h.pid);
     if (!p || p.passage.redacted || !p.text.trim()) continue;

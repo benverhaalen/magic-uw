@@ -500,6 +500,32 @@
   color: var(--magic-ink-muted);
 }
 
+/* The finish step starts with a decision-sized overview. Every check remains in the
+   nested, bounded disclosure, so a large Canvas crawl cannot bury Open workspace. */
+.onb-readiness { margin-top: 24px; }
+.onb-readiness-saved { margin: 0 0 14px; color: var(--magic-ink-prose); }
+.onb-readiness-saved strong { color: var(--magic-ink); font-weight: 400; }
+.onb-readiness-notes { margin: 0 0 14px; padding-left: 20px; color: var(--magic-ink-status-warning-candidate); line-height: 1.5; }
+.onb-readiness-notes li + li { margin-top: 5px; }
+.onb-readiness-muted { color: var(--magic-ink-muted); font-size: 12px; }
+.onb-readiness-more { border-top: 1px solid var(--magic-line-quiet); }
+.onb-readiness-more > summary,
+.onb-readiness-group > summary { cursor: pointer; padding: 12px 0; }
+.onb-readiness-more > summary { color: var(--magic-ink-link); }
+.onb-readiness-more > summary:hover { color: var(--magic-ink); }
+.onb-readiness-more > summary:focus-visible,
+.onb-readiness-group > summary:focus-visible { outline: 2px solid var(--magic-focus); outline-offset: 2px; }
+.onb-less-label, .onb-readiness-more[open] .onb-more-label { display: none; }
+.onb-readiness-more[open] .onb-less-label { display: inline; }
+.onb-readiness-help, .onb-readiness-types { margin: 8px 0 12px; color: var(--magic-ink-muted); font-size: 13px; line-height: 1.45; }
+.onb-readiness-groups { max-height: min(30vh, 260px); overflow: auto; overscroll-behavior: contain; border-top: 1px solid var(--magic-line-quiet); }
+.onb-readiness-group { border-bottom: 1px solid var(--magic-line-quiet); }
+.onb-readiness-group > summary { display: list-item; padding-left: 2px; }
+.onb-readiness-group > summary span:first-child { overflow-wrap: anywhere; }
+.onb-readiness-group > summary .onb-readiness-muted { margin-left: 6px; white-space: nowrap; }
+.onb-readiness-group .onb-sources { max-height: min(25vh, 220px); overflow: auto; overscroll-behavior: contain; margin: 0 0 8px 12px; }
+.onb-step:has(.onb-readiness) .onb-actions { position: sticky; bottom: 0; z-index: 1; margin-top: 22px; padding: 12px 0; background: var(--magic-surface-workspace); }
+
 .onb-alert {
   display: flex;
   align-items: center;

@@ -3,7 +3,7 @@ import { localTime, resolveDeadline, type RailResource } from '@magic/domain';
 
 /** Renderer-only semantic view; a feed record keeps its original kind and navigation identity. */
 export type ScheduleResource = RailResource & {
-  url?: string; sourceId?: string; accountScope?: string; sourceScope?: string; contentHash?: string;
+  url?: string; sourceId?: string; accountScope?: string; sourceScope?: string; sourceKind?: string; contentHash?: string;
   observedAt?: string; workflowState?: string | null;
   moduleItem?: ResourceView['moduleItem'];
   personalDeadline?: ResourceView['personalDeadline'];
@@ -13,9 +13,19 @@ export type ScheduleResource = RailResource & {
 const unique = <T,>(values: T[]) => [...new Map(values.map(value => [JSON.stringify(value), value])).values()];
 const isDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
 const valid = (value: string | undefined) => !!value && Number.isFinite(Date.parse(value));
+function trustedAssociation(resource: ScheduleResource): boolean {
+  // Older in-memory projections omit source kind; live desktop projections carry it.
+  if (!resource.sourceKind) return true;
+  try {
+    const url = new URL(resource.url ?? '');
+    if (url.protocol !== 'https:' || url.hostname !== 'canvas.wisc.edu') return false;
+  } catch { return false; }
+  if (resource.kind === 'event') return resource.sourceScope === 'calendar_feed' && ['calendar','fixture'].includes(resource.sourceKind);
+  return ['canvas','fixture'].includes(resource.sourceKind);
+}
 /** Same provider identity used by graph agenda, with trusted source gating and tuple scope. */
 export function scheduleAssignmentId(resource: ScheduleResource): string | null {
-  if (!resource.accountScope || !resource.courseId || resource.courseId === OUTLOOK_CALENDAR_COURSE_ID) return null;
+  if (!resource.accountScope || !resource.courseId || resource.courseId === OUTLOOK_CALENDAR_COURSE_ID || !trustedAssociation(resource)) return null;
   if (resource.kind === 'assignment') {
     // Canvas account lists can prefix externalId; the exact scoped provider URL is retained.
     try { const path = new URL(resource.url ?? '').pathname; const match = /^\/courses\/([^/]+)\/assignments\/([^/]+)\/?$/.exec(path);

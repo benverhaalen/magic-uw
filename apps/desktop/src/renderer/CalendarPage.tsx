@@ -54,7 +54,7 @@ export function CalendarPage({ resources, sources, links = [], aliases = [], pla
   useEffect(() => { if (fixedNow) return; const id = setInterval(() => setLiveNow(new Date().toISOString()), 60000); return () => clearInterval(id); }, [fixedNow]);
   const update = (next: CalendarState) => { currentRef.current = next; setInternal(next); onStateChange?.(next); };
   const navigate = (patch: Partial<CalendarState>) => { setDetailDate(null); setRequestDate(null); setSelectedPlan(null); setError(null); setNotice(''); update({ ...currentRef.current, scrollTop: 0, detailDate: undefined, selectedPlanKey: undefined, ...patch }); };
-  const scopedResources = useMemo(() => { const byId = new Map(sources.map(s => [s.id, s])); return projectScheduleResources(resources.map(r => ({ ...r, accountScope: byId.get(r.sourceId)?.accountScope, sourceScope: byId.get(r.sourceId)?.scope })), links, aliases); }, [resources, sources, links, aliases]);
+  const scopedResources = useMemo(() => { const byId = new Map(sources.map(s => [s.id, s])); return projectScheduleResources(resources.map(r => ({ ...r, accountScope: byId.get(r.sourceId)?.accountScope, sourceScope: byId.get(r.sourceId)?.scope, sourceKind: byId.get(r.sourceId)?.kind })), links, aliases); }, [resources, sources, links, aliases]);
   const dates = useMemo(() => visibleDates(current.date, current.view), [current.date, current.view]);
   useLayoutEffect(() => {
     const grid = monthGrid.current;

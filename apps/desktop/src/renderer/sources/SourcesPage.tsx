@@ -371,7 +371,9 @@ function Confirm({ label, tone = "quiet", explain, confirmLabel, disabled, onCon
 }
 
 function CanvasDetails({ connection: c, bridge, busy, at: now, uwConsented, onSignIn, onSignOut, onOpenPrivacy, accessDetails }: SourcesPageProps & { connection: Connection; bridge: SourcesBridge; at: Date }) {
-  const courseCount = c.courses.length;
+  const featured = c.courses.filter((course) => course.relevance === "current" || course.relevance === "included");
+  const other = c.courses.filter((course) => course.relevance !== "current" && course.relevance !== "included");
+  const current = featured.filter((course) => course.relevance === "current").length;
   return (
     <>
       {!uwConsented ? (
@@ -379,18 +381,26 @@ function CanvasDetails({ connection: c, bridge, busy, at: now, uwConsented, onSi
       ) : null}
       {c.state !== "not_connected" ? (
         <Facts items={[
-          ["Every course read in full", c.oldestSuccessAt ? capitalize(formatWhen(c.oldestSuccessAt, now)) : "Not yet"],
+          ["Latest Canvas check", capitalize(formatWhen(c.newestAttemptAt, now))],
           ["Saved records", String(c.records)],
         ]} />
       ) : (
         <p>Sign in with your NetID in the app's own browser. If UW asks for Duo, finish it there; Magic never answers Duo for you.</p>
       )}
       {c.notes.map((n) => <p key={n} className="source-callout">{n}</p>)}
-      {courseCount ? (
+      {featured.length ? (
         <section className="source-courses" aria-label="Course coverage">
-          <h3>Courses <span className="sources-fine">{courseCount}</span></h3>
-          <ul>{c.courses.map((course) => <CourseRow key={course.key} course={course} now={now} busy={busy} canSignIn={Boolean(bridge.signInUW)} onSignIn={onSignIn} />)}</ul>
+          <h3>Course sites in this read <span className="sources-fine">{featured.length}</span></h3>
+          <p className="sources-fine">{current ? `${current} matched current UW enrollment. ` : ""}Other included sites reflect Canvas reading choices; their current enrollment is unconfirmed.</p>
+          <ul>{featured.map((course) => <CourseRow key={course.key} course={course} now={now} busy={busy} canSignIn={Boolean(bridge.signInUW)} onSignIn={onSignIn} />)}</ul>
         </section>
+      ) : null}
+      {other.length ? (
+        <details className="source-other-courses">
+          <summary>Other saved course sites <span className="sources-fine">{other.length}</span></summary>
+          <p className="sources-fine">These sites are saved for reference. They are not confirmed as current classes.</p>
+          <ul>{other.map((course) => <CourseRow key={course.key} course={course} now={now} busy={busy} canSignIn={Boolean(bridge.signInUW)} onSignIn={onSignIn} />)}</ul>
+        </details>
       ) : null}
       {accessDetails ? <div className="source-access">{accessDetails}</div> : null}
       {c.state !== "not_connected" ? <KeepSignedIn bridge={bridge} busy={busy} /> : null}
@@ -416,6 +426,16 @@ function CanvasDetails({ connection: c, bridge, busy, at: now, uwConsented, onSi
 
 const courseStateTone = (s: CourseCoverage["state"]) => (s === "complete" ? "ok" : s === "limited" || s === "not_checked" ? "quiet" : "attention");
 function CourseRow({ course, now, busy, canSignIn, onSignIn }: { course: CourseCoverage; now: Date; busy: boolean; canSignIn: boolean; onSignIn: (s?: SignInService) => unknown }) {
+  const main = course.scopes.filter((s) => !/^(?:file|document|page|module-items|linked-page):/.test(s.scope));
+  const more = course.scopes.filter((s) => /^(?:file|document|page|module-items|linked-page):/.test(s.scope));
+  const scopeRows = (scopes: typeof course.scopes) => scopes.map((s) => (
+    <li key={s.id}>
+      <span>{scopeName(s.scope)}</span>
+      <span className={`tone-${courseStateTone(s.state)}`}>{readLabels[s.state]}</span>
+      <span className="sources-fine">{s.records}</span>
+      {s.notes.length ? <span className="source-scope-notes">{s.notes.join(" ")}</span> : null}
+    </li>
+  ));
   return (
     <li className="source-course">
       <details>
@@ -429,9 +449,7 @@ function CourseRow({ course, now, busy, canSignIn, onSignIn }: { course: CourseC
           <Glyph name="chevron" size={14} />
         </summary>
         <div className="source-course-body">
-          <p className="sources-fine">
-            {course.oldestSuccessAt ? `Every section read in full ${formatWhen(course.oldestSuccessAt, now)}.` : `Some sections have never been read in full. Newest check ${formatWhen(course.newestAttemptAt, now)}.`}
-          </p>
+          <p className="sources-fine">Latest check {formatWhen(course.newestAttemptAt, now)}. Individual areas below show what was read and what was unavailable.</p>
           {course.needsGitLab && canSignIn ? (
             <div className="source-inline-fix">
               <p>This course's GitLab needs its own sign-in.</p>
@@ -439,15 +457,9 @@ function CourseRow({ course, now, busy, canSignIn, onSignIn }: { course: CourseC
             </div>
           ) : null}
           <ul className="source-scopes">
-            {course.scopes.map((s) => (
-              <li key={s.id}>
-                <span>{scopeName(s.scope)}</span>
-                <span className={`tone-${courseStateTone(s.state)}`}>{readLabels[s.state]}</span>
-                <span className="sources-fine">{s.records}</span>
-                {s.notes.length ? <span className="source-scope-notes">{s.notes.join(" ")}</span> : null}
-              </li>
-            ))}
+            {scopeRows(main)}
           </ul>
+          {more.length ? <details className="source-deep-checks"><summary>Linked files and pages <span className="sources-fine">{more.length} checks</span></summary><ul className="source-scopes">{scopeRows(more)}</ul></details> : null}
         </div>
       </details>
     </li>
@@ -460,6 +472,7 @@ const scopeNames: Record<string, string> = {
 function scopeName(scope: string) {
   if (scopeNames[scope]) return scopeNames[scope];
   if (scope.startsWith("document:")) return "Linked document";
+  if (scope.startsWith("file:")) return "Linked file";
   if (scope.startsWith("linked-page:")) return "Linked page";
   if (scope.startsWith("gitlab:")) return `GitLab ${scope.slice(7).replaceAll("_", " ")}`;
   return capitalize(scope.replaceAll(/[_-]/g, " "));

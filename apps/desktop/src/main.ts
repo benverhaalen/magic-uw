@@ -1,3 +1,7 @@
+import { installDesktopVoice } from './voice/desktop-host';
+import { createInteractiveDispatch, createVoiceTrialDispatch } from './voice/intent-dispatch';
+import type { VoiceContext } from './voice/types';
+import { intentCommandSchema } from '@magic/contracts';
 import { judgmentFailure } from "./judgment-errors";
 import {
   app,
@@ -806,9 +810,20 @@ app
       calls.clear();
       localCalls.clear();
     });
-    async function execute(command: unknown): Promise<CommandResult> {
+    let desktopVoice: Awaited<ReturnType<typeof installDesktopVoice>> | undefined;
+    let voiceAuthority: VoiceContext = { account: '', revision: '', allowed: false };
+    const interactiveCalls = new Map<string, AbortController>();
+    const stopInteractive = () => {
+      desktopVoice?.stop('context-changed');
+      for (const controller of interactiveCalls.values()) controller.abort();
+      interactiveCalls.clear();
+    };
+    async function execute(command: unknown, signal?: AbortSignal): Promise<CommandResult> {
+      signal?.throwIfAborted();
       const parsed = commandSchema.parse(command);
+      if (['purge', 'privacy', 'consent', 'course-override', 'ingestion-settings'].includes(parsed.type)) stopInteractive();
       await ready;
+      signal?.throwIfAborted();
       if (parsed.type === "madgrades-token") {
         // Stored only in the OS-protected vault; the workspace, records, and logs never receive it.
         if (parsed.token === null) await vault.deletePrefix("madgrades:");
@@ -826,10 +841,18 @@ app
       const id = randomUUID();
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
-          calls.delete(id);
+          calls.delete(id); finish();
+          worker.postMessage({ kind: "cancel-command", id });
           reject(new Error("Local workspace request timed out."));
         }, 30000);
-        calls.set(id, { resolve, reject, timer });
+        const abort = () => {
+          clearTimeout(timer); calls.delete(id); finish();
+          worker.postMessage({ kind: "cancel-command", id });
+          reject(new Error("Request stopped."));
+        };
+        signal?.addEventListener("abort", abort, { once: true });
+        const finish = () => signal?.removeEventListener("abort", abort);
+        calls.set(id, { resolve: value => { finish(); resolve(value); }, reject: error => { finish(); reject(error); }, timer });
         worker.postMessage({ kind: "command", id, command: parsed });
       });
     }
@@ -845,7 +868,14 @@ app
     let consentRecords: ConsentRecord[] | undefined;
     worker.on("message", (message: any) => {
       if (message?.kind !== "response") return;
-      const records = message.result?.snapshot?.consents;
+      const snapshot = message.result?.snapshot;
+      if (snapshot) {
+        const accounts = [...new Set((snapshot.sources ?? []).map((source: {accountScope: string}) => source.accountScope))].sort();
+        const authority = { account: JSON.stringify(accounts), revision: JSON.stringify([snapshot.consents, snapshot.privacy, snapshot.courseOverrides, snapshot.ingestionSettings, accounts]), allowed: true };
+        if (voiceAuthority.allowed && (authority.account !== voiceAuthority.account || authority.revision !== voiceAuthority.revision)) stopInteractive();
+        if (!voiceAuthority.allowed || authority.account !== voiceAuthority.account || authority.revision !== voiceAuthority.revision) voiceAuthority = authority;
+      }
+      const records = snapshot?.consents;
       if (!Array.isArray(records)) return;
       const hadUw = consentGateAllows("source-fetch", consentRecords),
         hadJev = consentGateAllows("evaluate", consentRecords);
@@ -1073,6 +1103,22 @@ app
       throw new Error("Unknown key operation.");
     });
     // end owner: client-health
+    const dispatchInteractive = createInteractiveDispatch(execute);
+    ipcMain.handle("magic:intent-run", async (event, request: unknown) => {
+      validateSender(event);
+      const r = request as { operationId?: unknown; text?: unknown; context?: unknown };
+      if (!r || typeof r.operationId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(r.operationId)) throw new Error('Invalid request identity.');
+      const value = intentCommandSchema.parse({ text: r.text, context: r.context, mode: 'run' });
+      if (interactiveCalls.has(r.operationId)) throw new Error('This request is already running.');
+      const controller = new AbortController(), authority = voiceAuthority;
+      interactiveCalls.set(r.operationId, controller);
+      try { return await dispatchInteractive(value.text, value.context ?? {}, { operationId: r.operationId, signal: controller.signal, current: () => !controller.signal.aborted && authority === voiceAuthority }); }
+      finally { if (interactiveCalls.get(r.operationId) === controller) interactiveCalls.delete(r.operationId); }
+    });
+    ipcMain.handle("magic:intent-cancel", (event, operationId: unknown) => {
+      validateSender(event);
+      if (typeof operationId === 'string') interactiveCalls.get(operationId)?.abort();
+    });
     ipcMain.handle("magic:execute", async (event, command) => {
       validateSender(event);
       const purging = command?.type === "purge";
@@ -1668,6 +1714,7 @@ app
     });
     ipcMain.handle("magic:signout", async (event) => {
       validateSender(event);
+      stopInteractive();
       planningClears++;
       try {
         sync?.abort();
@@ -1744,10 +1791,13 @@ app
     });
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", (event) => event.preventDefault());
+    desktopVoice = await installDesktopVoice({ window, rendererURL, headless, context: () => voiceAuthority, dispatch: createVoiceTrialDispatch(execute) });
     window.webContents.session.setPermissionRequestHandler(
-      (_wc, _permission, callback) => callback(false),
+      (sender, permission, callback, details) => callback(desktopVoice?.allowsPermission(sender, permission, details) ?? false),
     );
+    window.webContents.session.setPermissionCheckHandler((sender, permission, _origin, details) => desktopVoice?.allowsPermission(sender, permission, details) ?? false);
     window.on("closed", () => {
+      stopInteractive(); desktopVoice?.dispose(); desktopVoice = undefined;
       window = null;
     });
     await window.loadURL(rendererURL);

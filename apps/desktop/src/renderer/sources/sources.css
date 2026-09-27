@@ -75,6 +75,11 @@
 .source-scopes li > .sources-fine { text-align: right; }
 .source-scope-notes { grid-column: 1 / -1; font-size: var(--magic-type-meta); color: var(--magic-ink-muted-strong); }
 .source-inline-fix { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 12px; border-radius: var(--magic-radius-card); background: var(--magic-surface-quiet); }
+.source-other-courses, .source-deep-checks { border-top: 1px solid var(--magic-line-quiet); }
+.source-other-courses > summary, .source-deep-checks > summary { cursor: pointer; padding: 10px 4px; color: var(--magic-ink-link); }
+.source-other-courses > summary:focus-visible, .source-deep-checks > summary:focus-visible { outline: 2px solid var(--magic-focus); outline-offset: 2px; }
+.source-other-courses > p { margin: 0 4px 8px; }
+.source-other-courses > ul, .source-deep-checks > ul { list-style: none; padding: 0; margin: 0; max-height: min(32vh, 290px); overflow: auto; overscroll-behavior: contain; }
 
 .source-toggle-setting { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; cursor: pointer; }
 .source-toggle-setting > span { display: grid; gap: 2px; max-width: 60ch; }

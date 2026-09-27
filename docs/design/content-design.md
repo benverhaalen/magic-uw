@@ -23,6 +23,8 @@ Course labels must be audited through source → structured metadata → display
 
 Empty-state copy distinguishes a checked saved schedule from missing, incomplete and stale coverage. A healthy Home day with no timed commitments needs only a small message; recovery actions appear only when they have a real job. All-day entries and deadlines remain visible. This does not prescribe an empty full Calendar page.
 
+Setup readiness and Connected accounts summarize the student's usable course coverage before raw connector checks. Use verified current enrollment when available; a Canvas inclusion choice alone identifies a site included in a read, not a current class. Catalog history, linked-file budgets, hidden or unpublished course areas, and account-wide optional endpoints remain inspectable behind bounded disclosure. A failed or empty endpoint never proves an instructor does not use Canvas. Name sign-in and important course-list failures near the summary, but do not call a course fully read when a relevant check is incomplete or inaccessible. This September 27 correction addresses a real saved capture with hundreds of source rows; the counts and files stay private.
+
 ## Produce the useful information before styling it
 
 Use this path in a generation brief and review the resulting content, not merely the presence of these instructions:
@@ -61,3 +63,8 @@ For the changed generator or surface, retain a compact trace from each consequen
 Inspect the rendered first screen: can a student identify what matters, why it matters and what the link will do without narration? Follow one source/action and return. Refresh evidence while reading: update affected facts without jumping scroll, moving focus, losing a draft or reshuffling the active selection. A new summary alone cannot erase confirmations. A failed capture cannot replace saved work with “nothing due.”
 
 For course detail, chat and My UW, transfer evidence discipline, meaningful hierarchy and predictable links; select content for that surface's actual task. For unrelated products, treat reduced assembly effort and information-bearing copy as provisional taste lessons, revalidated against their audience. Home's columns, right alignment and student priorities remain local requirements. Record whether these checks were specified, demonstrated with fixtures or verified in the real journey; a content contract alone demonstrates none of the latter.
+
+
+### Early useful trials (September 27 user direction)
+
+Deliver a small safe integrated experience for Ben to use promptly. Say what works and what remains unfinished in concrete terms; iterate from observed use. Do not gate a usable slice on unrelated polish or full feature completion. Preserve startup, account/source, cancellation, and saved-data safeguards.

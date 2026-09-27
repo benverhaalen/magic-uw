@@ -2,6 +2,9 @@ import { MagicGlyph } from '../../../../packages/ui/src/glyph';
 import { CoursesViewHeader } from './courses/CoursesViewToggle';
 import { CoursesWorkList, type WorkReportResult } from './courses/CoursesWorkView';
 import { projectCourseWork, isCourseWorkActionCurrent, type CourseWorkRow } from './courses/course-work-model';
+import { useDesktopVoice } from "./voice/useDesktopVoice";
+import { acceptVoiceResult, currentScope } from "./chat/store";
+import { scopeCourses } from "./chat/model";
 import { ConversationLauncher } from "./conversation-launcher";
 import { ChatPane, chatCourse, chatScopeForPage, chatPromptError, startChat, continueChat, getChat, type ChatOrigin } from "./chat";
 import { resetChats } from "./chat/store";
@@ -438,8 +441,23 @@ export function App() {
   const captureChatOrigin = (): ChatOrigin => {
     const place = navigation.capturePlace();
     return { view, resourceId: selectedId, courseKey: navigation.courseKey, label: pageTitle, focusKey: place.focus, anchor: place.anchor, offset: place.offset, scroll: place.scroll,
-      scope: view === 'chat' && selectedId && getChat(selectedId) ? getChat(selectedId)!.origin.scope : chatScopeForPage({page:pageTitle, resource:selected, course:coursePage, cards:courseCards, sources:snapshot?.sources ?? []}) };
+      scope: view === 'chat' && selectedId && getChat(selectedId) ? currentScope(getChat(selectedId)!) : chatScopeForPage({page:pageTitle, resource:selected, course:coursePage, cards:courseCards, sources:snapshot?.sources ?? []}) };
   };
+  // Voice (adopted from voice-shared-path): one session per account; each utterance captures the page on first speech,
+  // runs through the same intent router as typed chat, and navigates immediately for ordinary page/course/item opens.
+  const navigateFromIntent = (target: {view: string; resourceId?: string; courseId?: string; accountScope?: string}) => {
+    if (target.view === 'course') { const course = courseCards.find(card => card.courseId === target.courseId && chatCourse(card).accountScope === target.accountScope); if (course) navigation.navigate('courses', null, course.key); }
+    else if (target.view === 'assignment' && target.resourceId) navigation.navigate('resource', target.resourceId);
+    else if (['today','courses','calendar','myuw'].includes(target.view)) setView(target.view as View);
+  };
+  const desktopVoice = useDesktopVoice(chatAccountKey, () => {
+    const origin = captureChatOrigin(), courses = scopeCourses(origin.scope);
+    return {origin: {chat: origin, followUpId: view === 'chat' ? selectedId ?? undefined : undefined}, context: {view: origin.view, ...(courses.length === 1 ? {courseId: courses[0]!.key} : {}), ...(origin.scope.kind === 'item' ? {resourceId: origin.scope.item.id} : {})}};
+  }, (captured, event) => {
+    if (!snapshot) return;
+    const chat = acceptVoiceResult({origin: captured.chat, prompt: event.text, idempotencyKey: event.operationId}, event.result, {bridge: window.magic, resources, sources: snapshot.sources, courses: courseCards.map(card => chatCourse(card)), now: new Date().toISOString(), onNavigate: navigateFromIntent}, captured.followUpId);
+    if (chat && !(event.result.status === 'ran' && ['page.open','course.open','assignment.open'].includes(event.result.action))) navigation.navigate('chat', chat.id);
+  });
   // owner: T81. First run, or setup still incomplete: the onboarding flow replaces the shell
   // (and T06's in-Home consent entry) until the student opens the workspace.
   if (snapshot && needsFirstRunSetup(snapshot))
@@ -475,7 +493,7 @@ export function App() {
         <ShellFeedback error={error} notice={notice} view={view} onDismiss={() => { setError(""); setNotice(""); }}/>
       </>}
       trailing={<NotificationsMenu feed={snapshot?.notifications} busy={busy} run={run} destinationOf={notificationTarget} onOpen={openNotification} onOpenSources={() => setView("sources")} onOpenPrivacy={() => navigation.navigate("privacy", null, null, undefined, snapshot?.privacy.mode === "local_only" ? undefined /* the mode choice at the top unlocks Jev */ : { focus: "privacy-jev", anchor: "privacy-models" })}/>}
-      launcher={snapshot ? <ConversationLauncher<ChatOrigin> key={chatAccountKey} here={{key:`${view}:${selectedId ?? ''}:${navigation.courseKey ?? ''}`,label:pageTitle}} captureOrigin={captureChatOrigin} mode={view === 'chat' && selectedId ? 'follow-up' : 'new-chat'} chatId={view === 'chat' ? selectedId ?? undefined : undefined} onSubmit={entry => {
+      launcher={snapshot ? <ConversationLauncher<ChatOrigin> key={chatAccountKey} voice={desktopVoice.voice} feedback={desktopVoice.transcript ? `Heard: ${desktopVoice.transcript}` : undefined} here={{key:`${view}:${selectedId ?? ''}:${navigation.courseKey ?? ''}`,label:pageTitle}} captureOrigin={captureChatOrigin} mode={view === 'chat' && selectedId ? 'follow-up' : 'new-chat'} chatId={view === 'chat' ? selectedId ?? undefined : undefined} onSubmit={entry => {
         const invalid = chatPromptError(entry.prompt); if (invalid) return {accepted:false,message:invalid};
         if (entry.destination.kind === 'follow-up') {
           if (!continueChat(entry.destination.chatId, entry.prompt, entry.idempotencyKey)) return {accepted:false,message:'This chat is no longer open. Start a new chat.'};
@@ -529,7 +547,7 @@ export function App() {
             )}
           </>
         ) : view === "chat" ? (
-          <ChatPane typeHueOf={typeHueOf} chatId={selectedId ?? ''} bridge={window.magic} resources={resources} sources={snapshot.sources} courses={courseCards.map(card => chatCourse(card))} now={new Date().toISOString()} Info={EvidenceInfo} onBack={() => navigation.canBack ? navigation.back() : setView('today')} onOpenSetup={target => setView(target === 'sources' ? 'sources' : 'privacy')}/>
+          <ChatPane onNavigate={navigateFromIntent} typeHueOf={typeHueOf} chatId={selectedId ?? ''} bridge={window.magic} resources={resources} sources={snapshot.sources} courses={courseCards.map(card => chatCourse(card))} now={new Date().toISOString()} Info={EvidenceInfo} onBack={() => navigation.canBack ? navigation.back() : setView('today')} onOpenSetup={target => setView(target === 'sources' ? 'sources' : 'privacy')}/>
         ) : view === "resource" ? (
           selected ? <ResourceDetail key={selected.id} resource={selected} snapshot={snapshot} busy={busy} run={run} open={open} onClose={navigation.back} onSetup={() => openConsent()} onNotice={setNotice} />
             : <section className="initial-state"><h1 tabIndex={-1}>This item is no longer available.</h1><p>The saved item may have been removed or excluded. Your previous page is still available.</p><button className="button" onClick={navigation.back}>Go back</button></section>

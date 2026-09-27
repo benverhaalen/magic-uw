@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { DeadlineResolution, PersonalDeadlineEvent, PersonalDeadlineProjection, PersonalDeadlineSource, Resource, Store } from "@magic/contracts";
 import { evidenceFor } from "./evidence";
 import { courseInclusion } from "./access";
-import { resolveDeadline } from "@magic/domain";
+import { localTime, resolveDeadline } from "@magic/domain";
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 /** Stable property ordering includes every evidence field, including spans and unresolved mentions. */
@@ -22,6 +22,15 @@ export function personalDeadlineSource(resource: Resource, accountScope: string,
     const option = groups.get(id) ?? { id, value, precision, claims: [] };
     option.claims.push(claim);
     groups.set(id, option);
+  }
+  // A date-only feed corroborates the dated minute when it is the only exact
+  // time on that Chicago date. Keep its claim, but do not ask the student to
+  // choose twice between compatible versions of the same calendar day.
+  for (const [id, day] of groups) {
+    if (day.precision !== "day") continue;
+    const date = localTime(day.value, "America/Chicago").date;
+    const timed = [...groups.values()].filter(option => option.precision === "minute" && localTime(option.value, "America/Chicago").date === date);
+    if (timed.length === 1) { timed[0]!.claims.push(...day.claims); groups.delete(id); }
   }
   const options = [...groups.values()].sort((a, b) => a.id.localeCompare(b.id));
   const sortedEvidence = [...evidence].sort((a, b) => a.resourceId.localeCompare(b.resourceId));

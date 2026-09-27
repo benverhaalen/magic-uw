@@ -491,7 +491,9 @@ function notesTick() {
 const notesTimer = setInterval(notesTick, 30_000);
 notesTimer.unref();
 // end owner: notes
+const commandAborts = new Map<string, AbortController>();
 port.on("message", async ({ data }: { data: any }) => {
+  if (data.kind === "cancel-command") { commandAborts.get(data.id)?.abort(); return; }
   if (data.kind === "source-response") {
     const request = hostRequests.get(data.id);
     hostRequests.delete(data.id);
@@ -703,11 +705,13 @@ port.on("message", async ({ data }: { data: any }) => {
   if (["import", "planning-import", "fixture", "privacy", "purge", "course-override"].includes(data.command?.type)) {
     local.cancel();
   }
+  const commandAbort = new AbortController();
+  commandAborts.set(data.id, commandAbort);
   try {
     port.postMessage({
       kind: "response",
       id: data.id,
-      result: await core.execute(data.command),
+      result: await core.execute(data.command, commandAbort.signal),
     });
     if (data.command?.type === "purge") {
       ingestion.resume();
@@ -722,7 +726,7 @@ port.on("message", async ({ data }: { data: any }) => {
           ? error.message
           : "The request did not match the workspace schema.",
     });
-  }
+  } finally { commandAborts.delete(data.id); }
 });
 core.wake();
 port.postMessage({ kind: "ready" });

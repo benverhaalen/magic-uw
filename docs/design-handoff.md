@@ -1,5 +1,17 @@
 # My Magic UW desktop handoff
 
+Latest fetch before publication: main `48bc3bf` adds the team backend status packet; this trial includes main `5f0ab02`. The new documentation commit is fetched, not yet merged.
+
+## 2026-09-27 10:43 UTC — usable local voice trial opened
+
+The actual populated demo now runs the reviewed local voice trial plus compact readiness/Connected accounts and date-choice repairs. The window was reopened with the same profile, expanded sidebar, and scroll position. It opened the Courses index; the exact COMPSCI 574 detail restore did not match; no draft was present. Startup reported no renderer errors and `microphone: true`, `transcription: local-whisper`. Human microphone permission and live speech remain for Ben to try.
+
+The center mic accepts local page commands such as **Open Calendar**, **Open Home**, **Open Courses**, and **Open My UW**. Unsupported speech is rejected before the intent/model request; this trial does not expose the pending learning producer or generic computer control. Stop cancels the session. Connected Claude Code/Codex planning plus Jev observed computer actions remains in progress.
+
+Verification: 42 focused trial/session/microphone/effect-fence/parity checks, 45 readiness/date checks, and the integrated TypeScript/desktop/website build passed. Private date save/readback/Undo was demonstrated; actual live-microphone transcription is not claimed. Private runtime receipt: `work/desktop-build/recovery-20260927/visible-voice-trial/receipt.json` (Electron 54767, monitor 54552). The old populated profile was preserved and backed up before launch.
+
+**Accepted delivery rule (Ben, September 27):** ship the smallest useful safe integrated slice promptly for actual use, state exactly what is tested and unfinished, and refine from that feedback. Broader audit and polish work continues in parallel rather than blocking every useful slice. Startup, account/source, cancellation, and persistence safeguards still apply. This governs voice, readiness, dates, Calendar, My UW, and task workspaces.
+
 Use **`codex/desktop-design-integration`** as the single published frontend branch. It contains the shared desktop shell and integrated feature work. Leaf branches are working history, not alternative versions to assemble. The branch tip identifies published source. `git rev-parse --short HEAD` identifies the checkout, which may also contain uncommitted changes; it does not identify an already-open desktop runtime. Record source, published branch and actual renderer/main revisions separately. New work lands here after its interfaces and reachable journeys are checked.
 
 ```sh
@@ -30,6 +42,31 @@ Use Node 24 and the repository's pnpm version. [Development](development.md) cov
 Renderer paths above are under `apps/desktop/src/renderer`. Contracts and commands live in `packages/contracts` and `packages/core`; preserve those boundaries when adapting a leaf.
 
 ## What is verified and what remains
+
+### Compact readiness and planning-date repair · September 27, 10:30 UTC
+
+This checkpoint separates source-health detail from actionable readiness. Onboarding and Connected Accounts show the included course sites and important reading gaps first; per-source checks remain in expandable detail. “Current UW enrollment” requires one linked Canvas account, matching UW enrollment evidence and a recent complete term read. Other included sites remain explicitly unconfirmed. UW sign-in completion is distinct from reading the course list.
+
+The compact date chooser now includes trusted same-account Canvas feed/module contributors in the core evidence fingerprint. Choosing a date persists the personal planning choice, and Undo restores source-derived planning. Raw source claims remain available. Canonical focused checks pass; the private copied-profile journey demonstrated choice revision 1 and Undo revision 2. The independent checkpoint build and combined copied-data verification are recorded below when complete. This source update does not itself update the active user window.
+
+Latest fetch: main `5f0ab02` remains included. The incoming `integrate/2026-09-27` feature wave at `e20d610` is fetched, not merged: a read-only merge preview found 46 conflicts across overlapping chat, launcher, core, storage and design paths. Reconcile those feature contracts deliberately while preserving both teams' work. Voice producer changes remain outside this checkpoint until their final source/policy guards pass.
+
+### Active implementation and voice boundary · September 27, 10:25 UTC
+
+The user's clarified voice direction is **“In-app mic using the connected agent”**: microphone transcription feeds the already connected Claude Code or Codex agent, with Jev making bounded decisions from observed computer state. Navigation is immediate; consequential changes require confirmation. Stop must cancel the active request and queued future actions. Local Whisper is a verified transcription baseline, not a commitment to streaming speech or a separate voice reasoning model.
+
+The current voice integration is uncommitted work above published `cab5b36`. Forty-five infrastructure checks pass. A real local Whisper run on synthesized “Open Calendar” audio reached the shared router; a closed copied-profile Electron run demonstrated the unavailable-microphone explanation, Type instead focus and typed shared navigation to Calendar with no renderer errors. This is not evidence of live microphone capture, a connected-agent conversation, or a generic observed computer-action loop. The producer correction remains a publication gate: task mode must not default a graded-work request into a concept exemption, and policy/source revisions must reach the actual system prompt and invalidate stale results.
+
+The visible fresh-profile app remains `b7982a5`, PID 98040. Preserve the student's subsequent captured data and active view. Current correction ownership is:
+
+| Work | Current implementation boundary |
+| --- | --- |
+| Onboarding and Connected Accounts readiness | Integrated compact health projection and progressive disclosure; current enrollment labels require a fresh same-person account link. Combined checkpoint validation is tracked above. |
+| Compact date choice | Integrated chooser/evidence repair; copied-profile choice and Undo persist. Active user-window promotion is tracked separately. |
+| Task browser workspace | Private task-owned default-browser windows, instruction/project roles and truthful Continue; the earlier link-opening candidate does not meet this requirement. |
+| Calendar schedule and filters | `calendar_schedule_filters` adapts verified enrolled-package meetings from `snapshot.planning` to week/month, then type filters and durable local personal-event CRUD. Existing export candidate remains separate; AI semantic title cleanup is not implemented. |
+
+These are active implementations, not completed journeys. Nate's incoming enrollment, StudyPrep and page-query work remains authoritative within its feature contracts; inspect fetched source before adding a competing producer.
 
 ### Account merge and team handoff · September 27, 10:08 UTC
 

@@ -10,6 +10,7 @@ import {
   answerLocally, choose, chooseCourse, continueChat, currentScope, drive, getChat, goneOrigin, openSource, retry, searchAll, setCourse, setNarrowed, stop, subscribe,
   type Chat, type ChatBridge, type ChatOrigin, type ChatRuntime, type Exchange,
 } from "./store";
+import { ReplyVideos } from "../media/CourseVideos";
 import "./chat.css";
 
 // owner: chat lane. One full-pane chat in the ivory workspace. The shell owns the composer and the
@@ -140,7 +141,8 @@ function ExchangeView({ chat, x, runtime, onOpenSetup, Info }: ViewProps) {
   if (r.kind === "note") return <p className="magic-chat-prose">{r.text}</p>;
   if (r.kind === "opened") return <p className="magic-chat-prose">Opened {r.item.title} in your browser. Opening it does not mark anything done.</p>;
   if (r.kind === "due") return <Due r={r} now={runtime.now} Info={Info} resources={runtime.resources} typeHueOf={(runtime as ChatPaneProps).typeHueOf} />;
-  if (r.kind === "grounded") return <Grounded chat={chat} x={x} r={r} busy={busy} Info={Info} />;
+  // Course-posted videos tied to the cited sources only; see media/course-video.ts.
+  if (r.kind === "grounded") return <><Grounded chat={chat} x={x} r={r} busy={busy} Info={Info} />{r.notFound ? null : <ReplyVideos anchorIds={r.citations.map((c) => c.resourceId)} prompt={x.prompt} resources={runtime.resources} sources={runtime.sources} courses={runtime.courses} bridge={runtime.bridge} />}</>;
   if (r.kind === "unavailable") return <div className="magic-chat-body">
     <p className="magic-chat-prose">{r.reason}</p>
     <div className="magic-chat-row">
@@ -158,7 +160,7 @@ function ExchangeView({ chat, x, runtime, onOpenSetup, Info }: ViewProps) {
   </div>;
   if (r.kind === "course") return <CourseChoice chat={chat} x={x} r={r} busy={busy} onOpenSetup={onOpenSetup} />;
   if (r.kind === "choose") return <Choices chat={chat} x={x} r={r} busy={busy} runtime={runtime} Info={Info} />;
-  return <Answer x={x} r={r} runtime={runtime} Info={Info} />;
+  return <><Answer x={x} r={r} runtime={runtime} Info={Info} /><ReplyVideos anchorIds={[r.answer.resourceId]} prompt={x.prompt} resources={runtime.resources} sources={runtime.sources} courses={runtime.courses} bridge={runtime.bridge} /></>;
 }
 
 type ResultOf<K extends NonNullable<Exchange["result"]>["kind"]> = Extract<NonNullable<Exchange["result"]>, { kind: K }>;

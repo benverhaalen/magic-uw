@@ -6,6 +6,7 @@ import type {
   UnresolvedDeadlineMention,
 } from "@magic/contracts";
 import { proseDeadlines } from "./deadline-evidence";
+import { localTime } from "@magic/domain";
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 function normalized(url: string, courseId: string) {
   try {
@@ -92,18 +93,81 @@ export function linkExactEvidence(store: Store) {
 export function evidenceFor(store: Store, permitted: (resource: Resource) => boolean = () => true, allResources: Resource[] = store.resources()) {
   const resources = allResources.filter((r) => !r.deleted && permitted(r)),
     byId = new Map(resources.map((r) => [r.id, r]));
-  const links = store
-    .links()
+  const sources = new Map(store.sources().map((source) => [source.id, source]));
+  const allLinks = store.links();
+  const blocked = new Set<string>();
+  for (const link of allLinks) if (link.type === "same_as" && (link.status !== "accepted" || byId.get(link.fromId)?.contentHash !== link.inputHash)) {
+    blocked.add(link.fromId); blocked.add(link.toId);
+  }
+  const assignmentKey = (resource: Resource, providerId: string): string | null => {
+    const account = sources.get(resource.sourceId)?.accountScope;
+    return account && resource.courseId && providerId ? JSON.stringify([account, resource.courseId, providerId]) : null;
+  };
+  const canvasUrl = (value: string) => {
+    try { const url = new URL(value); return url.protocol === "https:" && url.hostname === "canvas.wisc.edu"; }
+    catch { return false; }
+  };
+  const assignments = new Map<string, Resource>();
+  for (const resource of resources) {
+    const source = sources.get(resource.sourceId);
+    if (blocked.has(resource.id) || resource.kind !== "assignment" || source?.scope !== "assignments" ||
+        !["canvas", "fixture"].includes(source.kind) || !canvasUrl(resource.url)) continue;
+    try {
+      const match = /^\/courses\/([^/]+)\/assignments\/([^/]+)\/?$/.exec(new URL(resource.url).pathname);
+      const key = match && decodeURIComponent(match[1]!) === resource.courseId && assignmentKey(resource, decodeURIComponent(match[2]!));
+      if (key) assignments.set(key, resource);
+    } catch { /* An invalid URL cannot establish provider identity. */ }
+  }
+  const exactContributors = new Map<string, Resource[]>();
+  for (const resource of resources) {
+    if (blocked.has(resource.id)) continue;
+    const source = sources.get(resource.sourceId);
+    const scope = source?.scope;
+    if (!source || !canvasUrl(resource.url) ||
+        !(resource.kind === "event" && scope === "calendar_feed" && ["calendar", "fixture"].includes(source.kind)) &&
+        !(scope?.split(":")[0] === "module-items" && ["canvas", "fixture"].includes(source.kind))) continue;
+    let providerId: string | null = null;
+    if (resource.kind === "event" && scope === "calendar_feed" && resource.calendar) {
+      const explicit = resource.calendar.assignmentExternalId;
+      const uid = /^event-assignment-(\d+)$/.exec(resource.calendar.uid)?.[1];
+      if (explicit && uid && explicit !== uid) continue;
+      providerId = explicit ?? uid ?? null;
+    } else if (scope?.split(":")[0] === "module-items" && resource.moduleItem?.type === "Assignment") {
+      providerId = resource.moduleItem.contentId ?? null;
+    }
+    if (!providerId) continue;
+    const key = assignmentKey(resource, providerId);
+    const target = key && assignments.get(key);
+    if (target && target.id !== resource.id) exactContributors.set(target.id, [...(exactContributors.get(target.id) ?? []), resource]);
+  }
+  const links = allLinks
     .filter(
       (l) => l.status === "accepted" && byId.has(l.fromId) && byId.has(l.toId),
     );
   const prose = proseDeadlines(
     resources,
-    new Map(store.sources().map((s) => [s.id, s])),
+    sources,
   );
+  const feedClaim = (resource: Resource): DeadlineEvidenceClaim[] => {
+    const calendar = resource.calendar;
+    if (!calendar?.start || resource.kind !== "event" || !Number.isFinite(Date.parse(calendar.start))) return [];
+    const day = calendar.allDay || /^\d{4}-\d{2}-\d{2}$/.test(calendar.start);
+    let value = calendar.start;
+    if (day) {
+      const date = calendar.start.slice(0, 10);
+      let lo = Date.parse(`${date}T12:00:00Z`) - 36 * 3600000, hi = lo + 72 * 3600000;
+      while (hi - lo > 1) {
+        const mid = Math.floor((hi + lo) / 2);
+        if (localTime(new Date(mid).toISOString(), "America/Chicago").date < date) lo = mid; else hi = mid;
+      }
+      value = new Date(hi).toISOString();
+    }
+    return [{ kind: "due", value, precision: day ? "day" : "minute", authority: "structured", origin: "calendar", scopeConfirmed: true,
+      quote: `Calendar DTSTART: ${calendar.start}`, note: `Saved calendar record ${resource.id}. Assignment association uses its provider identifier.` }];
+  };
   return {
     contributors(resource: Resource): Resource[] {
-      const ids = new Set([resource.id, ...links.filter((l) => l.type === "same_as" && l.toId === resource.id).map((l) => l.fromId), ...prose(resource).claims.flatMap((c) => c.span ? [c.span.resourceId] : []), ...prose(resource).unresolved.map((c) => c.span.resourceId)]);
+      const ids = new Set([resource.id, ...(exactContributors.get(resource.id) ?? []).map(r => r.id), ...links.filter((l) => l.type === "same_as" && l.toId === resource.id).map((l) => l.fromId), ...prose(resource).claims.flatMap((c) => c.span ? [c.span.resourceId] : []), ...prose(resource).unresolved.map((c) => c.span.resourceId)]);
       return resources.filter((r) => ids.has(r.id));
     },
     deadlines(resource: Resource): DeadlineEvidenceClaim[] {
@@ -112,6 +176,9 @@ export function evidenceFor(store: Store, permitted: (resource: Resource) => boo
           ...c,
           origin: resource.calendar ? ("calendar" as const) : ("canvas" as const),
         })),
+        ...(exactContributors.get(resource.id) ?? []).flatMap(contributor => contributor.kind === "event"
+          ? feedClaim(contributor)
+          : contributor.deadlines.map(claim => ({ ...claim, origin: "canvas" as const }))),
         ...links
           .filter((l) => l.type === "same_as" && l.toId === resource.id)
           .flatMap((l) =>

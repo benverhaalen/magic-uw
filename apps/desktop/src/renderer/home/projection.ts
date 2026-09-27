@@ -19,7 +19,7 @@ export function canonicalHomeResources(resources: ResourceView[], sources: Sourc
   const byId = new Map(sources.map(source => [source.id, source]));
   const scoped = resources.map(resource => {
     const source = byId.get(resource.sourceId);
-    return { ...resource, accountScope: source?.accountScope, sourceScope: source?.scope };
+    return { ...resource, accountScope: source?.accountScope, sourceScope: source?.scope, sourceKind: source?.kind };
   });
   const projected = projectScheduleResources(scoped, links, aliases);
   const seen = new Set<string>();

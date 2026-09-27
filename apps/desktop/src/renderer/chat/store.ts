@@ -80,7 +80,7 @@ export interface Chat {
   version: number;
 }
 
-export type ChatBridge = Pick<AppBridge, "openExternal"> & Partial<Pick<AppBridge, "localAsk" | "cancelLocal" | "query" | "openLink" | "execute">>;
+export type ChatBridge = Pick<AppBridge, "openExternal"> & Partial<Pick<AppBridge, "localAsk" | "cancelLocal" | "query" | "openLink" | "execute" | "intentRun" | "cancelIntent">>;
 /** What the pane passes in while it is visible. Chats only run while shown. */
 export interface ChatRuntime {
   bridge: ChatBridge;
@@ -90,6 +90,7 @@ export interface ChatRuntime {
   /** Included courses (from the same course cards as the sidebar). Read on every run, so exclusions apply at once. */
   courses: ChatCourse[];
   now: string;
+  onNavigate?(target: {view: string; resourceId?: string; courseId?: string; accountScope?: string}): void;
 }
 
 const LIMIT = 12;
@@ -144,6 +145,18 @@ export function startChat(entry: ChatEntry, now = new Date().toISOString()): { c
   evict();
   emit();
   return { chat, created: true };
+}
+
+/** Adopt the already-run shared result exactly once; no second model/router dispatch. */
+export function acceptVoiceResult(entry: ChatEntry, result: IntentResult, runtime: ChatRuntime, followUpId?: string): Chat | null {
+  let chat = followUpId ? getChat(followUpId) : null;
+  if (chat) { if (chat.exchanges.some(x => x.key === entry.idempotencyKey)) return chat; continueChat(chat.id, entry.prompt, entry.idempotencyKey); }
+  else { const started = startChat(entry); if (!started || !started.created) return started?.chat ?? null; chat = started.chat; }
+  const x = chat.exchanges.at(-1)!;
+  const permitted = permittedCourses(chat.origin.scope, runtime.courses), scope = permittedScope(currentScope(chat), permitted);
+  if (!scope) { update(chat, x, {state: 'failed', error: {text: 'This course is no longer included. Choose an included course.', setup: 'sources'}}); return chat; }
+  applyIntent(chat, x, result, runtime, permitted, scope);
+  return chat;
 }
 
 /** A follow-up typed into the shell composer while this chat is shown. */
@@ -264,6 +277,13 @@ async function run(chat: Chat, x: Exchange, rt: ChatRuntime) {
       allowedBase = permittedScope(initialPlan.scope, permitted);
     }
     if (!allowedBase) return update(chat, x, { state: "failed", error: { text: "This course is no longer included. Choose an included course or update Sources.", setup: "sources" } });
+    if (rt.bridge.intentRun && !x.local && !x.target && !x.wide && !x.course) {
+      const courses = scopeCourses(allowedBase);
+      const context = { view: chat.origin.view, ...(courses.length === 1 ? {courseId: courses[0]!.key} : {}), ...(allowedBase.kind === 'item' ? {resourceId: allowedBase.item.id} : {}) };
+      const result = await rt.bridge.intentRun({ operationId: x.id, text: x.prompt, context });
+      if (!live()) return;
+      return applyIntent(chat, x, result, rt, permitted, allowedBase);
+    }
     const intent = routeIntent(x.prompt);
     let said: string | null = null;
     if (!x.target && !x.local && !x.course && !x.wide) {
@@ -357,6 +377,16 @@ function applyIntent(chat: Chat, x: Exchange, r: IntentResult, rt: ChatRuntime, 
     return update(chat, x, { state: "done", step: null, result: { kind: "clarify", question: r.question, options: unique } });
   }
   if (r.status !== "ran") return update(chat, x, { state: "failed", step: null, error: { text: "Magic could not finish this request. Try again.", setup: null, detail: `Unexpected router status: ${r.status}` } });
+  if (['page.open', 'course.open', 'assignment.open'].includes(r.action)) {
+    const target = (r.result as {navigate?: {view: string; resourceId?: string; courseId?: string; accountScope?: string}})?.navigate;
+    if (target && typeof target.view === 'string') {
+      const valid = target.view === 'course' ? permitted.some(c => c.courseId === target.courseId && c.accountScope === target.accountScope)
+        : target.view === 'assignment' ? rt.resources.some(row => !row.deleted && row.id === target.resourceId && permits(permitted, chatItem(row, rt.sources), chat.origin.scope))
+        : ['today', 'courses', 'calendar', 'myuw'].includes(target.view);
+      if (valid) { update(chat, x, {state: 'done', step: null, result: {kind: 'note', text: 'Opened the requested page.'}}); rt.onNavigate?.(target); return; }
+    }
+    return update(chat, x, {state: 'done', step: null, result: {kind: 'unavailable', reason: 'That page is no longer available.'}});
+  }
   const named = intentCourse(r.args);
   const course = named ? byKey.get(named.ref) ?? null : null;
   // A course core resolved but that is not included here is refused, never read.
@@ -431,6 +461,7 @@ async function open(chat: Chat, x: Exchange, target: ChatItem, rt: ChatRuntime, 
 export function stop(chat: Chat, x: Exchange, bridge: ChatBridge) {
   if (x.state !== "running" && x.state !== "queued") return;
   tickets.set(x.id, (tickets.get(x.id) ?? 0) + 1);
+  void bridge.cancelIntent?.(x.id).catch(() => undefined);
   if (localOwner?.startsWith(`${x.id}:`)) {
     localOwner = null;
     void bridge.cancelLocal?.().catch(() => undefined);

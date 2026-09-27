@@ -1,3 +1,4 @@
+import { voiceBridge } from "./voice/preload-bridge";
 import { contextBridge, ipcRenderer } from "electron";
 import type { AppBridge, ClientsBridge } from "@magic/contracts";
 // T80: terminal output arrives before a pane may have subscribed (the sign-in URL is printed
@@ -34,6 +35,7 @@ ipcRenderer.on("magic:terminal-exit", (_event, sessionId: unknown, code: unknown
   }
 });
 const ignore = () => undefined;
+contextBridge.exposeInMainWorld("magicVoice", voiceBridge);
 const clients: ClientsBridge = {
   detect: () => ipcRenderer.invoke("magic:clients-detect"),
   prepare: (id) => ipcRenderer.invoke("magic:clients-prepare", id),
@@ -76,6 +78,8 @@ const clients: ClientsBridge = {
   },
 };
 const bridge: AppBridge = {
+  intentRun: request => ipcRenderer.invoke("magic:intent-run", request),
+  cancelIntent: operationId => ipcRenderer.invoke("magic:intent-cancel", operationId),
   execute: (command) => ipcRenderer.invoke("magic:execute", command),
   openExternal: (url) => ipcRenderer.invoke("magic:open", url),
   openLink: (url) => ipcRenderer.invoke("magic:open-link", url), // owner: T05b

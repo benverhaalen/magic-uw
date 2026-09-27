@@ -1523,9 +1523,11 @@ export interface WorkspaceResult {
 // (0 tokens, never the model) for a live hint; `prewarm` readies the AI fallback when the bar opens.
 export const intentCommandSchema = z
   .object({
-    text: z.string().max(500),
+    text: z.string().max(2000),
+    /** Caller restriction, checked after resolution; never grants permission. */
+    allowedActions: z.array(z.string().min(1).max(100)).max(40).optional(),
     context: z
-      .object({ courseId: id.optional(), view: z.string().max(100).optional(), noteId: id.optional() })
+      .object({ courseId: id.optional(), view: z.string().max(100).optional(), noteId: id.optional(), resourceId: id.optional() })
       .strict()
       .optional(),
     /** `preview` here is deprecated: use the `intent.preview` query, which skips the snapshot. */
@@ -2009,6 +2011,9 @@ export interface AccountBridge {
 // end owner: accounts
 
 export interface AppBridge {
+  /** Shared typed/voice read and navigation path; main owns the action restriction. */
+  intentRun?(request: { operationId: string; text: string; context?: IntentCommand["context"] }): Promise<IntentCommandResult>;
+  cancelIntent?(operationId: string): Promise<void>;
   /** owner: accounts. Sign-in and purchase status; absent in builds without the bridge. */
   account?: AccountBridge;
   execute(command: Command): Promise<CommandResult>;

@@ -1,4 +1,5 @@
-import type { CaptureDiagnostic, PlanningSourceHealth, Snapshot, SourceHealth, SyncRun } from "@magic/contracts";
+import type { CaptureDiagnostic, PlanningSourceHealth, ResourceView, Snapshot, SourceHealth, SyncRun } from "@magic/contracts";
+import { verifiedCanvasEnrollment } from "../enrollment-evidence";
 
 // owner: sources page. Pure projection of saved source health into connections the student manages.
 // Rules: unknown, stale or partial coverage is never reported as complete; raw labels stay available.
@@ -35,6 +36,8 @@ export interface CourseCoverage {
   newestAttemptAt: string | null;
   scopes: ScopeCoverage[];
   needsGitLab: boolean;
+  /** Enrollment evidence takes precedence; a saved Canvas choice alone is only included. */
+  relevance?: "current" | "included" | "other";
 }
 export interface Connection {
   id: string;
@@ -204,9 +207,22 @@ export function formatWhen(value: string | null, now: Date): string {
   return `${day} at ${time}`;
 }
 
-function canvasConnection(sources: SourceHealth[], labels: CourseLabel[], now: Date): Connection {
+function canvasConnection(sources: SourceHealth[], labels: CourseLabel[], now: Date, resources?: ResourceView[], planning?: Snapshot["planning"]): Connection {
   const canvas = sources.filter((s) => s.kind === "canvas");
   const courses = buildCourses(sources, labels);
+  const bySource = new Map(sources.map((s) => [s.id, s]));
+  const courseRows = new Map((resources ?? []).flatMap((r) => {
+    const s = bySource.get(r.sourceId);
+    return !r.deleted && r.kind === "course" && s?.kind === "canvas" && s.scope === "course"
+      ? [[JSON.stringify([s.accountScope, r.courseId]), r] as const] : [];
+  }));
+  const verified = verifiedCanvasEnrollment(planning, new Set(canvas.filter((s) => s.scope === "course").map((s) => s.accountScope)), now);
+  for (const course of courses) {
+    const row = courseRows.get(course.key);
+    course.relevance = verified?.canvasAccountScope === course.accountScope && row && verified.enrollment.match({ course_code: row.course?.courseCode, name: row.courseName })
+      ? "current" : row?.course?.selection?.included === true ? "included" : "other";
+  }
+  const featured = resources ? courses.filter((c) => c.relevance === "current" || c.relevance === "included") : courses;
   const accountSources = canvas.filter((s) => ACCOUNT_COURSES.has(s.courseId)).map(scopeOf);
   const all = [...accountSources, ...courses.flatMap((c) => c.scopes)];
   const newestAttemptAt = newest(canvas.map((s) => s.lastAttemptAt));
@@ -214,7 +230,10 @@ function canvasConnection(sources: SourceHealth[], labels: CourseLabel[], now: D
   const accounts = new Set(canvas.filter((s) => !s.accountScope.startsWith("connection:")).map((s) => s.accountScope));
   const notes: string[] = [];
   if (accounts.size > 1) notes.push("Coursework from more than one Canvas account is saved on this device.");
-  const incomplete = courses.filter((c) => ["partial", "error", "not_checked", "needs_sign_in"].includes(c.state)).length;
+  const incomplete = featured.filter((c) => ["partial", "error", "not_checked", "needs_sign_in"].includes(c.state)).length;
+  const essential = new Set(["course", "assignments", "modules", "syllabus", "announcements", "submissions", "calendar_feed"]);
+  const essentialIncomplete = featured.filter((c) => c.scopes.some((s) => essential.has(s.scope) && s.state !== "complete")).length;
+  const secondaryIncomplete = incomplete > 0 && essentialIncomplete === 0;
   const base = {
     id: "canvas",
     name: "Canvas",
@@ -237,11 +256,17 @@ function canvasConnection(sources: SourceHealth[], labels: CourseLabel[], now: D
   const connection = accountSources.find((s) => s.scope === "connection");
   if (connection?.state === "error" || (all.length > 0 && all.every((s) => s.state === "error")))
     return { ...base, state: "error", headline: `The last check did not finish (${formatWhen(newestAttemptAt, now)}). Saved coursework is still here.` };
-  if (incomplete > 0)
-    return { ...base, state: "partial", headline: `${incomplete} of ${courses.length} ${courses.length === 1 ? "course" : "courses"} ${incomplete === 1 ? "was" : "were"} not read completely.` };
+  if (essentialIncomplete > 0 || (!resources && incomplete > 0))
+    return { ...base, state: "partial", headline: resources
+      ? `${essentialIncomplete} ${essentialIncomplete === 1 ? "included course site has" : "included course sites have"} important areas that were not fully read. Saved work remains available.`
+      : `${incomplete} of ${courses.length} ${courses.length === 1 ? "course" : "courses"} ${incomplete === 1 ? "was" : "were"} not read completely.` };
   if (isStale(newestSuccessAt, now))
     return { ...base, state: "stale", headline: `Last successful read ${formatWhen(newestSuccessAt, now)}. Coursework may have changed since.` };
-  return { ...base, state: "connected", headline: `${courses.length} ${courses.length === 1 ? "course" : "courses"} read${courses.some((c) => c.state === "limited") ? ", some sections unavailable" : " completely"}.` };
+  return { ...base, state: "connected", headline: resources
+    ? featured.length
+      ? `${featured.length} course ${featured.length === 1 ? "site" : "sites"} included in this read${featured.some((c) => c.relevance === "current") ? `; ${featured.filter((c) => c.relevance === "current").length} matched current UW enrollment` : ""}${secondaryIncomplete ? "; some linked content was partly read (details in More)" : featured.some((c) => c.state === "limited") ? "; some areas unavailable" : ""}.`
+      : "Saved Canvas course sites are listed below; no current course match is confirmed."
+    : `${courses.length} ${courses.length === 1 ? "course" : "courses"} read${courses.some((c) => c.state === "limited") ? ", some sections unavailable" : " completely"}.` };
 }
 
 export interface OutlookFacts {
@@ -377,11 +402,11 @@ export function buildRuns(runs: SyncRun[] = [], now: Date, limit = 5): RunLine[]
 const attentionOrder: ConnectionState[] = ["needs_sign_in", "error", "partial", "stale"];
 
 export function buildSourcesModel(
-  snapshot: Pick<Snapshot, "sources" | "syncRuns" | "planning">,
+  snapshot: Pick<Snapshot, "sources" | "syncRuns" | "planning"> & { resources?: ResourceView[] },
   options: { now: Date; outlook: OutlookFacts; labels?: CourseLabel[] },
 ): SourcesModel {
   const { now } = options;
-  const canvas = canvasConnection(snapshot.sources, options.labels ?? [], now);
+  const canvas = canvasConnection(snapshot.sources, options.labels ?? [], now, snapshot.resources, snapshot.planning);
   const outlook = outlookConnection(snapshot.sources, options.outlook, now);
   const planning = planningConnection(snapshot.planning?.sources ?? [], now);
   const claimed = new Set<string>([
