@@ -130,7 +130,7 @@ export function createMcpService(
         kind: r.kind,
         text: r.text.slice(start, start + 8000),
         excerpt: { start, end: Math.min(r.text.length, start + 8000) },
-        deadline: resolveDeadline(evidence.deadlines(r)),
+        deadline: resolveDeadline(evidence.deadlines(r), evidence.unresolvedDeadlines(r)),
         citation: {
           url: safeUrl(r.url),
           version: r.version,

@@ -56,7 +56,10 @@ export function createCore(store: Store, options: CoreOptions) {
             : null;
         return {
           ...r,
-          deadline: resolveDeadline(evidence.deadlines(r)),
+          deadline: resolveDeadline(
+            evidence.deadlines(r),
+            evidence.unresolvedDeadlines(r),
+          ),
           kindLabel: label,
         };
       })
