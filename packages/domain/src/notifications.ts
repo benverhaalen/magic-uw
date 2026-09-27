@@ -15,6 +15,7 @@ import type {
 } from "@magic/contracts";
 import { resolveDeadline } from "./index";
 import { localTime } from "./today-rail";
+import { describeSources } from "./source-categories";
 
 /**
  * Every threshold, window and keyword the notification rules use. Code decides each level from
@@ -870,7 +871,8 @@ export function buildNotifications(input: NotificationInput): NotificationFeed {
         (s.lastSuccessAt !== null && nowMs - Date.parse(s.lastSuccessAt) > NOTIFICATION_RULES.staleHours * HOUR)),
   );
   if (stale.length) {
-    const names = stale.slice(0, 3).map((s) => s.label);
+    // Plain categories and course names, never internal source labels (owner: source-categories).
+    const where = describeSources(stale);
     items.push({
       id: `source_stale:${hash(stale.map((s) => s.id).join(","))}:${maxOf(stale.map((s) => s.lastSuccessAt)) ?? "never"}`,
       level: "important",
@@ -879,7 +881,7 @@ export function buildNotifications(input: NotificationInput): NotificationFeed {
         stale.length === 1
           ? "One source isn't updating"
           : `${stale.length} sources aren't updating`,
-      detail: `Updates may be missing from ${names.join(", ")}${stale.length > names.length ? ` and ${stale.length - names.length} more` : ""}`,
+      detail: `Updates may be missing from ${where}`,
       ...(stale.length === 1 ? { sourceId: stale[0]!.id } : {}),
       observedAt: maxOf(stale.map((s) => s.lastAttemptAt)) ?? now,
       changeIds: [],

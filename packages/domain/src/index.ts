@@ -12,6 +12,7 @@ export * from "./work";
 export * from "./course-label";
 export * from "./changes";
 export * from "./notifications";
+export * from "./source-categories"; // owner: source-categories
 import { zonedDate } from "./deadline-extraction";
 export * from "./deadline-extraction";
 

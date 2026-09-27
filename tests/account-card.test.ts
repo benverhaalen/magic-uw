@@ -57,8 +57,8 @@ test("signed in: the last confirmed sign-in and the Canvas read time come from s
   assert.match(s.canvas, /^Up to date · Checked today at /);
   assert.equal(s.sources, "1 source");
   const ended = accountSummary(snap([source({ status: "needs_sign_in", complete: false, lastSuccessAt: at(30) })]), NOW);
-  assert.match(ended.uw, /^Sign in needed · last confirmed /);
-  assert.match(ended.canvas, /^Sign in needed · /);
+  assert.match(ended.uw, /^Sign in again · last confirmed /);
+  assert.match(ended.canvas, /^Sign in again · /);
 });
 
 test("which AI answers follows the send gate: selected, cloud on and agreed; mode and plan from client health", () => {

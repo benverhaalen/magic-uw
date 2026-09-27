@@ -25,6 +25,7 @@ import {
   selectable,
   steps,
   summarize,
+  categorizeSummary,
   writeProgress,
   type ClientId,
   type ClientsBridge,
@@ -34,6 +35,7 @@ import {
   type UwProgress,
 } from "./model";
 import { TerminalPane } from "./TerminalPane";
+import { developerMode } from "../developer";
 import "./onboarding.css";
 import "./client-health.css";
 
@@ -1302,6 +1304,8 @@ function Populating({
   onFinish: () => void;
 }) {
   const summary = summarize(snapshot, busy);
+  // owner: source-categories. One plain line per category; the per-endpoint lines are developer details.
+  const categories = categorizeSummary(snapshot, summary);
   const [whyOpen, setWhyOpen] = useState<string | null>(null);
   const title =
     summary.outcome === "empty"
@@ -1334,9 +1338,9 @@ function Populating({
           ))}
         </ul>
       ) : null}
-      {summary.sources.length > 0 ? (
+      {categories.length > 0 ? (
         <ul className="onb-sources" aria-label="Sources">
-          {summary.sources.map((source) => (
+          {categories.map((source) => (
             <li key={source.id} className={`onb-source ${source.state}`}>
               <span className="onb-source-mark" aria-hidden="true">
                 {source.state === "reading" ? (
@@ -1366,6 +1370,12 @@ function Populating({
             </li>
           ))}
         </ul>
+      ) : null}
+      {categories.length > 0 && developerMode() ? (
+        <details className="onb-note">
+          <summary>Details</summary>
+          <ul>{categories.flatMap((c) => c.parts).map((part) => <li key={part.id}>{part.label}: {part.status}{part.detail ? ` (${part.detail})` : ""}</li>)}</ul>
+        </details>
       ) : null}
       {snapshot.fixtureMode ? <p className="onb-note">This is a synthetic sample course, not your coursework.</p> : null}
       {noClient ? <p className="onb-note">No AI is connected, so study material waits until you add one.</p> : null}

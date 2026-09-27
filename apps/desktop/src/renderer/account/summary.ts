@@ -1,18 +1,9 @@
 // owner: account-card. What the account card says, from the snapshot alone (no reads of its own): UW
-// sign-in, Canvas freshness and the connected-source count come from the Sources page's own projection,
-// so the card and that page never disagree.
+// sign-in, Canvas freshness and the connected-source count come from the Sources page's own projection
+// and its plain state words, so the card and that page never disagree.
 import type { Snapshot } from "@magic/contracts";
-import { buildSourcesModel, formatWhen, type ConnectionState } from "../sources/model";
+import { buildSourcesModel, connectionStateWords, formatWhen } from "../sources/model";
 
-const canvasWords: Record<ConnectionState, string> = {
-  connected: "Up to date",
-  partial: "Partly read",
-  stale: "May be out of date",
-  needs_sign_in: "Sign in needed",
-  error: "Needs attention",
-  not_connected: "Not connected",
-  sample: "Sample data",
-};
 
 export interface AccountSummary {
   /** The student's name when the workspace stores one; this build stores none, so it names the workspace. */
@@ -30,12 +21,12 @@ export function accountSummary(snapshot: Pick<Snapshot, "sources" | "syncRuns" |
   const uw = canvas.state === "not_connected" || canvas.state === "sample"
     ? "Not signed in"
     : canvas.state === "needs_sign_in"
-      ? `Sign in needed · ${confirmed}`
+      ? `Sign in again · ${confirmed}`
       : canvas.newestSuccessAt ? `Signed in · ${confirmed}` : "Signed in · not read yet";
   return {
     name: snapshot.fixtureMode ? "Sample student" : "Your workspace",
     uw,
-    canvas: canvas.state === "not_connected" ? canvasWords.not_connected : `${canvasWords[canvas.state]} · ${canvas.freshness}`,
+    canvas: canvas.state === "not_connected" ? "Not connected" : `${connectionStateWords(canvas)} · ${canvas.freshness}`,
     sources: live === 0 ? "None yet" : `${live} ${live === 1 ? "source" : "sources"}`,
   };
 }

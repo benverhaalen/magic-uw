@@ -3,6 +3,7 @@ import type { AppBridge, Command, CommandResult, Snapshot } from "@magic/contrac
 import { Action } from "../../../../../packages/ui/src";
 import {
   buildSourcesModel,
+  connectionStateWords,
   formatWhen,
   readLabels,
   type Connection,
@@ -11,6 +12,7 @@ import {
   type CourseLabel,
   type OutlookFacts,
 } from "./model";
+import { developerMode } from "../developer";
 
 // owner: sources page. Account and source health, sign-in, refresh, coverage, consent and
 // disconnect-versus-delete. Global connection notices belong to the shell (ConnectionNotice);
@@ -83,15 +85,6 @@ const tones: Record<string, { tone: string; glyph: keyof typeof glyphs }> = {
   canvas: { tone: "coral", glyph: "canvas" },
   outlook: { tone: "blue", glyph: "outlook" },
   myuw: { tone: "amber", glyph: "myuw" },
-};
-const stateWords: Record<ConnectionState, string> = {
-  connected: "Up to date",
-  partial: "Partly read",
-  stale: "May be out of date",
-  needs_sign_in: "Sign in needed",
-  error: "Needs attention",
-  not_connected: "Not connected",
-  sample: "Sample data",
 };
 /** After a control that held focus disappeared, move focus to the first target still present.
  *  Focus the student has already moved elsewhere is left alone. Runs after React commits. */
@@ -288,7 +281,7 @@ function ConnectionRow({ connection: c, open, onOpen, action, children }: { conn
           <p className="sources-fine">{c.accountShort}</p>
         </div>
         <div className="source-connection-state">
-          <span className={`source-state is-${c.state}`}><Glyph name={stateGlyph(c.state)} size={15} />{stateWords[c.state]}</span>
+          <span className={`source-state is-${c.state}`}><Glyph name={stateGlyph(c.state)} size={15} />{connectionStateWords(c)}</span>
           {secondary ? <span className="sources-fine">{secondary}</span> : null}
         </div>
         <div className="source-connection-action">{action}</div>
@@ -429,7 +422,7 @@ function CourseRow({ course, now, busy, canSignIn, onSignIn }: { course: CourseC
               <Action tone="quiet" disabled={busy} onClick={() => onSignIn("gitlab")}><Glyph name="signin" /> Sign in to GitLab</Action>
             </div>
           ) : null}
-          <ul className="source-scopes">
+          {developerMode() ? <ul className="source-scopes" aria-label="Details">
             {course.scopes.map((s) => (
               <li key={s.id}>
                 <span>{scopeName(s.scope)}</span>
@@ -438,7 +431,7 @@ function CourseRow({ course, now, busy, canSignIn, onSignIn }: { course: CourseC
                 {s.notes.length ? <span className="source-scope-notes">{s.notes.join(" ")}</span> : null}
               </li>
             ))}
-          </ul>
+          </ul> : null}
         </div>
       </details>
     </li>
@@ -584,7 +577,7 @@ function OutlookDetails({ connection: c, bridge, busy, graph, icsConnected, onCh
         )}
       </div>
       {message ? <p className={message.alert ? "source-error" : "sources-fine"} role={message.alert ? "alert" : "status"}>{message.text}</p> : null}
-      {c.state !== "not_connected" && c.sources.some((s) => s.notes.length) ? <ul className="source-scopes">{c.sources.filter((s) => s.notes.length).map((s) => <li key={s.id}><span>{scopeName(s.scope)}</span><span className="source-scope-notes">{s.notes.join(" ")}</span></li>)}</ul> : null}
+      {developerMode() && c.state !== "not_connected" && c.sources.some((s) => s.notes.length) ? <ul className="source-scopes">{c.sources.filter((s) => s.notes.length).map((s) => <li key={s.id}><span>{scopeName(s.scope)}</span><span className="source-scope-notes">{s.notes.join(" ")}</span></li>)}</ul> : null}
     </>
   );
 }
@@ -602,8 +595,8 @@ function PlanningDetails({ connection: c, now, onOpenMyUw }: { connection: Conne
   return (
     <>
       <p>Your student record, degree audit and course planning sources are read and refreshed from My UW, where each one shows its evidence.</p>
-      {c.sources.length ? (
-        <ul className="source-scopes">
+      {developerMode() && c.sources.length ? (
+        <ul className="source-scopes" aria-label="Details">
           {c.sources.map((s) => (
             <li key={s.id}>
               <span>{s.scope}</span>
@@ -620,12 +613,12 @@ function PlanningDetails({ connection: c, now, onOpenMyUw }: { connection: Conne
 }
 
 function OtherDetails({ connection: c, now, onOpenPrivacy }: { connection: Connection; now: Date; onOpenPrivacy: () => void }) {
-  const s = c.sources[0];
+  const notes = [...new Set(c.sources.flatMap((s) => s.notes))];
   return (
     <>
       <p>{c.account}</p>
-      <Facts items={[["Last check", capitalize(formatWhen(c.newestAttemptAt, now))], ["Coverage", s ? readLabels[s.state] : "Not checked"], ["Saved records", String(c.records)]]} />
-      {s?.notes.length ? <p className="sources-fine">{s.notes.join(" ")}</p> : null}
+      <Facts items={[["Last check", capitalize(formatWhen(c.newestAttemptAt, now))], ["Coverage", c.sources.length ? connectionStateWords(c) : "Not checked"], ["Saved records", String(c.records)]]} />
+      {developerMode() && notes.length ? <p className="sources-fine">{notes.join(" ")}</p> : null}
       <div className="source-manage is-danger">
         <Action tone="quiet" data-focus-key={`${c.id}-delete`} onClick={onOpenPrivacy}>Delete saved data</Action>
         <p className="sources-fine">Opens Data & AI. Delete local data removes everything Magic saved on this device, from every source.</p>

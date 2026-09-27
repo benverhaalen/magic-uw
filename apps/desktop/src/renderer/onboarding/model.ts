@@ -1,4 +1,5 @@
 import { currentEnrollment, type EnrolledClass } from "../../../../../packages/domain/src/enrollment-match";
+import { SOURCE_CATEGORIES, SOURCE_CATEGORY_ORDER, sourceCategory, type SourceCategory } from "../../../../../packages/domain/src/source-categories";
 import type {
   ApiKeyStatus,
   ClientHealth,
@@ -576,4 +577,55 @@ export function summarize(snapshot: Snapshot, busy: boolean): PopulateSummary {
             ? "issues"
             : "ready";
   return { sources: lines, counts, total: live.length, reading, filesArriving, hiddenLists, outcome };
+}
+
+// --- Plain categories (owner: source-categories) ------------------------------------------------
+/**
+ * One line per category a student recognises (Canvas, UW enrollment, Outlook, Notes, Course
+ * websites), built from `summarize`'s own per-source lines so both agree on what is excluded, hidden,
+ * reading, partial or failed. The raw lines stay in `parts` for the developer details.
+ */
+export interface CategoryLine extends SourceLine {
+  category: SourceCategory;
+  parts: SourceLine[];
+}
+const rank: Record<SourceState, number> = { ready: 0, reading: 1, partial: 2, failed: 3 };
+export function categorizeSummary(snapshot: Pick<Snapshot, "sources" | "planning">, summary: Pick<PopulateSummary, "sources">): CategoryLine[] {
+  const byId = new Map(snapshot.sources.map((s) => [s.id, s]));
+  const groups = new Map<SourceCategory, SourceLine[]>();
+  for (const line of summary.sources) {
+    const source = byId.get(line.id);
+    const category: SourceCategory = line.id.startsWith("files:") || !source ? "canvas" : sourceCategory(source);
+    groups.set(category, [...(groups.get(category) ?? []), line]);
+  }
+  for (const p of snapshot.planning?.sources ?? []) {
+    const signIn = p.diagnostics.some((d) => /sign.?in/i.test(`${d.code} ${d.message}`));
+    const line: SourceLine = p.status === "complete"
+      ? { id: p.id, label: p.source, state: "ready", status: "Done" }
+      : p.status === "partial"
+        ? { id: p.id, label: p.source, state: "partial", status: "Partly read", reason: reasons.partial, action: "retry" }
+        : { id: p.id, label: p.source, state: "failed", status: signIn ? "Sign in needed" : "Not read", reason: signIn ? reasons.needs_sign_in : reasons.error, action: signIn ? "sign-in" : "retry" };
+    groups.set("uw", [...(groups.get("uw") ?? []), line]);
+  }
+  return SOURCE_CATEGORY_ORDER.filter((category) => groups.has(category)).map((category) => {
+    const parts = groups.get(category)!;
+    const base = { id: `category:${category}`, category, label: SOURCE_CATEGORIES[category].name, parts };
+    const worst = parts.reduce((w, part) => (rank[part.state] > rank[w] ? part.state : w), "ready" as SourceState);
+    const problems = parts.filter((part) => part.state === "partial" || part.state === "failed");
+    const signIn = problems.find((part) => part.action === "sign-in");
+    if (signIn) return { ...base, state: "failed", status: "Sign in again", reason: signIn.reason, action: "sign-in" };
+    if (problems.length) {
+      const filesOnly = problems.every((part) => part.id.startsWith("files:"));
+      const none = problems.length === parts.length && problems.every((part) => part.state === "failed");
+      const why = problems.map((part) => part.why).find(Boolean);
+      return {
+        ...base, state: worst, action: "retry",
+        status: filesOnly ? "Some files couldn't be read" : none ? "Couldn't be read" : "Some parts couldn't be read",
+        reason: filesOnly ? problems.map((part) => part.reason).find(Boolean) : none ? reasons.error : reasons.partial,
+        ...(why ? { why } : {}),
+      };
+    }
+    if (worst === "reading") return { ...base, state: "reading", status: "Updating" };
+    return { ...base, state: "ready", status: "Up to date" };
+  });
 }

@@ -1,4 +1,5 @@
 import type { CaptureDiagnostic, PlanningSourceHealth, Snapshot, SourceHealth, SyncRun } from "@magic/contracts";
+import { SOURCE_CATEGORIES, sourceCategory, type SourceCategory } from "../../../../../packages/domain/src/source-categories";
 
 // owner: sources page. Pure projection of saved source health into connections the student manages.
 // Rules: unknown, stale or partial coverage is never reported as complete; raw labels stay available.
@@ -319,31 +320,68 @@ function planningConnection(planning: PlanningSourceHealth[], now: Date): Connec
   return { ...base, state: "connected", headline: "" };
 }
 
+/**
+ * Sources outside Canvas, Outlook and UW planning, one connection per plain category (owner:
+ * source-categories): every course's website crawl is one "Course websites" row, not a row per
+ * internal source. The sample course stays its own row.
+ */
 function otherConnections(sources: SourceHealth[], claimed: Set<string>, now: Date): Connection[] {
-  return sources
-    .filter((s) => !claimed.has(s.id))
-    .map((s) => {
-      const scope = scopeOf(s);
-      const sample = s.kind === "fixture";
-      const state: ConnectionState = sample ? "sample" : scope.state === "complete" ? (isStale(s.lastSuccessAt, now) ? "stale" : "connected") : scope.state === "needs_sign_in" ? "needs_sign_in" : scope.state === "error" ? "error" : "partial";
-      return {
-        id: `source:${s.id}`,
-        name: sample ? "Sample course" : s.label,
-        accountShort: sample ? "Synthetic" : "Saved on this device",
-        account: sample ? "Synthetic data, not from your school." : "Saved from an import or a linked page on this device.",
-        covers: sample ? "Synthetic course records for trying the app" : `${s.resourceCount} saved ${s.resourceCount === 1 ? "record" : "records"}`,
-        freshness: freshnessPhrase(s.lastAttemptAt, s.lastSuccessAt, now),
-        state,
-        headline: sample ? `${s.resourceCount} sample records.` : `${readLabels[scope.state]}. Last successful read ${formatWhen(s.lastSuccessAt, now)}.`,
-        newestAttemptAt: s.lastAttemptAt,
-        newestSuccessAt: s.lastSuccessAt,
-        oldestSuccessAt: s.lastSuccessAt,
-        records: s.resourceCount,
-        courses: [],
-        sources: [scope],
-        notes: scope.notes,
-      };
-    });
+  const rest = sources.filter((s) => !claimed.has(s.id));
+  const sample = rest.filter((s) => s.kind === "fixture").map((s): Connection => {
+    const scope = scopeOf(s);
+    return {
+      id: `source:${s.id}`, name: "Sample course", accountShort: "Synthetic", account: "Synthetic data, not from your school.",
+      covers: "Synthetic course records for trying the app", freshness: freshnessPhrase(s.lastAttemptAt, s.lastSuccessAt, now), state: "sample",
+      headline: `${s.resourceCount} sample records.`, newestAttemptAt: s.lastAttemptAt, newestSuccessAt: s.lastSuccessAt, oldestSuccessAt: s.lastSuccessAt,
+      records: s.resourceCount, courses: [], sources: [scope], notes: [],
+    };
+  });
+  const groups = new Map<SourceCategory, SourceHealth[]>();
+  for (const s of rest) if (s.kind !== "fixture") groups.set(sourceCategory(s), [...(groups.get(sourceCategory(s)) ?? []), s]);
+  const grouped = [...groups].map(([category, group]): Connection => {
+    const scopes = group.map(scopeOf);
+    const state = worst(scopes.map((x) => x.state));
+    const newestAttemptAt = newest(group.map((s) => s.lastAttemptAt));
+    const newestSuccessAt = newest(group.map((s) => s.lastSuccessAt));
+    const records = group.reduce((n, s) => n + s.resourceCount, 0);
+    const connectionState: ConnectionState = state === "complete" || state === "limited" ? (isStale(newestSuccessAt, now) ? "stale" : "connected")
+      : state === "needs_sign_in" ? "needs_sign_in" : state === "error" ? "error" : "partial";
+    const unread = scopes.filter((x) => !["complete", "limited", "restricted"].includes(x.state)).length;
+    return {
+      id: `category:${category}`,
+      name: SOURCE_CATEGORIES[category].name,
+      accountShort: "Saved on this device",
+      account: "Saved from your courses' own pages on this device.",
+      covers: SOURCE_CATEGORIES[category].covers,
+      freshness: freshnessPhrase(newestAttemptAt, newestSuccessAt, now),
+      state: connectionState,
+      headline: connectionState === "connected" ? "" : unread ? `${unread} of ${scopes.length} could not be read completely. What was read is saved.` : `Last successful read ${formatWhen(newestSuccessAt, now)}.`,
+      newestAttemptAt, newestSuccessAt, oldestSuccessAt: fullReadAt(scopes), records, courses: [], sources: scopes, notes: [],
+    };
+  });
+  return [...grouped, ...sample];
+}
+
+/**
+ * The words a student sees for a connection's state (owner: source-categories): "Up to date",
+ * "Updating", "Some files couldn't be read", "Sign in again". A partial read that failed only on
+ * course files says so; any other partial read says "Some parts".
+ */
+export function connectionStateWords(c: Pick<Connection, "state" | "courses" | "sources">, refreshing = false): string {
+  if (refreshing && c.state !== "not_connected" && c.state !== "sample") return "Updating";
+  switch (c.state) {
+    case "connected": return "Up to date";
+    case "stale": return "May be out of date";
+    case "needs_sign_in": return "Sign in again";
+    case "error": return "Couldn't be read";
+    case "not_connected": return "Not connected";
+    case "sample": return "Sample data";
+    case "partial": {
+      const scopes = [...c.sources, ...c.courses.flatMap((course) => course.scopes)];
+      const problems = scopes.filter((x) => x.state === "partial" || x.state === "error" || x.state === "not_checked");
+      return problems.length && problems.every((x) => /^(?:file|document):/.test(x.scope) || x.scope === "files") ? "Some files couldn't be read" : "Some parts couldn't be read";
+    }
+  }
 }
 
 export interface SourcesModel {
