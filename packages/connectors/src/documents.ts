@@ -556,6 +556,13 @@ export function createDocumentManager(options: {
           filename: input.filename ?? new URL(input.sourceUrl).pathname,
           contentType,
         });
+        // owner: acquisition: a public document without an API date keeps its Last-Modified, which
+        // the crawler sends back as If-Modified-Since.
+        const lastModified = fetched.response.headers.get("last-modified");
+        const modifiedAt =
+          lastModified && !Number.isNaN(Date.parse(lastModified))
+            ? new Date(lastModified).toISOString()
+            : undefined;
         return {
           ...extracted,
           document: {
@@ -563,7 +570,7 @@ export function createDocumentManager(options: {
             localPath: path,
             sha256,
             sizeBytes,
-            updatedAt: input.updatedAt,
+            updatedAt: input.updatedAt ?? modifiedAt,
             extractionStatus: extracted.status,
             pages: extracted.pages,
           },

@@ -447,7 +447,9 @@ export function externalCourseConnector(
             continue;
           }
           const cached = previous.get(next.url);
-          const fetchedAt = cached?.crawl?.observedAt;
+          // owner: acquisition: a document records `fetchedAt`, a page `observedAt`; reading only
+          // `observedAt` made every course-site PDF re-download on every crawl.
+          const fetchedAt = cached?.crawl?.observedAt ?? cached?.crawl?.fetchedAt;
           if (
             !options.force &&
             cached &&
@@ -479,6 +481,10 @@ export function externalCourseConnector(
           }
           const fetched = await options.client.get(next.url, {
             signal,
+            // owner: acquisition: a stored document with a Last-Modified is asked for only if newer.
+            ...(!options.force && cached?.document?.updatedAt && cached.document.extractionStatus === "ok"
+              ? { ifModifiedSince: cached.document.updatedAt }
+              : {}),
             onRedirect: async (target) => {
               if (options.client.isCanvas(target)) {
                 await options.onCanvasLink?.(target);
@@ -493,6 +499,15 @@ export function externalCourseConnector(
               return true;
             },
           });
+          if (fetched.notModified && cached) {
+            // owner: acquisition: unchanged since the stored copy; keep it and restart its window.
+            pages++;
+            resources.push({
+              ...cached,
+              crawl: { ...cached.crawl, fetchedAt: now.toISOString() },
+            });
+            continue;
+          }
           if (fetched.url !== next.url && seen.has(fetched.url)) {
             await fetched.response.body?.cancel();
             continue;
