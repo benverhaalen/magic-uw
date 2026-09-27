@@ -1938,6 +1938,11 @@ export interface AppBridge {
   openExternal(url: string): Promise<void>;
   /** owner: T05b. A link card (D40): the default browser, https only. */
   openLink?(url: string): Promise<void>;
+  /**
+   * owner: doc-window. A synced note's Word online or Google Doc in the app's signed-in document
+   * window (UW single sign-on, https document hosts only); any other web link opens in the browser.
+   */
+  openDocument?(url: string): Promise<{ opened: "window" | "browser" }>;
   /** owner: T15. A scoped query (O1); reads only, never a command. */
   query?(request: QueryRequest): Promise<QueryResult>;
   /** owner: pipeline. Graph reads: an assignment's references, the agenda, a course's graph and coverage. */

@@ -79,6 +79,7 @@ const bridge: AppBridge = {
   execute: (command) => ipcRenderer.invoke("magic:execute", command),
   openExternal: (url) => ipcRenderer.invoke("magic:open", url),
   openLink: (url) => ipcRenderer.invoke("magic:open-link", url), // owner: T05b
+  openDocument: (url) => ipcRenderer.invoke("magic:open-document", url), // owner: doc-window
   query: (request) => ipcRenderer.invoke("magic:query", request), // owner: T15
   graph: (request) => ipcRenderer.invoke("magic:graph", request), // owner: pipeline
   importFile: () => ipcRenderer.invoke("magic:import"),
